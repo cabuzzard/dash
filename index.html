@@ -15881,6 +15881,44 @@ const _hub2CodexPanels = {}, _hub2Preview = {};
 const _hub2Content = {}, _hub2ContentSort = {}, _hub2ContentGroup = {}, _hub2ContentClosed = {}, _hub2ContentFilters = {}, _hub2ContentFilterOpen = {}, _hub2Selected = {}, _hub2BulkMsg = {}, _hub2Checklist = {}, _hub2ChecklistSort = {}, _hub2ChecklistFilters = {}, _hub2ChecklistFilterOpen = {};
 function hub2Jump(i) { HUB2_IDX = Math.max(0, Math.min(HUB_SITES.length - 1, i)); renderHubs2(); }
 function hub2Go(d) { if (!HUB_SITES.length) return; HUB2_IDX = (HUB2_IDX + d + HUB_SITES.length) % HUB_SITES.length; renderHubs2(); }
+// Hub View ports the v1 page-section grid and actions; only the asset picker is new.
+const _hub2ViewData={},_hub2ViewBusy={},_hub2ViewError={},_hub2ViewPicker={};
+const _hub2ViewOpen=(()=>{try{return JSON.parse(localStorage.getItem('hub2ViewOpen:v1')||'{}')}catch(e){return {}}})();
+function hub2ViewToggle(slug,open){_hub2ViewOpen[slug]=open;try{localStorage.setItem('hub2ViewOpen:v1',JSON.stringify(_hub2ViewOpen));}catch(e){}if(open)hub2ViewLoad(slug);}
+function hub2ViewPaint(slug){const host=document.getElementById('hub2View-'+slug);if(host)host.innerHTML=hub2ViewHtml(slug);}
+async function hub2ViewLoad(slug,force){
+  const state=_hub2ViewData[slug],hub=HUB_SITES.find(h=>h.slug===slug);if(!hub||state?.loading||state?.data&&!force)return hub2ViewPaint(slug);
+  _hub2ViewData[slug]={...state,loading:true,error:''};hub2ViewPaint(slug);
+  try{const data=await call('getHubBuildStatus',{campaignId:hub.campaignId});if(!Array.isArray(data.steps))throw new Error('No hub section data returned');_hub2ViewData[slug]={data};_hubBuild[slug]=data;}
+  catch(error){_hub2ViewData[slug]={...state,error:error.message};}
+  hub2ViewPaint(slug);
+}
+function hub2ViewHtml(slug){
+  const state=_hub2ViewData[slug],hub=HUB_SITES.find(h=>h.slug===slug);if(!state)return '<div style="font-size:11px;color:var(--text3);">Open Hub View to load the current section listings.</div>';
+  if(state.loading)return '<div style="font-size:11px;color:var(--text3);">Loading hub sections...</div>';
+  if(state.error)return `<div style="color:#ff7a00;font-size:11px;">${esc(state.error)}</div>`;
+  const data=state.data,button='font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
+  return data.steps.filter(section=>section.pageSection&&['offers','news','articles','interactive','cta'].includes(section.key)).map(section=>{
+    const key=slug+'|'+section.key,items=section.items||[],pickable=section.pickable||[],n=items.length,open=!!_hubPageOpen[slug+'|'+section.id],target=section.phase==='Page content'?3:1;
+    const grid=open&&n?hubGridHead(0)+items.map(item=>hubGridRow({pad:0,title:item.title,type:item.type,typeTip:'Asset Type'+(item.section?' - placed here by Hub Section = '+item.section:''),typeHtml:esc(item.type||'')+(item.section?' <span style="color:var(--text3);">\u21b3</span>':''),method:item.method,status:item.status,date:item.date,
+      links:`<button style="${button}" onclick="openCareGapEditor('${esc(hub.campaignId)}','${esc(item.id)}','')">Publish</button> `+(item.url?`<a href="${esc(item.url)}" target="_blank" rel="noopener">page \u2197</a> `:'')+`<a href="https://www.notion.so/${esc(item.id)}" target="_blank" rel="noopener">Notion \u2197</a>`})).join(''):'';
+    const picker=_hub2ViewPicker[key]?`<div data-hub-view-picker="${esc(section.key)}" style="margin:6px 0;padding:7px;border:1px solid var(--border2);border-radius:5px;max-height:260px;overflow:auto;">${pickable.length?pickable.map(item=>`<button ${_hub2ViewBusy[key]?'disabled':''} style="${button}display:block;width:100%;text-align:left;margin:3px 0;" onclick="hub2ViewPublish('${slug}','${section.key}','${esc(item.id)}')">${esc(item.title)} <span style="color:var(--text3);">\u00b7 ${esc(item.type)}</span></button>`).join(''):'<span style="font-size:11px;color:var(--text3);">No synced assets available for this section.</span>'}</div>`:'';
+    return `<div data-hub-view-section="${esc(section.key)}" style="border-bottom:1px solid var(--border);padding:6px 0;"><div style="display:flex;align-items:center;gap:7px;font-size:11px;"><button style="${button}flex:1;text-align:left;border:0;" onclick="_hubPageOpen['${slug}|${section.id}']=!_hubPageOpen['${slug}|${section.id}'];hub2ViewPaint('${slug}')">${open?'\u25bc':'\u25b6'} <span title="Target: ${target}+ published assets" style="color:${n>=target?'#4ade80':'#f6ad55'};">\u25cf</span> ${esc(section.label)} <span style="color:var(--text3);">${n} published asset${n===1?'':'s'}</span>${hubWorkTag(hubStepWork(data,section,slug))}</button><button style="${button}" title="Publish a synced asset into this section" onclick="_hub2ViewPicker['${key}']=!_hub2ViewPicker['${key}'];hub2ViewPaint('${slug}')">+</button></div>${_hub2ViewError[key]?`<div style="color:#ff7a00;font-size:11px;">${esc(_hub2ViewError[key])}</div>`:''}${_hub2ViewBusy[key]?'<div style="font-size:11px;">Publishing...</div>':''}${picker}${grid}</div>`;
+  }).join('');
+}
+async function hub2ViewPublish(slug,section,assetId){
+  const key=slug+'|'+section,hub=HUB_SITES.find(h=>h.slug===slug);if(!hub||_hub2ViewBusy[key])return;
+  _hub2ViewBusy[key]=true;_hub2ViewError[key]='';hub2ViewPaint(slug);
+  try{
+    await call('publishHubSectionAsset',{campaignId:hub.campaignId,assetId,section});
+    _hub2ViewPicker[key]=false;_devTblAt=0;DEV2_ROWS=[];delete _hub2Content[slug];delete _hub2Content[HUB2_ALL];
+    await hub2ViewLoad(slug,true);
+    const frame=document.getElementById('hub2Frame-'+slug);if(frame){const url=new URL(frame.src);url.searchParams.set('v',Date.now());frame.src=url.toString();}
+    if(document.getElementById('hub2Content-'+slug)?.closest('details')?.open)await hub2ContentLoad(slug,true);
+  }catch(error){_hub2ViewError[key]=error.message;}
+  finally{_hub2ViewBusy[key]=false;hub2ViewPaint(slug);}
+}
+
 function renderHubs2() {
   const el = document.getElementById('hubs2TabContent'); if (!el) return;
   hubSitesExtraLoad(); if (!HUB_SITES.length) { el.innerHTML = '<div class="empty">No hubs found.</div>'; return; }
@@ -15908,6 +15946,10 @@ function renderHubs2() {
           <summary title="Digest"><span title="Digest">Digest</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">one dropdown per digest · Premium / Free · check → issues + News SEO</span><button onclick="event.preventDefault();event.stopPropagation();hub2PoolLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Pool-${slug}" style="padding:8px 12px;">${hub2PoolHtml(slug)}</div>
         </details>
+        <details class="hub-sec" id="hub2ViewSec-${slug}" ${_hub2ViewOpen[slug]?'open':''} ontoggle="hub2ViewToggle('${slug}',this.open)">
+          <summary><span>Hub View</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">published sections and synced asset pickers</span><button onclick="event.preventDefault();event.stopPropagation();hub2ViewLoad('${slug}',true)" style="margin-left:auto;${B}">Reload</button></summary>
+          <div id="hub2View-${slug}" style="padding:8px 12px;">${hub2ViewHtml(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hubKwLoad('${slug}')">
           <summary title="Keywords"><span title="Keywords">Keywords</span><span id="hub2KwN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2KwCountText(slug)}</span><span id="hubKwW-${slug}">${hubKwWork(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();delete _hubKw['${slug}'];hubKwLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hubKwBody-${slug}" style="padding:8px 12px;">${renderHubKw(slug)}</div>
@@ -15933,6 +15975,7 @@ function renderHubs2() {
         <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the preview column. ✎ on: hover a heading / blurb and click it to edit that field; click the hero or signup image for Hero images. Preview staged paints the Codex Design panel's staged colors, fonts and image candidates — nothing is saved.</div>
       </div>
     </div>`;
+  if(_hub2ViewOpen[slug])hub2ViewLoad(slug);
   hub2ChecklistLoad(slug);
 }
 // Checklist = the Current Methods worksheet (KV infoflow:table:currentmethods), one row per worksheet row — true two-way
@@ -17238,6 +17281,7 @@ window.addEventListener('message',event=>{
   const editor=document.getElementById('careGapEditorFrame');
   if(editor && event.source!==editor.contentWindow)return;
   _devTblAt=0; DEV2_ROWS=[];
+  Object.keys(_hub2ViewData).forEach(slug=>{delete _hub2ViewData[slug];if(_hub2ViewOpen[slug])hub2ViewLoad(slug,true);});
   Object.keys(_hub2Content).forEach(slug=>delete _hub2Content[slug]);
   document.querySelectorAll('iframe[id^="hub2Frame-"]').forEach(frame=>{const u=new URL(frame.src);u.searchParams.set('v',Date.now());frame.src=u.toString();});
 });
@@ -19829,6 +19873,7 @@ function hubLvl(head, body, headAttrs) {
 // missing or whose keyword topic changed. Collapsed headers show the count in orange so you know where to expand.
 const hubWorkTag = (n, what) => n ? ` <span title="${n} ${what || 'item'}${n === 1 ? '' : 's'} to update — expand to see them" style="color:#ff7a00;font-weight:700;white-space:nowrap;">● ${n} to update</span>` : '';
 function hubItemNeedsWork(b, it) {
+  if(it.writtenWithoutInterview)return true;
   if (/^Out of Sync/.test(it.ivSync || '')) return true;
   const id = String(it.id || '').replace(/-/g, '');
   return (b.flags || []).some(f => f.assetId && String(f.assetId).replace(/-/g, '') === id);
