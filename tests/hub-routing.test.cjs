@@ -19,6 +19,8 @@ function setup(rows=[]){
  ctx.publishSeoPostToLiveSite=async({assetId,intro})=>{if(fail)throw Error('Publish unavailable');const key='web/hub/fixture/blog/posts.json',m=JSON.parse(files.get(key)||'[]'),slug=m.find(e=>e.assetId===assetId)?.slug||assetId;files.set(key,JSON.stringify([...m.filter(e=>e.assetId!==assetId),{assetId,slug,intro}]));files.set('web/hub/fixture/blog/'+slug+'/index.html',intro);return {published:true,liveUrl:'https://cabuzzard.github.io/dash/web/hub/fixture/blog/'+slug+'/'};};
  const action=(name,end)=>{const start=source.indexOf('      if (body.action === "'+name+'") {');vm.runInContext('async function '+name+'(body,env={},ctx={waitUntil(){}}){const json=x=>x;'+source.slice(start,source.indexOf(end,start))+'}',ctx);};
  action('backfillHubBlog','      // \u2500\u2500 backfillHubProductChain');action('updatePublishFields','      // \u2500\u2500 uploadAssetThumbnail');
+ for(const name of ['assetWritingContent','assetWritingState','requireAssetWriting'])vm.runInContext(source.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n}'))[0],ctx);
+ ctx.ivHdr=()=>({});ctx.ivPage=async id=>structuredClone(pages.get(id.replaceAll('-','')));
  return {ctx,files,deleted,writes,pages,setFail:v=>fail=v,manifest:()=>JSON.parse(files.get('web/hub/fixture/blog/posts.json')||'[]')};
 }
 test('listing membership, not Deployed or URL, governs every feed and routed label',()=>{

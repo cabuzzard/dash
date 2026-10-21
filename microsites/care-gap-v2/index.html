@@ -878,7 +878,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mfield" id="pubAssetTitle">Publish</div>
       <div style="display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow-y:auto;padding-right:2px;">
         <label style="font-size:11px;color:var(--ink2);">Status
-          <select id="pubStatus" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+          <select id="pubStatus" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"><option value="Idea">Idea</option><option value="Development">Development</option>
             <option value="Publish">Publish</option>
             <option value="Review">Review</option>
             <option value="Published">Published</option>
@@ -1219,6 +1219,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="iconbtn" onclick="copyPublishField('pubPostBody', this)">📋</button>
           </div>
         </label>
+      </div>
+      <div id="pubWriteWrap" hidden style="margin-top:10px;">
+        <button id="pubWriteAsset" class="btn" onclick="pubWriteAssetNow(this)">✍ Write asset</button>
+        <span id="pubWriteResult" style="font-size:11.5px;margin-left:8px;"></span>
       </div>
       <div id="pubAssetStatus" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
       <div class="modalrow">
@@ -6443,7 +6447,7 @@ function openPublishAssetModal(assetId) {
   imgDirRefresh(assetId);
   const myToken = ++PUB_OPEN_TOKEN;
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
-  document.getElementById('pubStatus').value = (data.status === 'Published' || data.status === 'Review') ? data.status : 'Publish';
+  document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
   PUB_LOADED_PD = data.publishingDate || '';
   document.getElementById('pubLongform').style.display = 'none';
@@ -6604,11 +6608,31 @@ function openPublishAssetModal(assetId) {
   // Body property is only ever a short preview; the real finished long-form
   // content lives in the page's own blocks — fetch it fresh every open.
   document.getElementById('pubPostBody').value = data.body || 'Loading full post…';
-  w('getAssetFullText', { assetId }).then(d => {
+  document.getElementById('pubWriteWrap').hidden=true;
+  w('getAsset', { assetId }).then(d => {
     if (myToken !== PUB_OPEN_TOKEN) return;
-    if (d.text) document.getElementById('pubPostBody').value = d.text;
-    else if (!data.body) document.getElementById('pubPostBody').value = '';
-  }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !data.body) document.getElementById('pubPostBody').value = ''; });
+    Object.assign(data,d);PUB_ASSET_CACHE[assetId]=data;
+    document.getElementById('pubPostBody').value=d.text||d.body||'';
+    pubWriteAssetState(d);
+  }).catch(error => { if(myToken===PUB_OPEN_TOKEN){document.getElementById('pubPostBody').value=data.body||'';document.getElementById('pubAssetStatus').textContent='Could not verify writing: '+error.message;} });
+}
+function pubWriteAssetState(data){
+  const wrap=document.getElementById('pubWriteWrap'),button=document.getElementById('pubWriteAsset');
+  wrap.hidden=!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
+  button.textContent='✍ Write asset';document.getElementById('pubWriteResult').textContent='';
+}
+async function pubWriteAssetNow(button){
+  const aid=pubAssetId,result=document.getElementById('pubWriteResult');button.disabled=true;result.textContent='Writing…';
+  try{
+    const written=await w('writeAsset',{assetId:aid});if(pubAssetId!==aid)return;
+    if(written.needsInterview){result.textContent="This asset's interview isn't answered yet";return;}
+    if(written.error)throw new Error(written.error);
+    const fresh=await w('getAsset',{assetId:aid});if(pubAssetId!==aid)return;
+    Object.assign(PUB_ASSET_CACHE[aid]||={},fresh);openPublishAssetModal(aid);
+    document.getElementById('pubAssetStatus').textContent=written.skipped?'Already written.':'✓ Asset written · '+fresh.status;
+    parent.postMessage({type:'hubAssetListingChanged',assetId:aid},location.origin);
+  }catch(error){if(pubAssetId===aid)result.textContent=error.message;}
+  finally{if(pubAssetId===aid)button.disabled=false;}
 }
 // ── 🧍 Presenters: built-in characters (tools/presenter/characters) + the library (worker lfPresenters, KV) ──
 // The library is the history: every presenter ever added stays there (✕ archives = hidden, 🗂 shows them again).

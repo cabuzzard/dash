@@ -13,7 +13,7 @@ function fixture(type = 'Topical Post') {
     { cells: { cname01: 'Sales - Offer', cmatch01: 'Offer – Content Hub' } }
   ] };
   const context = vm.createContext({ console, Symbol, Date, JSON, ASSETS_DB: 'assets', LF_DEFAULT_VOICE: 'voice',
-    NOTION_TOKEN: '', ivNorm: norm, ivHdr: () => ({ Authorization: 'Bearer ' + context.NOTION_TOKEN }), ivDash: value => value, ivRid: (p, k) => p[k]?.relation?.[0]?.id || '',
+    hubRichText:r=>(r||[]).map(x=>x.plain_text??x.text?.content??'').join(''),offerBlogBlocks:async()=>[], NOTION_TOKEN: '', ivNorm: norm, ivHdr: () => ({ Authorization: 'Bearer ' + context.NOTION_TOKEN }), ivDash: value => value, ivRid: (p, k) => p[k]?.relation?.[0]?.id || '',
     ivRt: text => [{ text: { content: String(text) } }], lfReadRich: p => (p?.rich_text || []).map(t => t.plain_text ?? t.text.content).join(''),
     ivPage: async () => { assert.equal(context.NOTION_TOKEN, 'test-notion-token', 'cold scheduled writes initialize credentials before any Notion read'); return structuredClone(page); }, ivForTitle: async () => structuredClone(interviews),
     ivFormatAnswers: (qs, answers) => qs.map((q, i) => `Q: ${q}\nA: ${answers[i]}`).join('\n'),
@@ -31,7 +31,7 @@ function fixture(type = 'Topical Post') {
         if (aiError) return { ok: false, json: async () => ({ error: { message: 'AI failed' } }) };
         const content = type.includes('YouTube') || type.includes('Youtube')
           ? [{ type: 'tool_use', input: { title: 'Example', description: 'Description', segments: [{ kind: 'hook', text: 'Hook' }, { kind: 'item', name: 'Section', text: 'Useful content' }, { kind: 'outro', text: 'Next step' }] } }]
-          : [{ type: 'text', text: '# Example\n\nUseful opening.\n\n## Details\n\nUseful researched detail.' }];
+          : [{ type: 'text', text: '# Example\n\nUseful opening.\n\n## Details\n\n'+('Useful researched detail. '.repeat(110))+'\n\n## Practice\n\n'+('Specific grounded example. '.repeat(110)) }];
         return { ok: true, json: async () => ({ content }) };
       }
       if (options.method === 'PATCH' && url.includes('/pages/')) {

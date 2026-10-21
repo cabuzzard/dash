@@ -27,6 +27,8 @@ function setup(rows=[]){
  vm.runInContext(src.slice(src.indexOf('// Offer cards consume'),src.indexOf('// Re-publishes ONE already-live Blog/SEO Post')),ctx);
  const start=src.indexOf('    if (body.action === "getHubProducts" || body.action === "getHubBlog")'),end=src.indexOf('    // ── getHubProjectExperience',start);
  vm.runInContext('async function feed(body,env={}){const json=x=>x;'+src.slice(start,end)+'}',ctx);
+ for(const name of ['assetWritingContent','assetWritingState','requireAssetWriting'])vm.runInContext(src.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n}'))[0],ctx);
+ ctx.ivHdr=()=>({});ctx.ivPage=async id=>structuredClone(pages.get(id.replaceAll('-','')));
  return {ctx,files,pages,patches,writes,reads};
 }
 const request=kind=>({action:'getHubBlog',campaignId:hub.campaignId,slug:hub.slug,kind,withIds:true});

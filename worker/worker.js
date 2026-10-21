@@ -979,6 +979,7 @@ async function hubNewsCount(env, cid) {
     return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^(publish|review)/i.test(st); }).length;
 }
 async function writeHubNewsPost(env, cid, opts = {}) {
+  if(opts.assetId){const page=await ivPage(opts.assetId);return writeExistingGeneratedAsset(env,page,await assetWriterInfo(env,page));}
   await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
@@ -1448,7 +1449,7 @@ async function topicalPublishState(env, assetId) {
     hasFinishedInterview: own.some(iv => iv.status === 'Finished'),
     hasAnsweredInterview: own.some(iv => iv.status === 'Finished' && iv.answers.some(a => a.trim())),
     writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox, published: p['Asset Status']?.select?.name === 'Published',
-    hasWriting: !!lfReadRich(p.Body).trim(), page, own };
+    hasWriting: (await assetWritingState(page)).hasWriting, page, own };
 }
 function topicalPublicState(state) {
   const { page, own, ...publicState } = state;
@@ -1484,7 +1485,96 @@ async function topicalWriteInputs(env, assetId, options = {}) {
       + (interview ? `\nTHE OPERATOR'S FINISHED INTERVIEW ANSWERS (use their facts, examples and opinions; rewrite, never invent experience):\n${interview}\n` : ''),
     interview };
 }
+
+// One emptiness test for writing, publishing and the shell audit. Planning notes are not articles.
+function assetWritingContent(page, blocks = []) {
+  const body = hubRichText(page.properties?.Body?.rich_text).trim();
+  const prose = blocks.filter(b => !b.archived && !['child_page','child_database','divider','table_of_contents'].includes(b.type)).filter(b => {
+    const text = hubRichText(b[b.type]?.rich_text).trim();
+    return !(/^Series idea:|^RUN\s*[·—]|^Run\s*[·—]/i.test(text) || (b.type === 'callout' && /^(Series idea:|Run plan:)/i.test(text)));
+  }).filter(b => hubRichText(b[b.type]?.rich_text).trim() || ['image','video','audio','file','embed','bookmark','table'].includes(b.type));
+  return { hasWriting: !!body || prose.length > 0, body, text: prose.map(b => {
+    const t = hubRichText(b[b.type]?.rich_text);return b.type === 'heading_2' ? '## '+t : b.type === 'heading_3' ? '### '+t : t;
+  }).filter(Boolean).join('\n\n') || body };
+}
+async function assetWritingState(page) { return assetWritingContent(page, await offerBlogBlocks(ivHdr(),page.id)); }
+async function requireAssetWriting(page) {
+  if (!(await assetWritingState(page)).hasWriting) throw new Error('not written yet — write it first');
+}
+function validateBlogArticle(text, sectionCount) {
+  const words=String(text||'').trim().split(/\s+/).filter(Boolean).length;
+  const sections=sectionCount === undefined ? (String(text||'').match(/^##\s+\S/gm)||[]).length : sectionCount;
+  if(words < 600 || sections < 2) throw new Error('article came back short — not saved');
+  return words;
+}
+function seriesIdeaHeadline(idea,parentName) {
+  const text=String(idea||''),split=text.indexOf(' — '),headline=(split>=0?text.slice(0,split):String(parentName||'Series')).trim();
+  if(headline.length<=200)return headline||'Series';
+  return headline.slice(0,200).replace(/\s+\S*$/,'').trim()||'Series';
+}
+
+async function saveExistingAssetWriting(page,properties,children) {
+  const hdr=ivHdr();
+  for(let i=0;i<children.length;i+=90){const r=await hubNotionFetch(`https://api.notion.com/v1/blocks/${page.id}/children`,{method:'PATCH',headers:hdr,body:JSON.stringify({children:children.slice(i,i+90)})});if(!r.ok)throw new Error((await r.json()).message||'Could not save asset blocks');}
+  const r=await hubNotionFetch('https://api.notion.com/v1/pages/'+page.id,{method:'PATCH',headers:hdr,body:JSON.stringify({properties})});const data=await r.json();if(!r.ok||!data.id)throw new Error(data.message||'Could not save asset writing');
+  return data;
+}
+
+async function assetWriterInfo(env,page) {
+  const p=page.properties||{},methodId=ivRid(p,'Method');
+  const method=methodId?await ivPage(methodId):null;
+  const name=method?hubRichText(method.properties?.Name?.title):'',type=p['Asset Type']?.select?.name||'';
+  const value=(name||type).replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();
+  let writer='';
+  if(p['Asset Class']?.select?.name==='Pillar')writer='parent';
+  else if(/^Topical\s*-\s*SEO Post$/i.test(value)||/^Topical Post$/i.test(value))writer='topical';
+  else if(/^Topical\s*-\s*YouTube$/i.test(value))writer='youtube';
+  else if(/^Blog\s*-\s*SEO\s*-\s*News$/i.test(value))writer='news';
+  else if(/Newsletter.*Issue|Issue.*Newsletter/i.test(value))writer='newsletter';
+  else if(/^Off[ -]?site Article/i.test(value))writer='offsite';
+  else if(/^Offer\s*-\s*Content Hub$/i.test(value))writer='offer';
+  else if(/^SEO Post$|^Blog (Post|Article)$/i.test(value))writer='seo';
+  else if(/^(Generic|Written Content|Body Text|Text Content)$/i.test(value))writer='content';
+  return {writer,methodId,methodName:name,type,writerAvailable:!!writer,writerError:writer?'':'No writer for this asset type yet'};
+}
+async function getWritableAsset(env,assetId) {
+  const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
+  const [writing,info]=await Promise.all([assetWritingState(page),assetWriterInfo(env,page)]),p=page.properties;
+  return {page,writing,info,public:{id:hubAssetId(page.id),assetTitle:hubRichText(p['Asset Title']?.title),type:info.type,
+    status:p['Asset Status']?.select?.name||'',body:writing.body,text:writing.text,hasWriting:writing.hasWriting,
+    platformTitle:hubRichText(p['Platform Title']?.rich_text),postCaption:hubRichText(p['Post Caption']?.rich_text),hashtags:hubRichText(p.Hashtags?.rich_text),
+    videoUrl:p['Video URL']?.url||'',thumbnail:p.Thumbnail?.url||'',designLink:p['Design Link']?.url||'',productLink:p['Product Link']?.url||'',
+    hubSection:({'News':'news','Articles':'articles','Offers':'offers','Interactive':'interactive','CTA':'cta','Main Offering':'main','Unlisted':'unlisted'})[p['Hub Section']?.select?.name]||'',
+    contentHub:p['Content Hub']?.select?.name||'',publishingDate:p['Publishing Date']?.date?.start||'',...info}};
+}
+async function writeExistingGeneratedAsset(env,page,info) {
+  const p=page.properties,titleId=ivRid(p,'Content Strategy');if(!titleId)return {error:'This asset has no title'};
+  const title=await ivPage(titleId),tp=title.properties||{};
+  const result=await selfAction(env,'generateTitleAssets',{titleId,title:hubRichText(tp.Title?.title),campaignId:ivRid(p,'Campaign'),
+    productId:ivRid(p,'Product')||ivRid(tp,'product'),methodId:info.methodId||undefined,assetType:info.type,count:1,replaceAssetId:hubAssetId(page.id),writeOnly:true});
+  if(result.error||result.needsInterview)return result;
+  return {ok:true,assetId:hubAssetId(page.id),...result};
+}
+async function writeAssetFromMethod(env,assetId) {
+  await governingFlow(env);
+  const {page,writing,info}=await getWritableAsset(env,assetId),p=page.properties;
+  if(writing.hasWriting)return {skipped:true,reason:'already written',assetId:hubAssetId(page.id)};
+  if(!info.writer)return {skipped:true,reason:info.writerError,error:info.writerError};
+  const cid=ivRid(p,'Campaign'),titleId=ivRid(p,'Content Strategy');
+  switch(info.writer){
+    case 'topical':return writeTopicalPost(env,assetId);
+    case 'youtube':return writeTopicalYouTube(env,assetId);
+    case 'parent':return writeParentAsset(env,assetId);
+    case 'news':return writeHubNewsPost(env,cid,{assetId,writeOnly:true});
+    case 'newsletter':return writeHubNewsletterIssue(env,{cid,titleId,headline:hubRichText(p['Asset Title']?.title),assetId,writeOnly:true});
+    case 'offsite':{const source=ivRid(p,'Parent Asset');if(!source)return {error:'Attach the written SEO source as Parent Asset first'};return writeOffsiteArticle(env,source,p['Platform Name']?.select?.name,{assetId});}
+    case 'offer':case 'seo':return writeExistingGeneratedAsset(env,page,info);
+    case 'content':return selfAction(env,'writeContent',{titleId,assetId,methodId:info.methodId});
+  }
+}
+
 async function topicalSaveWriting(env, input, text, extraProps = {}) {
+  if (input.state.kind === 'blog') validateBlogArticle(text);
   const { state, skipInterview } = input, hdr = ivHdr(), aid = state.assetId;
   if (skipInterview) await topicalEnsureRewriteProp(env);
   const previous = []; let cursor;
@@ -1560,7 +1650,8 @@ async function publishTopicalAsset(env, assetId, publishOptions = {}) {
   await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
   const state = await topicalPublishState(env, assetId);
   if (!state.eligible) return { published: false, error: 'This is not a topical SEO or YouTube asset' };
-  if (!state.hasWriting) return { published: false, error: 'Write the asset before publishing' };
+  const writing=await assetWritingState(state.page);
+  if (!writing.hasWriting) return { published: false, error: 'not written yet — write it first' };
   if (state.kind === 'youtube') {
     const privacy = ['private', 'unlisted', 'public'].includes(publishOptions.privacy) ? publishOptions.privacy : 'private';
     const result = await selfAction(env, 'publishYouTube', { assetId: state.assetId, privacy, ...(publishOptions.publishAt ? { publishAt: publishOptions.publishAt } : {}) });
@@ -1568,7 +1659,7 @@ async function publishTopicalAsset(env, assetId, publishOptions = {}) {
   }
   const p = state.page.properties, headline = lfReadRich(p['Platform Title']) || (p['Asset Title']?.title || []).map(t => t.plain_text).join('');
   const result = await publishSeoPostToLiveSite({ env, hdr: ivHdr(), dash: ivDash, campaignId: ivRid(p, 'Campaign'), spec: null,
-    seoTitle: headline, workingTitle: headline, ...topicalArticleParts(lfReadRich(p.Body)), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
+    seoTitle: headline, workingTitle: headline, ...topicalArticleParts(writing.text), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
   if (!result.published) return result;
   const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(state.assetId), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
     'Site URL': { url: result.liveUrl }, 'Asset Status': { select: { name: 'Published' } }, 'Deployment Status': { select: { name: 'Deployed' } }, 'Publishing': { select: { name: 'Published' } }
@@ -1761,7 +1852,7 @@ ${ideas.map(x => "- " + x).join("\n") || "(none yet)"}`;
 // writeHubNewsletterIssue — the regular newsletter: ONE ready-to-send email per hub news post (subject, preview, the
 // article's key points rewritten for email, link to the full post). Saved as a "Newsletter Issue" asset on the news title,
 // capture form "<slug>/main" (the hub's ActiveCampaign list). Called by writeHubNewsPost after each post publishes.
-async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl, digest }) {
+async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl, digest, assetId, writeOnly = false }) {
   await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
@@ -1790,6 +1881,12 @@ Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catc
   const rt = t => [{ type: "text", text: { content: String(t).slice(0, 1990) } }];
   await ensureDbRichTextProperty(hdr, ASSETS_DB, "Capture Form").catch(() => {});
   const children = md.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 90).map(l => /^[-*]\s+/.test(l) ? { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(l.replace(/^[-*]\s+/, "")) } } : { object: "block", type: "paragraph", paragraph: { rich_text: rt(l) } });
+  if(assetId){
+    const page=await ivPage(assetId),p=page.properties||{};
+    if(ivRid(p,'Campaign')!==cid||ivRid(p,'Content Strategy')!==hubAssetId(titleId))throw new Error('Newsletter target mismatch');
+    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(md)},'Platform Title':{rich_text:ivRt(it.subject)},'Asset Status':{select:{name:'Review'}}},children);
+    return {ok:true,assetId:hubAssetId(page.id),subject:it.subject}; // write-only: no mailing campaign/draft side effects
+  }
   const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
     "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Review" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
     "Body": { rich_text: rt(md) }, "Platform Title": { rich_text: rt(it.subject) }, "Content Strategy": { relation: [{ id: nd(titleId) }] }, "Campaign": { relation: [{ id: nd(cid) }] },
@@ -3975,6 +4072,7 @@ async function salesProofFor(productId) {
 }
 
 async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId }) {
+  if(assetId)await requireAssetWriting(await ivPage(assetId));
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
@@ -4116,6 +4214,7 @@ function offerBlogParts(props, blocks) {
   let intro = '', card = null; const sections = [];
   for (const block of blocks) {
     const text = rt(block[block.type]?.rich_text).trim(); if (!text) continue;
+    if(/^Series idea:|^RUN\s*[·—]|^Run plan:/i.test(text))continue;
     if (block.type === 'code') {
       try { const value = JSON.parse(text); if (value && (value.promise || value.name || value.ctaUrl)) { card = value; continue; } } catch (e) { /* ordinary code is content */ }
     }
@@ -4254,6 +4353,7 @@ async function syncHubOfferIndex(env,hdr,page,site) {
   return reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub:'offers',desiredEntries:next});
 }
 async function publishHubAssetToLiveSite(env, hdr, page) {
+  await requireAssetWriting(page);
   const p = page.properties || {}, sec = hubSectionOf(p);
   if (!hubPublishableType(p['Asset Type']?.select?.name) && !p['Hub Section']?.select?.name) throw new Error('This asset type cannot be published to a hub');
   if (!sec || sec === 'email') throw new Error('Choose a hub section before publishing this page to the hub');
@@ -4323,6 +4423,7 @@ async function publishHubSectionSelection(env,assetId,section,campaignId) {
   if(!row || !row.assetSynced || row.hubSectionKey!==section || row.hubLive)throw new Error('This asset is no longer eligible for this section. Reload Hub View.');
   if(!['offers','news','articles','interactive','cta'].includes(section))throw new Error('Unsupported Hub View section');
   const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION},oldStatus=p['Asset Status']?.select?.name||'';
+  await requireAssetWriting(page);
   const staged={...page,properties:{...p,'Asset Status':{select:{name:'Published'}}}};
   try{
     const site=await publishHubAssetToLiveSite(env,hdr,staged);
@@ -4675,7 +4776,7 @@ footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in s
   await putFile(`${basePath}/${manifest}`, JSON.stringify(next, null, 2), `${heading} ${manifest}: prune to ${next.length}`);
   await putFile(`${basePath}/index.html`, indexHtml, `${heading} index: prune to ${next.length}`);
   for(const item of removedEntries){
-    if(/^[a-z0-9-]+$/.test(item.slug||'')&&!next.some(n=>n.slug===item.slug))await t.deleteFile(`${basePath}/${item.slug}/index.html`);
+    if(sub!=='offers'&&/^[a-z0-9-]+$/.test(item.slug||'')&&!next.some(n=>n.slug===item.slug))await t.deleteFile(`${basePath}/${item.slug}/index.html`);
   }
   return { removed: removedEntries.length, pruned: removedEntries.length, removedEntries };
 }
@@ -11994,7 +12095,7 @@ async function productDirectStep(env, job) {
 // generated FROM a Topical SEO Post, which acts as its parent. An original rewrite — own headline, personal voice, different
 // structure, so it isn't duplicate content — ending with a link to the full post on the hub. Saved as an "Off-site Article"
 // asset (Parent Asset = the SEO post, same title / campaign / product), status Review: posting it off-site is the operator's step.
-async function writeOffsiteArticle(env, seoPostId, platform) {
+async function writeOffsiteArticle(env, seoPostId, platform, options = {}) {
   const hdr = ivHdr(), ap = await ivPage(seoPostId), A = ap.properties || {};
   const rt = k => (A[k]?.rich_text || []).map(t => t.plain_text).join("");
   const postTitle = (A["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
@@ -12017,6 +12118,13 @@ SEO POST: ${postTitle}
 ${text.slice(0, 9000)}` }] }) });
   const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
   const out = ((d.content || []).find(b => b.type === "tool_use") || {}).input; if (!out || !out.body) throw new Error("no article came back");
+  validateBlogArticle(out.body);
+  if(options.assetId){
+    const page=await ivPage(options.assetId),p=page.properties||{};
+    if(ivRid(p,'Parent Asset')!==hubAssetId(seoPostId))throw new Error('Offsite source mismatch');
+    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(out.body)},'Platform Title':{rich_text:ivRt(out.headline)},'Asset Status':{select:{name:'Review'}}},topicalMdBlocks(out.body));
+    return {ok:true,assetId:hubAssetId(page.id),words:String(out.body).split(/\s+/).length};
+  }
   const props = { "Asset Title": { title: ivRt(String(out.headline).slice(0, 200)) }, "Asset Type": { select: { name: "Off-site Article" } }, "Asset Status": { select: { name: "Review" } },
     "Asset Class": { select: { name: "Publishable" } }, "Platform Name": { select: { name: plat === "Medium" ? "Other" : plat } }, "Parent Asset": { relation: [{ id: ivDash(seoPostId) }] },
     "Body": { rich_text: ivRt(String(out.body).slice(0, 1990)) }, ...(out.subtitle ? { "Platform Title": { rich_text: ivRt(String(out.subtitle).slice(0, 300)) } } : {}),
@@ -17960,9 +18068,9 @@ ${JSON.stringify(products)}`;
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
-        const idea = String(body.idea || "").slice(0, 600), label = { single: "Single Post", carousel: "Carousel", seo: "SEO Post", youtube: "YouTube" }[body.kind] || "Asset";
+        const idea = String(body.idea || ""), label = { single: "Single Post", carousel: "Carousel", seo: "SEO Post", youtube: "YouTube" }[body.kind] || "Asset";
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
-          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: label + " — " + idea.slice(0, 120), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: seriesIdeaHeadline(idea, body.titleName), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
         const own = await ivCreationTopicalMethod(env, body.assetType);
         if (own) for (const asset of r.created) await ivCreateForAsset(env, { assetId: asset.id, titleId, own, direction: "Series idea: " + idea });
@@ -22288,7 +22396,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
               const mq = (await env.TRADES.get("digest:manual", "json")) || []; if (!mq.includes(dcid)) { mq.push(dcid); await env.TRADES.put("digest:manual", JSON.stringify(mq)); }   // and write it now (same pipeline as the cron)
               created[created.length - 1].digest = true;
             }
-            if (t.note) await fetch(`https://api.notion.com/v1/blocks/${j.id}/children`, { method: "PATCH", headers: hdrC, body: JSON.stringify({ children: [{ object: "block", type: "callout", callout: { icon: { emoji: "💡" }, rich_text: [{ type: "text", text: { content: String(t.note).slice(0, 1900) } }] } }] }) }).catch(() => {});
+            if (t.note) await fetch(`https://api.notion.com/v1/blocks/${j.id}/children`, { method: "PATCH", headers: hdrC, body: JSON.stringify({ children: [{ object: "block", type: "callout", callout: { icon: { emoji: "💡" }, rich_text: ivRt(String(t.note)) } }] }) }).catch(() => {});
           } catch (e) { failed.push(label + ": " + e.message); }
           await new Promise(r => setTimeout(r, 340));
         }
@@ -30668,8 +30776,8 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           if (ivs) ivs = ivs.filter(x => x.scope === "Asset" && ivTypeMatch(x.forType, assetType));
           // register the asset (operator 2026-10-17): an EMPTY Development asset of this type under the title, with the
           // interview attached to it — so the Development asset counts and its 🎤 flag shows while it waits
-          let heldAssetId = "";
-          try {
+          let heldAssetId = body.replaceAssetId ? hubAssetId(body.replaceAssetId) : "";
+          if(!body.replaceAssetId)try {
             const nidH = x => String(x || "").replace(/-/g, ""), dashH = s => { s = nidH(s); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
             const ex = await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: dashH(titleId) } } }).catch(() => []);
             const mine = ex.find(x => { const pp = x.properties || {}; return String(pp["Asset Type"]?.select?.name || "").toLowerCase() === String(assetType).toLowerCase() && (pp["Asset Status"]?.select?.name || "") === "Development"; });
@@ -30716,6 +30824,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         // the campaign /blog/ site, flip the title) with no dedicated branch.
         // Any assetType that reads as a blog+SEO/news post routes here.
         const isSeoPost = /seo post/i.test(assetType) || /^blog (post|article)$/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
+        let reuseSeoPage=null;
+        if(isSeoPost&&body.replaceAssetId){
+          reuseSeoPage=await ivPage(body.replaceAssetId);const rp=reuseSeoPage.properties||{};
+          if(reuseSeoPage.archived||reuseSeoPage.in_trash||ivRid(rp,'Content Strategy')!==hubAssetId(titleId)||ivRid(rp,'Campaign')!==hubAssetId(campaignId)||rp['Asset Type']?.select?.name!==assetType)return json({error:'SEO target mismatch'},400);
+        }
+
 
         // ── Guarantee: every asset reshapes REAL source material, always.
         // This replaces the old manual "📝 Write Pillar" button entirely —
@@ -30865,7 +30979,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
             return json({ error: "Failed to parse post JSON: " + e.message }, 502);
           }
           const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
-          if (!sections.length) return json({ error: "No sections generated — try again" }, 502);
+          if (sections.length !== 3 || sections.some(x=>!String(x.body||'').trim())) return json({error:'article came back short — not saved'},502);
+          validateBlogArticle([post.intro,...sections.map(x=>x.body),post.conclusion].join(' '),sections.length);
 
           // Create the Asset record — published immediately, no Development review step.
           const assetProps = {
@@ -30886,10 +31001,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (loginId) assetProps["Login"] = { relation: [{ id: dsDash(loginId) }] };
           Object.assign(assetProps, await assetMethodProp(methodId, assetType));
-          const assetResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST",
+          const assetResp = await hubNotionFetch("https://api.notion.com/v1/pages"+(reuseSeoPage?'/'+reuseSeoPage.id:''), {
+            method: reuseSeoPage?'PATCH':"POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+            body: JSON.stringify({ ...(reuseSeoPage?{}:{parent:{database_id:ASSETS_DB}}), properties: assetProps }),
           });
           const assetResult = await assetResp.json();
           if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create SEO Post asset" }, 502);
@@ -30934,7 +31049,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // public site. Styled from the campaign's own Design Spec if one
           // is attached, falling back to the shared editorial default.
           let siteResult = { published: false };
-          try {
+          if(!body.writeOnly)try {
             let spec = null;
             if (campaignId) {
               const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
@@ -30958,7 +31073,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           } catch (e) { siteResult = { published: false, error: e.message }; }
 
           return json({
-            success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
+            success: true, created: reuseSeoPage ? 0 : 1, rewritten: !!reuseSeoPage, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
             sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
           });
         }
@@ -31575,6 +31690,7 @@ ${productLines || "(sparse — infer from the research and title)"}
 
 ${researchLines ? `PRODUCT RESEARCH (🔬 positioning doc):\n${researchLines}\n\n` : ""}${campaignLines ? `${campaignLines}\n\n` : ""}${pillarContent ? `TITLE'S PILLAR CONTENT (context, not to be reproduced):\n${pillarContent.slice(0, 3000)}\n\n` : ""}RULES
 - Speak to the buyer, in their words. Name what they get and where they end up, not how it's built.
+${body.writeOnly ? '- This is the full blog-form offer page: at least 650 words across included, whyItWorks, objection and terms, grounded in the supplied pillar/product. Expand useful explanations, never invent proof or pad sparse inputs.' : ''}
 - "included" is what they actually receive — pull from Offer Structure, make each bullet concrete.
 - "objection" states the real hesitation this buyer has and answers it in one or two sentences.
 - "promise" is ONE line — the transformation, specific, no hype. This becomes the hub card's excerpt.
@@ -31612,6 +31728,7 @@ Return ONLY this JSON object:
             return json({ error: "Failed to parse offer JSON: " + e.message }, 502);
           }
           const included = (Array.isArray(offer.included) ? offer.included : []).map(s => String(s).trim()).filter(Boolean);
+          if(body.writeOnly)validateBlogArticle([offer.promise,offer.forWho,...included,offer.whyItWorks,offer.objection,offer.terms].join(' '),3);
           const ctaUrl = String(offer.ctaUrl || productUrl || "").trim();
 
           const assetProps = {
@@ -31678,6 +31795,7 @@ Return ONLY this JSON object:
 
           // New body has saved successfully. Remove only the captured previous body blocks.
           for (const b of oldOfferBlocks) {
+            if(b.type==='callout'&&/^Series idea:/i.test(hubRichText(b.callout?.rich_text)))continue;
             const r = await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: 'DELETE', headers: dsHdr });
             if (!r.ok) return json({ error: 'Offer rewritten but old body cleanup failed; inspect the existing asset', assetId }, 502);
           }
@@ -31705,7 +31823,7 @@ Return ONLY this JSON object:
           // Site URL gets the hub offer page; Content URL keeps the external
           // checkout link (used as the "Buy now" button on that page).
           let offerSite = { published: false };
-          try {
+          if(!body.writeOnly)try {
             offerSite = await publishOfferToHub({
               env, hdr: dsHdr, dash: dsDash, campaignId, assetId,
               workingTitle: title,
@@ -33480,6 +33598,12 @@ Write only the content itself. No preamble, no meta-commentary, no "Here's the c
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
         const content = aiData.content?.[0]?.text || "";
 
+        if(body.assetId){
+          const page=await ivPage(body.assetId);if(ivRid(page.properties||{},'Content Strategy')!==hubAssetId(titleId))return json({error:'Asset/title mismatch'},400);
+          if(!content.trim())return json({error:'No content came back'},502);
+          await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(content)},'Asset Status':{select:{name:'Review'}}},topicalMdBlocks(content));
+          return json({ok:true,assetId:hubAssetId(page.id),chars:content.length});
+        }
         // Convert content to Notion paragraph blocks (split on double newlines for paragraphs)
         const paragraphs = content.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
         const blocks = paragraphs.map(p => ({
@@ -38916,6 +39040,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
+        if(status==='Published'&&body.publishToHub!==false){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
         const props = {};
         const hasHubSwitch = typeof body.publishToHub === 'boolean';
         let hubBefore=null, hubSync=null;
@@ -38924,6 +39049,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           const r=await hubNotionFetch('https://api.notion.com/v1/pages/'+dash(assetId),{headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}});
           hubBefore=await r.json();
           if(!r.ok||hubBefore.archived||hubBefore.in_trash)return json({error:hubBefore.message||'Asset unavailable'},404);
+          if(body.publishToHub)await requireAssetWriting(hubBefore);
           if(!hubPublishableType(hubBefore.properties?.['Asset Type']?.select?.name) && !hubBefore.properties?.['Hub Section']?.select?.name)return json({error:'This asset type cannot be published to a hub'},400);
         }
 
@@ -39865,9 +39991,12 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if (!assetId || !status) return json({ error: "assetId and status required" }, 400);
         const dId = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
-        const ar = await fetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
+        if(!['Idea','Development','Review','Publish','Published'].includes(status))return json({error:'Invalid asset status'},400);
+        if(status==='Published'&&body.statusOnly!==true){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
+        const ar = await hubNotionFetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
         const savedAsset = await ar.json();
+        if(body.statusOnly === true)return json({success:true});
         try { await syncOfferAssetBlog(env, { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, savedAsset); }
         catch (e) { return json({ error: 'Status saved, but offer blog sync failed: ' + e.message }, 502); }
         if (status === "Published") await stampPublishingDate(assetId);
@@ -50228,6 +50357,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const resp=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
         const page=await resp.json(); if(!resp.ok||page.archived||page.in_trash)return json({error:page.message||'Asset unavailable'},404);
         return json({...await hubAssetRoutedState(env,page),status:page.properties?.['Asset Status']?.select?.name||''});
+      }
+      if (body.action === "getAsset") {
+        if(!body.assetId)return json({error:'assetId required'},400);
+        return json((await getWritableAsset(env,body.assetId)).public);
+      }
+      if (body.action === "writeAsset") {
+        if(!body.assetId)return json({error:'assetId required'},400);
+        const result=await writeAssetFromMethod(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
       }
       if (body.action === "getAssetFullText") {
         const { assetId } = body;
