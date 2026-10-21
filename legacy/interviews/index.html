@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#111214">
+<title>Interviews</title>
+<!-- 🎤 Interviews — phone-first answer queue (2026-10-10). One Flagged interview at a time → ✓ Finish & next.
+     Same worker actions as shared/interview-panel.js (getInterviews / saveInterview / removeInterview).
+     Finishing feeds that title's writers + the voice engine (🗣 Your voice). Shares the dash login (hermes_token). -->
+<style>
+  :root { --bg:#111214; --surface:#1b1d21; --surface2:#24272c; --line:#33373e; --ink:#eceef1; --ink2:#b5bac2; --ink3:#868c95; --flag:#ff7a00; --done:#3a9a5b; --acc:#5aa9e6; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f6f6f4; --surface:#fff; --surface2:#efefec; --line:#d9d9d4; --ink:#1d1f22; --ink2:#4a4f57; --ink3:#7b818a; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 0 16px calc(96px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 0 10px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  .count { font-size: 13px; color: var(--ink3); }
+  .count b { color: var(--flag); }
+  select, button, textarea, input { font: inherit; color: var(--ink); }
+  select { font-size: 14px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); max-width: 100%; }
+  .btn { font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); cursor: pointer; }
+  .btn.primary { background: var(--done); border-color: var(--done); color: #fff; font-weight: 700; flex: 1; }
+  .btn.small { font-size: 13px; padding: 6px 10px; border-radius: 8px; }
+  .btn:disabled { opacity: .5; }
+  .meta { font-size: 12.5px; color: var(--ink3); margin: 14px 0 2px; letter-spacing: .02em; }
+  .title { font-size: 19px; font-weight: 700; margin: 2px 0 6px; line-height: 1.3; }
+  .angle { display: inline-block; font-size: 13px; font-weight: 700; color: #111; background: var(--flag); border-radius: 999px; padding: 2px 10px; }
+  .angle.done { background: rgba(58,154,91,.2); color: var(--done); }
+  .why { font-size: 14px; color: var(--ink2); margin: 8px 0 4px; }
+  .q { margin: 18px 0 0; }
+  .q label { display: block; font-weight: 600; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 88px; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); resize: vertical; }
+  textarea:focus { outline: 2px solid var(--acc); outline-offset: 0; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  .bar .in { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; align-items: center; }
+  .msg { font-size: 13px; color: var(--ink3); margin: 10px 0; }
+  .err { color: #e5534b; }
+  .list a { display: block; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+  .list small { color: var(--ink3); display: block; }
+  #pin { max-width: 320px; margin: 18vh auto 0; text-align: center; }
+  #pin input { width: 100%; font-size: 22px; letter-spacing: .3em; text-align: center; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin: 14px 0; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="../shared/interview-panel.js?v=2026101101"></script>
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+let TOKEN = localStorage.getItem('hermes_token_remember') || sessionStorage.getItem('hermes_token') || null;
+const S = { items: null, hubs: {}, hub: localStorage.getItem('ivq:hub') || '', view: 'one', idx: 0, answers: [], dirty: false, busy: '', err: '', finishedNow: 0 };
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+async function call(action, extra) {
+  const r = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, token: TOKEN, ...(extra || {}) }) });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { TOKEN = null; localStorage.removeItem('hermes_token_remember'); sessionStorage.removeItem('hermes_token'); pinScreen(); throw new Error('Session expired — enter your PIN.'); }
+  if (d && d.error) throw new Error(d.error);
+  return d;
+}
+function pinScreen(msg) {
+  app.innerHTML = `<div id="pin"><h1 style="font-size:20px;">🎤 Interviews</h1><div class="msg ${msg ? 'err' : ''}">${esc(msg || 'Enter your dashboard PIN')}</div>
+    <input id="pinIn" type="password" inputmode="numeric" autocomplete="current-password" maxlength="8"><button class="btn primary" style="width:100%;" id="pinGo">Unlock</button></div>`;
+  const go = async () => {
+    const pin = document.getElementById('pinIn').value.trim(); if (!pin) return;
+    const d = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auth', pin, remember: true }) }).then(r => r.json()).catch(() => ({}));
+    if (!d.token) return pinScreen('Wrong PIN — try again.');
+    TOKEN = d.token; localStorage.setItem('hermes_token_remember', TOKEN); load();
+  };
+  document.getElementById('pinGo').onclick = go;
+  document.getElementById('pinIn').onkeydown = e => { if (e.key === 'Enter') go(); };
+  document.getElementById('pinIn').focus();
+}
+
+// ?id=<interviewId> also opens a FINISHED interview (e.g. to run the 🔎 Expert check after finishing)
+const PIN = (new URLSearchParams(location.search).get('id') || '').replace(/-/g, '');
+const flagged = () => (S.items || []).filter(x => (x.status !== 'Finished' || x.id === PIN || x.id === S.keep) && (!S.hub || x.cid === S.hub));
+const hubName = cid => S.hubs[cid] || 'Other';
+async function load() {
+  S.busy = 'Loading interviews…'; draw();
+  try { const r = await call('getInterviews', { status: 'Flagged' }); S.hubs = r.hubs || {};
+    if (PIN && !(r.interviews || []).some(x => x.id === PIN)) { try { const one = await call('getInterview', { interviewId: PIN }); if (one && one.interview) (r.interviews = r.interviews || []).unshift(one.interview); } catch (e) {} }
+    S.items = (r.interviews || []).sort((a, b) => hubName(a.cid).localeCompare(hubName(b.cid)) || a.title.localeCompare(b.title) || a.created.localeCompare(b.created));
+    S.err = ''; } catch (e) { S.err = e.message; S.items = S.items || []; }
+  S.busy = ''; S.idx = 0;
+  // deep link from the Worksheet: ?title=<titleId> jumps to that title's first flagged interview (any hub)
+  const qp = new URLSearchParams(location.search), clean = v => (v || '').replace(/-/g, '');
+  const want = clean(qp.get('id')) || clean(qp.get('product')) || clean(qp.get('title'));
+  const hit = x => x.id === want || x.productId === want || x.titleId === want;
+  if (want && !S.deepDone) { S.deepDone = true;
+    if ((S.items || []).some(x => (x.status !== 'Finished' || x.id === PIN) && hit(x))) { S.hub = ''; const i = flagged().findIndex(hit); if (i >= 0) S.idx = i; } }
+  pick(); draw();
+}
+function pick() { const cur = flagged()[S.idx]; S.answers = cur ? cur.answers.slice() : []; S.dirty = false; }
+async function topicalBackfill(run) {
+  S.backfillBusy = true; S.err = ''; draw();
+  try { S.backfill = await call('queueTopicalInterviewBackfill', { dryRun: !run });
+    if (run && S.backfill.queued) call('runTitleJobs').catch(e => { S.err = e.message; draw(); });
+  } catch (e) { S.err = e.message; }
+  S.backfillBusy = false; draw();
+}
+function header() {
+  const all = (S.items || []).filter(x => x.status !== 'Finished');
+  const hubCounts = {}; all.forEach(x => hubCounts[x.cid] = (hubCounts[x.cid] || 0) + 1);
+  const opts = Object.keys(hubCounts).sort((a, b) => hubName(a).localeCompare(hubName(b)));
+  return `<header><h1>🎤 Interviews</h1>
+    <span class="count"><b>${flagged().length}</b> flagged${S.finishedNow ? ` · ${S.finishedNow} finished now` : ''}</span>
+    <div style="flex-basis:100%;display:flex;gap:8px;align-items:center;">
+      <select id="hubSel" style="flex:1;"><option value="">All hubs (${all.length})</option>${opts.map(c => `<option value="${esc(c)}" ${c === S.hub ? 'selected' : ''}>${esc(hubName(c))} (${hubCounts[c]})</option>`).join('')}</select>
+      <button class="btn small" id="viewBtn">${S.view === 'one' ? '☰ List' : '🎤 Answer'}</button><button class="btn small" id="reload">↻</button></div>
+    <div style="flex-basis:100%;font-size:12px;"><button class="btn small" id="topicalCheck" ${S.backfillBusy ? 'disabled' : ''}>${S.backfillBusy ? 'Checking…' : 'Check existing topical assets'}</button>
+      ${S.backfill ? `<span>All hubs: ${S.backfill.existing} already have interviews · ${S.backfill.missing} missing${S.backfill.withoutTitle ? ' · ' + S.backfill.withoutTitle + ' have no title' : ''}${S.backfill.queued != null ? ' · ' + S.backfill.queued + ' queued in background' : ''}</span>${S.backfill.missing && S.backfill.queued == null ? ` <button class="btn small" id="topicalFlag">Flag ${S.backfill.missing} missing topical asset interviews</button>` : ''}` : ''}</div></header>`;
+}
+function draw() {
+  if (!TOKEN) return pinScreen();
+  if (S.items === null) { app.innerHTML = header() + `<div class="msg">${esc(S.busy || 'Loading…')}</div>`; wire(); return; }
+  const list = flagged();
+  let body = '';
+  if (S.err) body += `<div class="msg err">${esc(S.err)}</div>`;
+  if (S.view === 'list') {
+    body += `<div class="list">${[['Title', 'Title / pillar'], ['Asset', 'Asset'], ['Product', 'Product']].map(([scope, label]) => { const group = list.map((x, i) => ({ x, i })).filter(({ x }) => (x.scope || 'Title') === scope); return group.length ? '<h2 style="font-size:15px;margin:18px 0 6px;">' + label + ' (' + group.length + ')</h2>' + group.map(({ x, i }) => `<a href="#" data-go="${i}"><small>${esc(hubName(x.cid))} · ${esc(x.angle)}</small>${esc(x.title)}</a>`).join('') : ''; }).join('') || '<div class="msg">Nothing flagged here.</div>'}</div>`;
+    app.innerHTML = header() + body; wire(); return;
+  }
+  const x = list[S.idx];
+  if (!x) { app.innerHTML = header() + body + `<div class="msg" style="font-size:16px;margin-top:30px;">✓ Nothing flagged${S.hub ? ' on this hub' : ''}. Nice.</div>`; wire(); return; }
+  body += `<div class="meta">${esc(x.scope === 'Asset' ? 'Asset' : x.scope === 'Product' ? 'Product' : 'Title / pillar')} · ${esc(hubName(x.cid))} · ${S.idx + 1} of ${list.length}</div>
+    <div class="title">${esc(x.title)}</div><span class="angle">${esc(x.angle || 'Interview')}</span>
+    ${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}
+    ${x.qs.map((q, i) => `<div class="q"><label for="a${i}">${i + 1}. ${esc(q)}</label><textarea id="a${i}" data-a="${i}" placeholder="Say it the way you'd say it — skip any that don't apply">${esc(S.answers[i] || '')}</textarea></div>`).join('')}
+    <div id="xhost"></div>
+    <div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap;">
+      <button class="btn small" id="saveDraft">💾 Save draft</button>
+      <a class="btn small" style="text-decoration:none;" href="${esc(x.url)}" target="_blank" rel="noopener">Notion ↗</a>
+      <button class="btn small" id="remove" style="color:#e5534b;margin-left:auto;">Remove</button></div>`;
+  const n = S.answers.filter(a => (a || '').trim()).length;
+  app.innerHTML = header() + body + `<div class="bar"><div class="in">
+      <button class="btn" id="prev" ${S.idx ? '' : 'disabled'}>‹</button>
+      <button class="btn" id="skip">Skip ›</button>
+      <button class="btn primary" id="finish" ${S.busy ? 'disabled' : ''}>${S.busy ? esc(S.busy) : `✓ Finish & next${n ? ` (${n}/${x.qs.length})` : ''}`}</button></div></div>`;
+  wire();
+  // 🔎 Expert check (shared/interview-panel.js) — one live panel per interview, re-attached after every draw
+  const xh = document.getElementById('xhost');
+  if (xh && window.InterviewPanel && window.InterviewPanel.expert) {
+    S.xEls = S.xEls || {};
+    S.xEls[x.id] = S.xEls[x.id] || window.InterviewPanel.expert({ call, interviewId: x.id, iv: x, answers: () => S.answers, beforeRun: () => S.dirty ? saveCur(false) : null,
+      // ✓ Finish & write asset — finish but STAY on this interview (S.keep) so the write result shows here
+      finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.');
+        const r = await call('saveInterview', { interviewId: x.id, answers: S.answers, finish: true }); Object.assign(x, r.interview); S.keep = x.id; S.dirty = false; S.finishedNow++; },
+      onApplied: answers => { if (answers) { x.answers = answers.slice(); S.answers = answers.slice(); S.dirty = false; draw(); } } });
+    xh.appendChild(S.xEls[x.id]);
+  }
+}
+async function saveCur(finish) {
+  const x = flagged()[S.idx]; if (!x) return;
+  S.busy = finish ? 'Saving…' : 'Saving draft…'; draw();
+  try { const r = await call('saveInterview', { interviewId: x.id, answers: S.answers, finish });
+    Object.assign(x, r.interview); S.dirty = false; S.err = '';
+    if (finish) { S.finishedNow++; S.busy = ''; if (S.idx >= flagged().length) S.idx = Math.max(0, flagged().length - 1); pick(); window.scrollTo(0, 0); }
+  } catch (e) { S.err = e.message; }
+  S.busy = ''; draw();
+}
+async function move(d) {
+  if (S.dirty) await saveCur(false);
+  S.idx = Math.min(Math.max(0, S.idx + d), Math.max(0, flagged().length - 1)); pick(); draw(); window.scrollTo(0, 0);
+}
+function wire() {
+  const $ = id => document.getElementById(id);
+  if ($('hubSel')) $('hubSel').onchange = async e => { if (S.dirty) await saveCur(false); S.hub = e.target.value; try { localStorage.setItem('ivq:hub', S.hub); } catch (er) {} S.idx = 0; pick(); draw(); };
+  if ($('viewBtn')) $('viewBtn').onclick = () => { S.view = S.view === 'one' ? 'list' : 'one'; draw(); };
+  if ($('reload')) $('reload').onclick = async () => { if (S.dirty) await saveCur(false); load(); };
+  document.querySelectorAll('[data-go]').forEach(a => a.onclick = e => { e.preventDefault(); S.idx = +a.dataset.go; S.view = 'one'; pick(); draw(); window.scrollTo(0, 0); });
+  document.querySelectorAll('textarea[data-a]').forEach(t => t.oninput = () => { S.answers[+t.dataset.a] = t.value; S.dirty = true;
+    const f = $('finish'), x = flagged()[S.idx], n = S.answers.filter(a => (a || '').trim()).length; if (f && x && !S.busy) f.textContent = `✓ Finish & next${n ? ` (${n}/${x.qs.length})` : ''}`; });
+  if ($('finish')) $('finish').onclick = () => { if (!S.answers.some(a => (a || '').trim())) { S.err = 'Answer at least one question to finish — or Skip.'; draw(); return; } saveCur(true); };
+  if ($('skip')) $('skip').onclick = () => move(1);
+  if ($('prev')) $('prev').onclick = () => move(-1);
+  if ($('topicalCheck')) $('topicalCheck').onclick = () => topicalBackfill(false);
+  if ($('topicalFlag')) $('topicalFlag').onclick = () => topicalBackfill(true);
+  if ($('saveDraft')) $('saveDraft').onclick = () => saveCur(false);
+  if ($('remove')) $('remove').onclick = async () => { const x = flagged()[S.idx]; if (!x || !confirm('Remove this interview?')) return;
+    S.busy = 'Removing…'; draw(); try { await call('removeInterview', { interviewId: x.id }); S.items = S.items.filter(y => y.id !== x.id); S.err = ''; } catch (e) { S.err = e.message; }
+    S.busy = ''; if (S.idx >= flagged().length) S.idx = Math.max(0, flagged().length - 1); pick(); draw(); };
+}
+window.addEventListener('beforeunload', e => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+if (TOKEN) load(); else pinScreen();
+</script>
+</body>
+</html>
