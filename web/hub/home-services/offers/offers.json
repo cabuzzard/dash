@@ -1,119 +1,50 @@
 [
   {
+    "assetId": "4001f7d3a4bb81e38d7beb8cc0d8dbe7",
     "slug": "trusted-house-sitters",
     "name": "Trusted House Sitters",
-    "kicker": "Local caretaker · paid, work-trade, or hybrid",
     "promise": "Lock the door, get on the plane, and come home to the house you left.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81e38d7beb8cc0d8dbe7"
+    "url": "../blog/trusted-house-sitters/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81fb94cbcac8f38476e3",
     "slug": "live-in-house-sitting",
     "name": "Live-In House Sitting",
-    "kicker": "Per-trip engagement · paid, work-trade, or a mix",
     "promise": "You hand over the key to someone you know, leave, and come back to a house that ran without you.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81fb94cbcac8f38476e3"
+    "url": "../blog/live-in-house-sitting/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81db9edcd896a5699931",
     "slug": "live-in-pet-care",
     "name": "Live-In Pet Care",
-    "kicker": "Live-in engagement · quoted after walkthrough",
     "promise": "Your pet stays home, on its routine, with one known person in the house — you leave without dread and come back to an animal that's fine.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81db9edcd896a5699931"
+    "url": "../blog/live-in-pet-care/",
+    "image": ""
   },
   {
-    "slug": "i-come-to-you",
-    "name": "I Come to You",
-    "kicker": "Work-trade exchange · accommodation for skilled care",
-    "promise": "You leave. One person lives there, handles the list, and the property is actually in someone's hands.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb81859b09d0c65acffff4"
-  },
-  {
+    "assetId": "4001f7d3a4bb8149a350cd704d1ffc79",
     "slug": "property-caretaker-retainer",
     "name": "Property Caretaker Retainer",
-    "kicker": "Retainer · paid, work-trade, or a mix",
     "promise": "Someone who knows your property is on it — small problems caught, turnovers confirmed, owner reports delivered, no surprises.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb8149a350cd704d1ffc79"
+    "url": "../blog/property-caretaker-retainer/",
+    "image": ""
   },
   {
+    "assetId": "3ff1f7d3a4bb81859b09d0c65acffff4",
+    "slug": "i-come-to-you",
+    "name": "I Come to You",
+    "promise": "You leave. One person lives there, handles the list, and the property is actually in someone's hands.",
+    "url": "../blog/i-come-to-you/",
+    "image": ""
+  },
+  {
+    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
     "slug": "property-caretaking",
     "name": "Property Caretaking",
-    "kicker": "Per-visit · work-trade available",
     "promise": "Your second home gets checked on schedule, problems get caught small, and you stop dreading what you'll find when you pull into the driveway.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4"
-  },
-  {
-    "slug": "caretaker-plan",
-    "name": "Caretaker Plan",
-    "kicker": "Monthly retainer · $250–$600/mo",
-    "promise": "Your vacation property gets a local person who checks it weekly, fixes the small things before they stack, and handles the vendor calls you would have spent a half-day on.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb815683c7eaf01f144bdf",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/home-services/vacation-home-caretaker-plan-blog-thumbnail-mv22hiti.png"
-  },
-  {
-    "slug": "live-in-trade-stay",
-    "name": "Live-In Trade Stay",
-    "kicker": "Work-trade, paid, or hybrid · terms set by scope and length of stay",
-    "promise": "Hand one person the house, the animals, and the repair list — and stop thinking about it until you're back.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81cb8e19ffa0ed154ac9",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/home-services/work-trade-house-sitter-blog-thumbnail-mv22fxyn.png"
-  },
-  {
-    "slug": "house-check-visit",
-    "name": "House Check Visit",
-    "kicker": "Per-visit · $45–$75",
-    "promise": "A same-day photo report tells you exactly what your house looks like right now — no guessing, no favors.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81a29341e619892a503c",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/home-services/home-check-visit-blog-thumbnail-mv22fgub.png"
-  },
-  {
-    "slug": "str-property-management",
-    "name": "STR Property Management",
-    "kicker": "Retainer · flat monthly fee or hybrid",
-    "promise": "Your Airbnb runs on schedule, guests get fast answers, and small problems get fixed before they show up in a review — without you managing any of it.",
-    "ctaUrl": "",
-    "date": "2026-09-03",
-    "assetId": "3d01f7d3a4bb815eb06ed2e2f4c45aa7"
-  },
-  {
-    "slug": "work-trade-live-in-caretaker",
-    "name": "Work-Trade Live-In Caretaker",
-    "kicker": "Paid · Work-Trade · or Mix — Northern California",
-    "promise": "Hand one trusted person the keys and a list, and come home to a lived-in house, cared-for pets, and a shorter repair list — without coordinating four separate people.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "furniture-assembly-service",
-    "name": "Furniture Assembly Service",
-    "kicker": "Per-piece or per-job · transparent upfront pricing",
-    "promise": "Your boxes become a finished, ready-to-use room in a single visit — without you lifting a finger or losing an hour of your day.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "estate-care-consulting",
-    "name": "Estate Care Consulting",
-    "kicker": "Coaching engagement · investment on inquiry",
-    "promise": "Turn a high-value property that runs on memory and luck into a documented system that holds up whether you're home, traveling, or handing the keys to the next generation.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "url": "../blog/property-caretaking/",
+    "image": ""
   }
 ]
