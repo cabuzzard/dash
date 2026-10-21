@@ -1,50 +1,18 @@
 [
   {
+    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
     "slug": "ai-field-deployment",
     "name": "AI Field Deployment",
-    "kicker": "Scoped engagement · 60–180 days",
     "promise": "Your operation stops running on your presence and starts running on infrastructure that works without you in the room.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02"
+    "url": "../blog/ai-field-deployment/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
     "slug": "project-coordination-retainer",
     "name": "Project Coordination Retainer",
-    "kicker": "Monthly retainer · priced by active job count",
     "promise": "Every active job gets a coordinator behind it — schedules live, subs informed, paperwork current — so you stay in the field instead of running the back office at night.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3"
-  },
-  {
-    "slug": "coordination-retainer",
-    "name": "Coordination Retainer",
-    "kicker": "Monthly retainer · scoped by active job count",
-    "promise": "Every active job gets a coordination layer behind it — schedules tracked, subs confirmed, clients updated — so you stay in the field and stop being the bottleneck.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb812aa937d8e20ec63a21",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/project-coordination-retainer-blog-thumbnail-mv2pjyo3.png"
-  },
-  {
-    "slug": "preconstruction-package",
-    "name": "Preconstruction Package",
-    "kicker": "Fixed-fee · priced per project",
-    "promise": "Every deliverable between signed plans and first day on site — scopes, bid packages, takeoffs, schedule, sub sourcing, and permit research — handed back to you as a complete, ready-to-run package.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8151829bd6cd8d327daf",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/preconstruction-package-blog-thumbnail-mv2pekw8.png"
-  },
-  {
-    "slug": "bid-check",
-    "name": "Bid Check",
-    "kicker": "Fixed-fee · per bid package",
-    "promise": "Know exactly what each sub included, what is missing, and who to award — before you make the call.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81aaa231eb83fb4eeb39",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/bid-check-blog-thumbnail-mv2pa0m0.png"
+    "url": "../blog/project-coordination-retainer/",
+    "image": ""
   }
 ]
