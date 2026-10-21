@@ -1,67 +1,24 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Offers — The Care Gap</title>
-
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-:root { --bg:#eceef2; --ink:#191b1f; --accent:#23506e; }
-* { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans", system-ui, sans-serif; line-height:1.7; }
-.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
-header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
-header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
-header.site .back { font-size:.85rem; color:var(--accent); }
-.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
-h1,h2 { font-family:"Newsreader", Georgia, serif; color:var(--ink); line-height:1.2; }
-h1 { font-size:2.2rem; margin:.3rem 0 14px; }
-h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
-p { margin:0 0 18px; font-size:1.08rem; }
-.lede { font-size:1.2rem; }
-img.hero { display:block; width:100%; height:auto; border-radius:10px; margin:6px 0 22px; }
-ul.inc { list-style:none; padding:0; margin:0 0 18px; }
-ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
-ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
-.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
-.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
-.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
-.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
-.cf-turnstile { margin:12px 0; }
-.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
-.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
-footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
-.offerlist { list-style:none; margin:0; padding:0; }
-.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
-.offerlist a { color:var(--ink); text-decoration:none; font-family:"Newsreader", Georgia, serif; font-size:1.3rem; }
-.offerlist a:hover { color:var(--accent); }
-.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
-</style>
-</head>
-<body>
-<div class="wrap">
-<header class="site">
-  <a href="../index.html">The Care Gap</a>
-  
-</header>
+<style>@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+:root{--bg:#eceef2;--ink:#191b1f;--accent:#23506e;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans", system-ui, sans-serif;line-height:1.7}
+.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
+header.site{border-bottom:1px solid color-mix(in srgb,var(--ink) 15%,transparent);padding-bottom:20px;margin-bottom:40px;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px}
+header.site a{color:var(--ink);text-decoration:none;font-weight:600}
+h1{font-family:"Newsreader", Georgia, serif;font-size:2.1rem;margin:0 0 8px}
+ul{list-style:none;margin:0;padding:0}
+li{border-bottom:1px solid color-mix(in srgb,var(--ink) 12%,transparent);padding:22px 0}
+li a{color:var(--ink);text-decoration:none;font-family:"Newsreader", Georgia, serif;font-size:1.3rem}
+li a:hover{color:var(--accent)}
+.excerpt{margin-top:6px;opacity:.75;font-size:.98rem}
+footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent);font-size:.85rem;opacity:.7}
+</style></head><body><div class="wrap">
+<header class="site"><a href="../index.html">The Care Gap</a></header>
 <h1>Offers</h1>
-<ul class="offerlist">
-<li><a href="./give-a-caregiver-a-roof/index.html">Give a Caregiver a Roof</a><div class="excerpt">Your dollar gives a housing-insecure caregiver a stable place to sleep, so they can keep showing up without destroying themselves in the process.</div></li>
-<li><a href="./caregiver-circle/index.html">Caregiver Circle</a><div class="excerpt">The isolation breaks on day one — and the research burden stops being yours alone to carry.</div></li>
-<li><a href="./housed/index.html">Housed</a><div class="excerpt">Your household stays stable through the gap — before the eviction, before the job loss, not after.</div></li>
-<li><a href="./giving-circle/index.html">Giving Circle</a><div class="excerpt">Your monthly gift stops disappearing — you see exactly what it houses, every quarter, and walk into it once a year.</div></li>
-<li><a href="./burnout-decoded/index.html">Burnout Decoded</a><div class="excerpt">You name what you have been carrying, build tools that fit the life you are actually living, and find yourself on the other side of burnout — still showing up, but no longer disappearing.</div></li>
-<li><a href="./disability-investor-call/index.html">Disability Investor Call</a><div class="excerpt">You leave with a named funding vehicle, a value-aligned rationale, and one concrete next step — not more research.</div></li>
-<li><a href="./where-your-dollar-goes/index.html">Where Your Dollar Goes</a><div class="excerpt">Leave with a clear, specific funding structure that puts your philanthropic capital directly in the hands of burned-out caregivers — not the organizations that photograph around them.</div></li>
-<li><a href="./house-a-caregiver/index.html">House a Caregiver</a><div class="excerpt">Your gift covers the exact housing shortfall standing between a caregiver and losing their home — so they can stay housed and keep showing up for the person who needs them.</div></li>
-<li><a href="./caregiver-relief-investor-call/index.html">Caregiver Relief Investor Call</a><div class="excerpt">Leave with a clear, specific investment framework — and a direct line between your capital and caregivers in crisis who have nowhere else to turn.</div></li>
-<li><a href="./your-self-care-strategy-session/index.html">Your Self-Care Strategy Session</a><div class="excerpt">Walk away from one focused hour with a personalized action plan — real strategies, real resources, built entirely around your burnout and your life.</div></li>
-<li><a href="./caregiver-self-care-strategy-session/index.html">Caregiver Self-Care Strategy Session</a><div class="excerpt">Walk away from one focused hour with a personalized self-care plan built entirely around you — real strategies, real resources, and a clear first step out of burnout.</div></li>
-</ul>
+<ul><li><a href="../blog/give-a-caregiver-a-roof/">Give a Caregiver a Roof</a><div class="excerpt">Your dollar gives a housing-insecure caregiver a stable place to sleep, so they can keep showing up without destroying themselves in the process.</div></li>
+<li><a href="../blog/caregiver-circle/">Caregiver Circle</a><div class="excerpt">The isolation breaks on day one — and the research burden stops being yours alone to carry.</div></li>
+<li><a href="../blog/housed/">Housed</a><div class="excerpt">Your household stays stable through the gap — before the eviction, before the job loss, not after.</div></li></ul>
 <footer class="site">The Care Gap</footer>
-</div>
-
-</body>
-</html>
+</div></body></html>
