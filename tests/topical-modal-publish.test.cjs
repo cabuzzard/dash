@@ -13,9 +13,9 @@ function fixture(type = 'Topical Post') {
     { cells: { cname01: 'Sales - Offer', cmatch01: 'Offer – Content Hub' } }
   ] };
   const context = vm.createContext({ console, Symbol, Date, JSON, ASSETS_DB: 'assets', LF_DEFAULT_VOICE: 'voice',
-    ivNorm: norm, ivHdr: () => ({}), ivDash: value => value, ivRid: (p, k) => p[k]?.relation?.[0]?.id || '',
+    NOTION_TOKEN: '', ivNorm: norm, ivHdr: () => ({ Authorization: 'Bearer ' + context.NOTION_TOKEN }), ivDash: value => value, ivRid: (p, k) => p[k]?.relation?.[0]?.id || '',
     ivRt: text => [{ text: { content: String(text) } }], lfReadRich: p => (p?.rich_text || []).map(t => t.plain_text ?? t.text.content).join(''),
-    ivPage: async () => structuredClone(page), ivForTitle: async () => structuredClone(interviews),
+    ivPage: async () => { assert.equal(context.NOTION_TOKEN, 'test-notion-token', 'cold scheduled writes initialize credentials before any Notion read'); return structuredClone(page); }, ivForTitle: async () => structuredClone(interviews),
     ivFormatAnswers: (qs, answers) => qs.map((q, i) => `Q: ${q}\nA: ${answers[i]}`).join('\n'),
     ivCreateForAsset: async () => { created++; return { interviews: [{ id: 'interview' }] }; },
     voiceBlock: async () => 'VOICE_SENTINEL', hubAudienceBlock: async () => 'AUDIENCE_SENTINEL', ivProdResearch: async () => 'PRODUCT_SENTINEL',
@@ -44,7 +44,7 @@ function fixture(type = 'Topical Post') {
   // Test the real Current Methods exact-match resolver as well as the writers.
   const resolver = source.slice(source.indexOf('async function ivCreationTopicalMethod('), source.indexOf('\nconst ivTypeMatch'));
   vm.runInContext(resolver + '\n' + block, context);
-  const env = { ANTHROPIC_API_KEY: 'test', TRADES: { get: async key => key.includes('currentmethods') ? table : null, put: async () => {} } };
+  const env = { NOTION_TOKEN: ' test-notion-token\n', ANTHROPIC_API_KEY: 'test', TRADES: { get: async key => key.includes('currentmethods') ? table : null, put: async () => {} } };
   return { context, env, page, prompts, patches, youtubeCalls, setInterviews: values => { interviews = values; }, setPublishError: value => { publishError = value; },
     setAiError: () => { aiError = true; }, counts: () => ({ created, published }) };
 }
@@ -103,8 +103,10 @@ const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds
   const queueCode = source.slice(source.indexOf('async function topicalCronTick('), source.indexOf('async function hubAudienceBlock('));
   vm.runInContext(queueCode, gate.context);
   let queue = [aid]; const cronEnv = { ...gate.env, TRADES: { ...gate.env.TRADES, get: async (key, format) => key === 'topical:queue' ? queue : gate.env.TRADES.get(key, format), put: async (key, value) => { if (key === 'topical:queue') queue = JSON.parse(value); } } };
+  gate.context.NOTION_TOKEN = ''; // scheduled isolates may never have served an authenticated HTTP request
   const cron = await gate.context.topicalCronTick(cronEnv);
   assert.equal(cron.wrote, 0); assert.equal(queue.length, 1); assert.equal(gate.prompts.length, 0);
+  assert.equal(gate.context.NOTION_TOKEN, 'test-notion-token');
   assert.doesNotMatch(source, /!body\.skipInterview/, 'bulk generation cannot consume a modal bypass flag');
 
   // Finished asset interviews continue to drive the existing regenerate/review machinery, not title pillar changes.
