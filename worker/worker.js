@@ -1555,13 +1555,14 @@ function topicalArticleParts(md) {
   }
   return { intro: intro.join('\n').trim(), sections: sections.map(s => ({ heading: s.heading, body: s.lines.join('\n').trim() })), conclusion: '', sources: [] };
 }
-async function publishTopicalAsset(env, assetId) {
+async function publishTopicalAsset(env, assetId, publishOptions = {}) {
   await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
   const state = await topicalPublishState(env, assetId);
   if (!state.eligible) return { published: false, error: 'This is not a topical SEO or YouTube asset' };
   if (!state.hasWriting) return { published: false, error: 'Write the asset before publishing' };
   if (state.kind === 'youtube') {
-    const result = await selfAction(env, 'publishYouTube', { assetId: state.assetId, privacy: 'public' });
+    const privacy = ['private', 'unlisted', 'public'].includes(publishOptions.privacy) ? publishOptions.privacy : 'private';
+    const result = await selfAction(env, 'publishYouTube', { assetId: state.assetId, privacy, ...(publishOptions.publishAt ? { publishAt: publishOptions.publishAt } : {}) });
     return { ...result, published: !!(result.ok || result.success) && !result.error };
   }
   const p = state.page.properties, headline = lfReadRich(p['Platform Title']) || (p['Asset Title']?.title || []).map(t => t.plain_text).join('');
@@ -1575,7 +1576,7 @@ async function publishTopicalAsset(env, assetId) {
   await stampPublishingDate(state.assetId);
   return result;
 }
-async function writePublishTopicalFromModal(env, assetId, skipInterview) {
+async function writePublishTopicalFromModal(env, assetId, skipInterview, publishOptions = {}) {
   await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
   const state = await topicalPublishState(env, assetId);
   if (!state.eligible) return { error: 'Only topical SEO and YouTube assets support this modal action' };
@@ -1585,7 +1586,7 @@ async function writePublishTopicalFromModal(env, assetId, skipInterview) {
   catch (e) { return { written: { ok: false, error: e.message }, published: { published: false, skipped: true } }; }
   if (!written.ok) return { written, published: { published: false, skipped: true } };
   let published;
-  try { published = await publishTopicalAsset(env, assetId); } catch (e) { published = { published: false, error: e.message }; }
+  try { published = await publishTopicalAsset(env, assetId, publishOptions); } catch (e) { published = { published: false, error: e.message }; }
   return { written, published };
 }
 
@@ -19962,9 +19963,9 @@ Give a YouTube title in that format. Call submit_questions.`;
       if (body.action === "getTopicalPublishState") return json(topicalPublicState(await topicalPublishState(env, body.assetId)));
       if (body.action === "writePublishTopicalFromModal") {
         if (body.source !== "publish-modal") return json({ error: "Individual Publish modal action required" }, 400);
-        return json(await writePublishTopicalFromModal(env, body.assetId, body.skipInterview === true));
+        return json(await writePublishTopicalFromModal(env, body.assetId, body.skipInterview === true, { privacy: body.privacy, publishAt: body.publishAt }));
       }
-      if (body.action === "publishTopicalAsset") return json(await publishTopicalAsset(env, body.assetId));
+      if (body.action === "publishTopicalAsset") return json(await publishTopicalAsset(env, body.assetId, { privacy: body.privacy, publishAt: body.publishAt }));
       if (body.action === "writeTopicalYouTube") return json(await writeTopicalYouTube(env, body.assetId));
       if (body.action === "writeTopicalPost") return json(await writeTopicalPost(env, body.assetId));
       if (body.action === "queueTopicalPost" || body.action === "getTopicalQueue") {
