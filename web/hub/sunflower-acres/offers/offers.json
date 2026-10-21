@@ -1,14 +1,5 @@
 [
   {
-    "slug": "garden-fund",
-    "name": "Garden Fund",
-    "kicker": "Donation or sponsorship · donor-selected amount",
-    "promise": "Your money funds a named piece of infrastructure — a raised bed, a path segment, a loaner chair — and you see it get done.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1"
-  },
-  {
     "slug": "garden-shop",
     "name": "Garden Shop",
     "kicker": "Direct shop · per-item pricing",
