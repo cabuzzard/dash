@@ -1507,6 +1507,10 @@ function validateBlogArticle(text, sectionCount) {
   if(words < 600 || sections < 2) throw new Error('article came back short — not saved');
   return words;
 }
+function validateOfferArticle(offer,included) {
+  const sections=(included.length?1:0)+[offer.whyItWorks,offer.objection,offer.terms].filter(value=>String(value||'').trim()).length;
+  return validateBlogArticle([offer.promise,offer.forWho,...included,offer.whyItWorks,offer.objection,offer.terms].join(' '),sections);
+}
 function seriesIdeaHeadline(idea,parentName) {
   const text=String(idea||''),split=text.indexOf(' — '),headline=(split>=0?text.slice(0,split):String(parentName||'Series')).trim();
   if(headline.length<=200)return headline||'Series';
@@ -31729,7 +31733,7 @@ Return ONLY this JSON object:
             return json({ error: "Failed to parse offer JSON: " + e.message }, 502);
           }
           const included = (Array.isArray(offer.included) ? offer.included : []).map(s => String(s).trim()).filter(Boolean);
-          if(body.writeOnly)validateBlogArticle([offer.promise,offer.forWho,...included,offer.whyItWorks,offer.objection,offer.terms].join(' '),3);
+          if(body.writeOnly)validateOfferArticle(offer,included);
           const ctaUrl = String(offer.ctaUrl || productUrl || "").trim();
 
           const assetProps = {
