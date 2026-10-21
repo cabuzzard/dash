@@ -1142,6 +1142,16 @@ async function ivTierFn(env) {
 }
 const IV_TIER_LABEL = { depends: "Own interview", short: "Short interview (SEO)", borrow: "From parent", none: "None" };   // short: 5-question asset interview, answers REWRITTEN for SEO (topical posts)
 const ivOwnTier = t => t === "depends" || t === "short";
+// Creation-time exception: only these exact Current Methods rows (or their counts aliases).
+async function ivCreationTopicalMethod(env, assetType) {
+  const table = await env.TRADES.get("infoflow:table:currentmethods", "json"), norm = x => String(x || "").toLowerCase().replace(/[—–]/g, "-").replace(/\s+/g, "");
+  const rows = ((table && table.rows) || []).map(r => { const c = r.cells || {}, asset = String(c.cmuzq36hb77sq || "").trim(), parent = String(c.cmuzq03ywty8b || c.c1 || "").trim();
+    return { name: String(c.cname01 || "").trim() || (asset ? parent + " - " + asset : parent), aliases: String(c.cmatch01 || "").split(";") }; });
+  const key = norm(assetType); if (!key) return "";
+  const row = rows.find(r => norm(r.name) === key) || rows.find(r => r.aliases.some(a => norm(a) === key));
+  return row && ["Topical - SEO Post", "Topical - YouTube"].some(name => norm(name) === norm(row.name)) ? row.name : "";
+}
+
 const ivTypeMatch = (a, b) => { const x = ivNorm(a), y = ivNorm(b); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
 const ivRt = t => { const x = String(t || ""), out = []; for (let i = 0; i < x.length && out.length < 100; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
 const ivDash = x => { const v = String(x || "").replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
@@ -12218,6 +12228,8 @@ async function titleJobsRun(env, invoke) {
           } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written)
             const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: /^digest$/i.test(step.assetType) ? "Digest parent" : step.assetType, pillar: /^(series|digest)$/i.test(step.assetType) }] });   // Series + Digest parent are parents (pillars)   // Series = a parent (Pillar · Series)
             if (!c || c.error) throw new Error((c && c.error) || "no response");
+            const own = await ivCreationTopicalMethod(env, step.assetType);
+            if (own) for (const asset of c.created || []) await ivCreateForAsset(env, { assetId: asset.id, titleId: S.titleId, own });
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
             const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Development", skipPillar: true,
@@ -17796,6 +17808,8 @@ ${JSON.stringify(products)}`;
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
           allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: label + " — " + idea.slice(0, 120), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        const own = await ivCreationTopicalMethod(env, body.assetType);
+        if (own) for (const asset of r.created) await ivCreateForAsset(env, { assetId: asset.id, titleId, own, direction: "Series idea: " + idea });
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !/^cat:/.test(body.ideaId) && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used });

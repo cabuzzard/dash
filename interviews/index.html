@@ -112,12 +112,12 @@ function draw() {
   let body = '';
   if (S.err) body += `<div class="msg err">${esc(S.err)}</div>`;
   if (S.view === 'list') {
-    body += `<div class="list">${list.map((x, i) => `<a href="#" data-go="${i}"><small>${esc(hubName(x.cid))} · ${esc(x.angle)}</small>${esc(x.title)}</a>`).join('') || '<div class="msg">Nothing flagged here.</div>'}</div>`;
+    body += `<div class="list">${[['Title', 'Title / pillar'], ['Asset', 'Asset'], ['Product', 'Product']].map(([scope, label]) => { const group = list.map((x, i) => ({ x, i })).filter(({ x }) => (x.scope || 'Title') === scope); return group.length ? '<h2 style="font-size:15px;margin:18px 0 6px;">' + label + ' (' + group.length + ')</h2>' + group.map(({ x, i }) => `<a href="#" data-go="${i}"><small>${esc(hubName(x.cid))} · ${esc(x.angle)}</small>${esc(x.title)}</a>`).join('') : ''; }).join('') || '<div class="msg">Nothing flagged here.</div>'}</div>`;
     app.innerHTML = header() + body; wire(); return;
   }
   const x = list[S.idx];
   if (!x) { app.innerHTML = header() + body + `<div class="msg" style="font-size:16px;margin-top:30px;">✓ Nothing flagged${S.hub ? ' on this hub' : ''}. Nice.</div>`; wire(); return; }
-  body += `<div class="meta">${esc(hubName(x.cid))} · ${S.idx + 1} of ${list.length}</div>
+  body += `<div class="meta">${esc(x.scope === 'Asset' ? 'Asset' : x.scope === 'Product' ? 'Product' : 'Title / pillar')} · ${esc(hubName(x.cid))} · ${S.idx + 1} of ${list.length}</div>
     <div class="title">${esc(x.title)}</div><span class="angle">${esc(x.angle || 'Interview')}</span>
     ${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}
     ${x.qs.map((q, i) => `<div class="q"><label for="a${i}">${i + 1}. ${esc(q)}</label><textarea id="a${i}" data-a="${i}" placeholder="Say it the way you'd say it — skip any that don't apply">${esc(S.answers[i] || '')}</textarea></div>`).join('')}
