@@ -1,104 +1,26 @@
 [
   {
+    "assetId": "4001f7d3a4bb81aaa826c48262bbc87e",
     "slug": "give-a-caregiver-a-roof",
     "name": "Give a Caregiver a Roof",
-    "kicker": "Donation — one-time or monthly",
     "promise": "Your dollar gives a housing-insecure caregiver a stable place to sleep, so they can keep showing up without destroying themselves in the process.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81aaa826c48262bbc87e"
+    "url": "../blog/give-a-caregiver-a-roof/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
     "slug": "caregiver-circle",
     "name": "Caregiver Circle",
-    "kicker": "Membership · cancel anytime",
     "promise": "The isolation breaks on day one — and the research burden stops being yours alone to carry.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81cab954e96c0d292165"
+    "url": "../blog/caregiver-circle/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
     "slug": "housed",
     "name": "Housed",
-    "kicker": "Emergency stabilization grant — free to qualifying caregivers",
     "promise": "Your household stays stable through the gap — before the eviction, before the job loss, not after.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb8162a24bd68d699632eb"
-  },
-  {
-    "slug": "giving-circle",
-    "name": "Giving Circle",
-    "kicker": "Membership · $25–$250/mo",
-    "promise": "Your monthly gift stops disappearing — you see exactly what it houses, every quarter, and walk into it once a year.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81808d20c306fd7f6fe2",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/the-care-gap/stable-home-monthly-giving-circle-blog-thumbnail-mv21z7rn.png"
-  },
-  {
-    "slug": "burnout-decoded",
-    "name": "Burnout Decoded",
-    "kicker": "Online course · one-time enrollment",
-    "promise": "You name what you have been carrying, build tools that fit the life you are actually living, and find yourself on the other side of burnout — still showing up, but no longer disappearing.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8138ac64c2adb67558ec",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/the-care-gap/caregiver-burnout-recovery-blog-thumbnail-mv21yzw4.png"
-  },
-  {
-    "slug": "disability-investor-call",
-    "name": "Disability Investor Call",
-    "kicker": "Discovery call · tiered pricing, proceeds fund caregiver relief",
-    "promise": "You leave with a named funding vehicle, a value-aligned rationale, and one concrete next step — not more research.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81d89714e7781a7b797c",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/the-care-gap/disability-nonprofit-investor-discovery-call-blog-thumbnail-mv21yvcp.png"
-  },
-  {
-    "slug": "where-your-dollar-goes",
-    "name": "Where Your Dollar Goes",
-    "kicker": "Investor Discovery Call · paid or qualifying charitable contribution",
-    "promise": "Leave with a clear, specific funding structure that puts your philanthropic capital directly in the hands of burned-out caregivers — not the organizations that photograph around them.",
-    "ctaUrl": "",
-    "date": "2026-09-17",
-    "assetId": "3de1f7d3a4bb819090fbf417b84cad66"
-  },
-  {
-    "slug": "house-a-caregiver",
-    "name": "House a Caregiver",
-    "kicker": "Charitable donation · any amount, one-time or recurring",
-    "promise": "Your gift covers the exact housing shortfall standing between a caregiver and losing their home — so they can stay housed and keep showing up for the person who needs them.",
-    "ctaUrl": "",
-    "date": "2026-09-15",
-    "assetId": "3dc1f7d3a4bb813dac69cddd1fb5c702"
-  },
-  {
-    "slug": "caregiver-relief-investor-call",
-    "name": "Caregiver Relief Investor Call",
-    "kicker": "60-min discovery call · paid or qualifying charitable contribution",
-    "promise": "Leave with a clear, specific investment framework — and a direct line between your capital and caregivers in crisis who have nowhere else to turn.",
-    "ctaUrl": "",
-    "date": "2026-09-15",
-    "assetId": "3dc1f7d3a4bb81358d40e262f6bb02e0"
-  },
-  {
-    "slug": "your-self-care-strategy-session",
-    "name": "Your Self-Care Strategy Session",
-    "kicker": "Free · 1:1 virtual session",
-    "promise": "Walk away from one focused hour with a personalized action plan — real strategies, real resources, built entirely around your burnout and your life.",
-    "ctaUrl": "",
-    "date": "2026-09-15",
-    "assetId": "3dc1f7d3a4bb8155b379e54c1a818540"
-  },
-  {
-    "slug": "caregiver-self-care-strategy-session",
-    "name": "Caregiver Self-Care Strategy Session",
-    "kicker": "Free · 1:1 virtual session",
-    "promise": "Walk away from one focused hour with a personalized self-care plan built entirely around you — real strategies, real resources, and a clear first step out of burnout.",
-    "ctaUrl": "",
-    "date": "2026-09-15",
-    "assetId": "3dc1f7d3a4bb81e88661deb0a21d4017"
+    "url": "../blog/housed/",
+    "image": ""
   }
 ]
