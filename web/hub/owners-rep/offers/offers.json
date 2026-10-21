@@ -1,20 +1,17 @@
 [
   {
+    "assetId": "4001f7d3a4bb81748d81ebb9a9d801bf",
+    "slug": "built-to-fit-software",
+    "name": "Built-to-Fit Software",
+    "promise": "Software built around your actual workflow — not the average contractor's — so your team stops bending process to fit a platform that was never designed for your jobs.",
+    "url": "../blog/built-to-fit-software/"
+  },
+  {
     "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
     "slug": "on-your-side-ongoing-build-coordination",
     "name": "On Your Side-Ongoing Build Coordination",
     "promise": "You stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of you with context before you sign anything.",
     "url": "../blog/on-your-side-ongoing-build-coordination/"
-  },
-  {
-    "slug": "built-to-fit-software",
-    "name": "Built-to-Fit Software",
-    "kicker": "Custom build · project-scoped engagement",
-    "promise": "Software built around your actual workflow — not the average contractor's — so your team stops bending process to fit a platform that was never designed for your jobs.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81748d81ebb9a9d801bf",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/custom-construction-software-made-for-your-project-blog-thumbnail-mvicv9c1.png"
   },
   {
     "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
