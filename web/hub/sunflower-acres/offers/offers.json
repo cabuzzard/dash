@@ -1,5 +1,15 @@
 [
   {
+    "slug": "garden-awareness",
+    "name": "Garden Awareness",
+    "kicker": "Donation drive · tiered giving",
+    "promise": "Your contribution funds a specific, named outcome at the only wheelchair-accessible u-pick flower farm in the East Bay — not an operational budget, a real thing you can point to.",
+    "ctaUrl": "",
+    "date": "2026-10-21",
+    "assetId": "3f51f7d3a4bb8100803cf9880b99b1d3",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/garden-awareness-blog-thumbnail-mv21fa1c.png"
+  },
+  {
     "slug": "into-the-field",
     "name": "Into The Field",
     "kicker": "Timed u-pick visit · $15–$25 per person",
@@ -8,16 +18,6 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb814cb952da3a0e8d93d3",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/accessible-u-pick-visit-blog-thumbnail-mv21ff70.png"
-  },
-  {
-    "slug": "garden-awareness",
-    "name": "Garden Awareness",
-    "kicker": "Donation drive · tiered giving",
-    "promise": "Your contribution funds a specific, named outcome at the only wheelchair-accessible u-pick flower farm in the East Bay — not an operational budget, a real thing you can point to.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8100803cf9880b99b1d3",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/garden-awareness-blog-thumbnail-mv21fa1c.png"
   },
   {
     "slug": "private-farm-day",
