@@ -4293,6 +4293,22 @@ function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interview
   });
 }
 // Picker publication stages the page first. Asset Status commits only after all hub writes succeed.
+async function publishSelectedAssetToHub(env,assetId) {
+  const page=await ivPage(assetId),p=page.properties||{};
+  const title=hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title)||assetId;
+  const base={assetId:hubAssetId(assetId),title};
+  if(page.archived||page.in_trash)return {...base,skipped:'deleted asset'};
+  const section=hubSectionOf(p);
+  if(!section)return {...base,skipped:'no hub section'};
+  if(section==='email')return {...base,skipped:'email only'};
+  const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(p.Campaign?.relation?.[0]?.id));
+  if(!hub)return {...base,skipped:'no content hub'};
+  if(p['Content Hub']?.select?.name && p['Content Hub'].select.name!==hub.slug)return {...base,skipped:'different content hub'};
+  const result=await selfAction(env,'updatePublishFields',{assetId,publishToHub:true});
+  if(result.error)throw new Error(result.error);
+  if(!result.hubLive)throw new Error(result.hubPublish||'Asset is not in the hub listing');
+  return {...base,published:true,hub:hub.slug,section,liveUrl:result.hubLiveUrl};
+}
 async function publishHubSectionSelection(env,assetId,section,campaignId) {
   await governingFlow(env);
   const page=await ivPage(assetId),p=page.properties||{},cid=hubAssetId(p.Campaign?.relation?.[0]?.id);
@@ -13830,7 +13846,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$|^publishHubAsset$|^publishHubSectionAsset$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -38908,7 +38924,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           const r=await hubNotionFetch('https://api.notion.com/v1/pages/'+dash(assetId),{headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}});
           hubBefore=await r.json();
           if(!r.ok||hubBefore.archived||hubBefore.in_trash)return json({error:hubBefore.message||'Asset unavailable'},404);
-          if(!hubPublishableType(hubBefore.properties?.['Asset Type']?.select?.name))return json({error:'This asset type cannot be published to a hub'},400);
+          if(!hubPublishableType(hubBefore.properties?.['Asset Type']?.select?.name) && !hubBefore.properties?.['Hub Section']?.select?.name)return json({error:'This asset type cannot be published to a hub'},400);
         }
 
         if (title !== undefined && title !== "") props["Asset Title"] = { title: [{ text: { content: title } }] };
@@ -50199,6 +50215,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // every method-grounded generation path already reads from — so
       // headings come back as "## Heading" and paragraphs as plain lines,
       // reconstructing the full article rather than just its hook.
+      if(body.action==='publishHubAsset'){
+        if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId)))return json({error:'Valid assetId required'},400);
+        return json(await publishSelectedAssetToHub(env,body.assetId));
+      }
       if(body.action==='publishHubSectionAsset'){
         if(!body.assetId||!body.section)return json({error:'assetId and section required'},400);
         return json(await publishHubSectionSelection(env,body.assetId,body.section,body.campaignId));
