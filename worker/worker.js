@@ -31,12 +31,19 @@ async function hierarchyForHub(env, campaignId, seed={}) {
   return hierarchyModel({ topics:[...committed,...(staged || [])], tc:tc || {clusters:[],assign:{}},
     products:products.filter(p=>!p.archived&&!p.in_trash&&!p.properties?.Archived?.checkbox&&p.properties?.Status?.select?.name!=='Archived').map(p=>({id:p.id,topicId:hierarchyText(p.properties?.['Topic ID']?.rich_text)})), mainIds, titles });
 }
-async function hierarchyPlacement(env, page, kind) {
+async function hierarchyCampaignIds(page, kind) {
   const p=page.properties || {}, cids=(p.Campaign?.relation || []).map(r=>hierarchyId(r.id));
   // Resolve omitted Campaign on legacy asset creation through its title, never through a caller-supplied hub.
   if (!cids.length && kind==='asset') for(const r of p['Content Strategy']?.relation || []) {
     const t=await ivPage(r.id); for(const c of t.properties?.Campaign?.relation || []) cids.push(hierarchyId(c.id));
   }
+  if (!cids.length) for(const r of p.Product?.relation || p.product?.relation || []) {
+    const product=await ivPage(r.id); for(const c of product.properties?.Campaigns?.relation || []) cids.push(hierarchyId(c.id));
+  }
+  return [...new Set(cids)];
+}
+async function hierarchyPlacement(env, page, kind) {
+  const p=page.properties || {}, cids=await hierarchyCampaignIds(page,kind);
   const hubs=HUB_SITES.filter(h=>cids.includes(hierarchyId(h.campaignId)));
   if (!hubs.length) return { placed:false, applies:cids.length===0, reason:HIERARCHY_ERROR };
   for(const hub of hubs) { const model=await hierarchyForHub(env,hub.campaignId); if(!model[kind](p)) return {placed:false,applies:true,reason:HIERARCHY_ERROR}; }
@@ -51,7 +58,10 @@ async function reconcileHierarchy(env, campaignId, apply=false) {
   const hub=HUB_SITES.find(h=>hierarchyId(h.campaignId)===hierarchyId(campaignId));
   if(!hub) throw new Error('That campaign has no content hub.');
   const hierarchy=await hierarchyForHub(env,campaignId), filter={property:'Campaign',relation:{contains:kwDashId(hierarchyId(campaignId))}};
-  const [titles,assets]=await Promise.all([notionQuery(CONTENT_STRATEGY_DB,{filter}),notionQuery(ASSETS_DB,{filter})]);
+  const [titles,ownedAssets,legacyAssets]=await Promise.all([notionQuery(CONTENT_STRATEGY_DB,{filter}),notionQuery(ASSETS_DB,{filter}),
+    notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{is_empty:true}},{or:[...HIERARCHY_STATUSES].map(name=>({property:'Asset Status',select:{equals:name}}))}]}})]);
+  const assets=[...ownedAssets];
+  for(const page of legacyAssets) if((await hierarchyCampaignIds(page,'asset')).includes(hierarchyId(campaignId))) assets.push(page);
   const records=[];
   for(const [kind,pages] of [['title',titles],['asset',assets]]) for(const page of pages) {
     const p=page.properties || {}, key=kind==='asset'?'Asset Status':'Status', oldStatus=(p[key]?.select || p[key]?.status)?.name;
@@ -65,7 +75,7 @@ async function reconcileHierarchy(env, campaignId, apply=false) {
       const response=await hubNotionFetch('https://api.notion.com/v1/pages/'+kwDashId(entry.id),{method:'PATCH',headers:ivHdr(),body:JSON.stringify({properties:{[key]:{[p[key]?.status?'status':'select']:{name:'Idea'}}}})});
       if(!response.ok) throw new Error('Could not demote '+entry.name+': '+await response.text());
       entry.demoted=true;
-      if(kind==='asset') entry.listings=await removeHubAssetListings(env,ivHdr(),fresh);
+      if(kind==='asset') entry.listings=await removeHubAssetListings(env,ivHdr(),{...fresh,properties:{...fresh.properties,Campaign:{relation:[{id:kwDashId(hierarchyId(campaignId))}]}}});
     }
     records.push(entry);
   }

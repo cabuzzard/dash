@@ -52,3 +52,14 @@ test('compound operations preflight before writes and bulk/hub surfaces name hie
  assert.match(source,/const eligible=rows.filter\(r=>hierarchy.asset/);
  assert.match(dash,/hub2Outside-\$\{slug\}/);assert.match(dash,/skipped:fails/);assert.match(dash,/it.batch.skipped=/);
 });
+test('legacy assets inherit hub membership and reconciliation demotes only status, keeping content intact',async()=>{
+ const x=setup(),title={id:tid,properties:{Campaign:rel(cid),Status:{select:{name:'Idea'}}}},asset={...x.page,properties:{'Content Strategy':rel(tid),'Asset Status':{select:{name:'Published'}},'Asset Title':{title:rt('Legacy offer')},Body:{rich_text:rt('Keep this content')}}};
+ x.ctx.ivPage=async id=>structuredClone(id===tid?title:asset);x.ctx.kwDashId=id=>id;x.ctx.ivHdr=()=>({});
+ x.ctx.notionQuery=async(db,q)=>db==='titles'?[title]:q.filter.and?[asset]:[];
+ x.ctx.hubNotionFetch=async(url,opts)=>{Object.assign(asset.properties,JSON.parse(opts.body).properties);return {ok:true};};
+ let removed=false;x.ctx.removeHubAssetListings=async(env,hdr,page)=>{assert.equal(page.properties.Campaign.relation[0].id,cid);removed=true;return {removed:1};};
+ await assert.rejects(x.ctx.requireHierarchyPlacement({},asset),/Keywords hierarchy/);
+ const report=await x.ctx.reconcileHierarchy({},cid,true);
+ assert.equal(report.records.length,1);assert.equal(report.records[0].oldStatus,'Published');assert.equal(report.records[0].demoted,true);
+ assert.equal(asset.properties['Asset Status'].select.name,'Idea');assert.equal(asset.properties.Body.rich_text[0].text.content,'Keep this content');assert.equal(removed,true);
+});
