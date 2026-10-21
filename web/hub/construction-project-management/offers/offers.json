@@ -1,5 +1,14 @@
 [
   {
+    "slug": "project-coordination-retainer",
+    "name": "Project Coordination Retainer",
+    "kicker": "Monthly retainer · priced by active job count",
+    "promise": "Every active job gets a coordinator behind it — schedules live, subs informed, paperwork current — so you stay in the field instead of running the back office at night.",
+    "ctaUrl": "",
+    "date": "2026-10-21",
+    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3"
+  },
+  {
     "slug": "coordination-retainer",
     "name": "Coordination Retainer",
     "kicker": "Monthly retainer · scoped by active job count",
