@@ -1,12 +1,5 @@
 [
   {
-    "assetId": "4001f7d3a4bb818a8691e83c31a2bc12",
-    "slug": "hierarchy-verification-offer",
-    "name": "Hierarchy verification offer",
-    "promise": "Temporary hierarchy verification content. This fixture will be removed after testing.",
-    "url": "../blog/hierarchy-verification-offer/"
-  },
-  {
     "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
     "slug": "garden-fund",
     "name": "Garden Fund",
@@ -28,6 +21,6 @@
     "name": "Garden Visit",
     "promise": "You get out of the car and into the field — same paths, same flowers, same cutting stations as everyone else.",
     "url": "../blog/garden-visit/",
-    "image": ""
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/sunflower-acres-accessible-garden-visit-individual-group-boo-blog-thumbnail-mvhtzpqb.png"
   }
 ]
