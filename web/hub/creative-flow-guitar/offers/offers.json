@@ -1,83 +1,26 @@
 [
   {
-    "slug": "weekly-sessions-3c66",
-    "name": "Weekly Sessions",
-    "kicker": "Membership · $29–$49/mo",
-    "promise": "One song a week, played all the way through — until it feels right, not just correct.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66"
-  },
-  {
-    "slug": "wear-the-real-thing",
-    "name": "Wear The Real Thing",
-    "kicker": "Graphic tees · premium-accessible, no subscription",
-    "promise": "A shirt built from inside guitarist identity — specific enough that other players ask where you got it before you say a word.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81f9b114c01ddb3bd41a"
-  },
-  {
-    "slug": "the-tracks",
-    "name": "The Tracks",
-    "kicker": "Direct download · priced per track",
-    "promise": "Drop in and feel it lock — a real mix with somewhere to go, built by a player with the same ear you have.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81d0b997f415c0264a05"
-  },
-  {
+    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
     "slug": "weekly-sessions",
     "name": "Weekly Sessions",
-    "kicker": "Membership · $29–$49/mo",
-    "promise": "A weekly live session that holds your practice together when motivation does not — built around the acoustic and classic rock songs you actually want to play.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8125a0a1e7f143d56f19",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/creative-flow-weekly-sessions-blog-thumbnail-mv223jli.png"
+    "promise": "One song a week, played all the way through — until it feels right, not just correct.",
+    "url": "../blog/weekly-sessions/",
+    "image": ""
   },
   {
-    "slug": "song-breakdown-packs",
-    "name": "Song Breakdown Packs",
-    "kicker": "Downloadable lesson pack · $15–$39 per pack",
-    "promise": "Stop approximating the songs you love — own them, feel and all.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb817ca927c51eb966a4eb",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/song-breakdown-lesson-pack-blog-thumbnail-mv222xd6.png"
+    "assetId": "4001f7d3a4bb81f9b114c01ddb3bd41a",
+    "slug": "wear-the-real-thing",
+    "name": "Wear The Real Thing",
+    "promise": "A shirt built from inside guitarist identity — specific enough that other players ask where you got it before you say a word.",
+    "url": "../blog/wear-the-real-thing/",
+    "image": ""
   },
   {
-    "slug": "own-the-recording",
-    "name": "Own the Recording",
-    "kicker": "Digital download · $1–$2 per track, bundles available",
-    "promise": "You stop renting music and start owning it — originals and covers, permanently on your device, purchased directly from the artist.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8118b579ead52aa4ffee",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/digital-downloads-and-licensing-blog-thumbnail-mv222j9r.png"
-  },
-  {
-    "slug": "original-covers-music-downloads",
-    "name": "Original & Covers: Music Downloads",
-    "kicker": "Digital Download · Per track or full project",
-    "promise": "Own the recordings you actually love — originals and covers, delivered instantly as permanent files that belong to you, not a platform.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "music-merch-for-the-crossover-listener",
-    "name": "Music Merch for the Crossover Listener",
-    "kicker": "Graphic tees · $28–$45",
-    "promise": "Stop closing the tab empty-handed — find the shirt that makes someone across the room say 'where did you get that.'",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "creative-flow-principles",
-    "name": "Creative Flow Principles",
-    "kicker": "Self-paced course · price TBC",
-    "promise": "Go from technically decent but artistically undefined to producing music with a sound that is unmistakably, consistently yours.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
+    "slug": "the-tracks",
+    "name": "The Tracks",
+    "promise": "Drop in and feel it lock — a real mix with somewhere to go, built by a player with the same ear you have.",
+    "url": "../blog/the-tracks/",
+    "image": ""
   }
 ]
