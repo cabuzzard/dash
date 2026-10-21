@@ -31692,7 +31692,7 @@ ${researchLines ? `PRODUCT RESEARCH (🔬 positioning doc):\n${researchLines}\n\
 - Speak to the buyer, in their words. Name what they get and where they end up, not how it's built.
 ${body.writeOnly ? '- This is the full blog-form offer page: at least 650 words across included, whyItWorks, objection and terms, grounded in the supplied pillar/product. Expand useful explanations, never invent proof or pad sparse inputs.' : ''}
 - "included" is what they actually receive — pull from Offer Structure, make each bullet concrete.
-- "objection" states the real hesitation this buyer has and answers it in one or two sentences.
+- "objection" states the real hesitation this buyer has and answers it ${body.writeOnly ? "in 100-150 useful, grounded words" : "in one or two sentences"}.
 - "promise" is ONE line — the transformation, specific, no hype. This becomes the hub card's excerpt.
 - "kicker" is the offer's shape at a glance: type + price/terms, e.g. "Fixed-fee review · $850", "Free", "Membership · $95/mo", "Retainer".
 - If there's no real price/URL in the inputs, leave ctaUrl "" and put the terms you do know in "terms" — never invent a number or a link.
@@ -31703,9 +31703,9 @@ Return ONLY this JSON object:
   "kicker": "type + price/terms at a glance",
   "promise": "one line — the transformation, specific",
   "forWho": "one short phrase naming the buyer",
-  "included": ["concrete thing they get", "..."],
-  "whyItWorks": "1-2 sentences, proof woven in",
-  "objection": "the hesitation + the answer, 1-2 sentences",
+  "included": ["${body.writeOnly ? "each deliverable explained concretely in 40-60 words; 200-250 words total" : "concrete thing they get"}", "..."],
+  "whyItWorks": "${body.writeOnly ? "300-400 words explaining the approach from the actual pillar, proof woven in only where provided" : "1-2 sentences, proof woven in"}",
+  "objection": "${body.writeOnly ? "the hesitation plus the grounded answer, 100-150 words" : "the hesitation + the answer, 1-2 sentences"}",
   "terms": "price / guarantee / delivery / timeline — whatever is real",
   "ctaLabel": "button text",
   "ctaUrl": "${productUrl || ""}"
@@ -31714,7 +31714,7 @@ Return ONLY this JSON object:
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: body.writeOnly ? 6000 : 3000, messages: [{ role: "user", content: prompt }] }),
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
