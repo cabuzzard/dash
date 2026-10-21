@@ -16374,13 +16374,9 @@ async function hub2DigestModal(slug) {
 // answers before their pillar / assets can use them (topical posts, parents, Own-tier children flag them). Loads with
 // the card; 🎤 Answer opens the interview panel. ──
 const _hub2Iv = {}, _hub2IvOpen = {};
-// only TITLE interviews whose title is in sync (title research current) — the ones ready to feed writing (operator 2026-10-16)
-function hub2IvShown(slug) {   // only interviews of DEVELOPMENT ASSETS (not title / product interviews) whose title is in sync
-  const I = _hub2Iv[slug], T = _hubTitles[slug]; if (!I || !I.list || !T || !T.rows) return null;
-  const nid = x => String(x || '').replace(/-/g, ''), synced = new Set(), devAsset = {};
-  T.rows.forEach(r => { if (r.titleId && !r.titleOutOfSync && r.titleHasResearch) synced.add(nid(r.titleId));
-    if (r.kind === 'asset' && r.assetId && r.assetStatus === 'Development') devAsset[nid(r.assetId)] = nid(r.titleId); });
-  return I.list.filter(x => x.scope === 'Asset' && (x.assetIds || []).some(a => devAsset[nid(a)] && synced.has(devAsset[nid(a)])));
+// Attached Flagged records are organized by their owning entity; no missing asset flags are inferred.
+function hub2IvShown(slug) {
+  const I = _hub2Iv[slug]; return I && I.list ? I.list.filter(x => x.status !== 'Finished') : null;
 }
 function hub2IvCount(slug) { const I = _hub2Iv[slug]; if (!I) return 'flagged — to answer'; if (I.loading) return 'loading…'; if (I.error) return 'couldn’t load';
   const L = hub2IvShown(slug); if (!L) return 'loading…'; const n = L.length; return n ? `<span style="color:#ff7a00;font-weight:700;">${n}</span> to answer` : 'none to answer'; }
@@ -16405,11 +16401,11 @@ function hub2IvHtml(slug) {
   if (I.error) return `<div style="font-size:11px;color:#f87171;">${esc(I.error)}</div>`;
   const L = hub2IvShown(slug); if (!L) { const te = (_hubTitles[slug] || {}).error;
     return te ? `<div style="font-size:11px;color:#f87171;">Couldn’t load titles: ${esc(te)} <a href="#" onclick="event.preventDefault();hubTitlesLoad('${slug}',true).then(()=>hub2IvPaint('${slug}'))">⟳ retry</a></div>` : '<div style="font-size:11px;color:var(--text3);">Loading titles…</div>'; }
-  if (!L.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — interviews of Development assets show here once their title is in sync (🔬 title research saved).</div>';
-  return L.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
+  if (!L.length) return '<div style="font-size:11px;color:var(--text3);">No flagged interviews for titles, assets, or products on this hub.</div>';
+  return [['Title', 'Title / pillar'], ['Asset', 'Asset'], ['Product', 'Product']].map(([scope, label]) => { const group = L.filter(x => (x.scope || 'Title') === scope); if (!group.length) return ''; return `<div style="font-size:11px;font-weight:700;margin:10px 0 4px;">${label} (${group.length})</div>` + group.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
     return `<div class="hkw-row" style="display:flex;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
       <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.title || 'Interview')}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.scope || '')}${x.forType ? ' · ' + esc(x.forType) : ''}${x.angle ? ' · ' + esc(x.angle) : ''}${tot ? ' · ' + done + ' / ' + tot + ' answered' : ''}</div></div>
-      <button onclick="ivFlagOpen('${esc(x.id)}')" style="font-size:10.5px;padding:2px 9px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;white-space:nowrap;">🎤 Answer</button></div>`; }).join('');
+      <button onclick="ivFlagOpen('${esc(x.id)}')" style="font-size:10.5px;padding:2px 9px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;white-space:nowrap;">🎤 Answer</button></div>`; }).join(''); }).join('');
 }
 // ── Digest section (operator 2026-10-20): ONE collapsible dropdown per Digest parent asset (the weekly cron and a hand run make
 // the same asset). Its findings are pre-grouped PREMIUM / FREE; per item, check → Premium issue (many → one), → Free issue
@@ -17915,10 +17911,12 @@ async function hubSeriesOpen(slug, tid, seriesAssetId, force) {
   catch (e) { _series.busy = ''; _series.err = e.message; }
   hubSeriesDraw();
 }
-function hubSeriesType(slug, kind) {   // the checklist's asset type for each child kind
+function hubSeriesType(slug, kind) {   // topical choices bind to their Current Methods row identity
   const ms = (((_hub2Checklist[slug] || {}).methods) || []).filter(m => !m.isPillar), t = m => m.aliases.find(a => a !== m.name) || m.asset || m.name;
-  const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : kind === 'carousel' ? ms.find(m => /carousel/i.test(m.name)) : kind === 'seo' ? ms.find(m => /seo post/i.test(m.name)) : ms.find(m => /youtube/i.test(m.name));
-  return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel', seo: 'Topical Post', youtube: 'YouTube Longform — Interview' })[kind];
+  const topical = { seo: 'Topical - SEO Post', youtube: 'Topical - YouTube' }[kind];
+  if (topical) { const norm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-').replace(/\s+/g, ''), pick = ms.find(m => norm(m.name) === norm(topical)); return pick ? pick.name : topical; }
+  const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : ms.find(m => /carousel/i.test(m.name));
+  return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel' })[kind];
 }
 function hubSeriesDraw() {
   const S = _series; if (!S) return; let m = document.getElementById('seriesModal');
@@ -17927,13 +17925,13 @@ function hubSeriesDraw() {
   const card = (src, x) => { const used = S.used && S.used.has(x.id);
     return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);${used ? 'opacity:.55;' : ''}">
       <div style="flex:1;min-width:0;font-size:12px;">${used ? '✓ ' : ''}${esc(x.t)}${x.v ? ` <span style="color:var(--text3);font-size:10.5px;">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? `<div style="font-size:10px;color:var(--text3);margin-top:1px;">${esc(x.meta)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a>` : ''}</div>` : x.url ? `<div style="font-size:10px;"><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a></div>` : ''}</div>
-      <div style="display:flex;gap:4px;flex-shrink:0;"><button style="${B}" onclick="hubSeriesUse('seo','${esc(src)}','${esc(x.id)}')">＋ SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','${esc(src)}','${esc(x.id)}')">＋ Single Post</button><button style="${B}" onclick="hubSeriesUse('carousel','${esc(src)}','${esc(x.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','${esc(src)}','${esc(x.id)}')">▶ YouTube</button></div></div>`; };
+      <div style="display:flex;gap:4px;flex-shrink:0;"><button style="${B}" onclick="hubSeriesUse('seo','${esc(src)}','${esc(x.id)}')">＋ Topical - SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','${esc(src)}','${esc(x.id)}')">＋ Single Post</button><button style="${B}" onclick="hubSeriesUse('carousel','${esc(src)}','${esc(x.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','${esc(src)}','${esc(x.id)}')">▶ Topical - YouTube</button></div></div>`; };
   const order = ['Claude asks', 'Your interviews', 'Pain points', 'Benefits & proof', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
   const srcs = D ? order.filter(k => (D.sources[k] || []).length).concat(Object.keys(D.sources).filter(k => !order.includes(k) && D.sources[k].length)) : [];
   S.open = S.open || {};
   m.innerHTML = `<div class="modal" style="max-width:780px;max-height:88vh;overflow:auto;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — SEO Post / YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
@@ -17966,11 +17964,11 @@ function hubSeriesCatsHtml(B) {
   const open = S.open.__cats !== false;
   return `<div style="margin:6px 0 10px;border:1px solid #8ab4f8;border-radius:6px;">
     <div class="hkw-hd" style="padding:5px 8px;font-weight:600;font-size:12px;display:flex;gap:6px;align-items:center;"><span onclick="_series.open.__cats=${open ? 'false' : 'true'};hubSeriesDraw()" style="cursor:pointer;flex:1;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span> 🗂 Categories <span style="font-weight:400;color:var(--text3);">(${cats.length}) · standing lanes — never used up${D.style ? ' · research style set' : ' · no research style yet'}</span></span>
-      <select id="srCatKind" class="kw-sel" title="What the 📋 prompt asks ChatGPT to write" style="font-size:10.5px;"><option value="seo">prompt: SEO Post</option><option value="single">prompt: Single Post</option><option value="carousel">prompt: Carousel</option><option value="youtube">prompt: YouTube</option></select>
+      <select id="srCatKind" class="kw-sel" title="What the 📋 prompt asks ChatGPT to write" style="font-size:10.5px;"><option value="seo">prompt: Topical - SEO Post</option><option value="single">prompt: Single Post</option><option value="carousel">prompt: Carousel</option><option value="youtube">prompt: Topical - YouTube</option></select>
       <button style="${B}" onclick="_series.catEdit=true;hubSeriesDraw()">✎ edit</button></div>
     ${open ? `<div style="padding:0 8px 4px;">${cats.map(c => `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);">
         <div style="flex:1;min-width:0;font-size:12px;"><b>${esc(c.name)}</b>${c.def ? `<div style="font-size:10.5px;color:var(--text3);margin-top:1px;">${esc(c.def)}</div>` : ''}</div>
-        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:330px;"><button style="${B}border-color:#8ab4f8;color:#8ab4f8;" title="Copy a ChatGPT prompt for this category (kind picked above), built from the research style" onclick="hubSeriesPrompt('${esc(c.id)}',this)">📋 ChatGPT prompt</button><button style="${B}" onclick="hubSeriesUse('seo','__cat','${esc(c.id)}')">＋ SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','__cat','${esc(c.id)}')">＋ Single</button><button style="${B}" onclick="hubSeriesUse('carousel','__cat','${esc(c.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','__cat','${esc(c.id)}')">▶ YouTube</button></div></div>`).join('') || '<div style="font-size:11.5px;color:var(--text3);padding:4px 0;">No categories yet — ✎ edit to add them (Name :: definition, one per line).</div>'}</div>` : ''}</div>`;
+        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:330px;"><button style="${B}border-color:#8ab4f8;color:#8ab4f8;" title="Copy a ChatGPT prompt for this category (kind picked above), built from the research style" onclick="hubSeriesPrompt('${esc(c.id)}',this)">📋 ChatGPT prompt</button><button style="${B}" onclick="hubSeriesUse('seo','__cat','${esc(c.id)}')">＋ Topical - SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','__cat','${esc(c.id)}')">＋ Single</button><button style="${B}" onclick="hubSeriesUse('carousel','__cat','${esc(c.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','__cat','${esc(c.id)}')">▶ Topical - YouTube</button></div></div>`).join('') || '<div style="font-size:11.5px;color:var(--text3);padding:4px 0;">No categories yet — ✎ edit to add them (Name :: definition, one per line).</div>'}</div>` : ''}</div>`;
 }
 async function hubSeriesCatsSave() {
   const S = _series, D = S && S.data; if (!D) return;
