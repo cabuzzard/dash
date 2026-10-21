@@ -4,7 +4,7 @@ const rt=s=>[{plain_text:s,text:{content:s}}],id='a'.repeat(32);
 const page=(aid=id,type='Offer - Content Hub',status='Published',section='Offers')=>({id:aid,created_time:'2026-10-21',properties:{Campaign:{relation:[{id:hub.campaignId}]},'Asset Type':{select:{name:type}},'Asset Status':{select:{name:status}},'Hub Section':{select:{name:section}},'Platform Title':{rich_text:rt(aid)},Body:{rich_text:rt('Written content')},'Deployment Status':{select:{name:'Deployed'}}}});
 function setup(rows=[]){
  const files=new Map(),deleted=[],writes=[],pages=new Map(rows.map(p=>[p.id,p]));let fail=false;
- const ctx=vm.createContext({console,URL,Date,Set,Map,JSON,HUB_SITES:[hub],ASSETS_DB:'assets',NOTION_TOKEN:'fixture',NOTION_VERSION:'version',ivDash:x=>x,governingFlow:async()=>({}),stampPublishingDate:async()=>{},ensureAssetsDbProperties:async()=>{},
+ const ctx=vm.createContext({console,URL,Date,Set,Map,JSON,setTimeout:fn=>fn(),HUB_SITES:[hub],ASSETS_DB:'assets',NOTION_TOKEN:'fixture',NOTION_VERSION:'version',ivDash:x=>x,governingFlow:async()=>({}),stampPublishingDate:async()=>{},ensureAssetsDbProperties:async()=>{},
  notionQuery:async(db,q)=>{assert.equal(q.filter.and[1].select.equals,'Published');return rows.filter(p=>!p.archived&&p.properties['Asset Status'].select.name==='Published');},
  hubSiteTarget:async({sub})=>({basePath:'web/hub/fixture/'+sub,campName:'Fixture',s:{},hub,getFile:async path=>({text:files.get(path)||null}),putFile:async(path,text)=>{files.set(path,text);writes.push(path);},deleteFile:async path=>{files.delete(path);deleted.push(path);}}),
  fetch:async(url,opts={})=>{
@@ -53,3 +53,5 @@ test('checkbox is below section, shares save, and no preview observer is introdu
  const html=fs.readFileSync('microsites/care-gap-v2/index.html','utf8');assert.equal((html.match(/id="pubPublishToHub"/g)||[]).length,1);assert.ok(html.indexOf('id="pubHubSection"')<html.indexOf('id="pubPublishToHub"'));assert.match(html,/fields.publishToHub=toggle.checked/);assert.match(html,/getHubAssetState/);
  const dashboard=fs.readFileSync('index.html','utf8');assert.match(dashboard,/section: r.hubSectionDisplay/);assert.doesNotMatch(dashboard,/hub2BlogRecordLinks|MutationObserver/);
 });
+
+test('hub Notion writes retry bounded 429 responses before reporting failure',async()=>{const x=setup();let n=0;x.ctx.fetch=async()=>++n<3?{status:429,headers:{get:()=>"1"},arrayBuffer:async()=>new ArrayBuffer(0)}:{status:200};assert.equal((await x.ctx.hubNotionFetch('notion')).status,200);assert.equal(n,3);});

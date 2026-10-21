@@ -4100,7 +4100,7 @@ function offerBlogAsset(props) {
 async function offerBlogBlocks(hdr, pageId) {
   const blocks = []; let cursor;
   do {
-    const r = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? '&start_cursor=' + encodeURIComponent(cursor) : ''}`, { headers: hdr });
+    const r = await hubNotionFetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? '&start_cursor=' + encodeURIComponent(cursor) : ''}`, { headers: hdr });
     const data = await r.json();
     if (!r.ok) throw new Error(data.message || 'Could not read offer content');
     for (const block of data.results || []) {
@@ -4142,7 +4142,7 @@ async function publishOfferAssetBlog(env, hdr, page) {
     workingTitle: text(p['Asset Title']?.title), seoTitle: text(p['Platform Title']?.rich_text),
     ...parts, thumbnail: p.Thumbnail?.url || '', sub: 'blog' });
   if (!result.published || !result.liveUrl) throw new Error(result.error || 'Offer blog page was not published');
-  const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' },
+  const saved = await hubNotionFetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' },
     body: JSON.stringify({ properties: { 'Content URL': { url: result.liveUrl }, 'Deployment Status': { select: { name: 'Deployed' } } } }) });
   if (!saved.ok) { const data = await saved.json(); throw new Error('Offer page deployed but publish fields were not saved: ' + (data.message || saved.status)); }
   return { ...result, hub: hub.slug, assetId: aid };
@@ -4153,6 +4153,15 @@ const hubAssetId = value => String(value || '').replace(/-/g, '');
 const hubRichText = runs => (runs || []).map(t => t.plain_text ?? t.text?.content ?? '').join('').trim();
 function hubPublishableType(type) {
   return /\bseo post\b|\boffer\b/i.test(type || '') || /^blog (post|article)$/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || '')) || /^QA\s*[?-]/i.test(type || '');
+}
+async function hubNotionFetch(url,options={}) {
+  for(let attempt=0;;attempt++){
+    const response=await fetch(url,options);
+    if(response.status!==429||attempt>=4)return response;
+    const delay=Math.min(8000,Math.max(1000,(parseFloat(response.headers.get('Retry-After'))||1)*1000)*(attempt+1));
+    await response.arrayBuffer();
+    await new Promise(resolve=>setTimeout(resolve,delay));
+  }
 }
 async function hubBlogManifest(env, hub) {
   const path = `web/hub/${hub.slug}/blog/posts.json`;
@@ -4255,7 +4264,7 @@ async function publishHubAssetToLiveSite(env, hdr, page) {
   const result = await publishSeoPostToLiveSite({env,hdr,dash:ivDash,campaignId:hub.campaignId,assetId:hubAssetId(page.id),
     workingTitle:hubRichText(p['Asset Title']?.title),seoTitle:hubRichText(p['Platform Title']?.rich_text),thumbnail:p.Thumbnail?.url || '',...parts});
   if (!result.published || !result.liveUrl) throw new Error(result.error || 'Hub page was not published');
-  const saved = await fetch('https://api.notion.com/v1/pages/'+ivDash(page.id),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Content URL':{url:result.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}})});
+  const saved = await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(page.id),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Content URL':{url:result.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}})});
   if (!saved.ok) throw new Error('Page published but asset fields could not be saved');
   return result;
 }
@@ -38852,7 +38861,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         let hubBefore=null, hubSync=null;
         if(hasHubSwitch){
           await governingFlow(env);
-          const r=await fetch('https://api.notion.com/v1/pages/'+dash(assetId),{headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}});
+          const r=await hubNotionFetch('https://api.notion.com/v1/pages/'+dash(assetId),{headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}});
           hubBefore=await r.json();
           if(!r.ok||hubBefore.archived||hubBefore.in_trash)return json({error:hubBefore.message||'Asset unavailable'},404);
           if(!hubPublishableType(hubBefore.properties?.['Asset Type']?.select?.name))return json({error:'This asset type cannot be published to a hub'},400);
@@ -38929,7 +38938,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         let voiceEdits = 0;
         if (hashtags !== undefined || postCaption !== undefined || platformTitle !== undefined) {
           try {
-            const before = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+            const before = await hubNotionFetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
             const bp = before.properties || {};
             const brt = k => (bp[k]?.rich_text || []).map(t => t.plain_text).join("");
             const edits = [];
@@ -38965,7 +38974,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         } else if (props["Asset Status"]?.select?.name === "Published") {
           stampAfter = true;
         }
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+        const resp = await hubNotionFetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: props }),
@@ -38987,7 +38996,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
             }else hubSync=await removeHubAssetListings(env,hubHdr,hubBefore);
           }else await syncOfferAssetBlog(env,hubHdr,result2);
         } catch(e) {
-          if(hasHubSwitch && body.publishToHub) await fetch('https://api.notion.com/v1/pages/'+dash(assetId),{method:'PATCH',headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Asset Status':{select:{name:'Development'}}}})});
+          if(hasHubSwitch && body.publishToHub) await hubNotionFetch('https://api.notion.com/v1/pages/'+dash(assetId),{method:'PATCH',headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Asset Status':{select:{name:'Development'}}}})});
           return json({error:'Asset fields saved, but hub sync failed: '+e.message},502);
         }
 
@@ -39021,11 +39030,11 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
               if (!/\boffer\b/i.test(at)) return;
               const titleId = (result2.properties?.["Content Strategy"]?.relation || [])[0]?.id;
               if (!titleId) return;
-              const tPage = await fetch(`https://api.notion.com/v1/pages/${titleId}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+              const tPage = await hubNotionFetch(`https://api.notion.com/v1/pages/${titleId}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
               if ((tPage.properties?.method?.relation || []).length) return;
               const mId = await resolveMethodIdByName(at);
               if (!mId) return;
-              await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
+              await hubNotionFetch(`https://api.notion.com/v1/pages/${titleId}`, {
                 method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
                 body: JSON.stringify({ properties: { method: { relation: [{ id: dash(mId) }] } } }),
               });
@@ -50148,7 +50157,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // reconstructing the full article rather than just its hook.
       if (body.action === 'getHubAssetState') {
         const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION};
-        const resp=await fetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
+        const resp=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
         const page=await resp.json(); if(!resp.ok||page.archived||page.in_trash)return json({error:page.message||'Asset unavailable'},404);
         return json({...await hubAssetRoutedState(env,page),status:page.properties?.['Asset Status']?.select?.name||''});
       }
