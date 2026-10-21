@@ -14067,6 +14067,14 @@ export default {
     try {
       const wantsStatus=HIERARCHY_STATUSES.has(body.status || body.stage);
       const publishes=body.publishToHub===true || /^(publish|deploy|republish)/.test(body.action || '');
+      if(body.action==='createAsset' && HIERARCHY_STATUSES.has(body.assetStatus || 'Publish')) {
+        await requireHierarchyPlacement(env,{properties:{Campaign:{relation:body.campId?[{id:body.campId}]:[]},'Content Strategy':{relation:body.titleId?[{id:body.titleId}]:[]},Product:{relation:body.productId?[{id:body.productId}]:[]}}});
+      }
+      // These legacy writers otherwise save a pillar before attempting their implicit Planning → Development move.
+      if(body.titleId && ['writeTitlePillar','generateListingAsset','generateViralPillar'].includes(body.action)) {
+        const title=await ivPage(body.titleId);
+        if(title.properties?.Status?.select?.name==='Planning') await requireHierarchyPlacement(env,title,'title');
+      }
       if(body.assetId && (wantsStatus || publishes)) await requireHierarchyPlacement(env,await ivPage(body.assetId));
       if(body.titleId && (wantsStatus || ['createDevAssets','generateTitleAssets'].includes(body.action))) await requireHierarchyPlacement(env,await ivPage(body.titleId),'title');
     } catch(error) {
