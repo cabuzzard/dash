@@ -2,6 +2,95 @@
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
 import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
+// Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
+// The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
+let hierarchyEnv;
+const HIERARCHY_ERROR = "not in the hub's Keywords hierarchy — place its topic in a cluster (or attach a placed product) first";
+const HIERARCHY_STATUSES = new Set(['Development', 'Publish', 'Published']);
+const hierarchyId = x => String(x || '').replace(/-/g, '');
+const hierarchyText = runs => (runs || []).map(x => x.plain_text ?? x.text?.content ?? '').join('').trim();
+function hierarchyModel({ topics, tc, products, mainIds, titles }) {
+  const known = new Set(topics.map(x => hierarchyId(x.id))), assign = {};
+  Object.entries(tc.assign || {}).forEach(([id, cluster]) => { assign[hierarchyId(id)] = cluster; });
+  const topic = id => hierarchyId(id) === '__main' || (known.has(hierarchyId(id)) && (tc.clusters || []).includes(assign[hierarchyId(id)]));
+  const productIds = new Set(products.filter(p => topic(p.topicId)).map(p => hierarchyId(p.id)));
+  mainIds.forEach(id => productIds.add(hierarchyId(id)));
+  const title = p => topic(hierarchyText(p['Topic ID']?.rich_text)) || (p.product?.relation || p.Product?.relation || []).some(r => productIds.has(hierarchyId(r.id)));
+  const titleIds = new Set(titles.filter(t => title(t.properties || {})).map(t => hierarchyId(t.id)));
+  const asset = p => (p['Content Strategy']?.relation || []).some(r => titleIds.has(hierarchyId(r.id))) || (p.Product?.relation || p.product?.relation || []).some(r => productIds.has(hierarchyId(r.id)));
+  return { topic, title, asset, productIds, titleIds };
+}
+async function hierarchyForHub(env, campaignId, seed={}) {
+  const cid = hierarchyId(campaignId), dc = kwDashId(cid);
+  const [committed, staged, tc, products, mainIds, titles] = await Promise.all([
+    seed.topics ? seed.topics.filter(p=>p.properties?.Status?.select?.name==='Active'&&(p.properties?.Campaign?.relation||[]).some(r=>hierarchyId(r.id)===cid)) : notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property:'Campaign',relation:{contains:dc} },{property:'Status',select:{equals:'Active'}}] } }),
+    env.TRADES.get('seoclusters:staged:' + cid, 'json'), env.TRADES.get('seotopicclusters:' + cid, 'json'),
+    seed.products ? seed.products.filter(p=>(p.properties?.Campaigns?.relation||[]).some(r=>hierarchyId(r.id)===cid)) : notionQuery(PRODUCTS_DB, { filter:{property:'Campaigns',relation:{contains:dc}} }), hubMainList(env,cid),
+    seed.titles ? seed.titles.filter(p=>(p.properties?.Campaign?.relation||[]).some(r=>hierarchyId(r.id)===cid)) : notionQuery(CONTENT_STRATEGY_DB, { filter:{property:'Campaign',relation:{contains:dc}} })
+  ]);
+  return hierarchyModel({ topics:[...committed,...(staged || [])], tc:tc || {clusters:[],assign:{}},
+    products:products.filter(p=>!p.archived&&!p.in_trash&&!p.properties?.Archived?.checkbox&&p.properties?.Status?.select?.name!=='Archived').map(p=>({id:p.id,topicId:hierarchyText(p.properties?.['Topic ID']?.rich_text)})), mainIds, titles });
+}
+async function hierarchyPlacement(env, page, kind) {
+  const p=page.properties || {}, cids=(p.Campaign?.relation || []).map(r=>hierarchyId(r.id));
+  // Resolve omitted Campaign on legacy asset creation through its title, never through a caller-supplied hub.
+  if (!cids.length && kind==='asset') for(const r of p['Content Strategy']?.relation || []) {
+    const t=await ivPage(r.id); for(const c of t.properties?.Campaign?.relation || []) cids.push(hierarchyId(c.id));
+  }
+  const hubs=HUB_SITES.filter(h=>cids.includes(hierarchyId(h.campaignId)));
+  if (!hubs.length) return { placed:false, applies:cids.length===0, reason:HIERARCHY_ERROR };
+  for(const hub of hubs) { const model=await hierarchyForHub(env,hub.campaignId); if(!model[kind](p)) return {placed:false,applies:true,reason:HIERARCHY_ERROR}; }
+  return {placed:true,applies:true};
+}
+async function requireHierarchyPlacement(env,page,kind='asset') {
+  const result=await hierarchyPlacement(env,page,kind);
+  if(result.applies&&!result.placed) throw new Error(HIERARCHY_ERROR);
+  return result;
+}
+async function reconcileHierarchy(env, campaignId, apply=false) {
+  const hub=HUB_SITES.find(h=>hierarchyId(h.campaignId)===hierarchyId(campaignId));
+  if(!hub) throw new Error('That campaign has no content hub.');
+  const hierarchy=await hierarchyForHub(env,campaignId), filter={property:'Campaign',relation:{contains:kwDashId(hierarchyId(campaignId))}};
+  const [titles,assets]=await Promise.all([notionQuery(CONTENT_STRATEGY_DB,{filter}),notionQuery(ASSETS_DB,{filter})]);
+  const records=[];
+  for(const [kind,pages] of [['title',titles],['asset',assets]]) for(const page of pages) {
+    const p=page.properties || {}, key=kind==='asset'?'Asset Status':'Status', oldStatus=(p[key]?.select || p[key]?.status)?.name;
+    if(page.archived||page.in_trash||!HIERARCHY_STATUSES.has(oldStatus)||hierarchy[kind](p)) continue;
+    const entry={id:hierarchyId(page.id),kind,name:hierarchyText(p['Asset Title']?.title || p.Title?.title || p.Name?.title),oldStatus,newStatus:'Idea'};
+    if(apply) {
+      // Fresh check prevents a long-running audit from demoting an item placed in the meantime.
+      const fresh=await ivPage(page.id), current=(fresh.properties?.[key]?.select || fresh.properties?.[key]?.status)?.name;
+      const placement=await hierarchyPlacement(env,fresh,kind);
+      if(current!==oldStatus||placement.placed) { entry.skipped='changed since audit'; records.push(entry); continue; }
+      const response=await hubNotionFetch('https://api.notion.com/v1/pages/'+kwDashId(entry.id),{method:'PATCH',headers:ivHdr(),body:JSON.stringify({properties:{[key]:{[p[key]?.status?'status':'select']:{name:'Idea'}}}})});
+      if(!response.ok) throw new Error('Could not demote '+entry.name+': '+await response.text());
+      entry.demoted=true;
+      if(kind==='asset') entry.listings=await removeHubAssetListings(env,ivHdr(),fresh);
+    }
+    records.push(entry);
+  }
+  return {hub:hub.slug,campaignId:hierarchyId(campaignId),applied:apply,records};
+}
+async function hierarchyFetch(url, options={}) {
+  const address=String(url), method=String(options.method || 'GET').toUpperCase();
+  if(hierarchyEnv && /^https:\/\/api\.notion\.com\/v1\/pages(?:\/[^/?]+)?$/.test(address) && ['PATCH','POST'].includes(method) && typeof options.body==='string') {
+    const payload=JSON.parse(options.body), props=payload.properties || {};
+    const explicit=props['Asset Status'] || props.Status, status=explicit?.select?.name || explicit?.status?.name;
+    if(HIERARCHY_STATUSES.has(status)) {
+      let current={properties:{},parent:payload.parent};
+      if(method==='PATCH') {
+        const response=await globalThis.fetch(address,{headers:options.headers});
+        if(!response.ok) throw new Error('Could not verify Keywords hierarchy ('+response.status+')');
+        current=await response.json();
+      }
+      const db=hierarchyId(current.parent?.database_id || current.parent?.data_source_id);
+      const kind=props['Asset Status'] ? 'asset' : db===hierarchyId(CONTENT_STRATEGY_DB) ? 'title' : '';
+      if(kind) await requireHierarchyPlacement(hierarchyEnv,{...current,properties:{...current.properties,...props}},kind);
+    }
+  }
+  return globalThis.fetch(url,options);
+}
+const fetch = hierarchyFetch;
 // Product → every linked title → every linked asset. No direct-product/orphan fallback.
 // Sets deduplicate assets linked through multiple titles of the same product.
 function hubProductAssetStats(productRows, titleRows, assetRows) {
@@ -1464,6 +1553,7 @@ async function topicalEnsureRewriteProp(env) {
 }
 async function topicalWriteInputs(env, assetId, options = {}) {
   const state = await topicalPublishState(env, assetId);
+  await requireHierarchyPlacement(env,state.page);
   if (!state.eligible) throw new Error('Only the Current Methods topical SEO and YouTube types support this write');
   if (!state.titleId) throw new Error('This asset has no title');
   // The private capability is supplied by the explicit modal handler, never by JSON, queues or asset state.
@@ -1654,6 +1744,7 @@ function topicalArticleParts(md) {
 async function publishTopicalAsset(env, assetId, publishOptions = {}) {
   await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
   const state = await topicalPublishState(env, assetId);
+  await requireHierarchyPlacement(env,state.page);
   if (!state.eligible) return { published: false, error: 'This is not a topical SEO or YouTube asset' };
   const writing=await assetWritingState(state.page);
   if (!writing.hasWriting) return { published: false, error: 'not written yet — write it first' };
@@ -4077,7 +4168,7 @@ async function salesProofFor(productId) {
 }
 
 async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId }) {
-  if(assetId)await requireAssetWriting(await ivPage(assetId));
+  if(assetId){const page=await ivPage(assetId);await requireHierarchyPlacement(env,page);await requireAssetWriting(page);}
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
@@ -4234,6 +4325,7 @@ function offerBlogParts(props, blocks) {
   return { intro, sections, conclusion: '', sources: [], cta: card?.ctaUrl ? { href: card.ctaUrl, label: card.ctaLabel } : undefined };
 }
 async function publishOfferAssetBlog(env, hdr, page) {
+  await requireHierarchyPlacement(env,page);
   const p = page.properties || {};
   if (p['Asset Status']?.select?.name !== 'Published' || hubSectionOf(p) !== 'offers' || !offerBlogAsset(p)) return { skipped: 'not a Published offers-section blog asset' };
   const campaignId = p.Campaign?.relation?.[0]?.id;
@@ -4278,11 +4370,12 @@ async function hubBlogManifest(env, hub) {
   if (!Array.isArray(list)) throw new Error('Invalid hub blog listing');
   return list;
 }
-function hubFeedEntries(rows, manifest, hub) {
+async function hubFeedEntries(rows, manifest, hub, env, model) {
+  const hierarchy = model || await hierarchyForHub(env, hub.campaignId);
   const entries = [], seen = new Set();
   for (const row of [...rows].sort((a,b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))) {
     const p = row.properties || {}, sec = hubSectionOf(p), aid = hubAssetId(row.id);
-    if (row.archived || row.in_trash || p['Asset Status']?.select?.name !== 'Published' || !HUB_FEED_SECTIONS.has(sec)) continue;
+    if (!hierarchy.asset(p) || row.archived || row.in_trash || p['Asset Status']?.select?.name !== 'Published' || !HUB_FEED_SECTIONS.has(sec)) continue;
     if (!(p.Campaign?.relation || []).some(c => hubAssetId(c.id) === hubAssetId(hub.campaignId))) continue;
     if (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug) continue;
     const path = offerBlogPath(p, hub.slug);
@@ -4304,6 +4397,7 @@ function hubRoutedState(a, expectedSlug, listingEntry) {
   const off = hubPublish => ({ hubPublish, hubLive: false, hubRoutedSection: '', hubSectionDisplay: label ? label + ' \u00b7 not on hub' : '' });
   if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return off('\u26a0 Different hub');
   if (!expectedSlug) return off('Not a content hub');
+  if (a.hierarchyPlaced === false) return off('Not in the Keywords hierarchy');
   if (st !== 'Published') return off(st === 'Publish' ? 'Queued \u2014 not live' : st === 'Review' ? 'Review \u2014 not live' : 'Not published');
   if (!sec) return off(/^unlisted$/i.test(a.hubSection || '') ? 'Published \u00b7 unlisted' : '\u26a0 Published \u00b7 no section');
   if (sec === 'email') return off('Published \u00b7 email only');
@@ -4322,9 +4416,10 @@ async function hubAssetRoutedState(env, page) {
   let entry;
   if (hub && a.status === 'Published' && HUB_FEED_SECTIONS.has(a.hubSectionKey)) {
     const [rows,manifest]=await Promise.all([notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}}),hubBlogManifest(env,hub)]);
-    entry=hubFeedEntries(rows,manifest,hub).find(e=>e.id===hubAssetId(page.id));
+    entry=(await hubFeedEntries(rows,manifest,hub,env)).find(e=>e.id===hubAssetId(page.id));
   }
-  return hubRoutedState(a, hub?.slug || '', entry);
+  const placement=await hierarchyPlacement(env,page,'asset');
+  return hubRoutedState({...a,hierarchyPlaced:!placement.applies||placement.placed}, hub?.slug || '', entry);
 }
 async function removeHubAssetListings(env, hdr, page, directories = ['blog','offers','sales']) {
   const p = page.properties || {}, cid = p.Campaign?.relation?.[0]?.id;
@@ -4341,6 +4436,7 @@ async function removeHubAssetListings(env, hdr, page, directories = ['blog','off
     if (!list.some(owns)) continue;
     const report = await reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub,liveSlugs:list.filter(x=>!owns(x)).map(x=>x.slug)});
     if (report.error) throw new Error(report.error);
+    if(sub==='offers') for(const item of report.removedEntries || []) if(/^[a-z0-9-]+$/.test(item.slug||'')) await t.deleteFile(`${t.basePath}/${item.slug}/index.html`);
     reports.push(...(report.removedEntries || []).map(x=>({...x, directory:sub})));
   }
   return { removed:reports.length, removedEntries:reports };
@@ -4358,6 +4454,7 @@ async function syncHubOfferIndex(env,hdr,page,site) {
   return reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub:'offers',desiredEntries:next});
 }
 async function publishHubAssetToLiveSite(env, hdr, page) {
+  await requireHierarchyPlacement(env,page);
   await requireAssetWriting(page);
   const p = page.properties || {}, sec = hubSectionOf(p);
   if (!hubPublishableType(p['Asset Type']?.select?.name) && !p['Hub Section']?.select?.name) throw new Error('This asset type cannot be published to a hub');
@@ -4382,9 +4479,10 @@ function hubAssetSyncFields(asset, interviews = []) {
   const assetSynced = !/^Out of Sync/i.test(assetSync) && !asset.writtenWithoutInterview && !interviewDebt;
   return {assetSync,assetSynced};
 }
-function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interviews) {
-  const listing = new Map(hubFeedEntries(rows,manifest,hub).map(entry=>[entry.id,entry]));
-  return rows.filter(page=>!page.archived&&!page.in_trash&&page.properties?.['Asset Status']?.select?.name!=='Delete'&&(!page.properties?.['Content Hub']?.select?.name||page.properties['Content Hub'].select.name===hub.slug)).map(page=>{
+async function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interviews, env) {
+  const hierarchy=await hierarchyForHub(env,hub.campaignId);
+  const listing = new Map((await hubFeedEntries(rows,manifest,hub,env,hierarchy)).map(entry=>[entry.id,entry]));
+  return rows.filter(page=>hierarchy.asset(page.properties || {})&&!page.archived&&!page.in_trash&&page.properties?.['Asset Status']?.select?.name!=='Delete'&&(!page.properties?.['Content Hub']?.select?.name||page.properties['Content Hub'].select.name===hub.slug)).map(page=>{
     const p=page.properties||{},type=p['Asset Type']?.select?.name||'',id=hubAssetId(page.id),method=methodNames[p.Method?.relation?.[0]?.id]||'';
     const asset={id,assetId:id,titleId:hubAssetId(p['Content Strategy']?.relation?.[0]?.id),rawAssetType:type,
       title:hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title)||'Untitled',
@@ -4424,7 +4522,7 @@ async function publishHubSectionSelection(env,assetId,section,campaignId) {
   ]);
   const methodNames={},methodId=p.Method?.relation?.[0]?.id;
   if(methodId){const methodPage=await ivPage(methodId);methodNames[methodId]=hubRichText(methodPage.properties?.Name?.title);}
-  const row=hubSectionAssetRows(rows,manifest,hub,methodNames,tierOf,interviews).find(r=>r.id===hubAssetId(assetId));
+  const row=(await hubSectionAssetRows(rows,manifest,hub,methodNames,tierOf,interviews,env)).find(r=>r.id===hubAssetId(assetId));
   if(!row || !row.assetSynced || row.hubSectionKey!==section || row.hubLive)throw new Error('This asset is no longer eligible for this section. Reload Hub View.');
   if(!['offers','news','articles','interactive','cta'].includes(section))throw new Error('Unsupported Hub View section');
   const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION},oldStatus=p['Asset Status']?.select?.name||'';
@@ -13267,6 +13365,7 @@ export default {
   // Child generation (generateTitleAssets + parentAssetId): for this one request the title's pillar reads come from the
   // parent asset (PILLAR_SOURCE), then every asset it created under the title gets "Parent Asset" = that parent.
   async fetch(request, env, ctx) {
+    hierarchyEnv = env;
     let key = "", parent = "", started = 0;
     if (request.method === "POST" && /json/i.test(request.headers.get("content-type") || "") && +(request.headers.get("content-length") || 1e9) < 300000) {
       try { const pk = await request.clone().json();
@@ -13789,7 +13888,7 @@ export default {
           hubBlogManifest(env,hub)
         ]);
         const kind = isProducts ? 'offers' : String(body.kind || '').toLowerCase();
-        const entries = hubFeedEntries(rows,manifest,hub).filter(e=>kind ? e.section === kind : ['news','articles'].includes(e.section));
+        const entries = (await hubFeedEntries(rows,manifest,hub,env)).filter(e=>kind ? e.section === kind : ['news','articles'].includes(e.section));
         const limit = Math.max(1,Math.min(100,Number(body.limit)||9));
         return json({[key]:entries.slice(0,limit).map(({id,section,hubSlug,...entry})=>({...entry,...(body.withIds?{id}:{})})),hasIndex:entries.length>0});
       } catch(e) { return json({[key]:[],hasIndex:false,error:e.message}); }
@@ -13949,6 +14048,20 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
+    // Authenticated audit is read-only unless apply is explicitly true.
+    if(body.action==='reconcileHubHierarchy') {
+      try {return json(await reconcileHierarchy(env,body.campaignId,body.apply===true));}
+      catch(error){return json({error:error.message},400);}
+    }
+    // Preflight compound operations before content, interviews or listing fields change.
+    try {
+      const wantsStatus=HIERARCHY_STATUSES.has(body.status || body.stage);
+      const publishes=body.publishToHub===true || /^(publish|deploy|republish)/.test(body.action || '');
+      if(body.assetId && (wantsStatus || publishes)) await requireHierarchyPlacement(env,await ivPage(body.assetId));
+      if(body.titleId && (wantsStatus || ['createDevAssets','generateTitleAssets'].includes(body.action))) await requireHierarchyPlacement(env,await ivPage(body.titleId),'title');
+    } catch(error) {
+      return json({error:error.message,...(error.message===HIERARCHY_ERROR?{skipped:HIERARCHY_ERROR}:{})},400);
+    }
     try { watchCandidateAction(env, ctx, body); } catch (e) {}
     // Long writer actions (full-length scripts, multi-concept grade/retry runs)
     // can pass Cloudflare's 100s no-bytes limit → client gets "error code: 524"
@@ -14032,11 +14145,12 @@ export default {
         await governingFlow(env);
         for (const hub of targets) {
           const rows=await notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}});
-          const eligible=rows.filter(r=>!r.archived&&!r.in_trash&&HUB_FEED_SECTIONS.has(hubSectionOf(r.properties))&&hubPublishableType(r.properties?.['Asset Type']?.select?.name)&&(!r.properties?.['Content Hub']?.select?.name||r.properties['Content Hub'].select.name===hub.slug));
+          const hierarchy=await hierarchyForHub(env,hub.campaignId);
+          const eligible=rows.filter(r=>hierarchy.asset(r.properties || {})&&!r.archived&&!r.in_trash&&HUB_FEED_SECTIONS.has(hubSectionOf(r.properties))&&hubPublishableType(r.properties?.['Asset Type']?.select?.name)&&(!r.properties?.['Content Hub']?.select?.name||r.properties['Content Hub'].select.name===hub.slug));
           const before=await hubBlogManifest(env,hub);
           for (const page of eligible) {
             const aid=hubAssetId(page.id);
-            if (!body.force && hubFeedEntries([page],before,hub).length) {results.push({hub:hub.slug,asset:aid,skipped:'already listed'});continue;}
+            if (!body.force && (await hubFeedEntries([page],before,hub,env,hierarchy)).length) {results.push({hub:hub.slug,asset:aid,skipped:'already listed'});continue;}
             try {
               const site=await publishHubAssetToLiveSite(env,hdr,page);
               page.properties['Content URL']={url:site.liveUrl};
@@ -14045,7 +14159,7 @@ export default {
           }
           // A failed Notion read aborts this action: never interpret a failed query as an empty Published set.
           const current=await notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}});
-          const manifest=await hubBlogManifest(env,hub), entries=hubFeedEntries(current,manifest,hub);
+          const manifest=await hubBlogManifest(env,hub), entries=await hubFeedEntries(current,manifest,hub,env,hierarchy);
           const ids=new Set(entries.map(e=>e.id));
           const live=manifest.filter(m=>m.assetId ? ids.has(hubAssetId(m.assetId)) : entries.some(e=>e.url===`./blog/${m.slug}/`));
           const bp=await reconcileHubDir({env,hdr,dash:ivDash,campaignId:hub.campaignId,sub:'blog',liveSlugs:live.map(m=>m.slug)});
@@ -15454,7 +15568,7 @@ the one aesthetic risk taken + why:`;
             try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
             const nm = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (nm) _hubMethodNames.set(id, nm); return [id, nm]; } catch (e) { return [id, ""]; } })));
           const [manifest,sectionTierOf,sectionInterviews]=await Promise.all([hubBlogManifest(env,{slug,campaignId}),ivTierFn(env),ivList({property:'Campaign',relation:{contains:dashHb(campaignId)}})]);
-          const sectionAssets=hubSectionAssetRows(listed,manifest,{slug,campaignId},mName,sectionTierOf,sectionInterviews);
+          const sectionAssets=await hubSectionAssetRows(listed,manifest,{slug,campaignId},mName,sectionTierOf,sectionInterviews,env);
           const pageSections=HUB_BLOG_SECTIONS.map(sec=>{
             const candidates=sectionAssets.filter(asset=>asset.hubSectionKey===sec.key);
             const items=candidates.filter(asset=>sec.key==='email'?asset.status==='Published':asset.hubLive);
@@ -16661,12 +16775,13 @@ Return: {
         const rows = [];
         const usedProducts = new Set();
         const scheduleFields = slotId => { const m = slotMeta[dropDash(slotId || "")]; return m ? { schedule: m.schedule, scheduleGroup: m.grouping, cadence: m.cadence, progress: m.progress, nextDue: m.nextDue, scheduleStatus: m.status } : { schedule: "", scheduleGroup: "", cadence: "", progress: "", nextDue: "", scheduleStatus: "" }; };
-        const listedByAsset = new Map();
+        const listedByAsset = new Map(), hierarchyByHub = new Map();
+        await Promise.all(HUB_SITES.map(async h=>hierarchyByHub.set(h.slug,await hierarchyForHub(env,h.campaignId,{topics:topicRows,products:productRows,titles:titleRows}))));
         await Promise.all(HUB_SITES.filter(h=>assetRows.some(a=>a.properties?.['Asset Status']?.select?.name==='Published' && HUB_FEED_SECTIONS.has(hubSectionOf(a.properties)) && (a.properties?.Campaign?.relation||[]).some(c=>hubAssetId(c.id)===hubAssetId(h.campaignId)))).map(async hub=>{
-          try {for(const entry of hubFeedEntries(assetRows,await hubBlogManifest(env,hub),hub)) listedByAsset.set(entry.id,entry);}
+          try {for(const entry of await hubFeedEntries(assetRows,await hubBlogManifest(env,hub),hub,env,hierarchyByHub.get(hub.slug))) listedByAsset.set(entry.id,entry);}
           catch(e){console.error('Hub listing verification:',hub.slug,e.message);}
         }));
-        const hubPublishFields = (a,campId) => hubRoutedState(a,hubSlugByCampId[campId]||'',listedByAsset.get(a?.id));
+        const hubPublishFields = (a,campId) => { const slug=hubSlugByCampId[campId]||'', model=hierarchyByHub.get(slug); const page=assetRows.find(r=>hubAssetId(r.id)===hubAssetId(a?.id)); return hubRoutedState({...a,hierarchyPlaced:model&&page?model.asset(page.properties||{}):undefined},slug,listedByAsset.get(a?.id)); };
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name,
           platformTitle: a.platformTitle || "",
@@ -22360,6 +22475,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // bulk "＋ Dev assets": one EMPTY asset record per checklist type (Asset Status Development, nothing written), linked to
       // the title / product / campaign / hub and its Method. A type the title already has an asset of is skipped.
       if (body.action === "createDevAssets") {
+        if (body.titleId) await requireHierarchyPlacement(env,await ivPage(body.titleId),'title');
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const nidC = x => String(x || "").replace(/-/g, ""), dashC = s => { s = nidC(s); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const titleId = nidC(body.titleId), types = Array.isArray(body.types) ? body.types.slice(0, 40) : [];
@@ -30769,6 +30885,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         try { return json(await writeParentAsset(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "generateTitleAssets") {
+        if (body.titleId) await requireHierarchyPlacement(env,await ivPage(body.titleId),'title');
         const { titleId, campaignId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType, platformName, platformId, loginId } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
@@ -51251,6 +51368,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
+    hierarchyEnv = env;
     // 📜 Cron log (2026-10-10): every job of this run is recorded — name, time, ok / failed — plus the console lines it
     // printed, into KV cron:log:<trigger> (last 60 runs each). Dash → Cron log tab (getCronLog). A job whose catch only
     // logs "<name> failed: …" still counts as failed.

@@ -12,7 +12,7 @@ const block=(type,text,extra={})=>({type,[type]:{rich_text:rt(text)},...extra});
 function setup(rows=[]){
  const files=new Map([['web/hub/sunflower-acres/blog/posts.json',JSON.stringify([{assetId:'news-id',slug:'news',title:'News',intro:'News introduction'}])]]);
  const pages=new Map(rows.map(p=>[p.id.replaceAll('-',''),p]));const patches=[],writes=[],reads=[];
- const ctx=vm.createContext({console,URL,Map,Set,JSON,Date,ASSETS_DB:'assets',NOTION_VERSION:'version',NOTION_TOKEN:'fixture',HUB_SITES:[hub],
+ const ctx=vm.createContext({hierarchyForHub:async()=>({asset:()=>true}),requireHierarchyPlacement:async()=>({placed:true}),hierarchyPlacement:async()=>({placed:true,applies:true}),console,URL,Map,Set,JSON,Date,ASSETS_DB:'assets',NOTION_VERSION:'version',NOTION_TOKEN:'fixture',HUB_SITES:[hub],
   ivDash:id=>id,lfReadRich:p=>(p?.rich_text||[]).map(x=>x.plain_text).join(''),
   notionQuery:async(db,q)=>rows.filter(p=>p.properties['Asset Status'].select.name==='Published'),
   hubSiteTarget:async({sub='blog'}={})=>({basePath:'web/hub/sunflower-acres/'+sub,campName:'Sunflower Acres',hub,s:{bg:'#fff',ink:'#111',accent:'#333',headlineFont:'Georgia',bodyFont:'Georgia'},

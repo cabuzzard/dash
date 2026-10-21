@@ -12,7 +12,7 @@ function fixture(type = 'Topical Post') {
     { cells: { cname01: 'Topical - YouTube', cmatch01: 'Youtube Long Form QA; YouTube Longform' } },
     { cells: { cname01: 'Sales - Offer', cmatch01: 'Offer – Content Hub' } }
   ] };
-  const context = vm.createContext({ console, Symbol, Date, JSON, ASSETS_DB: 'assets', LF_DEFAULT_VOICE: 'voice',
+  const context = vm.createContext({hierarchyForHub:async()=>({asset:()=>true}),requireHierarchyPlacement:async()=>({placed:true}),hierarchyPlacement:async()=>({placed:true,applies:true}), console, Symbol, Date, JSON, ASSETS_DB: 'assets', LF_DEFAULT_VOICE: 'voice',
     hubRichText:r=>(r||[]).map(x=>x.plain_text??x.text?.content??'').join(''),offerBlogBlocks:async()=>[], NOTION_TOKEN: '', ivNorm: norm, ivHdr: () => ({ Authorization: 'Bearer ' + context.NOTION_TOKEN }), ivDash: value => value, ivRid: (p, k) => p[k]?.relation?.[0]?.id || '',
     ivRt: text => [{ text: { content: String(text) } }], lfReadRich: p => (p?.rich_text || []).map(t => t.plain_text ?? t.text.content).join(''),
     ivPage: async () => { assert.equal(context.NOTION_TOKEN, 'test-notion-token', 'cold scheduled writes initialize credentials before any Notion read'); return structuredClone(page); }, ivForTitle: async () => structuredClone(interviews),
