@@ -14,7 +14,7 @@ const ctx=vm.createContext({document:{getElementById:get},console,Set,Map,
  kwNid:s=>s,appCell:()=>'',appIcon:()=>''});
 vm.runInContext(`const HUB_SITES=[{slug:'a',name:'Alpha',campaignId:'1'},{slug:'b',name:'Beta',campaignId:'2'}];
 let _hubRegistryReady=false,DEV2_ROWS=[],DEV2_APPS=[],_hub2ColsAll=[];
-const _hub2Visible={},_hub2Content={},_hub2Selected={},_hub2BulkMsg={},_hub2ContentSort={},_hub2ContentGroup={},_hub2ContentClosed={},_hub2ContentFilters={},_hub2ContentFilterOpen={},_hub2TitleFocus={},_hubKw={};`,ctx);
+const _hub2Visible={},_hub2Content={},_hub2Selected={},_hub2BulkMsg={},_hub2ContentSort={},_hub2ContentGroup={},_hub2ContentClosed={},_hub2ContentFilters={},_hub2ContentFilterOpen={},_hub2TitleFocus={},_hub2AssetFocus={},_hubKw={};`,ctx);
 vm.runInContext(aggregate+renderer,ctx);
 (async()=>{
  await vm.runInContext('hub2AllLoad()',ctx);

@@ -15391,6 +15391,61 @@ function toggleHubPreviewEdit(slug){
   if (HPI_ON[slug]) wireHubPreview(slug);
   else { const f = document.getElementById("hpiFrame-"+slug); if (f) { try { f.contentWindow.location.reload(); } catch(e){ f.src = f.src; } } }   // reload strips outlines + handlers
 }
+// Hover-edit blog cards navigate to the source asset in this hub's Content table.
+function hub2BlogRecordPath(value, base) {
+  try { return decodeURI(new URL(value, base).pathname).replace(/\/index\.html$/i, '/').replace(/\/+$/, '').replace(/^.*\/(blog|articles|news)\//, '/$1/'); }
+  catch (e) { return ''; }
+}
+async function hub2BlogShowRecord(slug, href, headline, base) {
+  const hub = HUB_SITES.find(h => h.slug === slug); if (!hub) return;
+  try {
+    await hub2ContentLoad(slug);
+    for (let i = 0; (_hub2Content[slug] || {}).loading && i < 600; i++) await new Promise(resolve => setTimeout(resolve, 150));
+    const assets = ((_hub2Content[slug] || {}).rows || []).filter(r => r.type === 'Asset');
+    const cid = kwNid(hub.campaignId), path = hub2BlogRecordPath(href, base);
+    const ids = new Set((DEV2_ROWS || []).filter(r => kwNid(r.campId) === cid && r.assetId && [r.hubLiveUrl, r.liveUrl].some(url => url && hub2BlogRecordPath(url, base) === path)).map(r => kwNid(r.assetId)));
+    let matches = assets.filter(r => ids.has(kwNid(r.id)));
+    if (matches.length !== 1) {
+      try {
+        const response = await fetch(new URL('blog/posts.json', base), { cache: 'no-store' });
+        if (response.ok) {
+          const posts = await response.json(), post = posts.find(p => hub2BlogRecordPath('./blog/' + p.slug + '/', base) === path);
+          if (post && post.assetId) matches = assets.filter(r => kwNid(r.id) === kwNid(post.assetId));
+        }
+      } catch (e) {}
+    }
+    if (matches.length !== 1) {
+      const name = String(headline || '').trim().toLowerCase();
+      matches = assets.filter(r => /blog|seo|topical post/i.test(r.rawType || r.assetType || '') && name && String(r.name || '').trim().toLowerCase() === name);
+    }
+    if (matches.length !== 1) return showToast('Could not identify one matching Content record for this blog card.', 'error');
+    const record = matches[0];
+    delete _hub2TitleFocus[slug];
+    _hub2ContentFilters[slug] = []; _hub2ContentClosed[slug] = new Set(); _hub2Selected[slug] = new Set();
+    _hub2AssetFocus[slug] = { id: kwNid(record.id), name: record.name || headline || 'blog asset' };
+    const box = document.getElementById('hub2Content-' + slug), details = box && box.closest('details');
+    if (!box) return;
+    if (details) details.open = true;
+    hub2ContentPaint(slug);
+    (details || box).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { showToast('Could not open the Content record: ' + e.message, 'error'); }
+}
+function hub2WireBlogRecordLinks(slug, doc) {
+  const selector = '#journalBody a.card, #articlesBody a.card';
+  const decorate = () => doc.querySelectorAll(selector).forEach(card => { card.classList.add('hpi-hot'); card.title = 'Show this blog asset in the Content table below'; });
+  decorate();
+  if (doc._hub2BlogRecordLinks) return;
+  doc._hub2BlogRecordLinks = true;
+  doc.addEventListener('click', event => {
+    const card = event.target.closest && event.target.closest(selector);
+    if (!card || !hpiIsHub2(slug) || HUB2_EDIT[slug] === false) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    hub2BlogShowRecord(slug, card.href, card.querySelector('h3')?.textContent || '', doc.baseURI);
+  }, true);
+  const observer = new MutationObserver(decorate);
+  observer.observe(doc.body, { childList: true, subtree: true }); // cards arrive after the preview's async feed request
+}
+
 function wireHubPreview(slug){
   const d = hpiDoc(slug);
   if (!d){ const b = document.getElementById('hpiEdit-'+slug); if (b) b.textContent = '✎ preview not reachable'; return; }
@@ -15406,6 +15461,7 @@ function wireHubPreview(slug){
     st.textContent = '.hpi-hot{outline:2px dashed rgba(80,140,255,.7);outline-offset:1px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline:2px solid #3b82f6;background:rgba(80,140,255,.16);}';
     d.head.appendChild(st);
   }
+  if (hpiIsHub2(slug)) hub2WireBlogRecordLinks(slug, d);
   [['#heroAside', 'hero'], ['#reportAside', 'signup']].forEach(([sel, kind]) => {
     const el = d.querySelector(sel); if (!el) return; el.classList.add('hpi-hot');
     if (el._hpiImg) return; el._hpiImg = true;
@@ -17404,13 +17460,16 @@ async function hub2BulkInterviews(slug, btn) {
 // Keywords → click a product: open the Content section filtered to that product (its row, titles and assets)
 // Keywords → click a title's Dev count: Content shows only that title's asset rows (✕ in the Content toolbar clears it)
 const _hub2TitleFocus = {};
+const _hub2AssetFocus = {};
 function hub2ContentShowTitle(slug, tid, name) {
+  delete _hub2AssetFocus[slug];
   _hub2TitleFocus[slug] = { tid: kwNid(tid), name };
   const box = document.getElementById('hub2Content-' + slug), det = box && box.closest('details'); if (!box) return;
   if (det && !det.open) det.open = true; else { hub2ContentLoad(slug); hub2ContentPaint(slug); }
   setTimeout(() => (det || box).scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
 }
 function hub2ContentShowProduct(slug, name) {
+  delete _hub2AssetFocus[slug];
   _hub2ContentFilters[slug] = [{ col: 'product', op: 'is', val: name }]; _hub2ContentFilterOpen[slug] = true;
   const box = document.getElementById('hub2Content-' + slug), det = box && box.closest('details'); if (!box) return;
   if (det && !det.open) det.open = true; else { hub2ContentLoad(slug); hub2ContentPaint(slug); }
@@ -17475,18 +17534,21 @@ function hub2ContentHtml(slug) {
   const sort = _hub2ContentSort[slug] ||= [...(all ? [{ col: 'hub', asc: true }] : []), { col: 'cluster', asc: true }, { col: 'topic', asc: true }], grouped = _hub2ContentGroup[slug] !== false, closed = _hub2ContentClosed[slug] ||= new Set();
   const raw = (r, col) => col === 'short' ? r.name : (r[col] || ''), shown = (r, col) => col === 'short' ? r.short : raw(r, col);
   const filters = _hub2ContentFilters[slug] ||= [], active = filters.filter(f => f.col && f.val !== '');
-  const tfChip = _hub2TitleFocus[slug] ? `<div style="display:flex;gap:8px;align-items:center;margin:0 0 6px;font-size:11px;"><span style="padding:1px 8px;border:1px solid #ff7a00;border-radius:4px;color:#ff7a00;">Assets of “${esc(_hub2TitleFocus[slug].name || 'title')}”</span><button onclick="delete _hub2TitleFocus['${slug}'];hub2ContentPaint('${slug}')" style="font-size:10px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕ show all</button></div>` : '';
+  const assetFocus = _hub2AssetFocus[slug];
+  const assetChip = assetFocus ? `<div style="margin:0 0 6px;font-size:11px;color:var(--accent);">Blog record: ${esc(assetFocus.name)} <button onclick="delete _hub2AssetFocus['${slug}'];hub2ContentPaint('${slug}')">✕ show all</button></div>` : '';
+  const tfChip = assetChip + (_hub2TitleFocus[slug] ? `<div style="display:flex;gap:8px;align-items:center;margin:0 0 6px;font-size:11px;"><span style="padding:1px 8px;border:1px solid #ff7a00;border-radius:4px;color:#ff7a00;">Assets of “${esc(_hub2TitleFocus[slug].name || 'title')}”</span><button onclick="delete _hub2TitleFocus['${slug}'];hub2ContentPaint('${slug}')" style="font-size:10px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕ show all</button></div>` : '');
   // THE KEYWORDS SECTION IS THE MASTER (operator 2026-10-20): a row shows only when it sits in this hub's Keywords hierarchy
-  const HK = all ? { has: () => true } : hub2Hierarchy(slug);
+  const HK = all || assetFocus ? { has: () => true } : hub2Hierarchy(slug);
   if (!HK) { const K0 = _hubKw[slug];
     if (K0 && K0.error) return '<div style="font-size:11px;color:#f87171;padding:6px;">Couldn’t load the Keywords hierarchy: ' + esc(K0.error) + ' — open Keywords and ⟳, then come back.</div>';
     if (!K0) hubKwLoad(slug).then(() => hub2ContentPaint(slug)).catch(() => {}); else setTimeout(() => hub2ContentPaint(slug), 800);   // load once; poll while another load runs
     return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading the Keywords hierarchy…</div>'; }
   const before = rows.length; rows = rows.filter(r => HK.has(r)); const outside = before - rows.length;
+  if (assetFocus) rows = rows.filter(r => r.type === 'Asset' && kwNid(r.id) === assetFocus.id);
   const tf = _hub2TitleFocus[slug]; if (tf) rows = rows.filter(r => r.type === 'Asset' && kwNid(r.titleId) === kwNid(tf.tid));   // Keywords → a title's Dev count
   rows = rows.filter(r => active.every(f => { const hit = (f.val === '__blank__') ? !raw(r, f.col) : raw(r, f.col) === f.val; return f.op === 'not' ? !hit : hit; }));
   const hideIdea = hub2HideIdea(), ideaN = rows.filter(r => /^(idea|archived)$/i.test(r.status || '')).length;   // 💡 Hide Idea & Archived toggle (default on)
-  if (hideIdea) rows = rows.filter(r => !/^(idea|archived)$/i.test(r.status || ''));
+  if (hideIdea && !assetFocus) rows = rows.filter(r => !/^(idea|archived)$/i.test(r.status || ''));
   rows = rows.slice().sort((a, b) => { for (const s of sort) { const n = raw(a, s.col).localeCompare(raw(b, s.col)); if (n) return s.asc ? n : -n; } return a.type.localeCompare(b.type) || a.name.localeCompare(b.name); });
   const visKeys = rows.map(r => r.type.charAt(0).toLowerCase() + ':' + r.id); _hub2Visible[slug] = visKeys;   // select-all works on what is shown
   const allSel = visKeys.length > 0 && visKeys.every(k => (_hub2Selected[slug] || new Set()).has(k));
