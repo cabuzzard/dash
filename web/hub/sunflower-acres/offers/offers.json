@@ -1,88 +1,42 @@
 [
   {
-    "assetId": "4001f7d3a4bb8138baf7f2932051e056",
-    "slug": "temporary-offer-pruning-verification-1792562139",
-    "name": "Temporary offer pruning verification 1792562139",
-    "promise": "Temporary verification of deleting an offer and rebuilding hub listings. This verification record is removed immediately after the check.",
-    "url": "../blog/temporary-offer-pruning-verification-1792562139/"
-  },
-  {
     "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
     "slug": "garden-fund",
     "name": "Garden Fund",
     "promise": "Your money funds a named piece of infrastructure — a raised bed, a path segment, a loaner chair — and you see it get done.",
-    "url": "../blog/garden-fund/"
+    "url": "../blog/garden-fund/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
+    "slug": "garden-shop",
+    "name": "Garden Shop",
+    "promise": "Real goods from one Concord farm — plant starts, dried flowers, and handmade botanicals you can trace to a specific field and pick up in person.",
+    "url": "../blog/garden-shop/",
+    "image": ""
+  },
+  {
+    "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
     "slug": "garden-visit",
     "name": "Garden Visit",
-    "kicker": "Individual admission & group bookings · pricing confirmed at booking",
     "promise": "You get out of the car and into the field — same paths, same flowers, same cutting stations as everyone else.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81368b68ce652e2679a9"
+    "url": "../blog/garden-visit/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb811b8c1bc5ecc7ef4399",
     "slug": "first-call",
     "name": "First Call",
-    "kicker": "Free · 20-minute call",
     "promise": "You find out in 20 minutes whether a garden fundraiser pencils out for your org — or you find out it doesn't, which is equally useful.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb811b8c1bc5ecc7ef4399"
+    "url": "../blog/first-call/",
+    "image": ""
   },
   {
+    "assetId": "3f51f7d3a4bb8100803cf9880b99b1d3",
     "slug": "garden-awareness",
     "name": "Garden Awareness",
-    "kicker": "Donation drive · tiered giving",
     "promise": "Your contribution funds a specific, named outcome at the only wheelchair-accessible u-pick flower farm in the East Bay — not an operational budget, a real thing you can point to.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3f51f7d3a4bb8100803cf9880b99b1d3",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/garden-awareness-blog-thumbnail-mv21fa1c.png"
-  },
-  {
-    "slug": "into-the-field",
-    "name": "Into The Field",
-    "kicker": "Timed u-pick visit · $15–$25 per person",
-    "promise": "You go into the field and cut your own bouquet — not to the edge of the parking lot, not to the halfway point where the gravel starts.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb814cb952da3a0e8d93d3",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/accessible-u-pick-visit-blog-thumbnail-mv21ff70.png"
-  },
-  {
-    "slug": "private-farm-day",
-    "name": "Private Farm Day",
-    "kicker": "Private group booking · $150–$400 per group",
-    "promise": "A farm outing where everyone is in the field — not watching from the edge.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81d79272f5d1ee528924",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/private-accessible-farm-outing-blog-thumbnail-mv21ez7i.png"
-  },
-  {
-    "slug": "little-brown-birds",
-    "name": "Little Brown Birds",
-    "kicker": "Coloring book · paperback + printable PDF",
-    "promise": "Color your way through 40 'drab' backyard birds and come out the other side actually knowing which one is which.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "book-your-garden-visit",
-    "name": "Book Your Garden Visit",
-    "kicker": "Private field booking · priced per group",
-    "promise": "Your whole group moves through the same fields, cuts flowers at the same stations, and nobody waits at the edge.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "independent-living-multi-session-package",
-    "name": "Independent Living Multi-Session Package",
-    "kicker": "Consulting package · pricing set at intake",
-    "promise": "A complete, working plan for your specific situation — housing, attendant care, benefits, and next steps — built across multiple sessions with a case manager who already knows how these systems actually work.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "url": "../blog/garden-awareness/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/garden-awareness-blog-thumbnail-mv21fa1c.png"
   }
 ]
