@@ -11722,6 +11722,7 @@ let DEV2_VISIBLE_ROWS = [];
 function dev2RowKey(r) { return r.interviewId ? ('i:' + r.interviewId) : r.assetId ? ('a:' + r.assetId) : r.titleId ? ('t:' + r.titleId) : ('p:' + (r.productId || r.product)); }
 function careGapModalUrl(campId, assetId, titleId) {
   const u = new URL('https://cabuzzard.github.io/dash/microsites/care-gap-v2/');
+  u.searchParams.set('v',Date.now().toString(36));
   if (campId) u.searchParams.set('campaignId', campId);
   if (assetId) u.searchParams.set('asset', assetId);
   if (titleId) u.searchParams.set('createAssetFor', titleId);

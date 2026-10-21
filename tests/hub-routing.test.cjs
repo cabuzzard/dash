@@ -8,7 +8,7 @@ function setup(rows=[]){
  notionQuery:async(db,q)=>{assert.equal(q.filter.and[1].select.equals,'Published');return rows.filter(p=>!p.archived&&p.properties['Asset Status'].select.name==='Published');},
  hubSiteTarget:async({sub})=>({basePath:'web/hub/fixture/'+sub,campName:'Fixture',s:{},hub,getFile:async path=>({text:files.get(path)||null}),putFile:async(path,text)=>{files.set(path,text);writes.push(path);},deleteFile:async path=>{files.delete(path);deleted.push(path);}}),
  fetch:async(url,opts={})=>{
-  if(url.includes('github.io'))return {ok:true,status:files.has('web/hub/fixture/blog/posts.json')?200:404,json:async()=>JSON.parse(files.get('web/hub/fixture/blog/posts.json')||'[]')};
+  if(url.includes('github.io')){assert.ok(!('cache' in opts),'Cloudflare fetch does not support RequestInit.cache');return {ok:true,status:files.has('web/hub/fixture/blog/posts.json')?200:404,json:async()=>JSON.parse(files.get('web/hub/fixture/blog/posts.json')||'[]')};}
   if(url.includes('/children'))return {ok:true,json:async()=>({results:[{type:'paragraph',paragraph:{rich_text:rt('Full written asset')}}]})};
   const aid=url.split('/').at(-1).replaceAll('-',''),p=pages.get(aid);assert.ok(p,'Known Notion page '+aid);
   if(opts.method==='PATCH'){const b=JSON.parse(opts.body);Object.assign(p.properties,b.properties||{});if(b.archived)p.archived=true;}

@@ -4158,7 +4158,7 @@ async function hubBlogManifest(env, hub) {
   const path = `web/hub/${hub.slug}/blog/posts.json`;
   const gt = (env.GITHUB_TOKEN || '').trim();
   const url = gt ? `https://api.github.com/repos/cabuzzard/dash/contents/${path}?ref=main` : `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
-  const response = await fetch(url, { headers: gt ? { Authorization: `Bearer ${gt}`, Accept: 'application/vnd.github.raw', 'User-Agent': 'dash-worker' } : {}, cache: 'no-store' });
+  const response = await fetch(url, { headers: gt ? { Authorization: `Bearer ${gt}`, Accept: 'application/vnd.github.raw', 'User-Agent': 'dash-worker' } : {} });
   if (response.status === 404) return [];
   if (!response.ok) throw new Error('Could not verify live hub listing (' + response.status + ')');
   const list = await response.json();
