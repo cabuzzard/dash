@@ -1,4 +1,4 @@
-﻿const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync('index.html','utf8'),worker=fs.readFileSync('worker/worker.js','utf8');
 const fn=(src,name)=>src.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n}'))[0];
 test('content transform retains Platform Title and uses the required name fallback; quick edit writes the displayed field',async()=>{
@@ -20,3 +20,5 @@ test('shared client publisher runs sequentially, dedupes and reports named skips
  const results=await ctx.publishAssetsToHub(['one','none','bad','one']);assert.equal(max,1);assert.equal(results.length,3);assert.match(ctx.hubPublishBatchSummary(results),/1 published, 1 skipped, 1 failed/);assert.match(ctx.hubPublishBatchSummary(results),/Broken headline - Writer failed/);assert.match(ctx.hubPublishBatchSummary(results),/No section - no hub section/);
 });
 test('both bulk surfaces target the shared publisher and the Asset form needs no value',()=>{assert.match(html,/publishHub: \{ label: 'Publish to hub' \}/);assert.match(html,/hub2BulkPublishHub\('\$\{slug\}',this\)/);assert.match(fn(html,'hub2BulkPublishHub'),/r.type==='Asset'/);assert.match(fn(html,'dev2BulkPublishHub'),/publishAssetsToHub/);assert.match(fn(html,'hub2BulkPublishHub'),/publishAssetsToHub/);assert.match(fn(html,'hub2ContentOpenRecord'),/openCareGapEditor\(h.campaignId, id/);});
+
+test('refreshing one hub never marks an unloaded All Hubs aggregate as complete',async()=>{let collected=0;const ctx=vm.createContext({Set,DEV2_ROWS:[{assetId:'one',campId:'campaign'}],DEV2_APPS:[],HUB_SITES:[{slug:'hub',campaignId:'campaign'}],HUB2_ALL:'all',_hub2Content:{},_hub2ViewData:{},_hub2ViewOpen:{},kwNid:x=>x,devAssetsTable:async()=>({rows:[]}),hub2ContentLoad:async()=>{},hub2AllCollect:()=>collected++,hub2ContentPaint(){},renderDev2(){},document:{getElementById:()=>null}});vm.runInContext(fn(html,'refreshHubPublishedRows'),ctx);await ctx.refreshHubPublishedRows(['one']);assert.equal(collected,0);assert.equal(ctx._hub2Content.all,undefined);});
