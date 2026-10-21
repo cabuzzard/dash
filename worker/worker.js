@@ -1545,6 +1545,7 @@ async function getWritableAsset(env,assetId) {
     platformTitle:hubRichText(p['Platform Title']?.rich_text),postCaption:hubRichText(p['Post Caption']?.rich_text),hashtags:hubRichText(p.Hashtags?.rich_text),
     videoUrl:p['Video URL']?.url||'',thumbnail:p.Thumbnail?.url||'',designLink:p['Design Link']?.url||'',productLink:p['Product Link']?.url||'',
     hubSection:({'News':'news','Articles':'articles','Offers':'offers','Interactive':'interactive','CTA':'cta','Main Offering':'main','Unlisted':'unlisted'})[p['Hub Section']?.select?.name]||'',
+    contentUrl:p['Content URL']?.url||'',siteUrl:p['Site URL']?.url||'',deploymentStatus:p['Deployment Status']?.select?.name||'',
     contentHub:p['Content Hub']?.select?.name||'',publishingDate:p['Publishing Date']?.date?.start||'',...info}};
 }
 async function writeExistingGeneratedAsset(env,page,info) {
