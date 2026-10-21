@@ -63,3 +63,15 @@ test('legacy assets inherit hub membership and reconciliation demotes only statu
  assert.equal(report.records.length,1);assert.equal(report.records[0].oldStatus,'Published');assert.equal(report.records[0].demoted,true);
  assert.equal(asset.properties['Asset Status'].select.name,'Idea');assert.equal(asset.properties.Body.rich_text[0].text.content,'Keep this content');assert.equal(removed,true);
 });
+test('compound asset creation and implicit pillar promotions refuse before writer side effects',async()=>{
+ const x=setup(),start=source.indexOf('    try {',source.indexOf('// Preflight compound operations')),end=source.indexOf('    try { watchCandidateAction',start);
+ vm.runInContext('async function preflight(body,env={}){const json=x=>x;'+source.slice(start,end)+'return {ok:true};}',x.ctx);
+ x.ctx.ivPage=async()=>({properties:{Campaign:rel(cid),Status:{select:{name:'Planning'}}}});
+ for(const action of ['writeTitlePillar','generateListingAsset','generateViralPillar']) {
+  const result=await x.ctx.preflight({action,titleId:tid});assert.match(result.error,/Keywords hierarchy/);assert.equal(x.calls.length,0);
+ }
+ const result=await x.ctx.preflight({action:'createAsset',titleId:tid,campId:cid,assetStatus:'Development'});assert.match(result.error,/Keywords hierarchy/);
+ assert.equal((await x.ctx.preflight({action:'createAsset',titleId:tid,campId:cid,assetStatus:'Idea'})).ok,true);
+ x.ctx.ivPage=async()=>({properties:{Campaign:rel(cid),Status:{select:{name:'Review'}}}});
+ assert.equal((await x.ctx.preflight({action:'writeTitlePillar',titleId:tid})).ok,true,'Review is not a gated status');
+});
