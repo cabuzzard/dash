@@ -16801,7 +16801,7 @@ Return: {
         }));
         const hubPublishFields = (a,campId) => { const slug=hubSlugByCampId[campId]||'', model=hierarchyByHub.get(slug); const page=assetRows.find(r=>hubAssetId(r.id)===hubAssetId(a?.id)); return hubRoutedState({...a,hierarchyPlaced:model&&page?model.asset(page.properties||{}):undefined},slug,listedByAsset.get(a?.id)); };
         const assetFields = (a, campId) => ({
-          assetId: a.id, assetName: a.name,
+          assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
           assetType: a.assetClass === "Pillar" && a.pillarType ? a.pillarType + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,

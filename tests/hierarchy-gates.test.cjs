@@ -20,6 +20,8 @@ test('membership matches committed/staged topics, valid clusters, main products,
  vm.runInContext(dash.match(/function hub2Hierarchy\([^]*?\n}/)[0],ui);
  assert.equal(ui.hub2Hierarchy('fixture').has({type:'Title',id:tid}),true);
  assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:pid}),true);
+ assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:'unplaced-title-product',assetProductId:pid}),true,'asset own product is independent of its title product');
+ assert.match(source,/assetProductId: a.productId/);assert.match(dash,/assetProductId: r.assetProductId/);
 });
 test('write boundary refuses every gated status before mutation; Review remains allowed; placement unlocks',async()=>{
  for(const status of ['Development','Publish','Published']) {
