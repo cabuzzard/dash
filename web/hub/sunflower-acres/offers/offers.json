@@ -7,15 +7,6 @@
     "url": "../blog/garden-fund/"
   },
   {
-    "slug": "garden-shop",
-    "name": "Garden Shop",
-    "kicker": "Direct shop · per-item pricing",
-    "promise": "Real goods from one Concord farm — plant starts, dried flowers, and handmade botanicals you can trace to a specific field and pick up in person.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb810ba809d83bc257d92f"
-  },
-  {
     "slug": "garden-visit",
     "name": "Garden Visit",
     "kicker": "Individual admission & group bookings · pricing confirmed at booking",
