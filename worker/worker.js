@@ -1425,41 +1425,170 @@ function topicalMdBlocks(md) {
     return { object: "block", type: "paragraph", paragraph: { rich_text: rt(l) } };
   });
 }
-async function writeTopicalPost(env, assetId) {
-  const hdr = ivHdr(), aid = String(assetId).replace(/-/g, "");
-  const ap = await ivPage(aid), A = ap.properties;
-  const titleId = ivRid(A, "Content Strategy"), cid = ivRid(A, "Campaign"), pid = ivRid(A, "Product");
-  const headline = (A["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
-  const notes = (A.Notes?.rich_text || []).map(t => t.plain_text).join("");
-  const field = k => ((new RegExp("^" + k + ":\\s*(.*)$", "mi")).exec(notes) || [])[1] || "";
-  if (!titleId) return { error: "this asset has no title" };
-  // the asset's SHORT interview: write it on the first run, then wait for the answers
-  const own = (await ivForTitle(titleId).catch(() => [])).filter(x => x.scope === "Asset" && (x.assetIds.includes(aid) || ivTypeMatch(x.forType, TOPICAL_TYPE)));
-  if (!own.length) { const r = await ivCreateForAsset(env, { assetId: aid, titleId, own: TOPICAL_TYPE }); return { needsInterview: true, created: true, interviews: (r.interviews || []).map(x => ({ id: x.id })) }; }
-  if (!own.some(x => x.status === "Finished" && x.answers.some(a => a.trim()))) return { needsInterview: true, interviews: own.map(x => ({ id: x.id })) };
-  const [voice, ib, audience, prodRes] = await Promise.all([cid ? voiceBlock(env, cid).catch(() => "") : "", ivBlock(env, titleId, TOPICAL_TYPE, aid).catch(() => ({ text: "" })),
-    cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid) : ""]);
-  const today = new Date().toISOString().slice(0, 10);
-  const prompt = `${voice}${ib.text || ""}TODAY: ${today}. Write ONE complete, publish-ready SEO article in Markdown.
-
-HEADLINE (use as the H1): ${headline}
-TARGET KEYWORD: ${field("Keyword")}
-TOPIC CLUSTER: ${field("Topic")}
-SEARCH INTENT: ${field("Intent")}
-ANGLE: ${field("Angle")}
-${audience}${prodRes ? `\nTHE MAIN OFFERING THIS ARTICLE LEADS TOWARD (product research):\n${prodRes}\n` : ""}
-Rules: answer the searcher's question in the first 2-3 sentences; 900-1500 words; ## sections that each target a natural variation of the keyword or a related question; short paragraphs and lists where they help; the operator's interview answers above are the substance — REWRITE them for SEO (keep their facts, examples and opinions; never quote verbatim; never invent experiences, statistics or claims they didn't make); end with a short section that points the reader to the offering in plain words, no hard sell. Plain words, no clichés. Output ONLY the Markdown article.`;
-  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }) }).then(r => r.json());
-  const md = ((r.content || []).find(b => b.type === "text") || {}).text || "";
-  if (!md.trim()) return { error: (r.error && r.error.message) || "no article came back" };
-  const up = await fetch(`https://api.notion.com/v1/pages/${ivDash(aid)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
-    "Body": { rich_text: ivRt(md) }, "Asset Status": { select: { name: "Review" } }, "Interview Sync": { select: { name: "In Sync" } } } }) }).then(r => r.json());
-  if (!up.id) return { error: "save: " + (up.message || "failed") };
-  const blocks = topicalMdBlocks(md);
-  for (let i = 0; i < blocks.length; i += 90) await fetch(`https://api.notion.com/v1/blocks/${ivDash(aid)}/children`, { method: "PATCH", headers: hdr, body: JSON.stringify({ children: blocks.slice(i, i + 90) }) }).catch(() => {});
-  return { ok: true, words: md.split(/\s+/).length, status: "Review" };
+// Explicit individual Publish-modal writes only. A stored rewrite marker is NEVER permission to bypass a gate.
+const TOPICAL_MODAL_WRITE = Symbol('individual-publish-modal');
+const TOPICAL_REWRITE_PROP = 'Written Without Interview';
+async function topicalPublishState(env, assetId) {
+  const aid = String(assetId || '').replace(/-/g, '');
+  if (!/^[a-f0-9]{32}$/i.test(aid)) throw new Error('Invalid asset id');
+  const page = await ivPage(aid), p = page.properties || {};
+  const type = p['Asset Type']?.select?.name || '';
+  const table = await env.TRADES.get('infoflow:table:currentmethods', 'json');
+  const method = await ivCreationTopicalMethod(env, type, table);
+  if (!method) return { eligible: false, assetId: aid };
+  const titleId = ivRid(p, 'Content Strategy');
+  const own = [];
+  // A type-only legacy interview can match; one explicitly attached to ANOTHER asset cannot.
+  for (const iv of titleId ? await ivForTitle(titleId) : []) {
+    if (iv.scope !== 'Asset') continue;
+    if (iv.assetIds.length ? iv.assetIds.includes(aid) : (await ivCreationTopicalMethod(env, iv.forType, table)) === method) own.push(iv);
+  }
+  return { eligible: true, assetId: aid, kind: ivNorm(method) === ivNorm('Topical - SEO Post') ? 'blog' : 'youtube', type, titleId,
+    hasFinishedInterview: own.some(iv => iv.status === 'Finished'),
+    hasAnsweredInterview: own.some(iv => iv.status === 'Finished' && iv.answers.some(a => a.trim())),
+    writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox, published: p['Asset Status']?.select?.name === 'Published',
+    hasWriting: !!lfReadRich(p.Body).trim(), page, own };
 }
+function topicalPublicState(state) {
+  const { page, own, ...publicState } = state;
+  return publicState;
+}
+async function topicalEnsureRewriteProp(env) {
+  if (await env.TRADES.get('assets:written-without-interview:v1')) return;
+  const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(),
+    body: JSON.stringify({ properties: { [TOPICAL_REWRITE_PROP]: { checkbox: {} } } }) });
+  if (!r.ok) { const d = await r.json(); throw new Error(d.message || 'Could not create interview rewrite marker'); }
+  await env.TRADES.put('assets:written-without-interview:v1', '1');
+}
+async function topicalWriteInputs(env, assetId, options = {}) {
+  const state = await topicalPublishState(env, assetId);
+  if (!state.eligible) throw new Error('Only the Current Methods topical SEO and YouTube types support this write');
+  if (!state.titleId) throw new Error('This asset has no title');
+  // The private capability is supplied by the explicit modal handler, never by JSON, queues or asset state.
+  const skipInterview = options.source === TOPICAL_MODAL_WRITE && options.skipInterview === true && !state.hasFinishedInterview;
+  if (!skipInterview && !state.hasAnsweredInterview) {
+    const created = !state.own.length;
+    const interviews = created ? ((await ivCreateForAsset(env, { assetId: state.assetId, titleId: state.titleId, own: state.type })).interviews || []) : state.own;
+    return { needsInterview: true, created, interviews: interviews.map(iv => ({ id: iv.id })) };
+  }
+  const p = state.page.properties, cid = ivRid(p, 'Campaign'), pid = ivRid(p, 'Product');
+  const [voice, audience, product, research, pillar] = await Promise.all([
+    cid ? voiceBlock(env, cid) : '', cid ? hubAudienceBlock(env, cid) : '', pid ? ivProdResearch(pid) : '',
+    titleResearchBlock(env, state.titleId), extractPillarContent(ivHdr(), ivDash(state.titleId))
+  ]);
+  const interview = skipInterview ? '' : state.own.filter(iv => iv.status === 'Finished' && iv.answers.some(a => a.trim()))
+    .map(iv => ivFormatAnswers(iv.qs, iv.answers)).join('\n\n');
+  return { state, skipInterview, cid, headline: (p['Asset Title']?.title || []).map(t => t.plain_text).join('').trim(),
+    grounding: `${voice}\n${audience}\n${research}\nPRODUCT RESEARCH:\n${product}\nTITLE'S PILLAR:\n${pillar}\n`
+      + (interview ? `\nTHE OPERATOR'S FINISHED INTERVIEW ANSWERS (use their facts, examples and opinions; rewrite, never invent experience):\n${interview}\n` : ''),
+    interview };
+}
+async function topicalSaveWriting(env, input, text, extraProps = {}) {
+  const { state, skipInterview } = input, hdr = ivHdr(), aid = state.assetId;
+  if (skipInterview) await topicalEnsureRewriteProp(env);
+  const previous = []; let cursor;
+  do {
+    const r = await fetch(`https://api.notion.com/v1/blocks/${ivDash(aid)}/children?page_size=100${cursor ? '&start_cursor=' + cursor : ''}`, { headers: hdr });
+    const d = await r.json(); if (!r.ok) throw new Error(d.message || 'Could not read the existing article');
+    previous.push(...(d.results || [])); cursor = d.has_more ? d.next_cursor : null;
+  } while (cursor);
+  const blocks = topicalMdBlocks(text);
+  for (let i = 0; i < blocks.length; i += 90) {
+    const r = await fetch(`https://api.notion.com/v1/blocks/${ivDash(aid)}/children`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ children: blocks.slice(i, i + 90) }) });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.message || 'Could not save the writing'); }
+  }
+  const properties = { Body: { rich_text: ivRt(text) }, 'Asset Status': { select: { name: 'Review' } },
+    'Interview Sync': { select: { name: 'In Sync' } }, ...extraProps };
+  if (skipInterview || state.page.properties[TOPICAL_REWRITE_PROP]) properties[TOPICAL_REWRITE_PROP] = { checkbox: skipInterview };
+  const r = await fetch(`https://api.notion.com/v1/pages/${ivDash(aid)}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ properties }) });
+  const d = await r.json(); if (!r.ok || !d.id) throw new Error(d.message || 'Could not save writing and rewrite state');
+  // Replace prior prose only after the new writing AND marker have saved. Preserve child pages/databases/attachments.
+  let cleanupWarning = '';
+  for (const block of previous.filter(b => /^(paragraph|heading_[123]|bulleted_list_item|numbered_list_item|quote|code)$/.test(b.type) && !b.has_children)) {
+    const del = await fetch(`https://api.notion.com/v1/blocks/${block.id}`, { method: 'DELETE', headers: hdr });
+    if (!del.ok) cleanupWarning = 'Writing saved; some previous body blocks need cleanup.';
+  }
+  return { ok: true, words: text.split(/\s+/).length, status: 'Review', writtenWithoutInterview: skipInterview, ...(cleanupWarning ? { warning: cleanupWarning } : {}) };
+}
+async function writeTopicalPost(env, assetId, options = {}) {
+  const input = await topicalWriteInputs(env, assetId, options);
+  if (input.needsInterview) return input;
+  if (input.state.kind !== 'blog') return { error: 'Use the topical YouTube writer for this asset' };
+  const notes = lfReadRich(input.state.page.properties.Notes);
+  const prompt = `${input.grounding}\nTODAY: ${new Date().toISOString().slice(0, 10)}. Write ONE complete, publish-ready SEO article in Markdown.
+HEADLINE (use as the H1): ${input.headline}
+ASSET'S KEYWORD / TOPIC / INTENT / ANGLE NOTES: ${notes}
+Rules: answer the searcher's question in the first 2-3 sentences; 900-1500 words; ## sections targeting natural keyword variations and related questions; short paragraphs. Use the title research and pillar as the subject; the product is the offering/CTA. ${input.interview ? 'The finished interview supplies the first-hand facts, examples and opinions: rewrite them for SEO.' : 'No interview material is available. Write from the supplied research and pillar; do not invent first-hand experiences, clients, quotations, statistics, credentials or claims.'} End with a short, plain-language pointer to the offering, no hard sell. Output ONLY the Markdown article.`;
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 6000, messages: [{ role: 'user', content: prompt }] }) });
+  const d = await r.json(), text = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  if (!r.ok || !text) return { error: d.error?.message || 'No article came back' };
+  return topicalSaveWriting(env, input, text);
+}
+async function writeTopicalYouTube(env, assetId, options = {}) {
+  const input = await topicalWriteInputs(env, assetId, options);
+  if (input.needsInterview) return input;
+  if (input.state.kind !== 'youtube') return { error: 'This is not a topical YouTube asset' };
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, messages: [{ role: 'user', content: `${input.grounding}\nWrite a complete topical YouTube script on: ${input.headline}. 1200-1800 spoken words, a clear hook, 4-7 useful titled sections and a short outro. Answer the title's real search questions. Use the finished interview when supplied. Without it, use only the research/pillar: never invent personal experiences, clients, figures or quotations. Include a plain-language offering CTA. Supply searchable title, description, tags and segments (kind: hook/item/outro, name: short section title, text: full spoken narration). Call submit_topical_video.` }],
+      tools: [{ name: 'submit_topical_video', description: 'The finished script and YouTube packaging', input_schema: { type: 'object', required: ['title', 'description', 'segments'], properties: {
+        title: { type: 'string' }, description: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, segments: { type: 'array', items: { type: 'object', required: ['kind', 'text'], properties: { kind: { type: 'string', enum: ['hook', 'item', 'outro'] }, name: { type: 'string' }, text: { type: 'string' } } } }
+      } } }], tool_choice: { type: 'tool', name: 'submit_topical_video' } }) });
+  const d = await r.json(), out = (d.content || []).find(b => b.type === 'tool_use')?.input;
+  const segments = (out?.segments || []).filter(s => String(s.text || '').trim());
+  if (!r.ok || segments.length < 3) return { error: d.error?.message || 'No complete video script came back' };
+  let old = {}; try { old = JSON.parse(lfReadRich(input.state.page.properties['Video Spec']) || '{}'); } catch (e) {}
+  const spec = { v: 1, question: input.headline, format: 'explainer', title: out.title || input.headline, segments, tags: out.tags || [],
+    interview: input.skipInterview ? [] : input.state.own.filter(iv => iv.status === 'Finished').flatMap(iv => iv.qs.map((q, i) => ({ q, a: iv.answers[i] || '' })).filter(x => x.a)),
+    render: old.render || { character: 'mountain-man', voice: LF_DEFAULT_VOICE, layout: 'presenter' } };
+  const text = '# ' + spec.title + '\n\n' + segments.map(s => (s.name ? '## ' + s.name + '\n\n' : '') + s.text).join('\n\n');
+  return topicalSaveWriting(env, input, text, { 'Video Spec': { rich_text: ivRt(JSON.stringify(spec)) }, 'Platform Title': { rich_text: ivRt(spec.title) },
+    'Post Caption': { rich_text: ivRt(out.description || '') }, 'Video URL': { url: null } }); // an older render cannot represent a newly written script
+}
+function topicalArticleParts(md) {
+  const intro = [], sections = []; let current = intro;
+  for (const line of String(md).split('\n')) {
+    if (/^#\s/.test(line)) continue;
+    const h = /^#{2,3}\s+(.+)/.exec(line);
+    if (h) { const section = { heading: h[1], lines: [] }; sections.push(section); current = section.lines; }
+    else current.push(line);
+  }
+  return { intro: intro.join('\n').trim(), sections: sections.map(s => ({ heading: s.heading, body: s.lines.join('\n').trim() })), conclusion: '', sources: [] };
+}
+async function publishTopicalAsset(env, assetId) {
+  await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
+  const state = await topicalPublishState(env, assetId);
+  if (!state.eligible) return { published: false, error: 'This is not a topical SEO or YouTube asset' };
+  if (!state.hasWriting) return { published: false, error: 'Write the asset before publishing' };
+  if (state.kind === 'youtube') {
+    const result = await selfAction(env, 'publishYouTube', { assetId: state.assetId, privacy: 'public' });
+    return { ...result, published: !!(result.ok || result.success) && !result.error };
+  }
+  const p = state.page.properties, headline = lfReadRich(p['Platform Title']) || (p['Asset Title']?.title || []).map(t => t.plain_text).join('');
+  const result = await publishSeoPostToLiveSite({ env, hdr: ivHdr(), dash: ivDash, campaignId: ivRid(p, 'Campaign'), spec: null,
+    seoTitle: headline, workingTitle: headline, ...topicalArticleParts(lfReadRich(p.Body)), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
+  if (!result.published) return result;
+  const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(state.assetId), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
+    'Site URL': { url: result.liveUrl }, 'Asset Status': { select: { name: 'Published' } }, 'Deployment Status': { select: { name: 'Deployed' } }, 'Publishing': { select: { name: 'Published' } }
+  } }) });
+  if (!saved.ok) { const d = await saved.json(); return { published: false, liveUrl: result.liveUrl, error: 'Blog page deployed, but recording its publish state failed: ' + (d.message || saved.status) }; }
+  await stampPublishingDate(state.assetId);
+  return result;
+}
+async function writePublishTopicalFromModal(env, assetId, skipInterview) {
+  await governingFlow(env); // existing-asset write only; creation guards and holding remain on the creation path
+  const state = await topicalPublishState(env, assetId);
+  if (!state.eligible) return { error: 'Only topical SEO and YouTube assets support this modal action' };
+  const options = { source: TOPICAL_MODAL_WRITE, skipInterview: skipInterview === true };
+  let written;
+  try { written = await (state.kind === 'blog' ? writeTopicalPost : writeTopicalYouTube)(env, assetId, options); }
+  catch (e) { return { written: { ok: false, error: e.message }, published: { published: false, skipped: true } }; }
+  if (!written.ok) return { written, published: { published: false, skipped: true } };
+  let published;
+  try { published = await publishTopicalAsset(env, assetId); } catch (e) { published = { published: false, error: e.message }; }
+  return { written, published };
+}
+
 // ⏱ queue (KV topical:queue): the */30 cron writes up to 2 per tick; an asset waiting on its interview stays queued.
 async function topicalCronTick(env) {
   let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
@@ -16402,6 +16531,7 @@ Return: {
             hubSectionKey: hubSectionOf(p) || "",
             contentHub: p["Content Hub"]?.select?.name || "",
             inputApp: (p["Input App"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
+            writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox,
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
             ivSync: p["Interview Sync"]?.select?.name || "",
             assetClass: p["Asset Class"]?.select?.name || "Publishable",
@@ -16452,7 +16582,7 @@ Return: {
           assetId: a.id, assetName: a.name,
           platformTitle: a.platformTitle || "",
           assetType: a.assetClass === "Pillar" && a.pillarType ? a.pillarType + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "",
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
@@ -16502,7 +16632,7 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: a.assetClass === "Pillar" && a.pillarType ? a.pillarType + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", ivSync: a.ivSync || "",
+              assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
               deploymentStatus: a.deploymentStatus || "",
@@ -19829,6 +19959,13 @@ Give a YouTube title in that format. Call submit_questions.`;
       if (body.action === "createTopicalAssets") return json({ ok: true, results: await createTopicalAssets(env, (body.ideas || []).slice(0, 60), { syncedOnly: !!body.syncedOnly }) });
       if (body.action === "getHubTopicIdeas") { let v = null; try { v = await env.TRADES.get("hubideas:" + String(body.campaignId || "").replace(/-/g, ""), "json"); } catch (e) {}
         return json({ ok: true, at: (v && v.at) || null, ideas: (v && v.ideas) || [] }); }
+      if (body.action === "getTopicalPublishState") return json(topicalPublicState(await topicalPublishState(env, body.assetId)));
+      if (body.action === "writePublishTopicalFromModal") {
+        if (body.source !== "publish-modal") return json({ error: "Individual Publish modal action required" }, 400);
+        return json(await writePublishTopicalFromModal(env, body.assetId, body.skipInterview === true));
+      }
+      if (body.action === "publishTopicalAsset") return json(await publishTopicalAsset(env, body.assetId));
+      if (body.action === "writeTopicalYouTube") return json(await writeTopicalYouTube(env, body.assetId));
       if (body.action === "writeTopicalPost") return json(await writeTopicalPost(env, body.assetId));
       if (body.action === "queueTopicalPost" || body.action === "getTopicalQueue") {
         let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
@@ -30549,7 +30686,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         // 🎤 an asset type that is written FROM the operator's interview waits until one is Finished
         const holdTier = (await ivTierFn(env))(assetType);
-        if (ivOwnTier(holdTier) && !body.__client && !body.skipInterview) {
+        if (ivOwnTier(holdTier) && !body.__client) {
           let ivs = await ivForTitle(titleId).catch(() => null);
           if (ivs) ivs = ivs.filter(x => x.scope === "Asset" && ivTypeMatch(x.forType, assetType));
           // register the asset (operator 2026-10-17): an EMPTY Development asset of this type under the title, with the

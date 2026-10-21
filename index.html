@@ -2267,6 +2267,7 @@
       <div class="modal-title" id="careGapEditorTitle" style="margin:0;flex:1;">Asset editor</div>
       <button class="modal-btn" onclick="closeCareGapEditor()" style="flex:0 0 auto;background:transparent;border-color:var(--border2);color:var(--text2);">Close ✕</button>
     </div>
+    <div id="careGapTopicalWrite" hidden style="padding:12px 14px;border-bottom:1px solid var(--border2);background:var(--surface);font-size:12px;flex:0 0 auto;max-height:35vh;overflow:auto;"></div>
     <iframe id="careGapEditorFrame" title="Asset editor"></iframe>
   </div>
 </div>
@@ -11901,10 +11902,74 @@ function careGapModalUrl(campId, assetId, titleId) {
   return u.toString();
 }
 let CARE_GAP_EDITOR_CAMPAIGN = '';
+let CARE_GAP_EDITOR_ASSET = '', CARE_GAP_EDITOR_LOAD = 0;
+const CARE_GAP_TOPICAL_BUSY = new Set();
+async function careGapTopicalCall(action, fields) {
+  const response = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, token: SESSION_TOKEN, ...fields }) });
+  const result = await response.json();
+  if (!response.ok || result.error) throw new Error(result.error || 'Request failed (' + response.status + ')');
+  return result;
+}
+async function careGapTopicalLoad(assetId, generation, message = '') {
+  const panel = document.getElementById('careGapTopicalWrite');
+  try {
+    const [state] = await Promise.all([careGapTopicalCall('getTopicalPublishState', { assetId }), careGapTopicalCall('getGoverningFlow', {})]);
+    if (generation !== CARE_GAP_EDITOR_LOAD || assetId !== CARE_GAP_EDITOR_ASSET) return;
+    if (!state.eligible) { panel.hidden = true; panel.innerHTML = ''; return; }
+    const busy = CARE_GAP_TOPICAL_BUSY.has(assetId), disabled = busy ? ' disabled' : '';
+    const flag = state.writtenWithoutInterview ? `<div style="color:#ffbf69;margin-bottom:8px;">${state.published
+      ? '⚑ Published without interview — flagged for rewrite once the interview is answered.'
+      : '⚑ Written without interview — flagged for rewrite once the interview is answered.'}</div>` : '';
+    const label = state.hasFinishedInterview ? (state.writtenWithoutInterview ? 'Rewrite & publish with finished interview' : 'Write & publish with interview')
+      : state.kind === 'blog' ? 'Write & publish to blog — no interview' : 'Write & publish — no interview';
+    panel.innerHTML = `<div style="font-weight:600;margin-bottom:7px;">Topical writing</div>${flag}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="modal-btn" onclick="careGapTopicalWrite(${!state.hasFinishedInterview})"${disabled}>${esc(label)}</button>
+      ${state.hasWriting ? `<button class="modal-btn" onclick="careGapTopicalPublish()"${disabled}>${state.kind === 'blog' ? 'Publish written article to blog' : 'Publish written asset'}</button>` : ''}</div>
+      <div id="careGapTopicalResult" role="status" style="margin-top:8px;line-height:1.5;white-space:pre-wrap;">${esc(message || (busy ? 'Writing and publishing…' : ''))}</div>`;
+    panel.hidden = false;
+  } catch (error) {
+    if (generation !== CARE_GAP_EDITOR_LOAD || assetId !== CARE_GAP_EDITOR_ASSET) return;
+    panel.hidden = false; panel.textContent = 'Could not load topical writing controls: ' + error.message;
+  }
+}
+async function careGapTopicalRun(write, skipInterview = false) {
+  const assetId = CARE_GAP_EDITOR_ASSET, generation = CARE_GAP_EDITOR_LOAD;
+  if (!assetId || CARE_GAP_TOPICAL_BUSY.has(assetId)) return;
+  CARE_GAP_TOPICAL_BUSY.add(assetId);
+  const panel = document.getElementById('careGapTopicalWrite');
+  panel.querySelectorAll('button').forEach(button => { button.disabled = true; });
+  const status = document.getElementById('careGapTopicalResult');
+  if (status) status.textContent = write ? 'Writing… Publishing will run after the writing saves.' : 'Publishing the saved writing…';
+  let message = '';
+  try {
+    const result = await careGapTopicalCall(write ? 'writePublishTopicalFromModal' : 'publishTopicalAsset', { assetId, source: 'publish-modal', ...(write ? { skipInterview } : {}) });
+    const written = result.written, published = write ? result.published : result;
+    if (write) message = written?.ok ? (written.writtenWithoutInterview ? '✓ Written without interview' : '✓ Written with finished interview')
+      : '✗ Writing: ' + (written?.error || (written?.needsInterview ? 'Finish the asset interview before using the normal write.' : 'Writing did not complete.'));
+    if (published?.published) message += (message ? ' · ' : '') + (published.liveUrl ? '✓ Published to the blog' : '✓ Published');
+    else if (!published?.skipped) message += (message ? '\n' : '') + '✗ Publishing: ' + (published?.error || 'Publishing did not complete.');
+    if (written?.warning) message += '\n' + written.warning;
+    if (written?.ok && generation === CARE_GAP_EDITOR_LOAD && assetId === CARE_GAP_EDITOR_ASSET) {
+      document.getElementById('careGapEditorFrame').src = careGapModalUrl(CARE_GAP_EDITOR_CAMPAIGN, assetId, '');
+    }
+  } catch (error) { message = '✗ ' + error.message; }
+  finally {
+    CARE_GAP_TOPICAL_BUSY.delete(assetId);
+    if (generation === CARE_GAP_EDITOR_LOAD && assetId === CARE_GAP_EDITOR_ASSET) await careGapTopicalLoad(assetId, generation, message);
+  }
+}
+function careGapTopicalWrite(skipInterview) { return careGapTopicalRun(true, skipInterview); }
+function careGapTopicalPublish() { return careGapTopicalRun(false); }
+
 function openCareGapEditor(campId, assetId, titleId) {
   const modal = document.getElementById('careGapEditorModal');
   const frame = document.getElementById('careGapEditorFrame');
   CARE_GAP_EDITOR_CAMPAIGN = String(campId || '').replace(/-/g, '');
+  CARE_GAP_EDITOR_ASSET = String(assetId || '').replace(/-/g, '');
+  const generation = ++CARE_GAP_EDITOR_LOAD;
+  const writePanel = document.getElementById('careGapTopicalWrite'); writePanel.hidden = true; writePanel.innerHTML = '';
+  if (CARE_GAP_EDITOR_ASSET) careGapTopicalLoad(CARE_GAP_EDITOR_ASSET, generation);
   document.getElementById('careGapEditorTitle').textContent = assetId ? 'Publish asset' : 'Create asset';
   frame.src = careGapModalUrl(campId, assetId, titleId);
   modal.classList.add('open');
@@ -11912,6 +11977,8 @@ function openCareGapEditor(campId, assetId, titleId) {
 function closeCareGapEditor() {
   const modal = document.getElementById('careGapEditorModal');
   modal.classList.remove('open');
+  CARE_GAP_EDITOR_LOAD++; CARE_GAP_EDITOR_ASSET = '';
+  document.getElementById('careGapTopicalWrite').hidden = true;
   document.getElementById('careGapEditorFrame').src = 'about:blank';
   const h = (typeof HUB_SITES === 'undefined' ? [] : HUB_SITES).find(x => String(x.campaignId || '').replace(/-/g, '') === CARE_GAP_EDITOR_CAMPAIGN);
   CARE_GAP_EDITOR_CAMPAIGN = '';
