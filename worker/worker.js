@@ -4255,7 +4255,7 @@ async function syncHubOfferIndex(env,hdr,page,site) {
 }
 async function publishHubAssetToLiveSite(env, hdr, page) {
   const p = page.properties || {}, sec = hubSectionOf(p);
-  if (!hubPublishableType(p['Asset Type']?.select?.name)) throw new Error('This asset type cannot be published to a hub');
+  if (!hubPublishableType(p['Asset Type']?.select?.name) && !p['Hub Section']?.select?.name) throw new Error('This asset type cannot be published to a hub');
   if (!sec || sec === 'email') throw new Error('Choose a hub section before publishing this page to the hub');
   const hub = HUB_SITES.find(h=>hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id));
   if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) throw new Error('The Content Hub must match this asset’s campaign');
@@ -4267,6 +4267,61 @@ async function publishHubAssetToLiveSite(env, hdr, page) {
   const saved = await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(page.id),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Content URL':{url:result.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}})});
   if (!saved.ok) throw new Error('Page published but asset fields could not be saved');
   return result;
+}
+
+// Asset interview sync is shared by Output rows and Hub View eligibility (never inferred from Published).
+function hubAssetSyncFields(asset, interviews = []) {
+  const assetSync = asset.ivSync || (asset.ivTier === 'None' ? 'n/a' : '');
+  const own = interviews.filter(iv=>iv.scope==='Asset' && (iv.assetId ? hubAssetId(iv.assetId)===hubAssetId(asset.assetId||asset.id) : iv.titleId && hubAssetId(iv.titleId)===hubAssetId(asset.titleId) && iv.forType===asset.rawAssetType));
+  const interviewDebt = asset.ivTier !== 'None' && own.some(iv=>iv.status!=='Finished');
+  const assetSynced = !/^Out of Sync/i.test(assetSync) && !asset.writtenWithoutInterview && !interviewDebt;
+  return {assetSync,assetSynced};
+}
+function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interviews) {
+  const listing = new Map(hubFeedEntries(rows,manifest,hub).map(entry=>[entry.id,entry]));
+  return rows.filter(page=>!page.archived&&!page.in_trash&&page.properties?.['Asset Status']?.select?.name!=='Delete'&&(!page.properties?.['Content Hub']?.select?.name||page.properties['Content Hub'].select.name===hub.slug)).map(page=>{
+    const p=page.properties||{},type=p['Asset Type']?.select?.name||'',id=hubAssetId(page.id),method=methodNames[p.Method?.relation?.[0]?.id]||'';
+    const asset={id,assetId:id,titleId:hubAssetId(p['Content Strategy']?.relation?.[0]?.id),rawAssetType:type,
+      title:hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title)||'Untitled',
+      assetTitle:hubRichText(p['Asset Title']?.title),platformTitle:hubRichText(p['Platform Title']?.rich_text),type,method,
+      status:p['Asset Status']?.select?.name||'',section:p['Hub Section']?.select?.name||'',hubSection:p['Hub Section']?.select?.name||'',hubSectionKey:hubSectionOf(p)||'',
+      contentHub:p['Content Hub']?.select?.name||'',liveUrl:p['Content URL']?.url||p['Site URL']?.url||'',deploymentStatus:p['Deployment Status']?.select?.name||'',
+      ivSync:p['Interview Sync']?.select?.name||'',ivTier:IV_TIER_LABEL[tierOf(method||type)],writtenWithoutInterview:!!p[TOPICAL_REWRITE_PROP]?.checkbox,
+      date:p['Publishing Date']?.date?.start||null,notes:hubRichText(p.Notes?.rich_text)};
+    const routed=hubRoutedState(asset,hub.slug,listing.get(id));
+    return {...asset,...hubAssetSyncFields(asset,interviews),...routed,url:routed.hubLiveUrl||''};
+  });
+}
+// Picker publication stages the page first. Asset Status commits only after all hub writes succeed.
+async function publishHubSectionSelection(env,assetId,section,campaignId) {
+  await governingFlow(env);
+  const page=await ivPage(assetId),p=page.properties||{},cid=hubAssetId(p.Campaign?.relation?.[0]?.id);
+  const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===cid);
+  if(!hub || (campaignId&&hubAssetId(campaignId)!==cid))throw new Error('Asset belongs to a different hub');
+  const [rows,manifest,tierOf,interviews]=await Promise.all([
+    notionQuery(ASSETS_DB,{filter:{property:'Campaign',relation:{contains:ivDash(cid)}}}),hubBlogManifest(env,hub),ivTierFn(env),ivList(cid)
+  ]);
+  const methodNames={},methodId=p.Method?.relation?.[0]?.id;
+  if(methodId){const methodPage=await ivPage(methodId);methodNames[methodId]=hubRichText(methodPage.properties?.Name?.title);}
+  const row=hubSectionAssetRows(rows,manifest,hub,methodNames,tierOf,interviews).find(r=>r.id===hubAssetId(assetId));
+  if(!row || !row.assetSynced || row.hubSectionKey!==section || row.hubLive)throw new Error('This asset is no longer eligible for this section. Reload Hub View.');
+  if(!['offers','news','articles','interactive','cta'].includes(section))throw new Error('Unsupported Hub View section');
+  const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION},oldStatus=p['Asset Status']?.select?.name||'';
+  const staged={...page,properties:{...p,'Asset Status':{select:{name:'Published'}}}};
+  try{
+    const site=await publishHubAssetToLiveSite(env,hdr,staged);
+    await syncHubOfferIndex(env,hdr,staged,site);
+    const saved=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(assetId),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Asset Status':{select:{name:'Published'}}}})});
+    if(!saved.ok){const data=await saved.json();throw new Error(data.message||'Could not commit publication');}
+    await stampPublishingDate(assetId);
+    return {success:true,assetId:hubAssetId(assetId),section,hub:hub.slug,liveUrl:site.liveUrl};
+  }catch(error){
+    // Restore the original status even if the final PATCH's response was interrupted.
+    const restored=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(assetId),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Asset Status':{select:oldStatus?{name:oldStatus}:null}}})});
+    if(!restored.ok)throw new Error(error.message+'; could not restore original status');
+    try{await removeHubAssetListings(env,hdr,staged);}catch(cleanup){throw new Error(error.message+'; listing cleanup failed: '+cleanup.message);}
+    throw error;
+  }
 }
 
 async function syncOfferAssetBlog(env, hdr, page) {
@@ -15269,24 +15324,13 @@ the one aesthetic risk taken + why:`;
           const mName = Object.fromEntries(await Promise.all(mIds.map(async id => { if (_hubMethodNames.has(id)) return [id, _hubMethodNames.get(id)];
             try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
             const nm = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (nm) _hubMethodNames.set(id, nm); return [id, nm]; } catch (e) { return [id, ""]; } })));
-          const pageSections = HUB_BLOG_SECTIONS.map(sec => {
-            // Page Content mirrors the public hub, not the planning queue:
-            // a section contains only a real Asset whose effective Hub
-            // Section is this section AND whose Asset Status is Published.
-            const items = listed.filter(r => hubSectionOf(r.properties) === sec.key && r.properties?.["Asset Status"]?.select?.name === "Published")
-              .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
-              .map(r => { const p = r.properties || {};
-                return { id: r.id.replace(/-/g, ""),
-                  assetTitle: (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim(), platformTitle: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
-                  notes: (p.Notes?.rich_text || []).map(t => t.plain_text).join(""),
-                  title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled",
-                  type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
-                  section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
-                  date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim(),
-                  titleId: ((p["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") || null,
-                  ivSync: p["Interview Sync"]?.select?.name || "" }; });
-            return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
-              hint: items.length ? "" : "no assets in this section yet" };
+          const [manifest,sectionTierOf,sectionInterviews]=await Promise.all([hubBlogManifest(env,{slug,campaignId}),ivTierFn(env),ivList(campaignId)]);
+          const sectionAssets=hubSectionAssetRows(listed,manifest,{slug,campaignId},mName,sectionTierOf,sectionInterviews);
+          const pageSections=HUB_BLOG_SECTIONS.map(sec=>{
+            const candidates=sectionAssets.filter(asset=>asset.hubSectionKey===sec.key);
+            const items=candidates.filter(asset=>sec.key==='email'?asset.status==='Published':asset.hubLive);
+            const pickable=candidates.filter(asset=>sec.key!=='email'&&asset.assetSynced&&!asset.hubLive).map(({id,title,type,status})=>({id,title,type,status}));
+            return {id:'page-'+sec.key,key:sec.key,phase:sec.phase||'Page content',label:sec.label,pageSection:true,items,pickable,done:items.length>0,hint:items.length?'':'no assets in this section yet'};
           });
           const secIds = Object.fromEntries(await P_secIds);
           { const tids = [...new Set(pageSections.flatMap(ps => ps.items.map(it => it.titleId)).filter(Boolean))];
@@ -16659,7 +16703,7 @@ Return: {
           const iv = (pv || tv) ? { f: ((pv || {}).f || 0) + ((tv || {}).f || 0), d: ((pv || {}).d || 0) + ((tv || {}).d || 0) } : null;
           r.interviews = !r.titleId && r.kind !== "product" ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
           r.pillarStatus = r.titleId ? ((titleById[r.titleId] || {}).pillarStatus || "") : "";
-          r.assetSync = r.kind === "asset" ? (r.ivSync || (r.ivTier === "None" ? "n/a" : "")) : "";
+          if(r.kind === "asset")Object.assign(r,hubAssetSyncFields(r,ivRows));else r.assetSync="";
           r.nextStep = r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
             : (iv && iv.f && r.kind !== "product") ? "Do interview"
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
@@ -50155,6 +50199,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // every method-grounded generation path already reads from — so
       // headings come back as "## Heading" and paragraphs as plain lines,
       // reconstructing the full article rather than just its hook.
+      if(body.action==='publishHubSectionAsset'){
+        if(!body.assetId||!body.section)return json({error:'assetId and section required'},400);
+        return json(await publishHubSectionSelection(env,body.assetId,body.section,body.campaignId));
+      }
       if (body.action === 'getHubAssetState') {
         const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION};
         const resp=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
