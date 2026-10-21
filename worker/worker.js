@@ -1662,7 +1662,7 @@ async function publishTopicalAsset(env, assetId, publishOptions = {}) {
     seoTitle: headline, workingTitle: headline, ...topicalArticleParts(writing.text), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
   if (!result.published) return result;
   const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(state.assetId), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
-    'Site URL': { url: result.liveUrl }, 'Asset Status': { select: { name: 'Published' } }, 'Deployment Status': { select: { name: 'Deployed' } }, 'Publishing': { select: { name: 'Published' } }
+    'Content URL': { url: result.liveUrl }, 'Site URL': { url: result.liveUrl }, 'Asset Status': { select: { name: 'Published' } }, 'Deployment Status': { select: { name: 'Deployed' } }, 'Publishing': { select: { name: 'Published' } }
   } }) });
   if (!saved.ok) { const d = await saved.json(); return { published: false, liveUrl: result.liveUrl, error: 'Blog page deployed, but recording its publish state failed: ' + (d.message || saved.status) }; }
   await stampPublishingDate(state.assetId);
@@ -12112,7 +12112,7 @@ async function writeOffsiteArticle(env, seoPostId, platform, options = {}) {
       tool_choice: { type: "tool", name: "submit_article" },
       messages: [{ role: "user", content: `${voice}TODAY: ${new Date().toISOString().slice(0, 10)}. Write an ORIGINAL long-form article for ${plat}${hub ? " by the people behind " + hub.name : ""}, built from the SEO blog post below (its facts and substance only — invent nothing).
 
-It must NOT duplicate the post: a different headline, a different structure, a first-person or point-of-view opening, the story / opinion / "what most people get wrong" angle a ${plat} reader follows, 700-1100 words, short paragraphs, a few subheads. No keyword stuffing, no SEO phrasing. End with one line pointing to the full guide: [Read the full guide](${link || "the hub"}).
+It must NOT duplicate the post: a different headline, a different structure, a first-person or point-of-view opening, the story / opinion / "what most people get wrong" angle a ${plat} reader follows, 700-1100 words, short paragraphs, at least two Markdown ## subheads. No keyword stuffing, no SEO phrasing. End with one line pointing to the full guide: [Read the full guide](${link || "the hub"}).
 
 SEO POST: ${postTitle}
 ${text.slice(0, 9000)}` }] }) });
@@ -39991,7 +39991,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if (!assetId || !status) return json({ error: "assetId and status required" }, 400);
         const dId = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
-        if(!['Idea','Development','Review','Publish','Published'].includes(status))return json({error:'Invalid asset status'},400);
+        if(body.statusOnly===true&&!['Idea','Development','Review','Publish','Published'].includes(status))return json({error:'Invalid asset status'},400);
         if(status==='Published'&&body.statusOnly!==true){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
         const ar = await hubNotionFetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
