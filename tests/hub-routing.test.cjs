@@ -43,7 +43,9 @@ test('bulk rebuild uses only Published records, repairs missing pages and report
  const a=page(),b=page('b'.repeat(32),'SEO Post','Development','Articles'),deleted=page('d'.repeat(32));deleted.archived=true;const x=setup([a,b,deleted]);
  x.files.set('web/hub/fixture/blog/posts.json',JSON.stringify([{assetId:b.id,slug:'unpublished'},{assetId:deleted.id,slug:'deleted'}]));
  x.files.set('web/hub/fixture/offers/offers.json',JSON.stringify([{assetId:deleted.id,slug:'deleted'}]));
+ x.files.set('web/hub/fixture/offers/deleted/index.html','Keep the orphan static offer page');
  const r=await x.ctx.backfillHubBlog({action:'backfillHubBlog',campaignId:hub.campaignId,force:true});assert.equal(r.success,true);assert.deepEqual(x.manifest().map(e=>e.assetId),[id]);
+ assert.equal(x.files.get('web/hub/fixture/offers/deleted/index.html'),'Keep the orphan static offer page');
  assert.equal(r.results.find(e=>e.kind==='blog-index').removed,2);assert.equal(r.results.find(e=>e.kind==='offers-index').removedEntries[0].assetId,deleted.id);
  const offers=JSON.parse(x.files.get('web/hub/fixture/offers/offers.json'));assert.equal(offers[0].assetId,id);assert.match(x.files.get('web/hub/fixture/offers/index.html'),/href="\.\.\/blog\//);
 });
