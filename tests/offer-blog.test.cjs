@@ -15,17 +15,17 @@ function setup(rows=[]){
  const ctx=vm.createContext({console,URL,Map,Set,JSON,Date,ASSETS_DB:'assets',NOTION_VERSION:'version',NOTION_TOKEN:'fixture',HUB_SITES:[hub],
   ivDash:id=>id,lfReadRich:p=>(p?.rich_text||[]).map(x=>x.plain_text).join(''),
   notionQuery:async(db,q)=>rows.filter(p=>p.properties['Asset Status'].select.name==='Published'),
-  hubSiteTarget:async()=>({basePath:'web/hub/sunflower-acres/blog',campName:'Sunflower Acres',hub,s:{bg:'#fff',ink:'#111',accent:'#333',headlineFont:'Georgia',bodyFont:'Georgia'},
-   getFile:async path=>({text:files.get(path)||null}),putFile:async(path,text)=>{files.set(path,text);writes.push(path);}}),
+  hubSiteTarget:async({sub='blog'}={})=>({basePath:'web/hub/sunflower-acres/'+sub,campName:'Sunflower Acres',hub,s:{bg:'#fff',ink:'#111',accent:'#333',headlineFont:'Georgia',bodyFont:'Georgia'},
+   deleteFile:async path=>files.delete(path),getFile:async path=>({text:files.get(path)||null}),putFile:async(path,text)=>{files.set(path,text);writes.push(path);}}),
   fetch:async(url,opts={})=>{
    if(url.includes('/children')){reads.push(url);return {ok:true,json:async()=>({results:[block('code',JSON.stringify({name:'Garden visit',promise:'Private planning metadata',ctaUrl:'https://example.test/book',ctaLabel:'Book'})),block('paragraph','The original full pitch.'),block('heading_2',"What's included"),block('bulleted_list_item','Accessible paths and a guided tour.')]})};}
    if(url.includes('api.notion.com')){const id=url.split('/').at(-1).replaceAll('-','');const p=pages.get(id);if(opts.method==='PATCH'){const values=JSON.parse(opts.body).properties;patches.push({id,values});Object.assign(p.properties,values);}return {ok:true,json:async()=>p};}
-   if(url.includes('/posts.json'))return {ok:true,text:async()=>files.get('web/hub/sunflower-acres/blog/posts.json')};
+   if(url.includes('/posts.json'))return {ok:true,status:200,json:async()=>JSON.parse(files.get('web/hub/sunflower-acres/blog/posts.json')||'[]')};
    throw Error('Unexpected request '+url);
   }});
  for(const name of ['hubSectionOf','hubPagePath','topicalArticleParts','publishSeoPostToLiveSite','reconcileHubDir'])vm.runInContext(src.match(new RegExp('(?:async )?function '+name+'\\([^]*?\\n}'))[0],ctx);
  vm.runInContext(src.slice(src.indexOf('// Offer cards consume'),src.indexOf('// Re-publishes ONE already-live Blog/SEO Post')),ctx);
- const start=src.indexOf('    if (body.action === "getHubBlog")'),end=src.indexOf('    // ── getHubProjectExperience',start);
+ const start=src.indexOf('    if (body.action === "getHubProducts" || body.action === "getHubBlog")'),end=src.indexOf('    // ── getHubProjectExperience',start);
  vm.runInContext('async function feed(body,env={}){const json=x=>x;'+src.slice(start,end)+'}',ctx);
  return {ctx,files,pages,patches,writes,reads};
 }
@@ -42,7 +42,7 @@ test('publish/unpublish/republish uses the SEO page generator and removes only i
  let feed=await x.ctx.feed(request('offers'));assert.equal(feed.posts.length,1);assert.equal(feed.posts[0].kicker,'Offer');assert.equal(feed.posts[0].excerpt,'Plan an accessible garden visit.');assert.equal(feed.posts[0].image,'https://example.test/thumbnail.jpg');
  page.properties['Asset Status'].select.name='Review';await x.ctx.syncOfferAssetBlog({}, {},page);
  assert.deepEqual(manifest().map(p=>p.slug),['news']);assert.equal((await x.ctx.feed(request('offers'))).posts.length,0);
- assert(x.files.has('web/hub/sunflower-acres/blog/accessible-garden-visit/index.html'));
+ assert(!x.files.has('web/hub/sunflower-acres/blog/accessible-garden-visit/index.html'));
  page.properties['Asset Status'].select.name='Published';await x.ctx.syncOfferAssetBlog({}, {},page);await x.ctx.syncOfferAssetBlog({}, {},page);
  assert.equal(manifest().filter(p=>p.assetId===aid).length,1);assert.equal((await x.ctx.feed(request('offers'))).posts.length,1);
 });
@@ -55,8 +55,9 @@ test('offers require blog form, match manifest by asset ID after a rename, and r
 });
 test('news/articles responses retain their card shape and publishing behavior',async()=>{
  const news=asset('1'.repeat(32),'Blog - SEO - News','Published',{'Content URL':{url:'https://cabuzzard.github.io/dash/web/hub/sunflower-acres/blog/news/'}}),article=asset('2'.repeat(32),'SEO Post','Published',{'Content URL':{url:'https://example.test/article'}});const x=setup([news,article]);
+ x.files.set('web/hub/sunflower-acres/blog/posts.json',JSON.stringify([{assetId:news.id,slug:'news'},{assetId:article.id,slug:'article'}]));
  const n=await x.ctx.feed(request('news'));assert.equal(n.posts.length,1);assert.equal(n.posts[0].kicker,'News analysis');assert.equal(n.posts[0].url,'./blog/news/');assert.equal(n.posts[0].excerpt,'Plan an accessible garden visit.');
- const a=await x.ctx.feed(request('articles'));assert.equal(a.posts.length,1);assert.equal(a.posts[0].kicker,'Article');assert.equal(a.posts[0].url,'https://example.test/article');
+ const a=await x.ctx.feed(request('articles'));assert.equal(a.posts.length,1);assert.equal(a.posts[0].kicker,'Article');assert.equal(a.posts[0].url,'./blog/article/');
  assert.equal((await x.ctx.feed({...request(''),kind:undefined})).posts.length,2);
  await x.ctx.syncOfferAssetBlog({}, {},news);await x.ctx.syncOfferAssetBlog({}, {},article);assert.equal(x.writes.length,0);assert.equal(x.patches.length,0);
 });

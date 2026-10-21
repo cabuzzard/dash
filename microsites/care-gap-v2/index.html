@@ -1080,8 +1080,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <option value="offers">Offers / Services</option>
               <option value="interactive">Interactive</option>
               <option value="cta">CTA's</option>
+              <option value="main">Main Offering</option>
+              <option value="unlisted">Unlisted</option>
             </select>
           </label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:10px;"><input type="checkbox" id="pubPublishToHub" disabled> Publish to hub</label>
+          <div id="pubPublishToHubState" style="font-size:10.5px;color:var(--ink3);margin-top:4px;"></div>
         </div>
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);">📍 Content Hub <span style="color:var(--ink3);">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
@@ -6304,6 +6308,8 @@ async function republishHubContent() {
     const ok = results.filter(x => x.published).length;
     const failed = results.filter(x => x.error);
     let msg = `Republished ${ok}/${results.length} item(s).`;
+    const removed=results.flatMap(x=>(x.removedEntries||[]).map(item=>(item.title||item.slug)+' ['+x.kind+']'));
+    if(removed.length)msg+='\n\nRemoved:\n'+removed.join('\n');
     if (failed.length) msg += `\n\nFailed:\n${failed.map(f => `${f.title || f.asset}: ${f.error}`).join('\n')}`;
     alert(msg || 'No published Blog/Offer assets found on this hub yet.');
   } catch (e) {
@@ -6517,6 +6523,14 @@ function openPublishAssetModal(assetId) {
   const isYtThumb = /\byoutube\b/i.test(data.type || '');
   const hubPublishable = isBlogType || isOffer || /^QA\s*[–-]/i.test(data.type || '');
   document.getElementById('pubHubSectionWrap').style.display = hubPublishable ? 'block' : 'none';
+  const hubSwitch=document.getElementById('pubPublishToHub');
+  hubSwitch.checked=false; hubSwitch.disabled=true;
+  document.getElementById('pubPublishToHubState').textContent=hubPublishable?'Checking live hub listing...':'';
+  if(hubPublishable) w('getHubAssetState',{assetId}).then(state=>{
+    if(myToken!==PUB_OPEN_TOKEN)return;
+    hubSwitch.checked=!!state.hubLive;hubSwitch.disabled=false;
+    document.getElementById('pubPublishToHubState').textContent=state.hubPublish||'';
+  }).catch(e=>{if(myToken===PUB_OPEN_TOKEN)document.getElementById('pubPublishToHubState').textContent='Could not verify hub state: '+e.message;});
   const hsSel = document.getElementById('pubHubSection');
   hsSel.value = data.hubSection || '';
   hsSel.options[0].textContent = 'Default for this type — ' + ({ news: 'News', articles: 'Articles', offers: 'Offers / Services', interactive: 'Interactive', cta: "CTA's" }[hubSectionDefault(data.type)] || 'none');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
@@ -8091,14 +8105,29 @@ async function savePublishAssetFields() {
   }
   if (document.getElementById('pubVideoWrap').style.display !== 'none') fields.videoUrl = document.getElementById('pubVideoUrl').value.trim();
   if (document.getElementById('pubHubSectionWrap').style.display !== 'none') fields.hubSection = document.getElementById('pubHubSection').value;
+  if(document.getElementById('pubHubSectionWrap').style.display!=='none'){
+    const toggle=document.getElementById('pubPublishToHub');
+    if(toggle.disabled){status.textContent='Wait for the live hub state check before saving.';return;}
+    fields.publishToHub=toggle.checked;
+    fields.status=toggle.checked?'Published':'Development';
+  }
   btn.disabled = true;
   status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
   try {
     const pr = await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    if(typeof fields.publishToHub==='boolean'){
+      document.getElementById('pubPublishToHub').checked=!!pr.hubLive;
+      document.getElementById('pubPublishToHubState').textContent=pr.hubPublish||'';
+      if(pr.status && !Array.from(document.getElementById('pubStatus').options).some(o=>o.value===pr.status))document.getElementById('pubStatus').add(new Option(pr.status,pr.status));
+      document.getElementById('pubStatus').value=pr.status||fields.status;
+      Object.assign(fields,pr);
+      if(window.parent!==window)window.parent.postMessage({type:'hubAssetListingChanged',assetId:pubAssetId},location.origin);
+    }
     const spLearned = await pubSpSave();
     Object.assign(PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {}), fields, { assetTitle: fields.title });
     const learned = spLearned + ((pr && pr.voiceEdits) || 0);
     status.style.color = 'var(--fresh)'; status.textContent = '✓ Saved.' + (learned ? ` Learned from ${learned} edit${learned === 1 ? '' : 's'} — your voice profile is updating.` : '');
+    if(typeof fields.publishToHub==='boolean')status.textContent=fields.publishToHub?'Saved and published to hub.':'Saved and removed from hub.';
     loadTitleAndAssetTab();
   } catch (e) {
     status.style.color = 'var(--stale)'; status.textContent = 'Save failed: ' + e.message;

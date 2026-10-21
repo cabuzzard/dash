@@ -3882,8 +3882,9 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   const fromB64Text = b64 => new TextDecoder().decode(Uint8Array.from(atob(String(b64).replace(/\n/g, '')), c => c.charCodeAt(0)));
   const getFile = async path => {
     const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-    if (!r.ok) return { sha: null, text: null };
-    const j = await r.json().catch(() => null);
+    if(r.status===404)return {sha:null,text:null};
+    if(!r.ok)throw new Error("Could not read hub file: "+path+" ("+r.status+")");
+    const j = await r.json();
     return { sha: j?.sha || null, text: j?.content ? fromB64Text(j.content) : null };
   };
   const putFile = async (path, text, message) => {
@@ -3947,7 +3948,13 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
     } catch (e) { /* best-effort */ }
     s = { ...EDITORIAL, ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
   }
-  return { gh, getFile, putFile, basePath, campName, s, hub };
+  const deleteFile = async path => {
+    const {sha}=await getFile(path); if(!sha)return;
+    const gap=1100-(Date.now()-HUB_PUT_LAST);if(gap>0)await new Promise(resolve=>setTimeout(resolve,gap));
+    const response=await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`,{method:'DELETE',headers:{...gh,'Content-Type':'application/json'},body:JSON.stringify({message:'Prune unpublished hub page: '+path,sha,branch:BRANCH})});
+    HUB_PUT_LAST=Date.now();if(!response.ok && response.status!==404)throw new Error('Could not remove stale hub page: '+path);
+  };
+  return { gh, getFile, putFile, deleteFile, basePath, campName, s, hub };
 }
 
 // Approved ⭐ Reviews + 🏅 Social Proof for a product (sales pages). Empty lists when none / DB unreadable —
@@ -4066,7 +4073,7 @@ ${(cta && cta.href) ? `<p style="margin-top:32px;"><a href="${esc(cta.href)}" st
   const indexLabel = sub === 'sales' ? 'Sales Pages' : 'Blog';
   const indexBody = `<h1>${esc(indexLabel)}</h1>
 <ul class="postlist">
-${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><div class="excerpt">${esc(p.intro)}</div></li>`).join('\n')}
+${posts.map(p => `<li><a href="${esc(p.url || ('./' + p.slug + '/index.html'))}">${esc(p.title)}</a><div class="excerpt">${esc(p.intro)}</div></li>`).join('\n')}
 </ul>`;
 
   await putFile(`${basePath}/${slug}/index.html`, pageShell(displayTitle, postBody, { siteHref: '../../index.html', blogHref: '../index.html' }), `${indexLabel} post: ${displayTitle}`);
@@ -4140,6 +4147,119 @@ async function publishOfferAssetBlog(env, hdr, page) {
   if (!saved.ok) { const data = await saved.json(); throw new Error('Offer page deployed but publish fields were not saved: ' + (data.message || saved.status)); }
   return { ...result, hub: hub.slug, assetId: aid };
 }
+// One listing membership and routed-state definition for public feeds, tables and the Publish modal.
+const HUB_FEED_SECTIONS = new Set(['news', 'articles', 'offers']);
+const hubAssetId = value => String(value || '').replace(/-/g, '');
+const hubRichText = runs => (runs || []).map(t => t.plain_text ?? t.text?.content ?? '').join('').trim();
+function hubPublishableType(type) {
+  return /\bseo post\b|\boffer\b/i.test(type || '') || /^blog (post|article)$/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || '')) || /^QA\s*[?-]/i.test(type || '');
+}
+async function hubBlogManifest(env, hub) {
+  const path = `web/hub/${hub.slug}/blog/posts.json`;
+  const gt = (env.GITHUB_TOKEN || '').trim();
+  const url = gt ? `https://api.github.com/repos/cabuzzard/dash/contents/${path}?ref=main` : `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+  const response = await fetch(url, { headers: gt ? { Authorization: `Bearer ${gt}`, Accept: 'application/vnd.github.raw', 'User-Agent': 'dash-worker' } : {}, cache: 'no-store' });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error('Could not verify live hub listing (' + response.status + ')');
+  const list = await response.json();
+  if (!Array.isArray(list)) throw new Error('Invalid hub blog listing');
+  return list;
+}
+function hubFeedEntries(rows, manifest, hub) {
+  const entries = [], seen = new Set();
+  for (const row of [...rows].sort((a,b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))) {
+    const p = row.properties || {}, sec = hubSectionOf(p), aid = hubAssetId(row.id);
+    if (row.archived || row.in_trash || p['Asset Status']?.select?.name !== 'Published' || !HUB_FEED_SECTIONS.has(sec)) continue;
+    if (!(p.Campaign?.relation || []).some(c => hubAssetId(c.id) === hubAssetId(hub.campaignId))) continue;
+    if (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug) continue;
+    const path = offerBlogPath(p, hub.slug);
+    const indexed = manifest.find(m => hubAssetId(m.assetId) === aid) || manifest.find(m => !m.assetId && path === `./blog/${m.slug}/`);
+    if (!indexed || !/^[a-z0-9-]+$/.test(indexed.slug || '')) continue;
+    const url = `./blog/${indexed.slug}/`;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    entries.push({ id: aid, hubSlug: hub.slug, section: sec, kicker: sec === 'offers' ? 'Offer' : sec === 'news' ? 'News analysis' : 'Article',
+      title: hubRichText(p['Platform Title']?.rich_text) || hubRichText(p['Asset Title']?.title) || 'Untitled',
+      excerpt: String(hubRichText(p.Body?.rich_text) || indexed.intro || '').slice(0,240), image: p.Thumbnail?.url || '', url });
+  }
+  return entries;
+}
+function hubRoutedState(a, expectedSlug, listingEntry) {
+  if (!a) return { hubPublish: '', hubLive: false, hubRoutedSection: '', hubSectionDisplay: '' };
+  const st = a.status || '', sec = a.hubSectionKey || '';
+  const label = ({news:'News',articles:'Articles',offers:'Offers',interactive:'Interactive',cta:'CTA',main:'Main Offering',email:'Email'})[sec] || sec;
+  const off = hubPublish => ({ hubPublish, hubLive: false, hubRoutedSection: '', hubSectionDisplay: label ? label + ' \u00b7 not on hub' : '' });
+  if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return off('\u26a0 Different hub');
+  if (!expectedSlug) return off('Not a content hub');
+  if (st !== 'Published') return off(st === 'Publish' ? 'Queued \u2014 not live' : st === 'Review' ? 'Review \u2014 not live' : 'Not published');
+  if (!sec) return off(/^unlisted$/i.test(a.hubSection || '') ? 'Published \u00b7 unlisted' : '\u26a0 Published \u00b7 no section');
+  if (sec === 'email') return off('Published \u00b7 email only');
+  if (HUB_FEED_SECTIONS.has(sec)) {
+    if (!listingEntry || listingEntry.section !== sec || listingEntry.hubSlug !== expectedSlug) return off(a.liveUrl ? '\u26a0 Published \u00b7 not in live listing' : '\u26a0 Published \u00b7 missing page');
+  } else if (a.deploymentStatus && a.deploymentStatus !== 'Deployed') return off(a.deploymentStatus === 'Scheduled' ? 'Published \u00b7 deployment scheduled' : a.deploymentStatus === 'Not Applicable' ? 'Published \u00b7 no deployment' : 'Published \u00b7 not deployed');
+  const path = listingEntry?.url || a.liveUrl || './';
+  const hubLiveUrl = /^\.\//.test(path) ? `https://cabuzzard.github.io/dash/web/hub/${expectedSlug}/${path.slice(2)}` : path;
+  return { hubPublish: '\u2713 Published to section', hubLive: true, hubLiveUrl, hubRoutedSection: sec, hubSectionDisplay: label };
+}
+async function hubAssetRoutedState(env, page) {
+  const p = page.properties || {}, cid = p.Campaign?.relation?.[0]?.id;
+  const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(cid));
+  const a = { status:p['Asset Status']?.select?.name, hubSection:p['Hub Section']?.select?.name, hubSectionKey:hubSectionOf(p), contentHub:p['Content Hub']?.select?.name,
+    deploymentStatus:p['Deployment Status']?.select?.name, liveUrl:p['Content URL']?.url || p['Site URL']?.url || '' };
+  let entry;
+  if (hub && a.status === 'Published' && HUB_FEED_SECTIONS.has(a.hubSectionKey)) {
+    const [rows,manifest]=await Promise.all([notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}}),hubBlogManifest(env,hub)]);
+    entry=hubFeedEntries(rows,manifest,hub).find(e=>e.id===hubAssetId(page.id));
+  }
+  return hubRoutedState(a, hub?.slug || '', entry);
+}
+async function removeHubAssetListings(env, hdr, page, directories = ['blog','offers','sales']) {
+  const p = page.properties || {}, cid = p.Campaign?.relation?.[0]?.id;
+  if (!HUB_SITES.some(h => hubAssetId(h.campaignId) === hubAssetId(cid))) return { removed:0, removedEntries:[] };
+  const aid = hubAssetId(page.id), reports = [];
+  for (const sub of directories) {
+    const t = await hubSiteTarget({env,hdr,dash:ivDash,campaignId:cid,sub});
+    if (t.error) throw new Error(t.error);
+    const {text} = await t.getFile(`${t.basePath}/${sub === 'offers' ? 'offers.json' : 'posts.json'}`);
+    const list = text ? JSON.parse(text) : [];
+    if (!Array.isArray(list)) throw new Error('Invalid '+sub+' listing');
+    const urls = ['Content URL','Site URL'].map(k => p[k]?.url || '');
+    const owns = item => item.assetId ? hubAssetId(item.assetId) === aid : urls.some(u => u.endsWith(`/${sub}/${item.slug}/`) || u.endsWith(`/${sub}/${item.slug}/index.html`));
+    if (!list.some(owns)) continue;
+    const report = await reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub,liveSlugs:list.filter(x=>!owns(x)).map(x=>x.slug)});
+    if (report.error) throw new Error(report.error);
+    reports.push(...(report.removedEntries || []).map(x=>({...x, directory:sub})));
+  }
+  return { removed:reports.length, removedEntries:reports };
+}
+async function syncHubOfferIndex(env,hdr,page,site) {
+  const p=page.properties||{},cid=p.Campaign?.relation?.[0]?.id;
+  const t=await hubSiteTarget({env,hdr,dash:ivDash,campaignId:cid,sub:'offers'});if(t.error)throw new Error(t.error);
+  const {text}=await t.getFile(`${t.basePath}/offers.json`),list=text?JSON.parse(text):[];
+  if(!Array.isArray(list))throw new Error('Invalid offers listing');
+  const aid=hubAssetId(page.id),next=list.filter(x=>hubAssetId(x.assetId)!==aid);
+  if(hubSectionOf(p)==='offers'){
+    const match=String(site.liveUrl||'').match(/\/blog\/([a-z0-9-]+)\/$/);if(!match)throw new Error('Missing published blog URL');
+    next.unshift({assetId:aid,slug:match[1],name:hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title),promise:hubRichText(p.Body?.rich_text),url:`../blog/${match[1]}/`});
+  }
+  return reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub:'offers',desiredEntries:next});
+}
+async function publishHubAssetToLiveSite(env, hdr, page) {
+  const p = page.properties || {}, sec = hubSectionOf(p);
+  if (!hubPublishableType(p['Asset Type']?.select?.name)) throw new Error('This asset type cannot be published to a hub');
+  if (!sec || sec === 'email') throw new Error('Choose a hub section before publishing this page to the hub');
+  const hub = HUB_SITES.find(h=>hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id));
+  if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) throw new Error('The Content Hub must match this asset’s campaign');
+  if (sec === 'offers' && offerBlogAsset(p)) return publishOfferAssetBlog(env,hdr,page);
+  const parts = offerBlogParts(p,await offerBlogBlocks(hdr,page.id));
+  const result = await publishSeoPostToLiveSite({env,hdr,dash:ivDash,campaignId:hub.campaignId,assetId:hubAssetId(page.id),
+    workingTitle:hubRichText(p['Asset Title']?.title),seoTitle:hubRichText(p['Platform Title']?.rich_text),thumbnail:p.Thumbnail?.url || '',...parts});
+  if (!result.published || !result.liveUrl) throw new Error(result.error || 'Hub page was not published');
+  const saved = await fetch('https://api.notion.com/v1/pages/'+ivDash(page.id),{method:'PATCH',headers:{...hdr,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Content URL':{url:result.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}})});
+  if (!saved.ok) throw new Error('Page published but asset fields could not be saved');
+  return result;
+}
+
 async function syncOfferAssetBlog(env, hdr, page) {
   const p = page.properties || {};
   if (!offerBlogAsset(p)) return { skipped: 'not an offer blog asset' };
@@ -4220,6 +4340,7 @@ async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
     const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
     const p = assetPage.properties || {};
     const assetType = p["Asset Type"]?.select?.name || "";
+    if(p['Asset Status']?.select?.name==='Published' && hubPublishableType(assetType) && HUB_SITES.some(h=>hubAssetId(h.campaignId)===hubAssetId(p.Campaign?.relation?.[0]?.id)))return publishHubAssetToLiveSite(env,hdr,assetPage);
     const isBlog = /seo post/i.test(assetType) || /^blog (post|article)$/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
     if (!isBlog) return { skipped: "not a blog asset" };
     const existingUrl = (p["Content URL"]?.url || "").trim();
@@ -4426,17 +4547,18 @@ ${offers.map(o => `<li><a href="./${esc(o.slug)}/index.html">${esc(o.name)}</a>$
 // otherwise, because publishSeoPostToLiveSite / publishOfferToHub only append.
 // Rewrites the json manifest and re-renders the index page; orphan sub-dirs
 // are left (unreachable, harmless). Best-effort; returns { removed }.
-async function reconcileHubDir({ env, hdr, dash, campaignId, sub, liveSlugs }) {
+async function reconcileHubDir({ env, hdr, dash, campaignId, sub, liveSlugs, desiredEntries }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, sub });
   if (t.error) return { removed: 0, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
   const manifest = sub === 'offers' ? 'offers.json' : 'posts.json';
   const { text } = await getFile(`${basePath}/${manifest}`);
-  let list = []; try { list = text ? JSON.parse(text) : []; } catch (e) { list = []; }
-  if (!Array.isArray(list) || !list.length) return { removed: 0 };
+  const list = text ? JSON.parse(text) : [];
+  if (!Array.isArray(list)) throw new Error("Invalid hub manifest: " + manifest);
   const keep = new Set(liveSlugs || []);
-  const next = list.filter(x => x && keep.has(x.slug));
-  if (next.length === list.length) return { removed: 0 };
+  const next = desiredEntries || list.filter(x => x && keep.has(x.slug));
+  const removedEntries=list.filter(x=>!next.some(n=>n.slug===x.slug&&hubAssetId(n.assetId)===hubAssetId(x.assetId))).map(x=>({slug:x.slug,assetId:x.assetId||'',title:x.title||x.name||''}));
+  if (JSON.stringify(next) === JSON.stringify(list) && !desiredEntries) return { removed: 0, removedEntries:[] };
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
@@ -4446,7 +4568,7 @@ async function reconcileHubDir({ env, hdr, dash, campaignId, sub, liveSlugs }) {
   const headlineStack = s.headlineStack || `'${esc(s.headlineFont)}', Georgia, serif`;
   const bodyStack     = s.bodyStack     || `'${esc(s.bodyFont)}', Georgia, serif`;
   const heading = sub === 'offers' ? 'Offers' : 'Blog';
-  const items = next.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title || p.name || 'Untitled')}</a>${(p.intro || p.promise) ? `<div class="excerpt">${esc(p.intro || p.promise)}</div>` : ''}</li>`).join('\n');
+  const items = next.map(p => `<li><a href="${esc(p.url || ('./' + p.slug + '/index.html'))}">${esc(p.title || p.name || 'Untitled')}</a>${(p.intro || p.promise) ? `<div class="excerpt">${esc(p.intro || p.promise)}</div>` : ''}</li>`).join('\n');
   const indexHtml = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(heading)} — ${esc(campName)}</title>
@@ -4472,7 +4594,10 @@ footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in s
 
   await putFile(`${basePath}/${manifest}`, JSON.stringify(next, null, 2), `${heading} ${manifest}: prune to ${next.length}`);
   await putFile(`${basePath}/index.html`, indexHtml, `${heading} index: prune to ${next.length}`);
-  return { removed: list.length - next.length };
+  for(const item of removedEntries){
+    if(/^[a-z0-9-]+$/.test(item.slug||'')&&!next.some(n=>n.slug===item.slug))await t.deleteFile(`${basePath}/${item.slug}/index.html`);
+  }
+  return { removed: removedEntries.length, pruned: removedEntries.length, removedEntries };
 }
 
 // Reads just the "Pillar Content" heading_3 section of a title's own page
@@ -13460,213 +13585,21 @@ export default {
     // { kicker, title, excerpt, url } card for the hub's Products section.
     // Best-effort and silent-safe — an empty result leaves the hub's static
     // HUB.trips.items fallback in place, exactly like getHubNews.
-    if (body.action === "getHubProducts") {
-      const raw = String(body.campaignId || "").replace(/-/g, "");
-      if (raw.length !== 32) return json({ products: [] });
-      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-      let slug = String(body.slug || "").trim();
-      if (!slug) slug = (HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === raw) || {}).slug || "";
-      const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-      const slugifyO = str => String(str || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-
-      // NOTION IS THE SOURCE OF TRUTH (unpublish → the card disappears). The
-      // hub's offers/offers.json is only consulted to relativise/confirm each
-      // URL. A total Notion failure falls back to offers.json so the hub isn't
-      // blanked.
+    if (body.action === "getHubProducts" || body.action === "getHubBlog") {
+      const raw = hubAssetId(body.campaignId), isProducts = body.action === 'getHubProducts';
+      const hub = HUB_SITES.find(h=>hubAssetId(h.campaignId) === raw && (!body.slug || h.slug === body.slug));
+      const key = isProducts ? 'products' : 'posts';
+      if (!hub) return json({[key]:[],hasIndex:false});
       try {
-        const rows = await notionQuery(ASSETS_DB, {
-          filter: { and: [
-            { property: "Campaign", relation: { contains: dash(raw) } },
-            { property: "Asset Status", select: { equals: "Published" } },   // 2026-10-08: live on the hub = Published + a section designation (Publish = not yet)
-          ] },
-        });
-        // Services/Products card list — any Offer asset (Pillar or Content
-        // Hub) OR a QA – Sales page. Both are conversion/pitch content, the
-        // "services we sell" the hub's Services section is meant to show —
-        // distinct from getHubBlog's editorial feed. QA – Sales assets
-        // carry no OFFER CARD block, but the card-building code below
-        // already falls back to Platform Title/Body for name/excerpt and
-        // to Content URL for the link, so no further change was needed
-        // once this filter lets them through.
-        const wanted = rows.filter(r => {
-          if (hubSectionOf(r.properties) !== "offers") return false;   // Hub Section override wins over type
-          const h = r.properties?.["Content Hub"]?.select?.name || "";
-          return !slug || !h || h === slug;
-        }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0));
-
-        let ojson = {};
-        if (slug) {
-          try {
-            const GT = (env.GITHUB_TOKEN || "").trim();
-            let text = null;
-            if (GT) {
-              const gr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/web/hub/${slug}/offers/offers.json?ref=main`,
-                { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } });
-              if (gr.ok) text = await gr.text();
-            }
-            if (!text) { const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/offers/offers.json`); if (pr.ok) text = await pr.text(); }
-            const list = text ? JSON.parse(text) : [];
-            if (Array.isArray(list)) for (const o of list) if (o && o.slug) ojson[o.slug] = o;
-          } catch (e) { /* enrichment only */ }
-        }
-
-        let hasIndex = false;
-        const cards = [];
-        for (const r of wanted) {
-          const p = r.properties || {};
-          const assetTitle    = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
-          const platformTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-          const bodyProp      = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-          const contentUrl    = (p["Content URL"]?.url || "").trim();
-          const siteUrl       = (p["Site URL"]?.url || "").trim();
-          let card = null;
-          try {
-            const kids = await fetch(`https://api.notion.com/v1/blocks/${r.id.replace(/-/g,"")}/children?page_size=25`, { headers: hdr }).then(x => x.json());
-            const codeBlock = (kids.results || []).find(b => b.type === "code");
-            if (codeBlock) card = JSON.parse((codeBlock.code?.rich_text || []).map(t => t.plain_text).join(""));
-          } catch (e) {}
-          const oname = String(card?.name || platformTitle || assetTitle || "Untitled").trim();
-          const pageSlug = slugifyO(oname);
-          const hp = hubPagePath(p);
-          let url = "";
-          if (hp) { url = hp; hasIndex = true; }
-          else if (ojson[pageSlug]) { url = `./offers/${pageSlug}/`; hasIndex = true; }
-          else url = siteUrl || card?.ctaUrl || contentUrl || "";
-          cards.push({
-            ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
-            kicker:  String(card?.kicker || "").trim(),
-            title:   oname,
-            excerpt: String(card?.promise || bodyProp || "").trim().slice(0, 240),
-            image:   String(p["Thumbnail"]?.url || "").trim(),   // the offer's blog thumbnail on its hub card
-            url,
-          });
-        }
-        // Two assets can resolve to the same offer page (AI name collision) —
-        // show one card, not the same one twice. A card with no url at all
-        // (a malformed/half-generated asset — no OFFER CARD, no Content
-        // URL, nothing to link to) is dropped outright rather than shown
-        // as a dead, unclickable card — the same "no placeholder" rule as
-        // the rest of this section.
-        const _seen = new Set();
-        const products = cards.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
-        return json({ products, hasIndex });
-      } catch (e) {   // assets only (2026-10-08): no static offers.json fallback — a Notion error shows an empty section, never old items
-        return json({ products: [], error: e.message });
-      }
-    }
-
-    // ── getHubBlog ── public, no token. A content hub calls this on load with
-    // { campaignId, slug }. The real blog pages live at web/hub/{slug}/blog/
-    // (written by publishSeoPostToLiveSite), so the authoritative card list is
-    // that dir's own posts.json — read first, mapped to hub-relative
-    // ./blog/{slug}/ links. Falls back to a Notion scan of the campaign's
-    // published SEO Post / blog+SEO/news assets when no posts.json exists yet.
-    // Best-effort and silent-safe — an empty result leaves the hub's static
-    // HUB.journal.items fallback in place, exactly like getHubProducts.
-    if (body.action === "getHubBlog") {
-      const raw = String(body.campaignId || "").replace(/-/g, "");
-      if (raw.length !== 32) return json({ posts: [] });
-      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-      let slug = String(body.slug || "").trim();
-      if (!slug) slug = (HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === raw) || {}).slug || "";
-      const lim = Math.max(1, Math.min(24, Number(body.limit) || 9));
-      const slugify = str => String(str || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-
-      // NOTION IS THE SOURCE OF TRUTH — unpublish an asset and its card
-      // disappears here immediately. posts.json (the static blog dir) is only
-      // consulted to relativise/confirm each URL and enrich the blurb; it is
-      // NOT authoritative, because publishSeoPostToLiveSite only ever appends
-      // to it. On a total Notion failure we do fall back to posts.json so a
-      // Notion outage doesn't blank the hub.
-      try {
-        const rows = await notionQuery(ASSETS_DB, {
-          filter: { and: [
-            { property: "Campaign", relation: { contains: dash(raw) } },
-            { property: "Asset Status", select: { equals: "Published" } },   // 2026-10-08: live on the hub = Published + a section designation (Publish = not yet)
-          ] },
-        });
-        // The hub splits its editorial feed in two: "news" (Blog - SEO -
-        // News specifically — the kicker below already called this "News
-        // analysis") and "articles" (everything else that's a real
-        // written piece — SEO Post, or any QA method that ISN'T QA –
-        // Sales, i.e. QA – Story today). QA – Sales is excluded from both:
-        // it publishes to sales/ instead of blog/, a conversion page, not
-        // an article. kind omitted = the old combined behavior (either
-        // bucket), kept for any caller that hasn't been updated to pass it.
-        const isNewsType    = at => /\bblog\b/i.test(at) && /\bnews\b/i.test(at);
-        // NOT `/^QA\s*[–-]\s*(?!Sales\b)/i` — the `\s*` right before the
-        // lookahead can backtrack to zero width, letting the lookahead
-        // dodge past the space and match "QA – Sales" anyway (confirmed
-        // live: it let Sales pages leak into the Articles section).
-        // Extracting the remainder and checking it directly has no
-        // backtracking ambiguity to exploit.
-        const isArticleType = at => {
-          if (/\bseo post\b/i.test(at)) return true;
-          const m = /^QA\s*[–-]\s*(.+)$/i.exec(String(at || "").trim());
-          return !!m && !/^sales\b/i.test(m[1].trim());
-        };
-        const kind = String(body.kind || "").trim().toLowerCase();
-        const wanted = rows.filter(r => {
-          // Hub Section override (Publish modal) wins over the type default.
-          const sec = hubSectionOf(r.properties);
-          const matchesKind = kind === "news" ? sec === "news" : kind === "articles" ? sec === "articles" : kind === "offers" ? sec === "offers" : (sec === "news" || sec === "articles");
-          if (!matchesKind) return false;
-          const h = r.properties?.["Content Hub"]?.select?.name || "";
-          return !slug || !h || h === slug;
-        }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, kind === "offers" ? Infinity : lim);
-
-        // posts.json (best-effort) → slug → intro, for a richer blurb
-        let pjson = {};
-        if (slug) {
-          try {
-            const GT = (env.GITHUB_TOKEN || "").trim();
-            let text = null;
-            if (GT) {
-              const gr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/web/hub/${slug}/blog/posts.json?ref=main`,
-                { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } });
-              if (gr.ok) text = await gr.text();
-            }
-            if (!text) { const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/blog/posts.json`); if (pr.ok) text = await pr.text(); }
-            const list = text ? JSON.parse(text) : [];
-            if (Array.isArray(list)) for (const p of list) if (p && p.slug) pjson[p.slug] = p;
-          } catch (e) { /* enrichment only */ }
-        }
-
-        let hasIndex = false;
-        const posts = wanted.map(r => {
-          const p = r.properties || {};
-          const at            = p["Asset Type"]?.select?.name || "";
-          const assetTitle    = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
-          const platformTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-          const bodyProp      = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-          const contentUrl    = (p["Content URL"]?.url || "").trim();
-          const pageSlug      = slugify(platformTitle || assetTitle);
-          const hp = hubPagePath(p);
-          const indexedOffer = kind === "offers" ? Object.values(pjson).find(post => String(post.assetId || '').replace(/-/g, '') === r.id.replace(/-/g, ''))
-            || (pjson[pageSlug] && !pjson[pageSlug].assetId ? pjson[pageSlug] : null) : null;
-          let url = "";
-          if (kind === "offers") { url = offerBlogPath(p, slug, indexedOffer); if (url) hasIndex = true; }
-          else if (hp) { url = hp; hasIndex = true; }
-          else if (pjson[pageSlug]) { url = `./blog/${pageSlug}/`; hasIndex = true; }
-          else if (contentUrl) { url = contentUrl; }
-          return {
-            ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
-            kicker:  kind === "offers" ? "Offer" : hubSectionOf(p) === "news" ? "News analysis" : "Article",
-            title:   platformTitle || assetTitle || "Untitled",
-            excerpt: String(kind === "offers" ? bodyProp || indexedOffer?.intro || "" : pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
-            image:   String(p["Thumbnail"]?.url || "").trim(),   // the post's blog thumbnail on its hub card
-            url,
-          };
-        });
-        // A card with no url (malformed/half-generated asset, nothing to
-        // link to) is dropped rather than shown as a dead, unclickable
-        // card — same "no placeholder" rule as getHubProducts.
-        const _seen = new Set();
-        const deduped = posts.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
-        return json({ posts: kind === "offers" ? deduped.slice(0, lim) : deduped, hasIndex });
-      } catch (e) {   // assets only (2026-10-08): no static posts.json fallback — a Notion error shows an empty section, never old items
-        return json({ posts: [], error: e.message });
-      }
+        const [rows, manifest] = await Promise.all([
+          notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(raw)}},{property:'Asset Status',select:{equals:'Published'}}]}}),
+          hubBlogManifest(env,hub)
+        ]);
+        const kind = isProducts ? 'offers' : String(body.kind || '').toLowerCase();
+        const entries = hubFeedEntries(rows,manifest,hub).filter(e=>kind ? e.section === kind : ['news','articles'].includes(e.section));
+        const limit = Math.max(1,Math.min(100,Number(body.limit)||9));
+        return json({[key]:entries.slice(0,limit).map(({id,section,hubSlug,...entry})=>({...entry,...(body.withIds?{id}:{})})),hasIndex:entries.length>0});
+      } catch(e) { return json({[key]:[],hasIndex:false,error:e.message}); }
     }
 
     // ── getHubProjectExperience ── public, no token. The Project
@@ -13833,7 +13766,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -13900,201 +13833,37 @@ export default {
       // omit to sweep every HUB_SITES campaign. `force` re-publishes even
       // assets that already carry a Content URL / Site URL.
       if (body.action === "backfillHubBlog") {
-        const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const only = body.campaignId ? String(body.campaignId).replace(/-/g,"") : null;
-        const force = !!body.force;
-        const targets = only ? HUB_SITES.filter(h => h.campaignId.replace(/-/g,"") === only) : HUB_SITES.slice();
-        if (only && !targets.length) return json({ error: "That campaign has no content hub (not in HUB_SITES)." }, 400);
-        const results = [];
-        const slugFromUrl = (u, sub) => { const m = String(u || "").match(new RegExp(`/${sub}/([^/]+)/?$`)); return m ? m[1] : null; };
-        for (const h of targets) {
-          const liveBlogSlugs = [], liveOfferSlugs = [];
-          const rows = await notionQuery(ASSETS_DB, {
-            filter: { and: [
-              { property: "Campaign", relation: { contains: dashId(h.campaignId) } },
-              { or: [
-                { property: "Asset Status", select: { equals: "Publish" } },
-                { property: "Asset Status", select: { equals: "Review" } },
-                { property: "Asset Status", select: { equals: "Published" } },
-              ] },
-            ] },
-          }).catch(() => []);
-          const blogAssets = rows.filter(r => {
-            const at = r.properties?.["Asset Type"]?.select?.name || "";
-            return /seo post/i.test(at) || /^blog (post|article)$/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at);
-          });
-          for (const a of blogAssets) {
-            const aid = a.id.replace(/-/g,"");
-            const p = a.properties || {};
-            const existingUrl = (p["Content URL"]?.url || "").trim();
-            if (existingUrl && !force) { results.push({ hub: h.slug, asset: aid, skipped: "already published" }); continue; }
-            const workingTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
-            let seoTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || workingTitle;
-            const titleId = (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g, "") || null;
-            const kids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
-            const blocks = kids.results || [];
-            const btxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
-            let intro = "", conclusion = "";
-            let sections = [];
-            const sources = [];
-            let inSources = false;
-            for (const b of blocks) {
-              if (b.type === "heading_2") {
-                if (/^\s*sources\s*$/i.test(btxt(b))) { inSources = true; continue; }
-                inSources = false;
-                sections.push({ heading: btxt(b), body: "" });
-              } else if (b.type === "bulleted_list_item" && inSources) {
-                const rt0 = (b.bulleted_list_item?.rich_text || [])[0];
-                const u = rt0?.href || rt0?.text?.link?.url || (btxt(b).match(/https?:\/\/\S+/) || [])[0];
-                if (u) sources.push({ label: btxt(b) || u, url: u });
-              } else if (b.type === "paragraph") {
-                const t = btxt(b);
-                if (!t) continue;
-                if (!sections.length) intro = intro ? intro + "\n\n" + t : t;
-                else { const s = sections[sections.length - 1]; s.body = s.body ? s.body + "\n\n" + t : t; }
-              }
-            }
-
-            // Blank asset page (the pre-fix block-write 502'd and left it
-            // empty) — rebuild the article from the source title's Pillar
-            // Content, one Claude call, then write it back onto THIS asset.
-            if (!sections.length) {
-              if (!titleId || !env.ANTHROPIC_API_KEY) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and can't rebuild (no linked title or no ANTHROPIC_API_KEY)" }); continue; }
-              const pillar = await extractPillarContent(hdr, dashId(titleId)).catch(() => "");
-              if (!pillar) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and the source title has no Pillar Content to rebuild from" }); continue; }
-              const genPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO content editor. FORMAT the pillar piece below into a complete, publish-ready blog post — a structuring/polishing pass, not a rewrite. Preserve its substance, claims and examples; invent nothing new; no generic filler.
-
-TITLE: ${workingTitle}
-PILLAR CONTENT:
-${pillar.slice(0, 12000)}
-
-Requirements:
-- 3 to 6 H2 sections, each a natural division of the pillar (specific headings, never "Introduction"/"Conclusion" alone). Roughly 250-550 words per section.
-- A 2-3 sentence intro before the first H2 and a short concluding paragraph after the last section.
-- No meta-commentary.
-
-Also write "seoTitle": the title-tag/headline this should publish under.
-
-Return ONLY this JSON, no other text, no fences:
-{ "intro": "...", "sections": [ { "heading": "...", "body": "..." } ], "conclusion": "...", "seoTitle": "..." }`;
-              const gr = await fetch("https://api.anthropic.com/v1/messages", {
-                method: "POST",
-                headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 7000, messages: [{ role: "user", content: genPrompt }] }),
-              }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
-              if (gr.error) { results.push({ hub: h.slug, asset: aid, error: "rebuild failed: " + (gr.error.message || "Claude error") }); continue; }
-              let gp;
-              try {
-                const rawg = gr.content?.[0]?.text || "";
-                gp = JSON.parse(sanitizeJsonControlChars(rawg.slice(rawg.indexOf("{"), rawg.lastIndexOf("}") + 1)));
-              } catch (e) { results.push({ hub: h.slug, asset: aid, error: "rebuild parse failed: " + e.message }); continue; }
-              sections = (Array.isArray(gp.sections) ? gp.sections : []).filter(s => s && s.heading);
-              if (!sections.length) { results.push({ hub: h.slug, asset: aid, error: "rebuild produced no sections" }); continue; }
-              intro = String(gp.intro || "").trim();
-              conclusion = String(gp.conclusion || "").trim();
-              if (gp.seoTitle) seoTitle = String(gp.seoTitle).trim().slice(0, 200);
-              // write the article onto the existing asset page (chunked)
-              const rtB = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null } }] : [];
-              const kid = [];
-              const pushParas = txt => String(txt || "").split(/\n{2,}/).forEach(pp => { const t = pp.trim(); if (!t) return; for (let i = 0; i < t.length; i += 1900) kid.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtB(t.slice(i, i + 1900)) } }); });
-              pushParas(intro);
-              sections.forEach(s => { kid.push({ object: "block", type: "heading_2", heading_2: { rich_text: rtB(s.heading) } }); pushParas(s.body); });
-              pushParas(conclusion);
-              let wrote = true;
-              for (let i = 0; i < kid.length && wrote; i += 100) {
-                const wr = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children`, {
-                  method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                  body: JSON.stringify({ children: kid.slice(i, i + 100) }),
-                }).catch(() => ({ ok: false }));
-                if (!wr.ok) wrote = false;
-              }
-              if (!wrote) { results.push({ hub: h.slug, asset: aid, error: "rebuild wrote article but the block PATCH failed" }); continue; }
-              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: intro.slice(0, 2000) } }] }, "Platform Title": { rich_text: [{ text: { content: seoTitle } }] } } }),
-              }).catch(() => {});
-              // Title Status is never touched by asset creation/rebuild —
-              // titles stay wherever the operator put them (2026-09-11).
-            }
-
-            const site = await publishSeoPostToLiveSite({
-              env, hdr, dash: dashId, campaignId: h.campaignId, spec: null,
-              seoTitle, workingTitle, intro, sections, conclusion, sources, assetId: aid,
-              thumbnail: (p["Thumbnail"]?.url || "").trim(),
-            }).catch(e => ({ published: false, error: e.message }));
-            if (site.published && site.liveUrl) {
-              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { "Content URL": { url: site.liveUrl }, "Content Hub": { select: { name: h.slug } } } }),
-              }).catch(() => {});
-            }
-            if (site.published) { const sg = slugFromUrl(site.liveUrl, "blog"); if (sg) liveBlogSlugs.push(sg); }
-            results.push({ hub: h.slug, asset: aid, title: seoTitle, published: !!site.published, liveUrl: site.liveUrl || null, error: site.error || null });
+        const only=hubAssetId(body.campaignId), targets=HUB_SITES.filter(h=>!only||hubAssetId(h.campaignId)===only);
+        if (!targets.length) return json({error:'That campaign has no content hub.'},400);
+        const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}, results=[];
+        await governingFlow(env);
+        for (const hub of targets) {
+          const rows=await notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}});
+          const eligible=rows.filter(r=>!r.archived&&!r.in_trash&&HUB_FEED_SECTIONS.has(hubSectionOf(r.properties))&&hubPublishableType(r.properties?.['Asset Type']?.select?.name)&&(!r.properties?.['Content Hub']?.select?.name||r.properties['Content Hub'].select.name===hub.slug));
+          const before=await hubBlogManifest(env,hub);
+          for (const page of eligible) {
+            const aid=hubAssetId(page.id);
+            if (!body.force && hubFeedEntries([page],before,hub).length) {results.push({hub:hub.slug,asset:aid,skipped:'already listed'});continue;}
+            try {
+              const site=await publishHubAssetToLiveSite(env,hdr,page);
+              page.properties['Content URL']={url:site.liveUrl};
+              results.push({hub:hub.slug,asset:aid,kind:hubSectionOf(page.properties)==='offers'?'offer':'post',published:true,liveUrl:site.liveUrl});
+            } catch(e) {results.push({hub:hub.slug,asset:aid,error:e.message});}
           }
-
-          // ── Offers ── same idea: publish each published Offer asset as a
-          // real hub offer page (pitch + lead form). Rebuilds the offer from
-          // the asset's OFFER CARD json block + pitch sections; degrades to
-          // the Body/Platform Title/Content URL properties if the page is
-          // blank.
-          const offerAssets = rows.filter(r => /\boffer\b/i.test(r.properties?.["Asset Type"]?.select?.name || ""));
-          for (const a of offerAssets) {
-            const aid = a.id.replace(/-/g, "");
-            const p = a.properties || {};
-            if ((p["Site URL"]?.url || "").trim() && !force) { results.push({ hub: h.slug, asset: aid, skipped: "offer already published" }); continue; }
-            const oname = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim()
-              || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Offer";
-            const oPromise = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
-            const oCta = (p["Content URL"]?.url || "").trim();
-            const okids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
-            const ob = okids.results || [];
-            const otxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
-            let card = {};
-            const cb = ob.find(b => b.type === "code");
-            if (cb) { try { card = JSON.parse(otxt(cb)); } catch (e) {} }
-            const offerObj = { kicker: card.kicker || "", name: card.name || oname, promise: card.promise || oPromise, ctaLabel: card.ctaLabel || "", ctaUrl: card.ctaUrl || oCta, included: [], forWho: "", whyItWorks: "", objection: "", terms: "" };
-            let head = "";
-            for (const b of ob) {
-              if (b.type === "heading_2") { head = otxt(b).toLowerCase(); continue; }
-              if (b.type === "bulleted_list_item" && head.includes("included")) { const t = otxt(b); if (t) offerObj.included.push(t); continue; }
-              if (b.type === "paragraph") {
-                const t = otxt(b); if (!t) continue;
-                if (head.includes("why it works")) offerObj.whyItWorks = offerObj.whyItWorks ? offerObj.whyItWorks + "\n\n" + t : t;
-                else if (head.includes("objection")) offerObj.objection = offerObj.objection ? offerObj.objection + "\n\n" + t : t;
-                else if (head.includes("terms")) offerObj.terms = offerObj.terms || t;
-                else if (!head && /^for\s+/i.test(t)) offerObj.forWho = t.replace(/^for\s+/i, "").replace(/\.$/, "");
-              }
-            }
-            const osite = await publishOfferToHub({
-              env, hdr, dash: dashId, campaignId: h.campaignId, workingTitle: oname, offer: offerObj, assetId: aid,
-            }).catch(e => ({ published: false, error: e.message }));
-            if (osite.published && osite.liveUrl) {
-              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { "Site URL": { url: osite.liveUrl }, "Content Hub": { select: { name: h.slug } } } }),
-              }).catch(() => {});
-            }
-            if (osite.published) { const sg = slugFromUrl(osite.liveUrl, "offers"); if (sg) liveOfferSlugs.push(sg); }
-            results.push({ hub: h.slug, asset: aid, title: offerObj.name, kind: "offer", published: !!osite.published, liveUrl: osite.liveUrl || null, error: osite.error || null });
-          }
-
-          // Prune each dir's manifest + index page down to what's actually
-          // published now (an unpublished piece lingers otherwise).
-          try {
-            // Offer blog pages share posts.json with editorial posts; an editorial rebuild must retain them.
-            for (const row of rows) {
-              if (row.properties?.['Asset Status']?.select?.name !== 'Published' || hubSectionOf(row.properties) !== 'offers') continue;
-              const path = offerBlogPath(row.properties, h.slug), match = path.match(/^\.\/blog\/([^/]+)\/$/);
-              if (match) liveBlogSlugs.push(match[1]);
-            }
-            const bp = await reconcileHubDir({ env, hdr, dash: dashId, campaignId: h.campaignId, sub: "blog", liveSlugs: liveBlogSlugs });
-            if (bp.removed) results.push({ hub: h.slug, pruned: bp.removed, kind: "blog-index" });
-            const op = await reconcileHubDir({ env, hdr, dash: dashId, campaignId: h.campaignId, sub: "offers", liveSlugs: liveOfferSlugs });
-            if (op.removed) results.push({ hub: h.slug, pruned: op.removed, kind: "offers-index" });
-          } catch (e) { /* prune is best-effort */ }
+          // A failed Notion read aborts this action: never interpret a failed query as an empty Published set.
+          const current=await notionQuery(ASSETS_DB,{filter:{and:[{property:'Campaign',relation:{contains:ivDash(hub.campaignId)}},{property:'Asset Status',select:{equals:'Published'}}]}});
+          const manifest=await hubBlogManifest(env,hub), entries=hubFeedEntries(current,manifest,hub);
+          const ids=new Set(entries.map(e=>e.id));
+          const live=manifest.filter(m=>m.assetId ? ids.has(hubAssetId(m.assetId)) : entries.some(e=>e.url===`./blog/${m.slug}/`));
+          const bp=await reconcileHubDir({env,hdr,dash:ivDash,campaignId:hub.campaignId,sub:'blog',liveSlugs:live.map(m=>m.slug)});
+          if(bp.error)throw new Error(bp.error);
+          results.push({hub:hub.slug,kind:'blog-index',...bp});
+          const offers=entries.filter(e=>e.section==='offers').map(e=>({assetId:e.id,slug:e.url.split('/')[2],name:e.title,promise:e.excerpt,url:'.'+e.url,image:e.image}));
+          const op=await reconcileHubDir({env,hdr,dash:ivDash,campaignId:hub.campaignId,sub:'offers',desiredEntries:offers});
+          if(op.error)throw new Error(op.error);
+          results.push({hub:hub.slug,kind:'offers-index',...op});
         }
-        return json({ success: true, count: results.length, results });
+        return json({success:!results.some(r=>r.error),count:results.length,results});
       }
 
       // ── backfillHubProductChain ── Content Hubs tab "⟳ Backfill product chain".
@@ -16710,18 +16479,12 @@ Return: {
         const rows = [];
         const usedProducts = new Set();
         const scheduleFields = slotId => { const m = slotMeta[dropDash(slotId || "")]; return m ? { schedule: m.schedule, scheduleGroup: m.grouping, cadence: m.cadence, progress: m.progress, nextDue: m.nextDue, scheduleStatus: m.status } : { schedule: "", scheduleGroup: "", cadence: "", progress: "", nextDue: "", scheduleStatus: "" }; };
-        const hubPublishFields = (a, campId) => {
-          if (!a) return { hubPublish: "", hubLive: false };
-          const expectedSlug = hubSlugByCampId[campId] || "", st = a.status || "", sec = a.hubSectionKey || "";
-          if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return { hubPublish: "⚠ Different hub", hubLive: false };
-          if (st !== "Published") return { hubPublish: st === "Publish" ? "Queued — not live" : st === "Review" ? "Review — not live" : "Not published", hubLive: false };
-          if (a.deploymentStatus && a.deploymentStatus !== "Deployed") return { hubPublish: a.deploymentStatus === "Scheduled" ? "Published · deployment scheduled" : a.deploymentStatus === "Not Applicable" ? "Published · no deployment" : "Published · not deployed", hubLive: false };
-          if (!sec) return { hubPublish: /^unlisted$/i.test(a.hubSection || "") ? "Published · unlisted" : "⚠ Published · no section", hubLive: false };
-          if (sec === "email") return { hubPublish: "Published · email only", hubLive: false };
-          if (["offers", "news", "articles"].includes(sec) && !a.liveUrl) return { hubPublish: "⚠ Published · missing page", hubLive: false };
-          const hubLiveUrl = /^\.\//.test(a.liveUrl || "") && expectedSlug ? `https://cabuzzard.github.io/dash/web/hub/${expectedSlug}/${a.liveUrl.slice(2)}` : (a.liveUrl || `https://cabuzzard.github.io/dash/web/hub/${expectedSlug}/`);
-          return { hubPublish: "✓ Published to section", hubLive: true, hubLiveUrl };
-        };
+        const listedByAsset = new Map();
+        await Promise.all(HUB_SITES.filter(h=>assetRows.some(a=>a.properties?.['Asset Status']?.select?.name==='Published' && HUB_FEED_SECTIONS.has(hubSectionOf(a.properties)) && (a.properties?.Campaign?.relation||[]).some(c=>hubAssetId(c.id)===hubAssetId(h.campaignId)))).map(async hub=>{
+          try {for(const entry of hubFeedEntries(assetRows,await hubBlogManifest(env,hub),hub)) listedByAsset.set(entry.id,entry);}
+          catch(e){console.error('Hub listing verification:',hub.slug,e.message);}
+        }));
+        const hubPublishFields = (a,campId) => hubRoutedState(a,hubSlugByCampId[campId]||'',listedByAsset.get(a?.id));
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name,
           platformTitle: a.platformTitle || "",
@@ -39085,6 +38848,16 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
         const props = {};
+        const hasHubSwitch = typeof body.publishToHub === 'boolean';
+        let hubBefore=null, hubSync=null;
+        if(hasHubSwitch){
+          await governingFlow(env);
+          const r=await fetch('https://api.notion.com/v1/pages/'+dash(assetId),{headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION}});
+          hubBefore=await r.json();
+          if(!r.ok||hubBefore.archived||hubBefore.in_trash)return json({error:hubBefore.message||'Asset unavailable'},404);
+          if(!hubPublishableType(hubBefore.properties?.['Asset Type']?.select?.name))return json({error:'This asset type cannot be published to a hub'},400);
+        }
+
         if (title !== undefined && title !== "") props["Asset Title"] = { title: [{ text: { content: title } }] };
         if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
         // Re-pointing an image property at an url that's already hosted (the
@@ -39180,15 +38953,16 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         }
         if (status !== undefined && status !== "") {
           const validStatus = ["Publish", "Review", "Published"];
-          if (!validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);
+          if (!hasHubSwitch && !validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);
           props["Asset Status"] = { select: { name: status } };
         }
+        if(hasHubSwitch) props['Asset Status']={select:{name:body.publishToHub?'Published':'Development'}};
         // Publish modal's "Published on" — an explicit edit wins; "" clears it.
         if (body.publishingDate !== undefined) {
           const pdv = String(body.publishingDate || "").trim();
           if (pdv && !/^\d{4}-\d{2}-\d{2}$/.test(pdv)) return json({ error: "publishingDate must be YYYY-MM-DD" }, 400);
           props["Publishing Date"] = { date: pdv ? { start: pdv } : null };
-        } else if (status === "Published") {
+        } else if (props["Asset Status"]?.select?.name === "Published") {
           stampAfter = true;
         }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -39200,8 +38974,22 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
         if (stampAfter) await stampPublishingDate(assetId);
         try {
-          await syncOfferAssetBlog(env, { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, result2);
-        } catch (e) { return json({ error: 'Asset fields saved, but offer blog sync failed: ' + e.message }, 502); }
+          const hubHdr={"Authorization":`Bearer ${NOTION_TOKEN}`,"Notion-Version":NOTION_VERSION};
+          if(hasHubSwitch){
+            if(body.publishToHub){
+              hubSync=await publishHubAssetToLiveSite(env,hubHdr,result2);
+              // Remove legacy offers/sales listings for this asset after its blog-form page is safely written.
+              const old={...hubBefore,properties:{...hubBefore.properties}};
+              old.properties['Content URL']={url:hubBefore.properties?.['Content URL']?.url||''};
+              // Keep the newly published blog entry; prune old directory entries only.
+              hubSync.legacyPruned=await removeHubAssetListings(env,hubHdr,old,['offers','sales']);
+              hubSync.offerIndex=await syncHubOfferIndex(env,hubHdr,result2,hubSync);
+            }else hubSync=await removeHubAssetListings(env,hubHdr,hubBefore);
+          }else await syncOfferAssetBlog(env,hubHdr,result2);
+        } catch(e) {
+          if(hasHubSwitch && body.publishToHub) await fetch('https://api.notion.com/v1/pages/'+dash(assetId),{method:'PATCH',headers:{'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION,'Content-Type':'application/json'},body:JSON.stringify({properties:{'Asset Status':{select:{name:'Development'}}}})});
+          return json({error:'Asset fields saved, but hub sync failed: '+e.message},502);
+        }
 
         // ── Content Hub asset → Published = build the chassis. Fires
         // scaffoldHub in the background (self-call so the heavy Claude +
@@ -39246,7 +39034,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
             } catch (e) { /* best-effort */ }
           })());
         }
-        return json({ success: true, voiceEdits });
+        return json({ success: true, voiceEdits, ...(hasHubSwitch ? {hubSync, status:body.publishToHub?'Published':'Development', ...await hubAssetRoutedState(env, {...result2,properties:{...result2.properties,...(hubSync?.liveUrl?{'Content URL':{url:hubSync.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}:{})}})} : {}) });
       }
 
       // ── uploadAssetThumbnail ──
@@ -50358,6 +50146,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // every method-grounded generation path already reads from — so
       // headings come back as "## Heading" and paragraphs as plain lines,
       // reconstructing the full article rather than just its hook.
+      if (body.action === 'getHubAssetState') {
+        const hdr={'Authorization':`Bearer ${NOTION_TOKEN}`,'Notion-Version':NOTION_VERSION};
+        const resp=await fetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
+        const page=await resp.json(); if(!resp.ok||page.archived||page.in_trash)return json({error:page.message||'Asset unavailable'},404);
+        return json({...await hubAssetRoutedState(env,page),status:page.properties?.['Asset Status']?.select?.name||''});
+      }
       if (body.action === "getAssetFullText") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
