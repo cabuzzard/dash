@@ -3993,7 +3993,12 @@ async function republishOfferToLiveSite(env, hdr, assetId) {
         else if (head.includes("terms")) offer.terms = offer.terms || t;
         else if (!head && /^for\s+/i.test(t)) offer.forWho = t.replace(/^for\s+/i, "").replace(/\.$/, ""); }
     }
-    return await publishOfferToHub({ env, hdr, dash: dashId, campaignId, workingTitle: oname, offer, assetId: String(assetId).replace(/-/g, "") });
+    const published = await publishOfferToHub({ env, hdr, dash: dashId, campaignId, workingTitle: oname, offer, assetId: String(assetId).replace(/-/g, "") });
+    if (published.published && published.liveUrl) {
+      const saved = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ properties: { 'Site URL': { url: published.liveUrl } } }) });
+      if (!saved.ok) throw new Error('Offer page published but its Site URL could not be saved');
+    }
+    return published;
   } catch (e) { return { error: e.message }; }
 }
 async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
