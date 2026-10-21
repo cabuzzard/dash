@@ -1,70 +1,34 @@
 [
   {
-    "slug": "full-funnel-retainer",
-    "name": "Full-Funnel Retainer",
-    "kicker": "Monthly retainer · no long-term contract",
-    "promise": "One account runs your SEO, paid media, content, and social as a single system — so your budget compounds instead of fragments across vendors who never talk to each other.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3f51f7d3a4bb8151b931f535763ba85d",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/small-business-digital-marketing-retainer-blog-thumbnail-mvhjewk7.png"
-  },
-  {
-    "slug": "ai-content-partner",
-    "name": "AI Content Partner",
-    "kicker": "Fractional retainer · scoped to your business",
-    "promise": "A senior strategist and a production system run your content — so it goes out consistently, stays on-brand, and connects to pipeline.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb8145bb6afa30c7bc35b6",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-content-partner-blog-thumbnail-mvhjdeh3.png"
-  },
-  {
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
     "slug": "ai-operations-partner",
     "name": "AI Operations Partner",
-    "kicker": "Done-for-you implementation · engagement-based pricing",
     "promise": "Your full business pipeline — lead gen, follow-up, customer service, internal handoffs — runs automatically, under one integrated system, without you managing the machinery.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-business-automation-partner-blog-thumbnail-mvhjbots.png"
+    "url": "../blog/ai-operations-partner/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-business-automation-partner-blog-thumbnail-mvhjbots.png"
   },
   {
+    "assetId": "4001f7d3a4bb8145bb6afa30c7bc35b6",
+    "slug": "ai-content-partner",
+    "name": "AI Content Partner",
+    "promise": "A senior strategist and a production system run your content — so it goes out consistently, stays on-brand, and connects to pipeline.",
+    "url": "../blog/ai-content-partner/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-content-partner-blog-thumbnail-mvhjdeh3.png"
+  },
+  {
+    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
     "slug": "done-for-you-lead-gen",
     "name": "Done-For-You Lead Gen",
-    "kicker": "Monthly retainer · transparent tiered pricing",
     "promise": "Qualified, ICP-matched meetings land on your calendar — you sell, we prospect.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/affordable-lead-gen-agency-blog-thumbnail-mvhja4rw.png"
+    "url": "../blog/done-for-you-lead-gen/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/affordable-lead-gen-agency-blog-thumbnail-mvhja4rw.png"
   },
   {
-    "slug": "ai-marketing-build",
-    "name": "AI Marketing Build",
-    "kicker": "One-time build · $1,500–$4,000",
-    "promise": "One connected system captures your leads, follows up automatically, and publishes content on a repeatable track — built, tested, and handed over so you own it outright.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8159b041ffdc089d5784",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-marketing-system-setup-blog-thumbnail-mv22b09t.png"
-  },
-  {
-    "slug": "strategy-discovery-call",
-    "name": "Strategy Discovery Call",
-    "kicker": "Flat-fee session · credited toward any retainer",
-    "promise": "You leave with a concrete AI marketing plan mapped to your actual business — not a pitch deck, not a proposal, not homework.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb815cbf30d9af2ee913d5",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-marketing-strategy-discovery-call-blog-thumbnail-mv22ajhp.png"
-  },
-  {
-    "slug": "ai-business-audit",
-    "name": "AI Business Audit",
-    "kicker": "One-time flat fee · satisfaction guaranteed",
-    "promise": "In one 30-minute session, see exactly where your business is leaking time and money — with a ranked, plain-language action plan built from your specific operations.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "assetId": "3f51f7d3a4bb8151b931f535763ba85d",
+    "slug": "full-funnel-retainer",
+    "name": "Full-Funnel Retainer",
+    "promise": "One account runs your SEO, paid media, content, and social as a single system — so your budget compounds instead of fragments across vendors who never talk to each other.",
+    "url": "../blog/full-funnel-retainer/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/small-business-digital-marketing-retainer-blog-thumbnail-mvhjewk7.png"
   }
 ]
