@@ -4,7 +4,7 @@ const rt=s=>[{plain_text:s,text:{content:s}}],id='a'.repeat(32);
 const page=(aid=id,type='Offer - Content Hub',status='Published',section='Offers')=>({id:aid,created_time:'2026-10-21',properties:{Campaign:{relation:[{id:hub.campaignId}]},'Asset Type':{select:{name:type}},'Asset Status':{select:{name:status}},'Hub Section':{select:{name:section}},'Platform Title':{rich_text:rt(aid)},Body:{rich_text:rt('Written content')},'Deployment Status':{select:{name:'Deployed'}}}});
 function setup(rows=[]){
  const files=new Map(),deleted=[],writes=[],pages=new Map(rows.map(p=>[p.id,p]));let fail=false;
- const ctx=vm.createContext({console,URL,Date,Set,Map,JSON,setTimeout:fn=>fn(),HUB_SITES:[hub],ASSETS_DB:'assets',NOTION_TOKEN:'fixture',NOTION_VERSION:'version',ivDash:x=>x,governingFlow:async()=>({}),stampPublishingDate:async()=>{},ensureAssetsDbProperties:async()=>{},
+ const ctx=vm.createContext({hierarchyForHub:async()=>({asset:()=>true}),requireHierarchyPlacement:async()=>({placed:true}),hierarchyPlacement:async()=>({placed:true,applies:true}),console,URL,Date,Set,Map,JSON,setTimeout:fn=>fn(),HUB_SITES:[hub],ASSETS_DB:'assets',NOTION_TOKEN:'fixture',NOTION_VERSION:'version',ivDash:x=>x,governingFlow:async()=>({}),stampPublishingDate:async()=>{},ensureAssetsDbProperties:async()=>{},
  notionQuery:async(db,q)=>{assert.equal(q.filter.and[1].select.equals,'Published');return rows.filter(p=>!p.archived&&p.properties['Asset Status'].select.name==='Published');},
  hubSiteTarget:async({sub})=>({basePath:'web/hub/fixture/'+sub,campName:'Fixture',s:{},hub,getFile:async path=>({text:files.get(path)||null}),putFile:async(path,text)=>{files.set(path,text);writes.push(path);},deleteFile:async path=>{files.delete(path);deleted.push(path);}}),
  fetch:async(url,opts={})=>{
@@ -23,10 +23,10 @@ function setup(rows=[]){
  ctx.ivHdr=()=>({});ctx.ivPage=async id=>structuredClone(pages.get(id.replaceAll('-','')));
  return {ctx,files,deleted,writes,pages,setFail:v=>fail=v,manifest:()=>JSON.parse(files.get('web/hub/fixture/blog/posts.json')||'[]')};
 }
-test('listing membership, not Deployed or URL, governs every feed and routed label',()=>{
+test('listing membership, not Deployed or URL, governs every feed and routed label',async()=>{
  const p=page(),x=setup([p]);const state={status:'Published',hubSectionKey:'offers',hubSection:'Offers',deploymentStatus:'Deployed'};
- assert.equal(x.ctx.hubFeedEntries([p],[],hub).length,0);assert.equal(x.ctx.hubRoutedState(state,'fixture').hubSectionDisplay,'Offers \u00b7 not on hub');
- const entry=x.ctx.hubFeedEntries([p],[{assetId:id,slug:'offer'}],hub)[0];assert.equal(entry.url,'./blog/offer/');assert.equal(x.ctx.hubRoutedState(state,'fixture',entry).hubSectionDisplay,'Offers');
+ assert.equal((await x.ctx.hubFeedEntries([p],[],hub)).length,0);assert.equal(x.ctx.hubRoutedState(state,'fixture').hubSectionDisplay,'Offers \u00b7 not on hub');
+ const entry=(await x.ctx.hubFeedEntries([p],[{assetId:id,slug:'offer'}],hub))[0];assert.equal(entry.url,'./blog/offer/');assert.equal(x.ctx.hubRoutedState(state,'fixture',entry).hubSectionDisplay,'Offers');
  assert.equal(x.ctx.hubRoutedState({...state,status:'Idea'},'fixture',entry).hubLive,false);
  assert.equal(x.ctx.hubRoutedState({...state,contentHub:'different'},'fixture',entry).hubLive,false);
  assert.equal(x.ctx.hubRoutedState({...state,hubSectionKey:'',hubSection:'Unlisted'},'fixture').hubSectionDisplay,'');
