@@ -734,12 +734,12 @@ function reveal() {
   });
 }
 
-async function renderHubProducts() {
-  // Services/Products section: any Offer or QA – Sales asset
-  // (getHubProducts), each a card linking to its live page. No
+async function renderHubOffers() {
+  // Offers section: Published offers-section assets with blog-form pages
+  // (getHubBlog, kind: offers), using the editorial card shape. No
   // placeholder — the section stays hidden until something resolves.
   const sec = document.getElementById('trips');
-  const s = HUB.trips;
+  const s = HUB.trips; if (!s) return;   // this hub has no data for the section → it stays hidden, no crash
   $("tripsLabel").textContent = s.label;
   $("tripsTitle").textContent = s.title;
   $("tripsNote").textContent = s.note || "";
@@ -754,17 +754,17 @@ async function renderHubProducts() {
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         <span class="more">Read →</span>
-      </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./offers/">All offers →</a></p>` : "");
+      </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
   };
   if (!HUB.campaignId) return;
   try {
     const res = await fetch(WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getHubProducts", campaignId: HUB.campaignId, slug: HUB.slug }),
+      body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug, kind: "offers" }),
     });
     const data = await res.json();
-    if (res.ok && Array.isArray(data.products) && data.products.length) paint(data.products, !!data.hasIndex);
+    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, !!data.hasIndex);
   } catch (e) { /* stays hidden */ }
 }
 
@@ -790,7 +790,7 @@ async function renderHubProducts() {
   renderHubArticles();
   renderReport();
   renderHubProjectExperience();
-  renderHubProducts();
+  renderHubOffers();
   renderSocial();
   if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
 })();

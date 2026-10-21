@@ -4076,6 +4076,87 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
   return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
 }
 
+// Offer cards consume the same blog-page family as editorial posts. A sales/ or offers/ URL is not a blog page.
+function offerBlogPath(props, hubSlug, indexed) {
+  if (indexed && /^[a-z0-9-]+$/.test(indexed.slug || '')) return `./blog/${indexed.slug}/`;
+  for (const key of ['Content URL', 'Site URL']) {
+    const url = String(props?.[key]?.url || '').trim();
+    const match = url.match(/\/web\/hub\/([^/]+)\/blog\/([a-z0-9-]+)(?:\/(?:index\.html)?)?$/i);
+    if (match && (!hubSlug || match[1] === hubSlug)) return `./blog/${match[2]}/`;
+  }
+  return '';
+}
+function offerBlogAsset(props) {
+  const type = props?.['Asset Type']?.select?.name || '';
+  return /\boffer\b/i.test(type) || (hubSectionOf(props) === 'offers' && (/seo post|blog/i.test(type) || !!offerBlogPath(props)));
+}
+async function offerBlogBlocks(hdr, pageId) {
+  const blocks = []; let cursor;
+  do {
+    const r = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children?page_size=100${cursor ? '&start_cursor=' + encodeURIComponent(cursor) : ''}`, { headers: hdr });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.message || 'Could not read offer content');
+    for (const block of data.results || []) {
+      blocks.push(block);
+      if (block.has_children) blocks.push(...await offerBlogBlocks(hdr, block.id));
+    }
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return blocks;
+}
+function offerBlogParts(props, blocks) {
+  const rt = runs => (runs || []).map(t => t.plain_text ?? t.text?.content ?? '').join('');
+  let intro = '', card = null; const sections = [];
+  for (const block of blocks) {
+    const text = rt(block[block.type]?.rich_text).trim(); if (!text) continue;
+    if (block.type === 'code') {
+      try { const value = JSON.parse(text); if (value && (value.promise || value.name || value.ctaUrl)) { card = value; continue; } } catch (e) { /* ordinary code is content */ }
+    }
+    if (/^heading_[123]$/.test(block.type)) { sections.push({ heading: text, body: '' }); continue; }
+    if (sections.length) { const section = sections[sections.length - 1]; section.body += (section.body ? '\n\n' : '') + text; }
+    else intro += (intro ? '\n\n' : '') + text;
+  }
+  const body = rt(props.Body?.rich_text).trim();
+  if (!intro && !sections.length && body) return { ...topicalArticleParts(body), cta: card?.ctaUrl ? { href: card.ctaUrl, label: card.ctaLabel } : undefined };
+  if (!intro) intro = body || String(card?.promise || '');
+  if (!intro && !sections.some(s => s.body)) throw new Error('Offer has no written content to publish');
+  return { intro, sections, conclusion: '', sources: [], cta: card?.ctaUrl ? { href: card.ctaUrl, label: card.ctaLabel } : undefined };
+}
+async function publishOfferAssetBlog(env, hdr, page) {
+  const p = page.properties || {};
+  if (p['Asset Status']?.select?.name !== 'Published' || hubSectionOf(p) !== 'offers' || !offerBlogAsset(p)) return { skipped: 'not a Published offers-section blog asset' };
+  const campaignId = p.Campaign?.relation?.[0]?.id;
+  const hub = HUB_SITES.find(h => h.campaignId.replace(/-/g, '') === String(campaignId || '').replace(/-/g, ''));
+  if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) return { skipped: 'no matching content hub' };
+  const aid = page.id.replace(/-/g, '');
+  const text = value => (value || []).map(t => t.plain_text ?? t.text?.content ?? '').join('').trim();
+  const parts = offerBlogParts(p, await offerBlogBlocks(hdr, ivDash(aid)));
+  const result = await publishSeoPostToLiveSite({ env, hdr, dash: ivDash, campaignId, spec: null, assetId: aid,
+    workingTitle: text(p['Asset Title']?.title), seoTitle: text(p['Platform Title']?.rich_text),
+    ...parts, thumbnail: p.Thumbnail?.url || '', sub: 'blog' });
+  if (!result.published || !result.liveUrl) throw new Error(result.error || 'Offer blog page was not published');
+  const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties: { 'Content URL': { url: result.liveUrl }, 'Deployment Status': { select: { name: 'Deployed' } } } }) });
+  if (!saved.ok) { const data = await saved.json(); throw new Error('Offer page deployed but publish fields were not saved: ' + (data.message || saved.status)); }
+  return { ...result, hub: hub.slug, assetId: aid };
+}
+async function syncOfferAssetBlog(env, hdr, page) {
+  const p = page.properties || {};
+  if (!offerBlogAsset(p)) return { skipped: 'not an offer blog asset' };
+  if (p['Asset Status']?.select?.name === 'Published' && hubSectionOf(p) === 'offers') return publishOfferAssetBlog(env, hdr, page);
+  // Remove only this asset's manifest entry; keep editorial entries and orphan page files intact.
+  const campaignId = p.Campaign?.relation?.[0]?.id;
+  if (!campaignId) return { skipped: 'no campaign' };
+  const t = await hubSiteTarget({ env, hdr, dash: ivDash, campaignId, sub: 'blog' });
+  if (t.error) throw new Error(t.error);
+  const { text } = await t.getFile(`${t.basePath}/posts.json`);
+  const list = text ? JSON.parse(text) : []; if (!Array.isArray(list)) throw new Error('Invalid blog manifest');
+  const aid = page.id.replace(/-/g, ''), path = offerBlogPath(p, t.hub?.slug);
+  const keep = list.filter(row => row && (row.assetId ? String(row.assetId).replace(/-/g, '') !== aid : `./blog/${row.slug}/` !== path));
+  if (keep.length === list.length) return { removed: 0 };
+  return reconcileHubDir({ env, hdr, dash: ivDash, campaignId, sub: 'blog', liveSlugs: keep.map(row => row.slug) });
+}
+
 // Re-publishes ONE already-live Blog/SEO Post asset's live page as-is (no
 // Claude call — reads the EXISTING Notion blocks back into intro/sections/
 // conclusion/sources, same parse backfillHubBlog's per-asset loop does) but
@@ -4105,6 +4186,7 @@ async function republishOfferToLiveSite(env, hdr, assetId) {
     const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
     const p = page.properties || {};
     if (!/\boffer\b/i.test(p["Asset Type"]?.select?.name || "")) return { skipped: "not an offer" };
+    if (p["Asset Status"]?.select?.name === "Published" && hubSectionOf(p) === "offers") return publishOfferAssetBlog(env, hdr, page);
     if (!/^(publish|review)/i.test(p["Asset Status"]?.select?.name || "") && !(p["Site URL"]?.url || "").includes("/offers/")) return { skipped: "not published yet — nothing live to update" };
     const campaignId = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null; if (!campaignId) return { skipped: "asset has no Campaign relation" };
     const oname = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Offer";
@@ -13527,11 +13609,11 @@ export default {
         const wanted = rows.filter(r => {
           // Hub Section override (Publish modal) wins over the type default.
           const sec = hubSectionOf(r.properties);
-          const matchesKind = kind === "news" ? sec === "news" : kind === "articles" ? sec === "articles" : (sec === "news" || sec === "articles");
+          const matchesKind = kind === "news" ? sec === "news" : kind === "articles" ? sec === "articles" : kind === "offers" ? sec === "offers" : (sec === "news" || sec === "articles");
           if (!matchesKind) return false;
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
-        }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, lim);
+        }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, kind === "offers" ? Infinity : lim);
 
         // posts.json (best-effort) → slug → intro, for a richer blurb
         let pjson = {};
@@ -13560,15 +13642,18 @@ export default {
           const contentUrl    = (p["Content URL"]?.url || "").trim();
           const pageSlug      = slugify(platformTitle || assetTitle);
           const hp = hubPagePath(p);
+          const indexedOffer = kind === "offers" ? Object.values(pjson).find(post => String(post.assetId || '').replace(/-/g, '') === r.id.replace(/-/g, ''))
+            || (pjson[pageSlug] && !pjson[pageSlug].assetId ? pjson[pageSlug] : null) : null;
           let url = "";
-          if (hp) { url = hp; hasIndex = true; }
+          if (kind === "offers") { url = offerBlogPath(p, slug, indexedOffer); if (url) hasIndex = true; }
+          else if (hp) { url = hp; hasIndex = true; }
           else if (pjson[pageSlug]) { url = `./blog/${pageSlug}/`; hasIndex = true; }
           else if (contentUrl) { url = contentUrl; }
           return {
             ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
-            kicker:  hubSectionOf(p) === "news" ? "News analysis" : "Article",
+            kicker:  kind === "offers" ? "Offer" : hubSectionOf(p) === "news" ? "News analysis" : "Article",
             title:   platformTitle || assetTitle || "Untitled",
-            excerpt: String(pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
+            excerpt: String(kind === "offers" ? bodyProp || indexedOffer?.intro || "" : pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
             image:   String(p["Thumbnail"]?.url || "").trim(),   // the post's blog thumbnail on its hub card
             url,
           };
@@ -13578,7 +13663,7 @@ export default {
         // card — same "no placeholder" rule as getHubProducts.
         const _seen = new Set();
         const deduped = posts.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
-        return json({ posts: deduped, hasIndex });
+        return json({ posts: kind === "offers" ? deduped.slice(0, lim) : deduped, hasIndex });
       } catch (e) {   // assets only (2026-10-08): no static posts.json fallback — a Notion error shows an empty section, never old items
         return json({ posts: [], error: e.message });
       }
@@ -13786,6 +13871,24 @@ export default {
     }
 
     try {
+      // Backfill already-Published Offer blog pages, five at a time; the regular publish path uses this same generator.
+      if (body.action === "backfillHubOfferBlog") {
+        const only = String(body.campaignId || '').replace(/-/g, '');
+        const rows = await notionQuery(ASSETS_DB, { filter: { and: [
+          { property: 'Asset Status', select: { equals: 'Published' } },
+          ...(only ? [{ property: 'Campaign', relation: { contains: ivDash(only) } }] : []),
+        ] } });
+        const eligible = rows.filter(row => hubSectionOf(row.properties) === 'offers' && offerBlogAsset(row.properties))
+          .sort((a, b) => a.id.localeCompare(b.id));
+        const offset = Math.max(0, Number(body.offset) || 0), limit = Math.max(1, Math.min(5, Number(body.limit) || 5));
+        const results = [], hdr = { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION };
+        for (const page of eligible.slice(offset, offset + limit)) {
+          try { results.push({ assetId: page.id, title: lfReadRich(page.properties['Platform Title']) || (page.properties['Asset Title']?.title || []).map(t => t.plain_text).join(''), ...await publishOfferAssetBlog(env, hdr, page) }); }
+          catch (e) { results.push({ assetId: page.id, error: e.message }); }
+        }
+        return json({ results, total: eligible.length, nextOffset: offset + results.length, done: offset + results.length >= eligible.length });
+      }
+
       // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog + offers" button.
       // (Re)publishes a hub campaign's published content as real hub sub-pages:
       // every SEO Post / Blog - SEO - News article → web/hub/{slug}/blog/{post}/
@@ -13979,6 +14082,12 @@ Return ONLY this JSON, no other text, no fences:
           // Prune each dir's manifest + index page down to what's actually
           // published now (an unpublished piece lingers otherwise).
           try {
+            // Offer blog pages share posts.json with editorial posts; an editorial rebuild must retain them.
+            for (const row of rows) {
+              if (row.properties?.['Asset Status']?.select?.name !== 'Published' || hubSectionOf(row.properties) !== 'offers') continue;
+              const path = offerBlogPath(row.properties, h.slug), match = path.match(/^\.\/blog\/([^/]+)\/$/);
+              if (match) liveBlogSlugs.push(match[1]);
+            }
             const bp = await reconcileHubDir({ env, hdr, dash: dashId, campaignId: h.campaignId, sub: "blog", liveSlugs: liveBlogSlugs });
             if (bp.removed) results.push({ hub: h.slug, pruned: bp.removed, kind: "blog-index" });
             const op = await reconcileHubDir({ env, hdr, dash: dashId, campaignId: h.campaignId, sub: "offers", liveSlugs: liveOfferSlugs });
@@ -39090,6 +39199,9 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
         if (stampAfter) await stampPublishingDate(assetId);
+        try {
+          await syncOfferAssetBlog(env, { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, result2);
+        } catch (e) { return json({ error: 'Asset fields saved, but offer blog sync failed: ' + e.message }, 502); }
 
         // ── Content Hub asset → Published = build the chassis. Fires
         // scaffoldHub in the background (self-call so the heavy Claude +
@@ -39898,13 +40010,16 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
         const ar = await fetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
+        const savedAsset = await ar.json();
+        try { await syncOfferAssetBlog(env, { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, savedAsset); }
+        catch (e) { return json({ error: 'Status saved, but offer blog sync failed: ' + e.message }, 502); }
         if (status === "Published") await stampPublishingDate(assetId);
         // Content Hub / Landing Page asset → Published = build the site.
         // Same self-call trigger as updatePublishFields — this is the path
         // the main dashboard's status badge uses, so it needs it too.
         if (status === "Published") {
           try {
-            const ap = await ar.json().catch(() => null);
+            const ap = savedAsset;
             const at2 = ap?.properties?.["Asset Type"]?.select?.name || "";
             const trigAction = at2 === "Content Hub" ? "scaffoldHub" : at2 === "Landing Page" ? "scaffoldLandingPage" : null;
             if (trigAction) {
