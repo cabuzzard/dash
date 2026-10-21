@@ -23,9 +23,13 @@ vm.runInContext(code + "\nCARE_GAP_EDITOR_ASSET = 'asset'; CARE_GAP_EDITOR_LOAD 
   assert.ok(!panel.innerHTML.includes('— no interview</button>'));
   state.eligible = false; await context.careGapTopicalLoad('asset', 1); assert.equal(panel.hidden, true); assert.equal(panel.innerHTML, '');
   state.eligible = true; state.hasFinishedInterview = false;
+  assert.equal(context.careGapTopicalPublishOptions().privacy, 'private');
+  frame.contentDocument = { getElementById: id => ({ value: id === 'pubYtPrivacy' ? 'unlisted' : '2026-10-25T12:00:00Z' }) };
   await context.careGapTopicalWrite(true);
   assert.equal(requests.find(r => r.action === 'writePublishTopicalFromModal').source, 'publish-modal');
   assert.equal(requests.find(r => r.action === 'writePublishTopicalFromModal').skipInterview, true);
+  assert.equal(requests.find(r => r.action === 'writePublishTopicalFromModal').privacy, 'unlisted');
+  assert.equal(requests.find(r => r.action === 'writePublishTopicalFromModal').publishAt, '2026-10-25T12:00:00.000Z');
   assert.ok(panel.innerHTML.includes('✓ Written without interview'));
   assert.ok(panel.innerHTML.includes('✗ Publishing: Blog unavailable'));
   panel.innerHTML = 'new asset'; await context.careGapTopicalLoad('old asset', 0); assert.equal(panel.innerHTML, 'new asset');

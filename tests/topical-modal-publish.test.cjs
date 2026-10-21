@@ -4,7 +4,7 @@ const block = source.slice(source.indexOf('// Explicit individual Publish-modal 
 const aid = 'a'.repeat(32), tid = 'b'.repeat(32), cid = 'c'.repeat(32), pid = 'd'.repeat(32);
 const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function fixture(type = 'Topical Post') {
-  let interviews = [], prompts = [], created = 0, patches = [], published = 0, publishError = '', aiError = false;
+  let interviews = [], prompts = [], created = 0, patches = [], published = 0, publishError = '', aiError = false, youtubeCalls = [];
   const page = { id: aid, properties: { 'Asset Type': { select: { name: type } }, 'Asset Title': { title: [{ plain_text: 'Example topic' }] },
     'Content Strategy': { relation: [{ id: tid }] }, Campaign: { relation: [{ id: cid }] }, Product: { relation: [{ id: pid }] } } };
   const table = { rows: [
@@ -23,7 +23,7 @@ function fixture(type = 'Topical Post') {
     topicalMdBlocks: text => [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: text } }] } }],
     publishSeoPostToLiveSite: async () => { published++; if (publishError) return { published: false, error: publishError }; return { published: true, liveUrl: 'https://example.test/blog/article/' }; },
     governingFlow: async () => ({ graph: {}, digest: {} }),
-    stampPublishingDate: async () => {}, selfAction: async () => { published++; return { error: 'Render the episode first' }; },
+    stampPublishingDate: async () => {}, selfAction: async (env, action, fields) => { youtubeCalls.push(fields); published++; return { error: 'Render the episode first' }; },
     fetch: async (url, options = {}) => {
       const body = options.body ? JSON.parse(options.body) : {};
       if (url.includes('anthropic.com')) {
@@ -45,7 +45,7 @@ function fixture(type = 'Topical Post') {
   const resolver = source.slice(source.indexOf('async function ivCreationTopicalMethod('), source.indexOf('\nconst ivTypeMatch'));
   vm.runInContext(resolver + '\n' + block, context);
   const env = { ANTHROPIC_API_KEY: 'test', TRADES: { get: async key => key.includes('currentmethods') ? table : null, put: async () => {} } };
-  return { context, env, page, prompts, patches, setInterviews: values => { interviews = values; }, setPublishError: value => { publishError = value; },
+  return { context, env, page, prompts, patches, youtubeCalls, setInterviews: values => { interviews = values; }, setPublishError: value => { publishError = value; },
     setAiError: () => { aiError = true; }, counts: () => ({ created, published }) };
 }
 const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds: [assetId], forType: 'Topical Post', status: 'Finished', qs: ['Question?'], answers: ['OWN_ANSWER_SENTINEL'] });
@@ -94,6 +94,10 @@ const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds
   assert.equal(yt.page.properties['Video URL'].url, null, 'never publish an old render after writing a new script');
   assert.equal(yt.page.properties['Written Without Interview'].checkbox, true);
   assert.equal(JSON.parse(yt.page.properties['Video Spec'].rich_text[0].text.content).interview.length, 0);
+  assert.equal(yt.youtubeCalls[0].privacy, 'private');
+  await yt.context.publishTopicalAsset(yt.env, aid, { privacy: 'unlisted', publishAt: '2026-10-25T12:00:00Z' });
+  assert.equal(yt.youtubeCalls[1].privacy, 'unlisted');
+  assert.equal(yt.youtubeCalls[1].publishAt, '2026-10-25T12:00:00Z');
 
   // Exercise the actual cron loop against a previously bypassed but still unanswered asset.
   const queueCode = source.slice(source.indexOf('async function topicalCronTick('), source.indexOf('async function hubAudienceBlock('));

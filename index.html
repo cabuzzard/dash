@@ -11933,6 +11933,17 @@ async function careGapTopicalLoad(assetId, generation, message = '') {
     panel.hidden = false; panel.textContent = 'Could not load topical writing controls: ' + error.message;
   }
 }
+function careGapTopicalPublishOptions() {
+  const options = { privacy: 'private' };
+  try {
+    const editor = document.getElementById('careGapEditorFrame').contentDocument;
+    const privacy = editor?.getElementById('pubYtPrivacy')?.value;
+    if (['private', 'unlisted', 'public'].includes(privacy)) options.privacy = privacy;
+    const when = editor?.getElementById('pubYtWhen')?.value;
+    if (when && !isNaN(new Date(when))) options.publishAt = new Date(when).toISOString();
+  } catch (e) {} // the editor may still be loading; use the normal publisher's Private default
+  return options;
+}
 async function careGapTopicalRun(write, skipInterview = false) {
   const assetId = CARE_GAP_EDITOR_ASSET, generation = CARE_GAP_EDITOR_LOAD;
   if (!assetId || CARE_GAP_TOPICAL_BUSY.has(assetId)) return;
@@ -11943,7 +11954,7 @@ async function careGapTopicalRun(write, skipInterview = false) {
   if (status) status.textContent = write ? 'Writing… Publishing will run after the writing saves.' : 'Publishing the saved writing…';
   let message = '';
   try {
-    const result = await careGapTopicalCall(write ? 'writePublishTopicalFromModal' : 'publishTopicalAsset', { assetId, source: 'publish-modal', ...(write ? { skipInterview } : {}) });
+    const result = await careGapTopicalCall(write ? 'writePublishTopicalFromModal' : 'publishTopicalAsset', { assetId, source: 'publish-modal', ...careGapTopicalPublishOptions(), ...(write ? { skipInterview } : {}) });
     const written = result.written, published = write ? result.published : result;
     if (write) message = written?.ok ? (written.writtenWithoutInterview ? '✓ Written without interview' : '✓ Written with finished interview')
       : '✗ Writing: ' + (written?.error || (written?.needsInterview ? 'Finish the asset interview before using the normal write.' : 'Writing did not complete.'));
