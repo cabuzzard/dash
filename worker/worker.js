@@ -1143,8 +1143,9 @@ async function ivTierFn(env) {
 const IV_TIER_LABEL = { depends: "Own interview", short: "Short interview (SEO)", borrow: "From parent", none: "None" };   // short: 5-question asset interview, answers REWRITTEN for SEO (topical posts)
 const ivOwnTier = t => t === "depends" || t === "short";
 // Creation-time exception: only these exact Current Methods rows (or their counts aliases).
-async function ivCreationTopicalMethod(env, assetType) {
-  const table = await env.TRADES.get("infoflow:table:currentmethods", "json"), norm = x => String(x || "").toLowerCase().replace(/[—–]/g, "-").replace(/\s+/g, "");
+async function ivCreationTopicalMethod(env, assetType, table) {
+  table ||= await env.TRADES.get("infoflow:table:currentmethods", "json");
+  const norm = x => String(x || "").toLowerCase().replace(/[—–]/g, "-").replace(/\s+/g, "");
   const rows = ((table && table.rows) || []).map(r => { const c = r.cells || {}, asset = String(c.cmuzq36hb77sq || "").trim(), parent = String(c.cmuzq03ywty8b || c.c1 || "").trim();
     return { name: String(c.cname01 || "").trim() || (asset ? parent + " - " + asset : parent), aliases: String(c.cmatch01 || "").split(";") }; });
   const key = norm(assetType); if (!key) return "";
@@ -12230,6 +12231,12 @@ async function titleJobsRun(env, invoke) {
             if (!c || c.error) throw new Error((c && c.error) || "no response");
             const own = await ivCreationTopicalMethod(env, step.assetType);
             if (own) for (const asset of c.created || []) await ivCreateForAsset(env, { assetId: asset.id, titleId: S.titleId, own });
+          } else if (step.action === "assetinterview") {   // explicit operator backfill; never inferred on page load
+            const existing = await ivList({ property: "Asset", relation: { contains: ivDash(step.assetId) } });
+            if (!existing.some(iv => iv.scope === "Asset" && iv.assetIds.includes(step.assetId))) {
+              const own = await ivCreationTopicalMethod(env, step.assetType);
+              if (own) await ivCreateForAsset(env, { assetId: step.assetId, titleId: S.titleId, own });
+            }
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
             const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Development", skipPillar: true,
@@ -17717,6 +17724,34 @@ ${JSON.stringify(products)}`;
       // hub:mainproduct:<campaignId>, read first by resolveHub + getHubMainProduct), links the product to the
       // campaign if it isn't yet, and mirrors it onto the Content Hub asset's Product + the hub-method title's product.
       // queueTitleJob {titleId, name, slug, research, pillar, styleGuidance, pillarType} → the job id (run it with runTitleJobs)
+      // Explicit, resumable backfill for existing topical assets. Finished/Flagged records are both reused.
+      if (body.action === "queueTopicalInterviewBackfill") {
+        const [table, assets, interviews] = await Promise.all([env.TRADES.get("infoflow:table:currentmethods", "json"), notionQuery(ASSETS_DB, {}), ivList(null)]);
+        const attached = new Set(interviews.filter(iv => iv.scope === "Asset").flatMap(iv => iv.assetIds)), candidates = [];
+        let matched = 0, existing = 0, withoutTitle = 0;
+        for (const asset of assets) {
+          if (asset.archived || asset.in_trash) continue;
+          const p = asset.properties || {}, assetType = p["Asset Type"]?.select?.name || "", own = await ivCreationTopicalMethod(env, assetType, table);
+          if (!own) continue; matched++;
+          const assetId = String(asset.id).replace(/-/g, ""), titleId = ivRid(p, "Content Strategy");
+          if (attached.has(assetId)) { existing++; continue; }
+          if (!titleId) { withoutTitle++; continue; }
+          candidates.push({ assetId, titleId, assetType, own, cid: ivRid(p, "Campaign"), name: (p["Asset Title"]?.title || []).map(t => t.plain_text || t.text?.content || "").join("") || own });
+        }
+        const report = { matched, existing, withoutTitle, missing: candidates.length };
+        if (body.dryRun) return json({ ok: true, ...report });
+        const queue = (await env.TRADES.get("titlejob:queue", "json")) || [], pending = new Set();
+        for (const id of queue) { const state = await env.TRADES.get("titlejob:state:" + id, "json"); if (state && !state.done) (state.steps || []).filter(s => s.action === "assetinterview").forEach(s => pending.add(s.assetId)); }
+        const ids = [];
+        for (const c of candidates) {
+          if (pending.has(c.assetId)) continue;
+          const id = "ivb" + c.assetId;
+          await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ kind: "topical-interview", titleId: c.titleId, cid: c.cid, name: "🎤 " + c.name.slice(0, 180), steps: [{ action: "assetinterview", assetId: c.assetId, assetType: c.assetType, label: "Asset interview — " + c.own }], i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
+          ids.push(id);
+        }
+        if (ids.length) await env.TRADES.put("titlejob:queue", JSON.stringify([...queue, ...ids]));
+        return json({ ok: true, ...report, queued: ids.length, alreadyQueued: candidates.length - ids.length });
+      }
       if (body.action === "queueTitleJob") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
         const steps = [...(body.keywords ? [{ action: "keywords", label: "title keywords" }] : []), ...(body.research ? [{ action: "research", label: "title research" }] : []),

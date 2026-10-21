@@ -95,6 +95,13 @@ async function load() {
   pick(); draw();
 }
 function pick() { const cur = flagged()[S.idx]; S.answers = cur ? cur.answers.slice() : []; S.dirty = false; }
+async function topicalBackfill(run) {
+  S.backfillBusy = true; S.err = ''; draw();
+  try { S.backfill = await call('queueTopicalInterviewBackfill', { dryRun: !run });
+    if (run && S.backfill.queued) call('runTitleJobs').catch(e => { S.err = e.message; draw(); });
+  } catch (e) { S.err = e.message; }
+  S.backfillBusy = false; draw();
+}
 function header() {
   const all = (S.items || []).filter(x => x.status !== 'Finished');
   const hubCounts = {}; all.forEach(x => hubCounts[x.cid] = (hubCounts[x.cid] || 0) + 1);
@@ -103,7 +110,9 @@ function header() {
     <span class="count"><b>${flagged().length}</b> flagged${S.finishedNow ? ` · ${S.finishedNow} finished now` : ''}</span>
     <div style="flex-basis:100%;display:flex;gap:8px;align-items:center;">
       <select id="hubSel" style="flex:1;"><option value="">All hubs (${all.length})</option>${opts.map(c => `<option value="${esc(c)}" ${c === S.hub ? 'selected' : ''}>${esc(hubName(c))} (${hubCounts[c]})</option>`).join('')}</select>
-      <button class="btn small" id="viewBtn">${S.view === 'one' ? '☰ List' : '🎤 Answer'}</button><button class="btn small" id="reload">↻</button></div></header>`;
+      <button class="btn small" id="viewBtn">${S.view === 'one' ? '☰ List' : '🎤 Answer'}</button><button class="btn small" id="reload">↻</button></div>
+    <div style="flex-basis:100%;font-size:12px;"><button class="btn small" id="topicalCheck" ${S.backfillBusy ? 'disabled' : ''}>${S.backfillBusy ? 'Checking…' : 'Check existing topical assets'}</button>
+      ${S.backfill ? `<span>All hubs: ${S.backfill.existing} already have interviews · ${S.backfill.missing} missing${S.backfill.withoutTitle ? ' · ' + S.backfill.withoutTitle + ' have no title' : ''}${S.backfill.queued != null ? ' · ' + S.backfill.queued + ' queued in background' : ''}</span>${S.backfill.missing && S.backfill.queued == null ? ` <button class="btn small" id="topicalFlag">Flag ${S.backfill.missing} missing topical asset interviews</button>` : ''}` : ''}</div></header>`;
 }
 function draw() {
   if (!TOKEN) return pinScreen();
@@ -168,6 +177,8 @@ function wire() {
   if ($('finish')) $('finish').onclick = () => { if (!S.answers.some(a => (a || '').trim())) { S.err = 'Answer at least one question to finish — or Skip.'; draw(); return; } saveCur(true); };
   if ($('skip')) $('skip').onclick = () => move(1);
   if ($('prev')) $('prev').onclick = () => move(-1);
+  if ($('topicalCheck')) $('topicalCheck').onclick = () => topicalBackfill(false);
+  if ($('topicalFlag')) $('topicalFlag').onclick = () => topicalBackfill(true);
   if ($('saveDraft')) $('saveDraft').onclick = () => saveCur(false);
   if ($('remove')) $('remove').onclick = async () => { const x = flagged()[S.idx]; if (!x || !confirm('Remove this interview?')) return;
     S.busy = 'Removing…'; draw(); try { await call('removeInterview', { interviewId: x.id }); S.items = S.items.filter(y => y.id !== x.id); S.err = ''; } catch (e) { S.err = e.message; }
