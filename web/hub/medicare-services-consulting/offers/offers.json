@@ -1,60 +1,18 @@
 [
   {
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
     "slug": "care-command",
     "name": "Care Command",
-    "kicker": "Planned coordination · pricing TBD",
     "promise": "One person owns the whole board — appointments, referrals, authorizations, provider communication — so you stop being the unpaid care administrator and go back to being family.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e"
+    "url": "../blog/care-command/",
+    "image": ""
   },
   {
-    "slug": "medicare-clarity-consult-d7bc",
-    "name": "Medicare Clarity Consult",
-    "kicker": "Fixed-fee consult · $149–$249",
-    "promise": "One hour. One advisor with no carrier contracts. You leave knowing exactly how Medicare works for your situation — and what to do next.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc"
-  },
-  {
-    "slug": "peace-of-mind-plan",
-    "name": "Peace-of-Mind Plan",
-    "kicker": "Annual membership · $199–$399/yr",
-    "promise": "Your plan gets checked every fall by someone who already knows your file — and stays checked all year.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb812ea0dfcc451f34bb5b",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/medicare-peace-of-mind-plan-blog-thumbnail-mv2151sr.png"
-  },
-  {
-    "slug": "plan-match-enrollment-review",
-    "name": "Plan Match & Enrollment Review",
-    "kicker": "Fixed-fee review · $349–$599",
-    "promise": "Your doctors, prescriptions, and budget checked against real plans — with a written recommendation, a penalty audit, and no carrier on the other end of the call.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb816e8458e21c6bea1ffe",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/plan-match-enrollment-review-blog-thumbnail-mv214n2u.png"
-  },
-  {
+    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
     "slug": "medicare-clarity-consult",
     "name": "Medicare Clarity Consult",
-    "kicker": "Fixed-fee consult · $149–$249 (credited toward Plan Match & Enrollment Review)",
-    "promise": "One 60-minute call leaves you with a written one-page roadmap — your actual dates, your actual options, and a plain-English explanation of every decision that carries a permanent financial consequence.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81dea2f0dd83e2d3a98a",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/medicare-clarity-consult-blog-thumbnail-mv214dyv.png"
-  },
-  {
-    "slug": "medicare-consulting",
-    "name": "Medicare Consulting",
-    "kicker": "Fee-transparent consulting · contact for pricing",
-    "promise": "You understand exactly what your coverage costs, what it excludes, and why — before anyone asks you to choose anything.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81c98f52e11eb77c69aa",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/medicare-services-consulting-blog-thumbnail-mv1oia69.png"
+    "promise": "One hour. One advisor with no carrier contracts. You leave knowing exactly how Medicare works for your situation — and what to do next.",
+    "url": "../blog/medicare-clarity-consult/",
+    "image": ""
   }
 ]
