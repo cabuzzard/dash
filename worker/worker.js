@@ -3958,6 +3958,16 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
 // fast. Best-effort: called fire-and-forget, never blocks or fails the
 // thumbnail save itself.
 // Offer counterpart of republishBlogThumbnailToLiveSite: rebuild ONE live offer page from its asset (card + body + Thumbnail)
+// Explicit offer rewrite: never silently create a replacement record for an existing card.
+async function offerReuseTarget(hdr, id, expected) {
+  const norm = x => String(x || '').replace(/-/g, '');
+  const aid = norm(id); if (!/^[a-f0-9]{32}$/i.test(aid)) throw new Error('Invalid offer asset id');
+  const r = await fetch('https://api.notion.com/v1/pages/' + aid, { headers: hdr });
+  const pg = await r.json(); if (!r.ok || !pg.properties || pg.archived || pg.in_trash) throw new Error('Existing offer asset is unavailable');
+  const p = pg.properties, has = (key, value) => (p[key]?.relation || []).some(x => norm(x.id) === norm(value));
+  if (p['Asset Type']?.select?.name !== expected.assetType || !has('Content Strategy', expected.titleId) || !has('Product', expected.productId) || !has('Campaign', expected.campaignId)) throw new Error('Existing offer does not belong to this asset type, title, product and campaign');
+  return aid;
+}
 async function republishOfferToLiveSite(env, hdr, assetId) {
   const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
   try {
@@ -31378,6 +31388,11 @@ Return via the submit_carousel tool ONLY — nothing as plain text.`;
         // immediately (an offer is a finished deliverable, like SEO Post /
         // LinkedIn Post); source title set to Publish too.
         if (/\boffers?\b/i.test(assetType)) {
+          let reuseOfferId = '';
+          if (body.replaceAssetId) {
+            try { reuseOfferId = await offerReuseTarget(dsHdr, body.replaceAssetId, { assetType, titleId, productId, campaignId }); }
+            catch (e) { return json({ error: e.message }, 400); }
+          }
           if (!hasProduct) return json({ error: "The Offer asset type needs a product — an offer is always an offer OF something. Attach a Product to this title, then Generate again." }, 400);
           const hasMethod = methodId && methodId !== "__none__";
           const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([
@@ -31495,10 +31510,19 @@ Return ONLY this JSON object:
           if (productId) assetProps["Product"] = { relation: [{ id: dsDash(productId) }] };
           if (ctaUrl) assetProps["Content URL"] = { url: ctaUrl };
           Object.assign(assetProps, await assetMethodProp(methodId, assetType));
-          const assetResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST",
+          const oldOfferBlocks = [];
+          if (reuseOfferId) {
+            let cursor;
+            do {
+              const r = await fetch(`https://api.notion.com/v1/blocks/${reuseOfferId}/children?page_size=100${cursor ? '&start_cursor=' + cursor : ''}`, { headers: dsHdr });
+              const j = await r.json(); if (!r.ok) return json({ error: j.message || 'Could not read existing offer body' }, 502);
+              oldOfferBlocks.push(...(j.results || [])); cursor = j.has_more ? j.next_cursor : null;
+            } while (cursor);
+          }
+          const assetResp = await fetch("https://api.notion.com/v1/pages" + (reuseOfferId ? '/' + reuseOfferId : ''), {
+            method: reuseOfferId ? "PATCH" : "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+            body: JSON.stringify({ ...(reuseOfferId ? {} : { parent: { database_id: ASSETS_DB } }), properties: assetProps }),
           });
           const assetResult = await assetResp.json();
           if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Offer asset" }, 502);
@@ -31531,6 +31555,12 @@ Return ONLY this JSON object:
               body: JSON.stringify({ children: children.slice(i, i + 100) }),
             });
             if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
+          }
+
+          // New body has saved successfully. Remove only the captured previous body blocks.
+          for (const b of oldOfferBlocks) {
+            const r = await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: 'DELETE', headers: dsHdr });
+            if (!r.ok) return json({ error: 'Offer rewritten but old body cleanup failed; inspect the existing asset', assetId }, 502);
           }
 
           // Attribute the source title to the method that made this asset —
@@ -31579,7 +31609,7 @@ Return ONLY this JSON object:
             }
           } catch (e) { offerSite = { published: false, error: e.message }; }
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl }, sitePublished: !!offerSite.published, liveUrl: offerSite.liveUrl || null, siteError: offerSite.error || null });
+          return json({ success: true, created: reuseOfferId ? 0 : 1, rewritten: !!reuseOfferId, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl }, sitePublished: !!offerSite.published, liveUrl: offerSite.liveUrl || null, siteError: offerSite.error || null });
         }
 
         // ── Content Hub asset type: tracks the production of an actual
