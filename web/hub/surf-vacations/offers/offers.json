@@ -1,79 +1,34 @@
 [
   {
+    "assetId": "4001f7d3a4bb81819d98e8d0bfebb91f",
+    "slug": "camp-search",
+    "name": "Camp Search",
+    "promise": "One comparison session replaces twenty tabs — destination chosen, level matched, everything included before you book.",
+    "url": "../blog/camp-search/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/booksurfcamps-surf-camp-packages-affiliate-blog-thumbnail-mvhpu71e.png"
+  },
+  {
     "assetId": "4001f7d3a4bb81bf953de94423662009",
     "slug": "charter-signal",
     "name": "Charter Signal",
     "promise": "The right boat, the right break, the right level — in your inbox before the window closes.",
-    "url": "../blog/charter-signal/"
+    "url": "../blog/charter-signal/",
+    "image": ""
+  },
+  {
+    "assetId": "4001f7d3a4bb81518f51f7fd281ec9e1",
+    "slug": "booksurfcamps",
+    "name": "BookSurfCamps",
+    "promise": "Filter 1,500+ vetted surf camps by level, budget and dates — and book the right one in one place, not seventeen tabs.",
+    "url": "../blog/booksurfcamps/",
+    "image": ""
   },
   {
     "assetId": "3ff1f7d3a4bb81cbba55e88797b97157",
     "slug": "surf-charters-liveaboard-trips",
     "name": "Surf Charters & Liveaboard Trips",
     "promise": "Compare boat-based surf trips by destination, ability level, itinerary and inclusions before choosing the trip that fits your group.",
-    "url": "../blog/surf-charters-liveaboard-trips/"
-  },
-  {
-    "slug": "booksurfcamps",
-    "name": "BookSurfCamps",
-    "kicker": "Free to compare · pay per booking",
-    "promise": "Filter 1,500+ vetted surf camps by level, budget and dates — and book the right one in one place, not seventeen tabs.",
-    "ctaUrl": "https://www.booksurfcamps.com/news/surf-affiliate-program",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81518f51f7fd281ec9e1"
-  },
-  {
-    "slug": "charter-intelligence",
-    "name": "Charter Intelligence",
-    "kicker": "Free newsletter — no credit card",
-    "promise": "Vetted surf charter deals matched to your level land in your inbox before the windows close — you book in fifteen minutes instead of two midnight hours.",
-    "ctaUrl": "",
-    "date": "2026-10-14",
-    "assetId": "3f51f7d3a4bb81099725f57f97e2aa67",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/surf-charter-affiliate-signup-blog-thumbnail-mv8gdq5j.png"
-  },
-  {
-    "slug": "trip-matchmaker",
-    "name": "Trip Matchmaker",
-    "kicker": "Personalized match · $49 (credited back on booking)",
-    "promise": "From a hundred open tabs and a stalled group chat — to a shortlist of vetted trips matched to your level, your crew, and the right swell window.",
-    "ctaUrl": "",
-    "date": "2026-10-14",
-    "assetId": "3f51f7d3a4bb81c4bdaaf08ad94caf44",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/surf-trip-matchmaker-blog-thumbnail-mv7q9cm4.png"
-  },
-  {
-    "slug": "boat-week",
-    "name": "Boat Week",
-    "kicker": "Hosted live-aboard · $2,500–$5,500 per person",
-    "promise": "One week on the right boat, at the right break, with everything already solved — so the only decision you make is which board to grab.",
-    "ctaUrl": "",
-    "date": "2026-10-14",
-    "assetId": "3f51f7d3a4bb81f28628de7422d4a422",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/hosted-surf-charter-week-blog-thumbnail-mv7pvpox.png"
-  },
-  {
-    "slug": "surf-charter-insider-alerts",
-    "name": "Surf Charter Insider Alerts",
-    "kicker": "Free newsletter · No commitment",
-    "promise": "Be the first to know when a real surf charter deal drops — so you book smart instead of finding out too late.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "always-paddle-home",
-    "name": "Always Paddle Home",
-    "kicker": "Digital guide · one-time purchase",
-    "promise": "Read the currents before you paddle out — so you stop fighting the ocean and start navigating it.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "first-aid-for-the-lineup",
-    "name": "First Aid for the Lineup",
-    "kicker": "Digital guide · $9–$27",
-    "promise": "Know exactly what to do when someone gets hurt in the water — before panic sets in and before help arrives.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "url": "../blog/surf-charters-liveaboard-trips/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/surf-charters-live-aboards-offer-content-hub-blog-thumbnail-mvhpxisq.png"
   }
 ]
