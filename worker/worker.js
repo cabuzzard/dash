@@ -12896,6 +12896,7 @@ const RUN_TYPES = [
   { id: "pain-solution", group: "Selling", name: "Pain → solution", shape: "single", posts: 3, cadence: "3 in a row, building", sources: ["Pain points", "Benefits & proof"], formula: "Name the pain → why it happens → how the offer solves it" },
   { id: "objections", group: "Selling", name: "Objection handler", shape: "single", posts: 4, cadence: "over a week", sources: ["Pain points", "Reddit"], formula: "'It's too …' — the real answer, with proof" },
   { id: "spotlight", group: "Selling", name: "Offer spotlight sequence", shape: "single", posts: 5, cadence: "over a week, building", sources: ["Benefits & proof", "Pain points", "Search questions"], formula: "Tease → feature → proof → FAQ → last call" },
+  { id: "emotional", group: "Selling", name: "Emotional benefits", shape: "single", posts: 5, cadence: "over a week, building", sources: ["Emotional benefits"], formula: "The feeling they want → the moment it happens → how the product gets them there (one topic keyword per post)" },
   { id: "compare", group: "Selling", name: "Comparison", shape: "carousel", posts: 5, cadence: "one carousel", sources: ["Search questions", "Google autocomplete"], formula: "Side by side → who each one is for" },
   { id: "this-week", group: "Timely & engagement", name: "This week in…", shape: "single", posts: 3, cadence: "per digest", sources: ["What's new (Digest)"], formula: "Headline → why it matters → what to do" },
   { id: "trend", group: "Timely & engagement", name: "Trend reaction", shape: "single", posts: 2, cadence: "fast", sources: ["Reddit", "Google autocomplete", "YouTube autocomplete"], formula: "'Everyone's asking about X — here's the short answer'" },
@@ -12930,6 +12931,10 @@ async function seriesIdeas(env, titleId, force) {
   // the linked product's research
   if (pid) { try { const rr = await findBestProductResearchRecord(hdr, pid);
     const P = rr && rr.properties; if (P) [["Pain points", ["Pain Points", "Objections", "Emotions"]], ["Benefits & proof", ["Benefits", "Transformation", "Proof Points"]]].forEach(([src, fs]) => fs.forEach(f => add(src, SR_SPLIT(trRt(P, f)).slice(0, 8).map(t => ({ t, meta: f })))));
+    // 💛 Emotional benefits (operator 2026-10-21): the feelings the product delivers — Emotions + Transformation + Benefits, each
+    // idea anchored to one of the title's topic keywords (round-robin) so the run talks to the product AND its search terms
+    if (P) { let ki = 0; ["Emotions", "Transformation", "Benefits"].forEach(f => add("Emotional benefits", SR_SPLIT(trRt(P, f)).slice(0, 8).map(t => {
+      const kw = topicKw.length ? topicKw[ki++ % topicKw.length] : ""; return { t, meta: f + (kw ? " · keyword: " + kw : "") }; }))); }
   } catch (e) {} }
   // the hub's Digest items + the title's answered interviews
   if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json")) || []; add("What's new (Digest)", pool.slice(0, 15).map(x => ({ t: x.claim, meta: x.publisher || "", url: x.url || "" }))); }
