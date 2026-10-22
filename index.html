@@ -17137,10 +17137,10 @@ async function hub2BulkWriteAssets(slug,btn){
     try{const state=await call('getAsset',{assetId:row.id});
       if(state.hasWriting)skipped.push(row.name+' — already written');
       else if(!state.writerAvailable)skipped.push(row.name+' — '+('unmapped: '+(state.writerError||'No mapped method')));
-      else{const r=await call('writeAsset',{assetId:row.id});if(r.needsInterview)skipped.push(row.name+' — needs interview');else if(r.skipped)skipped.push(row.name+' — '+r.reason);else if(r.error)fails.push(row.name+' — '+r.error);else wrote++;}
+      else{const r=await call('writeAsset',{assetId:row.id});if(r.needsInterview)skipped.push(row.name+' — needs interview');else if(r.skipped)skipped.push(row.name+' — '+r.reason);else if(r.error)fails.push(row.name+' — '+r.error+': '+(r.reason||''));else if(r.violations?.length)fails.push(row.name+' — saved with violations: '+r.violations.join('; '));else if(r.written===true){wrote++;writtenNames.push(row.name);}else fails.push(row.name+' — write did not report written');}
     }catch(error){(/not in the hub.s Keywords hierarchy/.test(error.message)?skipped:fails).push(row.name+' — '+error.message);}done++;paint();
   }
-  _hub2BulkMsg[slug]='✍ Wrote '+wrote+' of '+rows.length+(writtenNames.length?' ? written: '+writtenNames.join('; '):'')+(skipped.length?' — skipped: '+skipped.join('; '):'')+(fails.length?' — failed: '+fails.join('; '):'');
+  _hub2BulkMsg[slug]='✍ Wrote '+wrote+' of '+rows.length+(writtenNames.length?' — written: '+writtenNames.join('; '):'')+(skipped.length?' — skipped: '+skipped.join('; '):'')+(fails.length?' — failed: '+fails.join('; '):'');
   await refreshHubPublishedRows(rows.map(r=>r.id));
   }finally{HUB_ASSET_BULK_BUSY=false;hub2ContentPaint(slug);}
 }
