@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
+    "slug": "garden-visit",
+    "name": "Garden Visits",
+    "promise": "Enjoy the flowers together. Explore seasonal visits and private group outings at a garden designed with wheelchair access in mind.",
+    "url": "../blog/garden-visit/",
+    "contentHash": "e95c0d95a52590e3c95946be1f44321a3408489f26a02d07aa3b6b62ae57ae8f",
+    "contentEditedAt": "2026-10-22T02:41:00.000Z",
+    "refreshedAt": "2026-10-22T03:31:33.336Z"
+  },
+  {
     "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
     "slug": "garden-shop",
     "name": "Garden Shop",
@@ -18,13 +28,5 @@
     "contentHash": "41cec15059331dfa90009d9ba5a999de14ead29b90fb6ccdb64036fb27656d24",
     "contentEditedAt": "2026-10-22T02:46:00.000Z",
     "refreshedAt": "2026-10-22T03:31:17.569Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
-    "slug": "garden-visit",
-    "name": "Garden Visit",
-    "promise": "You get out of the car and into the field — same paths, same flowers, same cutting stations as everyone else.",
-    "url": "../blog/garden-visit/",
-    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/sunflower-acres-accessible-garden-visit-individual-group-boo-blog-thumbnail-mvhtzpqb.png"
   }
 ]
