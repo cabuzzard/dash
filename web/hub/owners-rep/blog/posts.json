@@ -1,5 +1,15 @@
 [
   {
+    "slug": "on-your-side-ongoing-build-coordination",
+    "title": "Clear, Honest, Independent — Owner's Representative & Project Coordination",
+    "intro": "Your architect manages design. Your contractor manages the build. Neither one is hired to protect your budget, question a pay application, or tell you a change order doesn't hold up. That gap — between what your design team covers and what your contractor is accountable for — is where money moves, s",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "contentHash": "6ef2a5988b00b23e0cf2518cb5babecf1b19acebb0748d309d18406d59b6d63a",
+    "contentEditedAt": "2026-10-22T15:34:00.000Z",
+    "refreshedAt": "2026-10-22T15:34:45.917Z"
+  },
+  {
     "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
     "title": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
     "intro": "You have plans, a bid, and a contract draft on your desk. Your architect reviewed the design. Your contractor priced the work. Neither one is hired to tell you where the budget is soft, where the scope is missing, or where a contract clause quietly hands schedule risk to you. That is not a failure o",
@@ -18,15 +28,5 @@
     "contentHash": "48d9384b1875e29a20e39e3e8104fdd36c2ee5426eea86f2a709413a751f7bc9",
     "contentEditedAt": "2026-10-22T13:56:00.000Z",
     "refreshedAt": "2026-10-22T14:03:07.640Z"
-  },
-  {
-    "slug": "on-your-side-ongoing-build-coordination",
-    "title": "Clear, Honest, Independent — Owner's Representative & Project Coordination",
-    "intro": "Your architect manages design. Your contractor manages the build. Neither one is hired to protect your budget, question a pay application, or tell you a change order doesn't hold up. That gap — between what your design team covers and what your contractor is accountable for — is where money moves, s",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
-    "contentHash": "29b59c0552d9bdb4e0a868854fae435ffce0cc16a7fdff79845afc677d736fef",
-    "contentEditedAt": "2026-10-22T13:55:00.000Z",
-    "refreshedAt": "2026-10-22T14:02:59.841Z"
   }
 ]
