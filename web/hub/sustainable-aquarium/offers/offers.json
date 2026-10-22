@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
+    "slug": "tank-diagnosis",
+    "name": "Tank Diagnosis",
+    "promise": "Find out exactly what your Walstad tank is doing wrong — and get a custom plan to fix it.",
+    "url": "../blog/tank-diagnosis/",
+    "contentHash": "407afe1c5d8403aa6b593762cef547dcfdc81c49b969202d225b1a2e273e0f8c",
+    "contentEditedAt": "2026-10-21T07:41:00.000Z",
+    "refreshedAt": "2026-10-22T03:35:32.532Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81b38ac8ec645497ae1f",
     "slug": "operational-audit",
     "name": "Operational Audit",
@@ -8,13 +18,5 @@
     "contentHash": "e883a7675f521ae62c75a1c1aaaf6447eef1121239e21a482189abb65c7a7de7",
     "contentEditedAt": "2026-10-21T07:41:00.000Z",
     "refreshedAt": "2026-10-22T03:35:22.013Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
-    "slug": "tank-diagnosis",
-    "name": "Tank Diagnosis",
-    "promise": "Find out exactly what your Walstad tank is doing wrong — and get a custom plan to fix it.",
-    "url": "../blog/tank-diagnosis/",
-    "image": ""
   }
 ]
