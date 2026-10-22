@@ -17005,7 +17005,8 @@ async function hub2ContentLoad(slug, force) {
   try {
     let source = DEV2_ROWS;
     if (force || !Array.isArray(source) || !source.length) { const r = await devAssetsTable(); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; DEV2_APPS = r.apps || DEV2_APPS; }
-    const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid);
+    // a row is in this hub when the hub is in ANY of its links (worker hubCids: any campaign relation, keyword topic, ★ main offering, Content Hub tag)
+    const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid || (r.hubCids || []).includes(cid));
     const [mainR, prodR, stratR] = await Promise.all([call('getHubMainOfferings', { campaignId: cid }).catch(() => ({})), call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({})), call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null)]);
     const mainIds = new Set(((mainR && mainR.mainIds) || []).map(x => String(x).replace(/-/g, ''))), stageOf = {}, syncOf = {}, resMap = {};
     ((stratR && stratR.products) || []).forEach(p => { resMap[String(p.productId).replace(/-/g, '')] = p.researchState; });

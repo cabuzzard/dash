@@ -17293,6 +17293,29 @@ Return: {
             sectionHeadings[cid] = { main: c?.hero?.headline || "Main offering", offers: c?.trips?.title || "Products", news: c?.journal?.title || "News", articles: c?.articles?.title || "Articles", interactive: c?.interactive?.title || "Interactive", cta: c?.report?.title || "CTA", email: c?.email?.title || "Email" };
           } catch (e) { sectionHeadings[cid] = {}; }
         }));
+        // HUB REFERENCES (operator 2026-10-22: "if it references the hub at all it should be in the table") — every hub a row
+        // points at by ANY link: any campaign relation (product / title / asset — not just the first), a keyword topic of that
+        // hub (the title's own or its product's), the hub's ★ main offerings, or an asset's Content Hub tag.
+        // r.hubCids = every hub campaign id the row references — a hub's Content table lists the row when its hub is in that list.
+        const relIds = (pg, prop) => ((pg.properties?.[prop]?.relation) || []).map(x => dropDash(x.id));
+        const campsOf = {};
+        productRows.forEach(p => { campsOf[dropDash(p.id)] = relIds(p, "Campaigns"); });
+        titleRows.forEach(t => { campsOf[dropDash(t.id)] = relIds(t, "Campaign"); });
+        assetRows.forEach(a => { campsOf[dropDash(a.id)] = relIds(a, "Campaign"); });
+        const hubCids = Object.keys(hubSlugByCampId), cidBySlug = Object.fromEntries(Object.entries(hubSlugByCampId).map(([c, s]) => [s, c]));
+        await Promise.all(hubCids.filter(c => !(c in keywordTopicClusters)).map(async cid => {   // a hub with no rows of its own still owns its staged topics
+          try { const staged = await env.TRADES.get("seoclusters:staged:" + cid, "json"); (Array.isArray(staged) ? staged : []).forEach(t => { if (t && t.id) (keywordTopics[cid] ||= {})[dropDash(t.id)] = String(t.name || "Untitled topic").trim(); }); } catch (e) {}
+        }));
+        const topicCid = {}; hubCids.forEach(cid => Object.keys(keywordTopics[cid] || {}).forEach(tid => { topicCid[tid] = cid; }));
+        const mainOf = {}; await Promise.all(hubCids.map(async cid => { (await hubMainList(env, cid).catch(() => [])).forEach(pid => { (mainOf[dropDash(pid)] ||= []).push(cid); }); }));
+        rows.forEach(r => {
+          const hubs = new Set(), add = cid => { if (cid && hubSlugByCampId[cid]) hubs.add(cid); };
+          add(r.campId);
+          if (r.productId) { (campsOf[r.productId] || []).forEach(add); add(topicCid[(productById[r.productId] || {}).topicId]); (mainOf[r.productId] || []).forEach(add); }
+          if (r.titleId) { (campsOf[r.titleId] || []).forEach(add); add(topicCid[(titleById[r.titleId] || {}).topicId]); }
+          if (r.assetId) { (campsOf[r.assetId] || []).forEach(add); add(cidBySlug[r.contentHub]); }
+          r.hubCids = [...hubs];
+        });
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
           const prod = r.productId ? productById[r.productId] : null, topics = keywordTopics[r.campId] || {}, assign = keywordTopicClusters[r.campId] || {};
