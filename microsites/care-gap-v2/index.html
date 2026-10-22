@@ -5493,9 +5493,9 @@ async function bulkDeleteAssets() {
 // the save step is identical either way.
 async function generateBackgroundForKind(assetId, isOffer, kind) {
   let r;
-  if (kind === 'blog-thumbnail') r = isOffer ? await w('generateOfferImage', { assetId, kind: 'blog-thumbnail' }) : await w('generateBlogPostThumbnail', { assetId });
-  else if (kind === 'ig-background') r = await w('generateOfferImage', { assetId, kind: 'ig-background' });
-  else if (kind === 'post-image') r = await w('generateSocialBackgroundForAsset', { assetId });
+  if (kind === 'blog-thumbnail') r = isOffer ? await w('generateOfferImage', { assetId, kind: 'blog-thumbnail', codexDesign: true }) : await w('generateBlogPostThumbnail', { assetId, codexDesign: true });
+  else if (kind === 'ig-background') r = await w('generateOfferImage', { assetId, kind: 'ig-background', codexDesign: true });
+  else if (kind === 'post-image') r = await w('generateSocialBackgroundForAsset', { assetId, codexDesign: true });
   else throw new Error('Unknown kind: ' + kind);
   if (!r || !r.imageUrl) throw new Error((r && r.error) || 'No image returned');
   const s = await w('saveOfferImage', { assetId, kind, imageUrl: r.imageUrl, prompt: r.prompt, background: true });

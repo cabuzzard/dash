@@ -35050,6 +35050,8 @@ Rules:
         const subject = await assetImageSubjectContext(hdr, assetId, ap);
         if (!subject.content && offerLines) subject.content = offerLines;
         const exclusions = await hubImageExclusions(env, campaignId);
+        // 🧭 Direction (Assets."Image Direction") — Codex Design path only (the care-gap modal); the plain hub-spec path is unchanged
+        const offerDir = body.codexDesign ? rtp(ap, "Image Direction").slice(0, 1500) : "";
 
         // The shared, customer-grounded art-direction spec for this hub — the
         // frozen "Image Spec" written by publishHubDesign if there is one,
@@ -35079,7 +35081,10 @@ Rules:
 
 HUB ART DIRECTION (controls style, motif, palette, light and finish; it supplies generic fallback subjects only when the asset subject is unclear):
 ${spec.slice(0, 6000)}
-${assetSubjectPrompt(subject, exclusions)}`;
+${assetSubjectPrompt(subject, exclusions)}${offerDir ? `
+
+ASSET DIRECTION (the operator's direction for THIS asset — follow it over everything above, including the scene choice; still wordless, still keep the text zone calm):
+${offerDir}` : ""}`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -35156,8 +35161,10 @@ ${assetSubjectPrompt(subject, exclusions)}`;
           if (/^Thumbnail text:/i.test(t)) { thumbOpts = t.replace(/^Thumbnail text:\s*/i, ""); break; }
         }
         const thumbText = (thumbOpts.split("|")[0] || "").trim();
-        const thumbDir = String(body.direction || "").trim().slice(0, 600);
-        if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, thumbDir).catch(() => {});
+        // this call's direction (longform thumbnail modal) + the asset's saved 🧭 Direction (Codex Design path only)
+        const assetDir = body.codexDesign ? rtp("Image Direction").slice(0, 900) : "";
+        const thumbDir = [String(body.direction || "").trim().slice(0, 600), assetDir].filter(Boolean).join("\n");
+        if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, String(body.direction).trim().slice(0, 600)).catch(() => {});
         const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
