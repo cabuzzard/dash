@@ -17,9 +17,11 @@ function hierarchyModel({ topics, tc, products, mainIds, titles }) {
   const topic = id => hierarchyId(id) === '__main' || (known.has(hierarchyId(id)) && (tc.clusters || []).includes(assign[hierarchyId(id)]));
   const productIds = new Set(products.filter(p => topic(p.topicId)).map(p => hierarchyId(p.id)));
   mainIds.forEach(id => productIds.add(hierarchyId(id)));
-  const title = p => topic(hierarchyText(p['Topic ID']?.rich_text)) || (p.product?.relation || p.Product?.relation || []).some(r => productIds.has(hierarchyId(r.id)));
+  // The chain is the only way in (operator 2026-10-22: "title needs a product needs a topic. any break in that chain its gone"):
+  // a title is placed only through its placed product, an asset only through its placed title. A title's own Topic ID no longer places it.
+  const title = p => (p.product?.relation || p.Product?.relation || []).some(r => productIds.has(hierarchyId(r.id)));
   const titleIds = new Set(titles.filter(t => title(t.properties || {})).map(t => hierarchyId(t.id)));
-  const asset = p => (p['Content Strategy']?.relation || []).some(r => titleIds.has(hierarchyId(r.id))) || (p.Product?.relation || p.product?.relation || []).some(r => productIds.has(hierarchyId(r.id)));
+  const asset = p => (p['Content Strategy']?.relation || []).some(r => titleIds.has(hierarchyId(r.id)));
   return { topic, title, asset, productIds, titleIds };
 }
 async function hierarchyForHub(env, campaignId, seed={}) {
@@ -17321,7 +17323,7 @@ Return: {
           const prod = r.productId ? productById[r.productId] : null, topics = keywordTopics[r.campId] || {}, assign = keywordTopicClusters[r.campId] || {};
           const ownTopic = (r.titleId && titleById[r.titleId] && titleById[r.titleId].topicId) || "";
           r.titleTopicId = ownTopic;
-          let topicId = ownTopic || (prod && prod.topicId) || "", topicName = "";
+          let topicId = (prod && prod.topicId) || "", topicName = "";   // title → product → topic: a row sits where its product sits
           if (topicId === "__main") { topicName = "★ Main Keywords"; }
           else if (topicId && topics[topicId]) topicName = topics[topicId];
           else if (prod && prod.stack) {

@@ -15,12 +15,12 @@ test('membership matches committed/staged topics, valid clusters, main products,
  const x=setup(),m=x.ctx.hierarchyModel({topics:[{id:'committed'},{id:'staged'},{id:'unassigned'}],tc:{clusters:['Valid'],assign:{committed:'Valid',staged:'Valid',unassigned:'Missing'}},products:[{id:pid,topicId:'staged'},{id:'other',topicId:'unassigned'}],mainIds:['main'],titles:[{id:tid,properties:{'Topic ID':{rich_text:rt('unassigned')},product:rel(pid)}}]});
  assert.equal(m.topic('committed'),true);assert.equal(m.topic('staged'),true);assert.equal(m.topic('unassigned'),false);assert.equal(m.topic('__main'),true);
  assert.equal(m.productIds.has('main'),true);assert.equal(m.titleIds.has(tid),true,'placed product remains sufficient despite an unplaced own topic');
- assert.equal(m.asset({'Content Strategy':rel(tid)}),true);assert.equal(m.asset({'Content Strategy':rel('outside'),Product:rel(pid)}),true);assert.equal(m.asset({'Content Strategy':rel('outside')}),false);
+ assert.equal(m.asset({'Content Strategy':rel(tid)}),true);assert.equal(m.asset({'Content Strategy':rel('outside'),Product:rel(pid)}),false,'an asset is placed only through its placed title (title → product → topic chain)');assert.equal(m.asset({'Content Strategy':rel('outside')}),false);
  const ui=vm.createContext({_hubKw:{fixture:{tc:{clusters:['Valid'],assign:{staged:'Valid'}},staged:[{id:'staged'}],products:[{id:pid,topicId:'staged'}],mainIds:[]}},HUB_SITES:[{slug:'fixture',campaignId:cid}],DEV2_ROWS:[{campId:cid,titleId:tid,titleTopicId:'unassigned',productId:pid}]});
  vm.runInContext(dash.match(/function hub2Hierarchy\([^]*?\n}/)[0],ui);
  assert.equal(ui.hub2Hierarchy('fixture').has({type:'Title',id:tid}),true);
- assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:pid}),true);
- assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:'unplaced-title-product',assetProductId:pid}),true,'asset own product is independent of its title product');
+ assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:pid}),false);
+ assert.equal(ui.hub2Hierarchy('fixture').has({type:'Asset',titleId:'outside',productId:'unplaced-title-product',assetProductId:pid}),false,'an asset needs its placed title — its own product no longer places it');
  assert.match(source,/assetProductId: a.productId/);assert.match(dash,/assetProductId: r.assetProductId/);
 });
 test('write boundary refuses every gated status before mutation; Review remains allowed; placement unlocks',async()=>{

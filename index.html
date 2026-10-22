@@ -17071,9 +17071,10 @@ function hub2Hierarchy(slug) {
   const prodOk = new Set((K.products || []).filter(p => inTopic(p.topicId)).map(p => nid(p.id)));
   (K.mainIds || []).forEach(id => prodOk.add(nid(id)));
   const cid = nid((HUB_SITES.find(h => h.slug === slug) || {}).campaignId), titleOk = new Set();
-  (DEV2_ROWS || []).forEach(r => { if (!r.titleId || nid(r.campId) !== cid) return; const own = nid(r.titleTopicId);
-    const placed = inTopic(own) || prodOk.has(nid(r.productId)); if (placed) titleOk.add(nid(r.titleId)); });
-  return { has: r => r.type === 'Product' ? prodOk.has(nid(r.id)) : r.type === 'Title' ? titleOk.has(nid(r.id)) : titleOk.has(nid(r.titleId)) || prodOk.has(nid(r.assetProductId || r.productId)) };
+  // title → product → topic only (operator 2026-10-22): a title is placed through its placed product, an asset through its placed title
+  (DEV2_ROWS || []).forEach(r => { if (!r.titleId || (nid(r.campId) !== cid && !(r.hubCids || []).includes(cid))) return;
+    if (prodOk.has(nid(r.productId))) titleOk.add(nid(r.titleId)); });
+  return { has: r => r.type === 'Product' ? prodOk.has(nid(r.id)) : r.type === 'Title' ? titleOk.has(nid(r.id)) : titleOk.has(nid(r.titleId)) };
 }
 function hub2HideIdea() { try { return localStorage.getItem('hub2:hideidea:v1') !== '0'; } catch (e) { return true; } }
 function hub2HideIdeaToggle() { try { localStorage.setItem('hub2:hideidea:v1', hub2HideIdea() ? '0' : '1'); } catch (e) {} HUB_SITES.forEach(h => hub2ContentPaint(h.slug)); hub2ContentPaint(HUB2_ALL); }
@@ -18675,9 +18676,8 @@ function hubTiTopicOf(slug, p) {
 // from it. Its own "Topic ID" (setTitleTopic) wins; none → its product's topic (hubTiTopicOf). The product link only
 // decides the offer / CTA. Returns a topic id, '__main' or ''.
 function hubTitleTopicOf(slug, row) {
-  const K = _hubKw[slug] || {}, T = _hubTitles[slug] || {}, nid = x => String(x || '').replace(/-/g, ''), own = nid(row && row.titleTopicId);
-  if (own === '__main') return '__main';
-  if (own) { const t = [...(K.staged || []), ...(K.committed || [])].find(x => nid(x.id) === own); if (t) return t.id; }
+  // title → product → topic is the only placement (operator 2026-10-22): a title's own Topic ID no longer places it; no product = no topic
+  const T = _hubTitles[slug] || {}, nid = x => String(x || '').replace(/-/g, '');
   if (!row || !row.productId) return '';
   const p = (T.products || []).find(x => nid(x.id) === nid(row.productId)); return p ? hubTiTopicOf(slug, p) : '';
 }
