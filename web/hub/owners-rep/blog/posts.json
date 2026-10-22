@@ -1,5 +1,15 @@
 [
   {
+    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
+    "title": "Before You Build, Know What You're Getting Into-Independent Review",
+    "intro": "You have plans, a bid, and a contract draft on your desk. Your architect reviewed the design. Your contractor priced the work. Neither one is hired to tell you where the budget is soft, where the scope is missing, or where a contract clause quietly hands the schedule risk to you. That is not a failu",
+    "date": "2026-10-22",
+    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
+    "contentHash": "12fbb4d60d12c18b986f99c68ec0423218feff3007a6e84b8dd1d94131e6cd1c",
+    "contentEditedAt": "2026-10-22T16:25:00.000Z",
+    "refreshedAt": "2026-10-22T16:25:17.217Z"
+  },
+  {
     "slug": "owner-side-contract-review",
     "title": "Construction Project Health Check—Independent Review",
     "intro": "You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a",
@@ -18,15 +28,5 @@
     "contentHash": "6ef2a5988b00b23e0cf2518cb5babecf1b19acebb0748d309d18406d59b6d63a",
     "contentEditedAt": "2026-10-22T15:34:00.000Z",
     "refreshedAt": "2026-10-22T15:34:45.917Z"
-  },
-  {
-    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
-    "title": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
-    "intro": "You have plans, a bid, and a contract draft on your desk. Your architect reviewed the design. Your contractor priced the work. Neither one is hired to tell you where the budget is soft, where the scope is missing, or where a contract clause quietly hands schedule risk to you. That is not a failure o",
-    "date": "2026-10-22",
-    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
-    "contentHash": "0216469e69243703a60836b5e9f476808b2b317084982e7aba4bc1a8870cc4be",
-    "contentEditedAt": "2026-10-22T15:31:00.000Z",
-    "refreshedAt": "2026-10-22T15:31:39.045Z"
   }
 ]
