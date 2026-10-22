@@ -1,5 +1,12 @@
 [
   {
+    "slug": "charter-match",
+    "title": "Charter Match",
+    "intro": "For Surfers ready to book a serious trip and done guessing which operator to trust.\n\nComparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698"
+  },
+  {
     "slug": "surf-resort-finder",
     "title": "Surf Resort Finder",
     "intro": "For Surfers at any level who want a real trip and don't have time to reverse-engineer one from forum posts.\n\nFind a surf resort or live-aboard charter that matches your level, your group, and your swell window — and book it in one place, with every cost on the table before you commit.",
@@ -12,13 +19,6 @@
     "intro": "For Adventure-seeking adults — solo, couple, or small group — who are ready to go and done with the research spiral.\n\nFind a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
     "date": "2026-10-22",
     "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338"
-  },
-  {
-    "slug": "charter-match",
-    "title": "Charter Match",
-    "intro": "For Surfers ready to book a serious trip and done guessing which operator to trust.\n\nComparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698"
   },
   {
     "slug": "surf-charters-liveaboard-trips",
