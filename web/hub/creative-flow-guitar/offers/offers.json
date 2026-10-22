@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
+    "slug": "the-tracks",
+    "name": "Guitar Backing Tracks That Feel Like Real Songs",
+    "promise": "For intermediate guitarists practicing in a vacuum. Original backing tracks with real arrangement, real groove, and space worth filling — download and play.",
+    "url": "../blog/the-tracks/",
+    "contentHash": "eb548677dca77880e7106faf1e1c16c924b2c3d6283232b38aba409e8689134e",
+    "contentEditedAt": "2026-10-22T16:31:00.000Z",
+    "refreshedAt": "2026-10-22T16:36:11.858Z"
+  },
+  {
     "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
     "slug": "weekly-sessions",
     "name": "Real Guitar Sessions — Listen, Study & Download",
@@ -28,16 +38,6 @@
     "contentHash": "7a4633bb4056dc9942ab057d9bb5b5aeb9961b2af5db1b6f673ea983569b99f0",
     "contentEditedAt": "2026-10-22T16:32:00.000Z",
     "refreshedAt": "2026-10-22T16:32:22.918Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
-    "slug": "the-tracks",
-    "name": "Guitar Backing Tracks That Feel Like Real Songs",
-    "promise": "For intermediate guitarists practicing in a vacuum. Original backing tracks with real arrangement, real groove, and space worth filling — download and play.",
-    "url": "../blog/the-tracks/",
-    "contentHash": "d37bf871f63014507e4d011634ae30a747884fb5ab2104151133663aeef6798f",
-    "contentEditedAt": "2026-10-22T15:52:00.000Z",
-    "refreshedAt": "2026-10-22T15:52:29.295Z"
   },
   {
     "assetId": "4001f7d3a4bb81f9b114c01ddb3bd41a",

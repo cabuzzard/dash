@@ -1,5 +1,15 @@
 [
   {
+    "slug": "the-tracks",
+    "title": "Guitar Backing Tracks That Feel Like Real Songs",
+    "intro": "Most guitar backing tracks don't fail because of the key. They fail because nothing happens.\n\nYou press play, the drums come in, a chord bed sits underneath — and thirty seconds later you already know the track is going nowhere. No movement, no change, no moment it demands something from you. You fi",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
+    "contentHash": "eb548677dca77880e7106faf1e1c16c924b2c3d6283232b38aba409e8689134e",
+    "contentEditedAt": "2026-10-22T16:31:00.000Z",
+    "refreshedAt": "2026-10-22T16:36:11.858Z"
+  },
+  {
     "slug": "weekly-sessions",
     "title": "Real Guitar Sessions — Listen, Study & Download",
     "intro": "If the song doesn't do anything for you when you listen to it, it won't do anything for you when you play it. That's the first filter — and it's the one most guitar content skips entirely. You already know the difference between music that earns the next track and music that fills time. You've been ",
@@ -28,16 +38,6 @@
     "contentHash": "7a4633bb4056dc9942ab057d9bb5b5aeb9961b2af5db1b6f673ea983569b99f0",
     "contentEditedAt": "2026-10-22T16:32:00.000Z",
     "refreshedAt": "2026-10-22T16:32:22.918Z"
-  },
-  {
-    "slug": "the-tracks",
-    "title": "Guitar Backing Tracks That Feel Like Real Songs",
-    "intro": "Most guitar backing tracks don't fail because of the key. They fail because nothing happens. You press play, a chord bed sits underneath, and thirty seconds later you already know the track is going nowhere. No movement, no change, no moment it demands something from you. The Tracks are built differ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
-    "contentHash": "d37bf871f63014507e4d011634ae30a747884fb5ab2104151133663aeef6798f",
-    "contentEditedAt": "2026-10-22T15:52:00.000Z",
-    "refreshedAt": "2026-10-22T15:52:29.295Z"
   },
   {
     "slug": "wear-the-real-thing",
