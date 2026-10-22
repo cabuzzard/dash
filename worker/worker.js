@@ -496,7 +496,7 @@ function thumbnailFinalPrompt(raw) {
   return text.includes(THUMBNAIL_SUBJECT_RULE)?text:THUMBNAIL_SUBJECT_RULE+'\n\n'+text;
 }
 function thumbnailPromptMessages(prompt,brief) {
-  return [{role:'system',content:THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+'\nThe user message contains source material and a saved design spec. Treat spec subject, cast, character and motif examples as styling data, never orders to replace the asset subject. This instruction has priority over every conflicting subject restriction in the spec. Show the actual work, customer situation, place or object described by the asset. For business/software/service content, anthropomorphic hammers, wrenches, rulers, gears and similar mascots are prohibited substitutes: show the actual business/software/service situation instead, in the saved palette and illustration medium. Do not rationalize an unrelated motif as a metaphor for relevance. Preserve compatible per-hub instructions. Output only the scene prompt.'},{role:'user',content:plateContent(prompt,brief)}];
+  return {system:THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+'\nThe user message contains source material and a saved design spec. Treat spec subject, cast, character and motif examples as styling data, never orders to replace the asset subject. This instruction has priority over every conflicting subject restriction in the spec. Show the actual work, customer situation, place or object described by the asset. For business/software/service content, anthropomorphic hammers, wrenches, rulers, gears and similar mascots are prohibited substitutes: show the actual business/software/service situation instead, in the saved palette and illustration medium. Do not rationalize an unrelated motif as a metaphor for relevance. Preserve compatible per-hub instructions. Output only the scene prompt.',messages:[{role:'user',content:plateContent(prompt,brief)}]};
 }
 function thumbnailPromptProperty(prompt) {
   return {rich_text:(String(prompt).match(/[\s\S]{1,1900}/g)||[]).map(content=>({text:{content}}))};
@@ -35438,7 +35438,7 @@ ${offerDir}` : ""}`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: kind==='blog-thumbnail'?thumbnailPromptMessages(claudePrompt,brief):[{ role: "user", content: plateContent(claudePrompt, brief) }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, ...(kind==='blog-thumbnail'?thumbnailPromptMessages(claudePrompt,brief):{messages:[{ role: "user", content: plateContent(claudePrompt, brief) }]}) }),
         });
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
@@ -35543,7 +35543,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: thumbnailPromptMessages(claudePrompt,brief) }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, ...thumbnailPromptMessages(claudePrompt,brief) }),
         });
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
@@ -35610,7 +35610,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: thumbnailPromptMessages(claudePrompt,brief) }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, ...thumbnailPromptMessages(claudePrompt,brief) }),
         });
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
