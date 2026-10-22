@@ -1,5 +1,15 @@
 [
   {
+    "slug": "biogenerative-installation-feasibility-design",
+    "title": "Biogenerative Installation Feasibility & Design",
+    "intro": "You can picture the system. A constructed wetland, a living filtration installation, an ecological water landscape that runs on biology rather than machinery. The concept is solid. What you do not have is a clear line from that concept to a permit, a contractor brief, and a build that performs as de",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
+    "contentHash": "1411d5033df0ba228da8952a58cb7f9994be8da040177cf5d46563bd76612577",
+    "contentEditedAt": "2026-10-22T14:04:00.000Z",
+    "refreshedAt": "2026-10-22T16:05:09.768Z"
+  },
+  {
     "slug": "tank-diagnosis",
     "title": "Start Your Natural Aquarium",
     "intro": "You've read the forums. You've watched the videos. And you still aren't sure whether a Walstad tank will actually work in your living room, with your tap water, in the container you already have. That gap between method and your specific setup is exactly what this consultation closes — a written pla",
@@ -18,15 +28,5 @@
     "contentHash": "6e1a9a8be230d030a9d455da2c8c719746fff4b37bc017d3b7e8a9a0c30b81ef",
     "contentEditedAt": "2026-10-22T13:56:00.000Z",
     "refreshedAt": "2026-10-22T14:04:10.082Z"
-  },
-  {
-    "slug": "biogenerative-installation-feasibility-design",
-    "title": "Biogenerative Installation Feasibility & Design",
-    "intro": "You can picture the system. A constructed wetland, a living filtration installation, an ecological water landscape that runs on biology rather than machinery. The concept is solid. What you do not have is a clear line from that concept to a permit, a contractor brief, and a build that performs as de",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
-    "contentHash": "aecade3d26656ce41bf558945e215008faad5ab52b63eb0896d584e289ea1857",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:04:02.129Z"
   }
 ]
