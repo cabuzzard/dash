@@ -1,5 +1,15 @@
 [
   {
+    "slug": "property-caretaking",
+    "title": "Resident Caretaker & Home Watch — Private Property Care",
+    "intro": "You own a second home — a Sierra cabin, a wine-country estate, a coastal property used three months a year. And the honest answer is that nobody reliable is watching it right now. Not a person who already knows the place, not someone who will notice the slow leak before it becomes a ceiling, not any",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
+    "contentHash": "59b383c36101bee8e2407fdb22008d8e8e7c14cb67b3aeb91aaa1b754fc35241",
+    "contentEditedAt": "2026-10-22T15:40:00.000Z",
+    "refreshedAt": "2026-10-22T15:40:16.904Z"
+  },
+  {
     "slug": "rental-property-care-owner-support-local-oversight",
     "title": "Rental Property Care & Owner Support — Local Oversight",
     "intro": "You own a rental property in Northern California. You're not next door to it. You're managing the listing yourself — or you've patched something together — and you already know the gap: nobody local you can actually call when something needs eyes, when a turnover gets missed, when a vendor doesn't s",
@@ -8,16 +18,6 @@
     "contentHash": "b89d6793c9be6cb26faea9b0122dee1dbc60c53f9a5a05c971a69e0f04d02245",
     "contentEditedAt": "2026-10-22T13:55:00.000Z",
     "refreshedAt": "2026-10-22T14:01:56.533Z"
-  },
-  {
-    "slug": "property-caretaking",
-    "title": "Resident Caretaker & Home Watch — Private Property Care",
-    "intro": "You own a second home — a Sierra cabin, a wine-country estate, a coastal property used three months a year. And the honest answer is that nobody reliable is watching it right now. Not a person who already knows the place, not someone who will notice the slow leak before it becomes a ceiling, not any",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
-    "contentHash": "486c77ef4dc278ed31b2966f3eaa699f6b8d5ad4a0733d5d2ea8179c2483c6db",
-    "contentEditedAt": "2026-10-22T13:55:00.000Z",
-    "refreshedAt": "2026-10-22T14:01:48.213Z"
   },
   {
     "slug": "live-in-property-caretaker-work-trade-resident-care",
