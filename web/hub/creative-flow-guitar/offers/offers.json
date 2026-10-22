@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
+    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
+    "name": "The Guitar Letter — Guitar & Music Commentary Newsletter",
+    "promise": "For guitarists and serious music listeners who've outgrown shallow coverage. One short read per issue: a personal observation, a recording insight, a recommendation, and a link to the latest video or session.",
+    "url": "../blog/the-guitar-letter-guitar-music-commentary-newsletter/",
+    "contentHash": "9882838c31b0298e971c16989f893b798db182fec30b0eef9681edb716d62cd7",
+    "contentEditedAt": "2026-10-22T16:33:00.000Z",
+    "refreshedAt": "2026-10-22T16:33:17.339Z"
+  },
+  {
     "assetId": "3ff1f7d3a4bb814bb551ef2f769bcd52",
     "slug": "creative-flow-guitar-t-shirts",
     "name": "Creative Flow Guitar T-Shirts",
@@ -8,16 +18,6 @@
     "contentHash": "7a4633bb4056dc9942ab057d9bb5b5aeb9961b2af5db1b6f673ea983569b99f0",
     "contentEditedAt": "2026-10-22T16:32:00.000Z",
     "refreshedAt": "2026-10-22T16:32:22.918Z"
-  },
-  {
-    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
-    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
-    "name": "The Guitar Letter — Guitar & Music Commentary Newsletter",
-    "promise": "For guitarists and serious music listeners who've outgrown shallow coverage. One short read per issue: a personal observation, a recording insight, a recommendation, and a link to the latest video or session.",
-    "url": "../blog/the-guitar-letter-guitar-music-commentary-newsletter/",
-    "contentHash": "50b00cca9e4243921601fcaa85c0fbf7efd7c858a7d86251e40743297e0baaf0",
-    "contentEditedAt": "2026-10-22T16:01:00.000Z",
-    "refreshedAt": "2026-10-22T16:01:05.165Z"
   },
   {
     "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
