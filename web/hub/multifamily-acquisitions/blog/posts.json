@@ -1,16 +1,19 @@
 [
   {
+    "slug": "deal-intelligence",
+    "title": "Deal Intelligence",
+    "intro": "Find off-market multifamily deals before anyone else is looking — no broker network, no acquisitions team, no listed inventory.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
+    "contentHash": "85e056d2a29a3823e6bed8eeac7d8169cda0626e64eb41e45cff893750221575",
+    "contentEditedAt": "2026-10-21T07:40:00.000Z",
+    "refreshedAt": "2026-10-22T03:35:44.849Z"
+  },
+  {
     "slug": "commercial-deal-finder",
     "title": "Commercial Deal Finder",
     "intro": "For Limited-capital investors ready to cross into commercial.\n\nStop refreshing LoopNet. Start finding off-market multifamily deals before the crowd prices you out.",
     "date": "2026-10-21",
     "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9"
-  },
-  {
-    "slug": "deal-intelligence",
-    "title": "Deal Intelligence",
-    "intro": "For Independent multifamily investors sourcing on a limited budget.\n\nFind off-market multifamily deals before anyone else is looking — no broker network, no acquisitions team, no listed inventory.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6"
   }
 ]
