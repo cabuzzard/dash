@@ -2438,6 +2438,47 @@ function unpackInfoFlow(t) {
   return g;
 }
 
+// Governance unlocks are purpose-bound and never accepted as ordinary dashboard sessions.
+const GOVERNANCE_TABLES = new Set(['infoflow:table:informationflowgraph', 'infoflow:table:currentmethods']);
+const GOVERNANCE_TTL = 15 * 60 * 1000;
+let governanceLogQueue = Promise.resolve();
+async function governanceHash(value) {
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function governanceConfigured(env) { return /^[a-f0-9]{64}$/i.test(String(env.GOVERNANCE_CODE_HASH || '').trim()); }
+async function governanceSign(env, payload) {
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(env.HMAC_SECRET||'').trim()),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode('governance:v1:'+payload)))));
+}
+async function governanceUnlock(env, code) {
+  if (!governanceConfigured(env) || !String(env.HMAC_SECRET||'').trim() || typeof code!=='string' || code.length>1024) return null;
+  const expected=String(env.GOVERNANCE_CODE_HASH).trim().toLowerCase(),actual=await governanceHash(code);
+  let mismatch=0;for(let i=0;i<64;i++)mismatch |= expected.charCodeAt(i)^actual.charCodeAt(i);
+  if(mismatch)return null;
+  const expiresAt=Date.now()+GOVERNANCE_TTL;
+  const payload=btoa(JSON.stringify({purpose:'governance',exp:expiresAt,version:await governanceHash(expected)}));
+  return {unlockToken:payload+'.'+await governanceSign(env,payload),expiresAt};
+}
+async function governanceValid(env, token) {
+  if(!governanceConfigured(env)||!String(env.HMAC_SECRET||'').trim()||typeof token!=='string'||token.length>2048)return false;
+  try {
+    const [payload,sig,...rest]=token.split('.');if(rest.length||!payload||!sig)return false;
+    const p=JSON.parse(atob(payload));
+    if(p.purpose!=='governance'||!Number.isFinite(p.exp)||p.exp<=Date.now()||p.exp>Date.now()+GOVERNANCE_TTL||p.version!==await governanceHash(String(env.GOVERNANCE_CODE_HASH).trim().toLowerCase()))return false;
+    const signature=await governanceSign(env,payload);let mismatch=signature.length^sig.length;
+    for(let i=0;i<signature.length;i++)mismatch |= signature.charCodeAt(i)^(sig.charCodeAt(i)||0);
+    return mismatch===0;
+  }catch(e){return false;}
+}
+async function governanceHold(env, tableKey, payload, reason='governance_locked') {
+  const serialized=JSON.stringify(payload??null),entry={timestamp:new Date().toISOString(),tableKey,payloadHash:await governanceHash(serialized),payloadSize:new TextEncoder().encode(serialized).length,reason};
+  const append=async()=>{
+    const attempts=await env.TRADES.get('governance:attempts','json')||[];
+    attempts.push(entry);await env.TRADES.put('governance:attempts',JSON.stringify(attempts));
+  };
+  const pending=governanceLogQueue.then(append,append);governanceLogQueue=pending.catch(()=>{});await pending;
+}
+
 let GOVERNING_FLOW_CACHE = null; // { at, data } — isolate-lifetime, 60s TTL
 async function governingFlow(env) {
   const now = Date.now();
@@ -22151,8 +22192,23 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         let t = null; try { t = body.name === "currentmethods" ? await writingMethodsTable(env) : await env.TRADES.get(fkey, "json"); } catch (e) { if(body.name === "currentmethods")throw e; }
         return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
       }
+      if (body.action === 'unlockGovernance') {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({error:'Unauthorized'},401);
+        const unlock=await governanceUnlock(env,body.code);
+        return unlock ? json({success:true,...unlock}) : json({error:'Governance code rejected or not configured',reason:'governance_locked'},403);
+      }
+      if (body.action === 'getGovernanceAttempts') {
+        if (!await verifyToken(body.token,HMAC_SECRET)) return json({error:'Unauthorized'},401);
+        const attempts=await env.TRADES.get('governance:attempts','json')||[];
+        return json({success:true,count:attempts.length,attempts:attempts.slice(-50).reverse()});
+      }
       if (body.action === "saveInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const governanceKey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
+        if (GOVERNANCE_TABLES.has(governanceKey) && !await governanceValid(env, body.governanceUnlock)) {
+          await governanceHold(env,governanceKey,body.table);
+          return json({error:'Unlock governance before saving this table.',reason:'governance_locked'},403);
+        }
         const t = body.table || {};
         const columns = (Array.isArray(t.columns) ? t.columns : []).slice(0, 120).map(c => ({ id: String(c?.id || "").slice(0, 40), name: String(c?.name || "").slice(0, 120), ...(c?.check ? { check: true } : {}), ...(c?.ro ? { ro: true } : {}), ...(Array.isArray(c?.options) && c.options.length ? { options: c.options.slice(0, 60).map(o => String(o || "").slice(0, 120)).filter(Boolean) } : {}), ...(c?.w ? { w: Math.max(60, Math.min(800, +c.w || 0)) } : {}) })).filter(c => c.id);
         const colIds = new Set(columns.map(c => c.id));
@@ -22162,6 +22218,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         }).filter(r => r.id);
         const fkey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
         await env.TRADES.put(fkey, JSON.stringify({ columns, rows, at: Date.now() }));
+        if (GOVERNANCE_TABLES.has(fkey)) GOVERNING_FLOW_CACHE = null;
         return json({ success: true, saved: rows.length });
       }
 
