@@ -1,5 +1,15 @@
 [
   {
+    "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
+    "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
+    "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
+    "contentHash": "17490df2d53db699c10bfb9e219c7e41e56991669de0a46a893c32cdcb589e19",
+    "contentEditedAt": "2026-10-22T16:39:00.000Z",
+    "refreshedAt": "2026-10-22T16:39:26.933Z"
+  },
+  {
     "slug": "ai-field-deployment",
     "title": "Construction AI Automation: RFIs, Change Orders & Project Reports",
     "intro": "Your construction operation already has the software. What it does not have is someone operating it at full capacity — configuring the automation, reviewing the outputs, and keeping the workflows running as your projects evolve.\n\nYou are answering RFIs at 10pm. Change orders are getting filed late o",
@@ -8,16 +18,6 @@
     "contentHash": "92caffc52aa8429af10f3c43c2ed451566d95f5977bd3e56613703845187f312",
     "contentEditedAt": "2026-10-22T16:38:00.000Z",
     "refreshedAt": "2026-10-22T16:38:28.930Z"
-  },
-  {
-    "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
-    "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
-    "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
-    "contentHash": "dfde2f875076f39ca5f40469b6f3d643c061faab5f07a771abbe6bad25242cc1",
-    "contentEditedAt": "2026-10-22T16:22:00.000Z",
-    "refreshedAt": "2026-10-22T16:22:39.006Z"
   },
   {
     "slug": "project-coordination-retainer",
