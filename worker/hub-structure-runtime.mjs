@@ -7,6 +7,11 @@ export function structureHeldPayload(value) {
  return value;
 }
 const CARD_ACTIONS=new Set(['saveTopicClusters','generateTopicClusters','updateStagedKeywordCluster','removeStagedKeywordCluster','commitKeywordCluster','archiveKeywordCluster','setClusterSearchIntent','regenerateKeywordCluster','generateKeywordClusters','generateSingleKeywordCluster','attachProductToTopic','createProduct','archiveProduct','setHubMainOffering','setProductStack','renameProductStack','updateAllOutputField','saveStackOrder','generateClusterProductStacks','removeClusterProductStack','kwHubClearTopics','kwHubApply','kwHubUndo','categorizeUntopicedProducts','moveProductToCampaign']);
+export function isStructureCardAction(body) {
+ if(body.action==='kwSendKeywords')return body.mode==='cluster';
+ if(body.action==='updateAllOutputField')return ['group','productStack'].includes(body.field);
+ return CARD_ACTIONS.has(body.action);
+}
 export function structureRuntime(env,deps) {
  const io=makeStructureIO(env,deps),hubs=deps.hubs;
  async function lock(cid,operation) {
@@ -34,7 +39,7 @@ export function structureRuntime(env,deps) {
  async function boundary(request,ctx,operation) {
   if(request.method!=='POST'||!request.headers.get('Content-Type')?.includes('json'))return operation(request);
   let body;try{body=await request.clone().json();}catch{return operation(request);}
-  if(!CARD_ACTIONS.has(body.action))return operation(request);
+  if(!isStructureCardAction(body))return operation(request);
   if(!await deps.authorized(body))return operation(request);
   // Long legacy actions are forwarded to SELF by the existing handler; only their actual inner execution is observed.
   if(!body.__inner&&/^(generate|regenerate)/.test(body.action))return operation(request);
@@ -76,7 +81,7 @@ export function structureRuntime(env,deps) {
   });
  }
  async function enable() {
-  for(const h of hubs){const cid=norm(h.campaignId),doc=await io.get('hub:structure:'+cid),progress=await io.get('sync:placement-progress:'+cid);if(!doc?.originalSnapshot||!doc.verifiedAt||!doc.seededAt||progress?.pending)throw Error('Migrate, verify, seed and finish placement for every hub before enabling automatic two-way sync');}
+  for(const h of hubs){const cid=norm(h.campaignId),doc=await io.get('hub:structure:'+cid),progress=await io.get('sync:placement-progress:'+cid),report=await io.get('sync:report:'+cid);if(!doc?.originalSnapshot||!doc.verifiedAt||!doc.seededAt||!progress||progress.pending!==0||!report?.success)throw Error('Migrate, verify, seed and finish placement for every hub before enabling automatic two-way sync');}
   await io.put('sync:enabled:v1',{at:io.now(),hubs:hubs.length});return {success:true,hubs:hubs.length,modelCalls:0};
  }
  return {io,lock,boundary,action,enable,sync,enqueue};
