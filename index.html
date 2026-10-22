@@ -17817,6 +17817,58 @@ async function hubKwAddTopicGo(slug) {
   if (open) kwOpenTopic(h.campaignId, h.campaign || h.name, id);
   return true;
 }
+// 🔬 on a topic or ★ Main (Content Hubs 2 Keywords): edit its keyword list in place. Seeds → kwSeedResearch (Google ideas +
+// best-guess pick) → new keywords join the list (chips toggle them) → 💾 Save writes only the difference through kwHubApply
+// (assign / unassign for a topic, main add/remove for Main — same backup + ↶ undo as the Keywords tab).
+const hubKwKwSplit = v => String(v || '').split(/[,;\n]/).map(x => x.toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean);
+function hubKwKwModal(slug, tid) {
+  const K = _hubKw[slug]; if (!K) return; const t = hubKwTopicOrMain(K, tid); if (!t) return;
+  const cur = hubKwKwSplit(t.keywords), isMain = tid === '__main';
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  hcModal(`<h3 style="margin:0 0 4px;">🔬 Keywords — ${esc(t.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${isMain ? "The hub's Main Keywords (Research Keywords)." : "This topic's keywords — its products and titles stay attached."} ${cur.length} now.</div>
+    <label style="font-size:11px;color:var(--text3);">Seed keywords to research (comma or one per line)</label><input id="hkwKmSeed" style="${IN}" value="${esc(isMain ? cur.slice(0, 5).join(', ') : t.name)}">
+    <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 8px;"><button class="kw-btn" onclick="hubKwKwResearch('${slug}','${esc(tid)}')">🔬 Research</button><span style="font-size:10.5px;color:var(--text3);">new ones are added to the list — click a chip to drop / re-add it</span></div>
+    <div id="hkwKmOut" style="font-size:11.5px;color:var(--text3);margin-bottom:10px;max-height:22vh;overflow:auto;"></div>
+    <label style="font-size:11px;color:var(--text3);">Keywords (one per line)</label><textarea id="hkwKmList" rows="10" style="${IN}">${esc(cur.join('\n'))}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwKwSave('${slug}','${esc(tid)}'))">💾 Save</button>${HC_CANCEL}<a href="#" style="margin-left:auto;font-size:11px;color:var(--text3);" onclick="event.preventDefault();document.getElementById('hcModal').classList.remove('open');hubKwOpenInTool('${slug}','${esc(tid)}')">open in the Keywords tab ↗</a></div>`);
+}
+const hubKwKmList = () => hubKwKwSplit(document.getElementById('hkwKmList').value.replace(/;/g, ','));
+function hubKwKmToggle(el) {
+  const k = el.dataset.k, list = hubKwKmList(), has = list.includes(k);
+  document.getElementById('hkwKmList').value = (has ? list.filter(x => x !== k) : [...list, k]).join('\n');
+  el.style.opacity = has ? '.45' : '1'; el.style.textDecoration = has ? 'line-through' : '';
+}
+async function hubKwKwResearch(slug, tid) {
+  const h = HUB_SITES.find(x => x.slug === slug), K = _hubKw[slug], t = K && hubKwTopicOrMain(K, tid), out = document.getElementById('hkwKmOut'); if (!h || !t || !out) return;
+  const seeds = document.getElementById('hkwKmSeed').value.split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  if (!seeds.length) { out.textContent = 'Type a few seed keywords first.'; return; }
+  out.textContent = '⏳ Researching ' + seeds.length + ' seed' + (seeds.length === 1 ? '' : 's') + '…';
+  const r = await call('kwSeedResearch', { seeds, kind: 'topic', hub: h.name, name: tid === '__main' ? '' : t.name }).catch(e => ({ error: e.message }));
+  if (!document.getElementById('hkwKmOut')) return;   // modal closed meanwhile
+  if (!r || r.error) { out.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
+  const kws = r.keywords || []; if (!kws.length) { out.textContent = 'Nothing came back — try broader seeds.'; return; }
+  const list = hubKwKmList(), fresh = kws.filter(k => !list.includes(k.t));
+  document.getElementById('hkwKmList').value = [...list, ...fresh.map(k => k.t)].join('\n');
+  out.innerHTML = (r.warn ? '⚠ ' + esc(r.warn) + '<br>' : 'Best-guess pick from ' + r.ideas + ' Google ideas (monthly US searches) — ' + fresh.length + ' new added' + (kws.length - fresh.length ? ', ' + (kws.length - fresh.length) + ' already in the list' : '') + '.<br>')
+    + kws.map(k => `<button class="kw-btn" style="margin:2px 4px 2px 0;${fresh.includes(k) ? '' : 'border-style:dashed;'}" data-k="${esc(k.t)}" title="${fresh.includes(k) ? 'Added — click to drop it' : 'Already in the list — click to drop it'}" onclick="hubKwKmToggle(this)">${esc(k.t)}${k.v == null ? '' : ' · ' + Number(k.v).toLocaleString()}</button>`).join('');
+}
+async function hubKwKwSave(slug, tid) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug), t = K && hubKwTopicOrMain(K, tid); if (!K || !h || !t) return 'Hub not loaded';
+  const cur = hubKwKwSplit(t.keywords), next = [...new Set(hubKwKmList())], add = next.filter(k => !cur.includes(k)), del = cur.filter(k => !next.includes(k));
+  if (!add.length && !del.length) { document.getElementById('hcModal').classList.remove('open'); return true; }
+  if (!next.length && tid !== '__main') return 'A topic needs at least one keyword (an empty topic is removed)';
+  const id = tid === '__main' ? '__main' : (K.staged.includes(t) ? String(t.id) : kwNid(t.id));   // hub model: committed ids dashless, proposed as stored
+  const ops = id === '__main' ? [add.length && { op: 'main', keywords: add, add: true }, del.length && { op: 'main', keywords: del, add: false }].filter(Boolean)
+    : [add.length && { op: 'assign', keywords: add, to: id, move: false }, del.length && { op: 'unassign', keywords: del, from: id }].filter(Boolean);
+  const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name || slug, ops }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return (r && r.error) || 'Not saved';
+  if (r.errors && r.errors.length) return r.errors.join(' · ');
+  document.getElementById('hcModal').classList.remove('open');
+  delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+  if (_hubKw[slug]) _hubKw[slug].msg = '✓ ' + t.name + ': ' + [add.length && '+' + add.length, del.length && '−' + del.length].filter(Boolean).join(' ') + ' keywords (↶ undo in the Keywords tab)';
+  hubKwRefresh(slug);
+  return true;
+}
 async function hubKwRename(slug, kind, key) {
   const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
   const t = kind === 'topic' ? [...K.staged, ...K.committed].find(x => x.id === key) : null, cur = kind === 'topic' ? (t || {}).name : (K.tc.clusters || [])[key];
@@ -18521,7 +18573,7 @@ function renderHubKw(slug) {
       + titleSec(t.id) + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
     // green = Development products in sync · orange = Development products out of sync (incl. no research yet)
     const counts = kwCounts(ps, tByTopic ? tByTopic.get(t.id) || [] : []);
-    return node('t:' + t.id, depth, isMain ? '#f5c542' : t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: isMain ? null : t.id, pdrop: t.id, tools: counts + `<span class="hkw-ctl">` + moveSel + `${isMain ? '' : `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button>`}<button style="${btn}" title="Open this topic in the Keywords tab — research its keywords there and save the results back to it" onclick="hubKwOpenInTool('${slug}','${esc(t.id)}')">🔬</button>` + addBtn + `</span>` });
+    return node('t:' + t.id, depth, isMain ? '#f5c542' : t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: isMain ? null : t.id, pdrop: t.id, tools: counts + `<span class="hkw-ctl">` + moveSel + `${isMain ? '' : `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button>`}<button style="${btn}" title="Research and edit this topic's keywords right here (seeds → Google ideas → best-guess pick → save)" onclick="hubKwKwModal('${slug}','${esc(t.id)}')">🔬</button>` + addBtn + `</span>` });
   };
   const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
   const by = {}, un = [], mainCl = K.tc.mainCluster || '';
