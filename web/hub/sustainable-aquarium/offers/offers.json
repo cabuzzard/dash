@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
+    "slug": "biogenerative-installation-feasibility-design",
+    "name": "Biogenerative Installation Feasibility & Design",
+    "promise": "For serious ecosystem builders ready to scale beyond the tank. Find out whether your living water system is buildable — biology, compliance, and site conditions scoped before you commit construction money.",
+    "url": "../blog/biogenerative-installation-feasibility-design/",
+    "contentHash": "3cff3be3d1129291f559977a606596a5b306ccb424ea6fd2c993c1edb7ab0033",
+    "contentEditedAt": "2026-10-22T16:12:00.000Z",
+    "refreshedAt": "2026-10-22T16:12:16.709Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
     "slug": "tank-diagnosis",
     "name": "Start Your Natural Aquarium",
@@ -18,15 +28,5 @@
     "contentHash": "0122bcbf12c9c8a90d431164df929d39918c090984b573a5adf4780ae6ffd88f",
     "contentEditedAt": "2026-10-22T14:04:00.000Z",
     "refreshedAt": "2026-10-22T16:05:22.895Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
-    "slug": "biogenerative-installation-feasibility-design",
-    "name": "Biogenerative Installation Feasibility & Design",
-    "promise": "For serious ecosystem builders ready to scale beyond the tank. Find out whether your living water system is buildable — biology, compliance, and site conditions scoped before you commit construction money.",
-    "url": "../blog/biogenerative-installation-feasibility-design/",
-    "contentHash": "1411d5033df0ba228da8952a58cb7f9994be8da040177cf5d46563bd76612577",
-    "contentEditedAt": "2026-10-22T14:04:00.000Z",
-    "refreshedAt": "2026-10-22T16:05:09.768Z"
   }
 ]
