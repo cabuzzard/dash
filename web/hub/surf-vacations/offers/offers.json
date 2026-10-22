@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "slug": "surf-camp-finder",
+    "name": "Surf Camp Finder",
+    "promise": "Find a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
+    "url": "../blog/surf-camp-finder/",
+    "contentHash": "cc6c0e7acaed8e7cea0ea9ff52625b053582cd7ac49751fc26d5f273ff162932",
+    "contentEditedAt": "2026-10-22T02:01:00.000Z",
+    "refreshedAt": "2026-10-22T03:30:45.048Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
     "slug": "surf-resort-finder",
     "name": "Surf Resort Finder",
@@ -18,13 +28,6 @@
     "contentHash": "139fe0ca97c98d0df5139b2801ac3481fcc778bb12dd022d0f5d7fcf8f72bca9",
     "contentEditedAt": "2026-10-22T01:59:00.000Z",
     "refreshedAt": "2026-10-22T03:30:22.695Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
-    "slug": "surf-camp-finder",
-    "name": "Surf Camp Finder",
-    "promise": "Find a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
-    "url": "../blog/surf-camp-finder/"
   },
   {
     "assetId": "4001f7d3a4bb81819d98e8d0bfebb91f",

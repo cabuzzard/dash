@@ -1,5 +1,15 @@
 [
   {
+    "slug": "surf-camp-finder",
+    "title": "Surf Camp Finder",
+    "intro": "Find a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "contentHash": "cc6c0e7acaed8e7cea0ea9ff52625b053582cd7ac49751fc26d5f273ff162932",
+    "contentEditedAt": "2026-10-22T02:01:00.000Z",
+    "refreshedAt": "2026-10-22T03:30:45.048Z"
+  },
+  {
     "slug": "surf-resort-finder",
     "title": "Surf Resort Finder",
     "intro": "Find a surf resort or live-aboard charter that matches your level, your group, and your swell window — and book it in one place, with every cost on the table before you commit.",
@@ -18,13 +28,6 @@
     "contentHash": "139fe0ca97c98d0df5139b2801ac3481fcc778bb12dd022d0f5d7fcf8f72bca9",
     "contentEditedAt": "2026-10-22T01:59:00.000Z",
     "refreshedAt": "2026-10-22T03:30:22.695Z"
-  },
-  {
-    "slug": "surf-camp-finder",
-    "title": "Surf Camp Finder",
-    "intro": "For Adventure-seeking adults — solo, couple, or small group — who are ready to go and done with the research spiral.\n\nFind a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338"
   },
   {
     "slug": "surf-charters-liveaboard-trips",
