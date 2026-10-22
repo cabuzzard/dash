@@ -1,5 +1,15 @@
 [
   {
+    "slug": "care-command",
+    "title": "One Person Who Owns Your Parent's Care — Start to Finish",
+    "intro": "You are already doing this job. You are tracking the appointments, chasing the referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the contacts, ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
+    "contentHash": "27571139611ca4ca13d1eb46191750a8bcce151c5e15024f1f3f4e30e35b3894",
+    "contentEditedAt": "2026-10-22T21:32:00.000Z",
+    "refreshedAt": "2026-10-22T21:32:41.131Z"
+  },
+  {
     "slug": "medicare-clarity-consult",
     "title": "Medicare Clarity Consulting",
     "intro": "You are not confused because you're unsophisticated. You are confused because every source you've found so far — the comparison websites, the toll-free numbers, the friendly mailers — is funded by the carriers who want you to pick their plan. A Medicare Clarity Consultation is the one hour in this p",
@@ -8,16 +18,6 @@
     "contentHash": "3235284132f24d967ce3af912dadbe84e83e1ba821c09404eb871031287ca0a0",
     "contentEditedAt": "2026-10-22T21:30:00.000Z",
     "refreshedAt": "2026-10-22T21:30:29.738Z"
-  },
-  {
-    "slug": "care-command",
-    "title": "One Person Who Owns Your Parent's Care — Start to Finish",
-    "intro": "You are already doing this job. You are tracking the appointments, chasing the referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the contacts, ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
-    "contentHash": "ff252e767f8a39366f3255e97ad1f8d41c94f2db28422b77f0852f530fde1b7b",
-    "contentEditedAt": "2026-10-22T16:40:00.000Z",
-    "refreshedAt": "2026-10-22T17:04:51.137Z"
   },
   {
     "slug": "the-medicare-clarity-premium-newsletter",
