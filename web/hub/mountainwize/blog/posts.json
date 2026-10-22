@@ -1,5 +1,15 @@
 [
   {
+    "slug": "field-sessions",
+    "title": "Break the Decision Loop — One Session, One Working Answer",
+    "intro": "You've made harder calls than this. You've been in harder rooms, under real pressure, with real money on the line. So why is this particular decision — the one you keep re-approaching from the same angle — not moving?\n\nThe honest answer isn't that you lack information. You have more than enough info",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
+    "contentHash": "f0b0e4a4cc65997108441e89a7a1c04d09ae69acacf6a6b40184542230dbdf92",
+    "contentEditedAt": "2026-10-22T22:56:00.000Z",
+    "refreshedAt": "2026-10-22T22:56:41.718Z"
+  },
+  {
     "slug": "inner-edge",
     "title": "The Energy Session — Find the Pattern Running the Gap",
     "intro": "You have optimized everything the leaderboard measures. The career, the income, the status — all of it is there. And still, something is running underneath that does not match the life you built on the outside. You can feel it. A specific kind of tired that success is not supposed to produce. Compet",
@@ -18,15 +28,5 @@
     "contentHash": "15ad475192d018895ef9b6847f3d1f39cf63c4d2d291c5fa580a7ebec633765d",
     "contentEditedAt": "2026-10-22T16:34:00.000Z",
     "refreshedAt": "2026-10-22T16:34:31.769Z"
-  },
-  {
-    "slug": "field-sessions",
-    "title": "Break the Decision Loop — One Session, One Working Answer",
-    "intro": "You've made harder calls than this. You've been in harder rooms, under real pressure, with real money on the line. So why is this particular decision — the one you keep re-approaching from the same angle — not moving?\n\nThe honest answer isn't that you lack information. You have more than enough info",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
-    "contentHash": "85c8f004ee6cfdd6bf8f313ca6a3ad9d93665bd563d3e2a4a9d6c25407992ade",
-    "contentEditedAt": "2026-10-22T16:34:00.000Z",
-    "refreshedAt": "2026-10-22T16:34:17.781Z"
   }
 ]
