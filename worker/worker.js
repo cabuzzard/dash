@@ -779,7 +779,7 @@ async function stageImageSpecDraft(env, brief, {legacyOnly=false}={}) {
 }
 async function holdImageWithoutSpec(env, brief, request) {
   if(brief?.hasCommittedSpec)return null;
-  const {token,governanceToken,...payload}=request||{};
+  const {token,governanceUnlock,governanceToken,...payload}=request||{};
   let draft;
   try {draft=await stageImageSpecDraft(env,brief);}catch(error){draft={status:'held',error:error.message};}
   await flowHold(env,{action:payload.action||'imageGeneration',reason:'no committed design spec',payload:{...payload,campaignId:brief?.campaignId,draftStatus:draft.status,draftError:draft.error||null}});
