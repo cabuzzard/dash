@@ -1,5 +1,15 @@
 [
   {
+    "slug": "care-command",
+    "title": "Medicare Plan Review & Guidance",
+    "intro": "You are already doing the work of a care manager. You are tracking appointments, chasing referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
+    "contentHash": "8a9d2c3e9379dc11e6dc8708308f5c5769588a57ba70be41ad2e6591e6fc97ed",
+    "contentEditedAt": "2026-10-22T16:24:00.000Z",
+    "refreshedAt": "2026-10-22T16:24:25.396Z"
+  },
+  {
     "slug": "medicare-clarity-consult",
     "title": "Medicare Clarity Consulting",
     "intro": "You are not confused because you're unsophisticated. You are confused because every source you've found so far — the comparison websites, the toll-free numbers, the friendly mailers — is funded by the carriers who want you to pick their plan. A Medicare Clarity Consultation is the one hour in this p",
@@ -8,16 +18,6 @@
     "contentHash": "6db5d94fa3d6be582b6a478856b3aad40d8686ea1c0a4f140a7613de034ba16f",
     "contentEditedAt": "2026-10-22T16:23:00.000Z",
     "refreshedAt": "2026-10-22T16:23:43.037Z"
-  },
-  {
-    "slug": "care-command",
-    "title": "Medicare Plan Review & Guidance",
-    "intro": "You are already doing the work of a care manager. You are tracking appointments, chasing referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
-    "contentHash": "ec043aeb0b51dbc454e3b322187414663feb803102ab3307474910632266cfe8",
-    "contentEditedAt": "2026-10-22T13:28:00.000Z",
-    "refreshedAt": "2026-10-22T16:07:37.718Z"
   },
   {
     "slug": "the-medicare-clarity-premium-newsletter",
