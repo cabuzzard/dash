@@ -1,5 +1,15 @@
 [
   {
+    "slug": "weekly-sessions",
+    "title": "Real Guitar Sessions — Listen, Study & Download",
+    "intro": "If the song doesn't do anything for you when you listen to it, it won't do anything for you when you play it. That's the first filter — and it's the one most guitar lesson content skips entirely. The Sessions are original instrumental guitar recordings built from feel first: acoustic, electric, surf",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
+    "contentHash": "cd54d4256eef05156ce126b2b9f6c5ef6b5853c78fc0a9afb841ba4544ca7d39",
+    "contentEditedAt": "2026-10-22T13:20:00.000Z",
+    "refreshedAt": "2026-10-22T13:20:18.478Z"
+  },
+  {
     "slug": "the-tracks",
     "title": "Guitar Backing Tracks That Feel Like Real Songs",
     "intro": "Most guitar backing tracks don't fail because of the key. They fail because nothing happens. You press play, a chord bed sits underneath, and thirty seconds later you already know the track is going nowhere. No movement, no change, no moment it demands something from you. The Tracks are built differ",
@@ -8,16 +18,6 @@
     "contentHash": "c81f8fc073c33503badfc901dd3eb98c90a3883e1a1f4171c6b6a5d6dd5e5a49",
     "contentEditedAt": "2026-10-22T13:19:00.000Z",
     "refreshedAt": "2026-10-22T13:19:40.097Z"
-  },
-  {
-    "slug": "weekly-sessions",
-    "title": "The Sessions",
-    "intro": "Real guitar. Real feel. Listen to original acoustic and electric guitar performances and explore available session recordings and downloads.",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
-    "contentHash": "6736ff0f7cd8d235932e8a897ff0eb0d63cdfa7546a0e5eedbadaff61e492983",
-    "contentEditedAt": "2026-10-22T03:42:00.000Z",
-    "refreshedAt": "2026-10-22T04:01:30.536Z"
   },
   {
     "slug": "wear-the-real-thing",
