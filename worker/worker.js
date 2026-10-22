@@ -36343,7 +36343,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const props = { [SLOT[kind].prop]: { url } };
         const ensureProps = { [SLOT[kind].prop]: { type: "url" } };
         if (body.background && SLOT[kind].srcProp) { props[SLOT[kind].srcProp] = { url }; ensureProps[SLOT[kind].srcProp] = { type: "url" }; }
-        if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = { rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
+        if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = kind==='blog-thumbnail'?thumbnailPromptProperty(prompt):{ rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
         try { await ensureAssetsDbProperties(hdr, ensureProps); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
