@@ -1,5 +1,15 @@
 [
   {
+    "slug": "garden-shop",
+    "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
+    "intro": "The grocery-store flowers have no origin, no variety name, and no harvest date. The nursery plant came from a controlled greenhouse in another state and may or may not survive your East Bay backyard. The wreath on the craft-store shelf came off a pallet. None of that is fraud — it's just how the sup",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
+    "contentHash": "37d30d8d2380eccdb04b363ce0cfcd42fd919620d9835da208d7a04f58580f9d",
+    "contentEditedAt": "2026-10-22T16:24:00.000Z",
+    "refreshedAt": "2026-10-22T16:24:06.144Z"
+  },
+  {
     "slug": "garden-visit",
     "title": "Experience a Garden Without Barriers — Plan Your Visit to Sunflower Acres",
     "intro": "Most flower farms are beautiful from the parking lot. The field starts about thirty feet past where the pavement ends.\n\nSunflower Acres in Concord, California was built the other way around — the path continues from the accessible parking space through the gate and into the sunflower rows without a ",
@@ -18,15 +28,5 @@
     "contentHash": "10a12fd84f7f7951dda95e552d1e878734eb04f3c5f55917baedfe30c9d01c01",
     "contentEditedAt": "2026-10-22T15:29:00.000Z",
     "refreshedAt": "2026-10-22T15:29:05.427Z"
-  },
-  {
-    "slug": "garden-shop",
-    "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
-    "intro": "```json\n{\n  \"kicker\": \"Garden Shop\",\n  \"name\": \"Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations\",\n  \"promise\": \"Seasonal plants, garden-grown flowers, and handmade botanical gifts from a working farm in Concord — with real stock, real origins, and clear pickup or shippi",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
-    "contentHash": "9d6974b5c2b5dd4a9a180d0c73f3bebee680b9e2d441036504e1b62aadfad699",
-    "contentEditedAt": "2026-10-22T15:26:00.000Z",
-    "refreshedAt": "2026-10-22T15:26:42.737Z"
   }
 ]
