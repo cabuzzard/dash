@@ -1,5 +1,15 @@
 [
   {
+    "slug": "inner-edge",
+    "title": "Inner Edge",
+    "intro": "You become the master of your inner environment — a man whose inner state matches the quality of the life he has built, moving on decisions without waiting for certainty.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81478f64fe0019ec63fb",
+    "contentHash": "27e44f3c8c72fee3e5184135b43001377fc294686ca84ff07bb606cdb94f5167",
+    "contentEditedAt": "2026-10-21T07:39:00.000Z",
+    "refreshedAt": "2026-10-22T03:34:51.035Z"
+  },
+  {
     "slug": "dualism-flow-intensive",
     "title": "Dualism & Flow Intensive",
     "intro": "Name the false binary stalling you, collapse it, and leave with a working inner process you own — no program required to keep it running.",
@@ -35,12 +45,5 @@
     "intro": "For High-achieving men over 40 who hit every target and still cannot name what they are actually building toward.\n\nYou leave knowing exactly what's underneath the restlessness — not a symptom list, the specific internal mechanics driving it.",
     "date": "2026-10-21",
     "assetId": "3ff1f7d3a4bb8116a5d5c5c4358c6a57"
-  },
-  {
-    "slug": "inner-edge",
-    "title": "Inner Edge",
-    "intro": "For High-performing men over 40 who have the results and still feel structurally off.\n\nYou become the master of your inner environment — a man whose inner state matches the quality of the life he has built, moving on decisions without waiting for certainty.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81478f64fe0019ec63fb"
   }
 ]
