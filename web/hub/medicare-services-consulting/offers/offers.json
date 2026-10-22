@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
+    "slug": "the-medicare-clarity-premium-newsletter",
+    "name": "The Medicare Clarity Premium Newsletter",
+    "promise": "For self-directed Medicare researchers who want one trustworthy source. Plain-language updates, enrollment reminders, and zero carrier pressure — delivered free to your inbox.",
+    "url": "../blog/the-medicare-clarity-premium-newsletter/",
+    "contentHash": "7c4f2ddb2a7b0e933393f09a265f26b03891cfcac283250168984e8f3aa88d5c",
+    "contentEditedAt": "2026-10-22T16:40:00.000Z",
+    "refreshedAt": "2026-10-22T16:40:26.446Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
     "slug": "medicare-clarity-consult",
     "name": "Medicare Clarity Consulting",
@@ -8,16 +18,6 @@
     "contentHash": "dbdc90e07a72b99b40e54492cf6414da6104d15e2870da6d3ad234092c94c754",
     "contentEditedAt": "2026-10-22T16:39:00.000Z",
     "refreshedAt": "2026-10-22T16:39:16.637Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
-    "slug": "the-medicare-clarity-premium-newsletter",
-    "name": "The Medicare Clarity Premium Newsletter",
-    "promise": "For self-directed Medicare researchers who want one trustworthy source. Plain-language updates, enrollment reminders, and zero carrier pressure — delivered free to your inbox.",
-    "url": "../blog/the-medicare-clarity-premium-newsletter/",
-    "contentHash": "f2089e32e00c2e9c2a2cd635fc28d635105e6955f25f61deb459c6ec2948d413",
-    "contentEditedAt": "2026-10-22T16:25:00.000Z",
-    "refreshedAt": "2026-10-22T16:25:10.172Z"
   },
   {
     "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",

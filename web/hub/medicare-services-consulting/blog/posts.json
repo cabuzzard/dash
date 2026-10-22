@@ -1,5 +1,15 @@
 [
   {
+    "slug": "the-medicare-clarity-premium-newsletter",
+    "title": "The Medicare Clarity Premium Newsletter",
+    "intro": "Every Medicare search you do triggers the same spiral: spam calls within the hour, \"free guides\" that are actually lead funnels, and advisors who say they're independent while working a carrier quota. You are not confused because you are unsophisticated. You are confused because every resource you f",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
+    "contentHash": "7c4f2ddb2a7b0e933393f09a265f26b03891cfcac283250168984e8f3aa88d5c",
+    "contentEditedAt": "2026-10-22T16:40:00.000Z",
+    "refreshedAt": "2026-10-22T16:40:26.446Z"
+  },
+  {
     "slug": "medicare-clarity-consult",
     "title": "Medicare Clarity Consulting",
     "intro": "You are not confused because you're unsophisticated. You are confused because every source you've found so far — the comparison websites, the toll-free numbers, the friendly mailers — is funded by the carriers who want you to pick their plan. A Medicare Clarity Consultation is the one hour in this p",
@@ -8,16 +18,6 @@
     "contentHash": "dbdc90e07a72b99b40e54492cf6414da6104d15e2870da6d3ad234092c94c754",
     "contentEditedAt": "2026-10-22T16:39:00.000Z",
     "refreshedAt": "2026-10-22T16:39:16.637Z"
-  },
-  {
-    "slug": "the-medicare-clarity-premium-newsletter",
-    "title": "The Medicare Clarity Premium Newsletter",
-    "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Premium Newsletter\",\n  \"promise\": \"Stay current on Medicare without trusting a source that's trying to sell you a plan.\",\n  \"ctaLabel\": \"Subscribe Free\",\n  \"ctaUrl\": \"\"\n}\n```\n\nEvery Medicare search you do triggers the same spiral: spam calls within the hour, ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
-    "contentHash": "f2089e32e00c2e9c2a2cd635fc28d635105e6955f25f61deb459c6ec2948d413",
-    "contentEditedAt": "2026-10-22T16:25:00.000Z",
-    "refreshedAt": "2026-10-22T16:25:10.172Z"
   },
   {
     "slug": "care-command",
