@@ -1,5 +1,15 @@
 [
   {
+    "slug": "the-medicare-clarity-premium-newsletter",
+    "title": "The Medicare Clarity Premium Newsletter",
+    "intro": "Every Medicare search you do triggers the same spiral: spam calls within the hour, \"free guides\" that are actually lead funnels, and advisors who say they're independent while working a carrier quota. You are not confused because you are unsophisticated. You are confused because every resource you f",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
+    "contentHash": "fbb6144b23794d0354520e146d9c93ab593b08d436da79118333d2b3db2ea8de",
+    "contentEditedAt": "2026-10-22T21:38:00.000Z",
+    "refreshedAt": "2026-10-22T22:04:35.125Z"
+  },
+  {
     "slug": "care-command",
     "title": "One Person Who Owns Your Parent's Care — Start to Finish",
     "intro": "You are already doing this job. You are tracking the appointments, chasing the referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the contacts, ",
@@ -18,15 +28,5 @@
     "contentHash": "3235284132f24d967ce3af912dadbe84e83e1ba821c09404eb871031287ca0a0",
     "contentEditedAt": "2026-10-22T21:30:00.000Z",
     "refreshedAt": "2026-10-22T21:30:29.738Z"
-  },
-  {
-    "slug": "the-medicare-clarity-premium-newsletter",
-    "title": "The Medicare Clarity Premium Newsletter",
-    "intro": "Every Medicare search you do triggers the same spiral: spam calls within the hour, \"free guides\" that are actually lead funnels, and advisors who say they're independent while working a carrier quota. You are not confused because you are unsophisticated. You are confused because every resource you f",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2",
-    "contentHash": "7c4f2ddb2a7b0e933393f09a265f26b03891cfcac283250168984e8f3aa88d5c",
-    "contentEditedAt": "2026-10-22T16:40:00.000Z",
-    "refreshedAt": "2026-10-22T16:40:26.446Z"
   }
 ]
