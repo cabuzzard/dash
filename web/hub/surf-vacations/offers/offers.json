@@ -1,5 +1,12 @@
 [
   {
+    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
+    "slug": "surf-resort-finder",
+    "name": "Surf Resort Finder",
+    "promise": "Find a surf resort or live-aboard charter that matches your level, your group, and your swell window — and book it in one place, with every cost on the table before you commit.",
+    "url": "../blog/surf-resort-finder/"
+  },
+  {
     "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
     "slug": "charter-match",
     "name": "Charter Match",
