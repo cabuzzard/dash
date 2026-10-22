@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "slug": "surf-camp-finder",
+    "name": "Find a Surf Camp That Fits Your Level — and Book It Today",
+    "promise": "For adults who want a real surf trip: filter by destination, skill level, and budget, compare what's actually included, and book a vetted camp in one session.",
+    "url": "../blog/surf-camp-finder/",
+    "contentHash": "917cc87be95bbcc938cfae556b682f95704664d557d6ef43bbde8e107735a955",
+    "contentEditedAt": "2026-10-22T16:32:00.000Z",
+    "refreshedAt": "2026-10-22T17:00:32.137Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
     "slug": "surf-resort-finder",
     "name": "Stop Researching. Start Surfing the Right Break.",
@@ -18,15 +28,5 @@
     "contentHash": "a2439c2ce49c2da089e6c1f5b6c6dcf9b5159992fc16d810b505f56bebd116e9",
     "contentEditedAt": "2026-10-22T16:22:00.000Z",
     "refreshedAt": "2026-10-22T16:22:09.579Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
-    "slug": "surf-camp-finder",
-    "name": "Surf Camp Finder",
-    "promise": "Find a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
-    "url": "../blog/surf-camp-finder/",
-    "contentHash": "bcc3016bf34ab7c7aa2e8ad9b795fdba657caec9af77e97ab3d4cb77be275bcf",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:02:19.609Z"
   }
 ]

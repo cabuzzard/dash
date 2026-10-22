@@ -1,5 +1,15 @@
 [
   {
+    "slug": "surf-camp-finder",
+    "title": "Find a Surf Camp That Fits Your Level — and Book It Today",
+    "intro": "You already know where you want to be. Somewhere in the water, at a break worth the flight — Costa Rica, Bali, Morocco, Portugal — the feeling is specific enough that you can picture it. What stops you is not the desire. It is the gap between that image and a confirmed booking. You open a browser, r",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "contentHash": "917cc87be95bbcc938cfae556b682f95704664d557d6ef43bbde8e107735a955",
+    "contentEditedAt": "2026-10-22T16:32:00.000Z",
+    "refreshedAt": "2026-10-22T17:00:32.137Z"
+  },
+  {
     "slug": "surf-resort-finder",
     "title": "Stop Researching. Start Surfing the Right Break.",
     "intro": "You have the trip in your head. You know the rough destination. You've spent real time on it — surf blogs, resort sites, charter company contact forms that go nowhere, Reddit threads where the advice contradicts itself three comments in. Six tabs open. Nothing resolved. And underneath all of it, a s",
@@ -18,15 +28,5 @@
     "contentHash": "a2439c2ce49c2da089e6c1f5b6c6dcf9b5159992fc16d810b505f56bebd116e9",
     "contentEditedAt": "2026-10-22T16:22:00.000Z",
     "refreshedAt": "2026-10-22T16:22:09.579Z"
-  },
-  {
-    "slug": "surf-camp-finder",
-    "title": "Surf Camp Finder",
-    "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Camp Finder\",\n  \"promise\": \"Find a verified surf camp matched to your level and book it in one session.\",\n  \"ctaLabel\": \"Find Your Surf Camp\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou already know you want to go. The destination is somewhere in the back of ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
-    "contentHash": "bcc3016bf34ab7c7aa2e8ad9b795fdba657caec9af77e97ab3d4cb77be275bcf",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:02:19.609Z"
   }
 ]
