@@ -3,6 +3,8 @@
 // the start of each request  -  never hardcoded here.
 import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
 import { AsyncLocalStorage } from 'node:async_hooks';
+import {structureRuntime} from './hub-structure-runtime.mjs';
+import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -32,7 +34,8 @@ async function hierarchyForHub(env, campaignId, seed={}) {
     seed.products ? seed.products.filter(p=>(p.properties?.Campaigns?.relation||[]).some(r=>hierarchyId(r.id)===cid)) : notionQuery(PRODUCTS_DB, { filter:{property:'Campaigns',relation:{contains:dc}} }), hubMainList(env,cid),
     seed.titles ? seed.titles.filter(p=>(p.properties?.Campaign?.relation||[]).some(r=>hierarchyId(r.id)===cid)) : notionQuery(CONTENT_STRATEGY_DB, { filter:{property:'Campaign',relation:{contains:dc}} })
   ]);
-  return hierarchyModel({ topics:[...committed,...(staged || [])], tc:tc || {clusters:[],assign:{}},
+  const structure=await env.TRADES.get('hub:structure:'+cid,'json'), view=structure?hubStructureView(structure):null;
+  return hierarchyModel({ topics:view?[...view.committed,...view.staged]:[...committed,...(staged || [])], tc:view?.topicClusters || tc || {clusters:[],assign:{}},
     products:products.filter(p=>!p.archived&&!p.in_trash&&!p.properties?.Archived?.checkbox&&p.properties?.Status?.select?.name!=='Archived').map(p=>({id:p.id,topicId:hierarchyText(p.properties?.['Topic ID']?.rich_text)})), mainIds, titles });
 }
 async function hierarchyCampaignIds(page, kind) {
@@ -1990,6 +1993,8 @@ async function hubAudienceBlock(env, cid) {
   return text;
 }
 async function hubTopicsOf(env, cid) {
+  const doc=await env.TRADES.get('hub:structure:'+hierarchyId(cid),'json');
+  if(doc){const v=hubStructureView(doc);return [...v.committed.map(t=>({...t,committed:true})),...v.staged.map(t=>({...t,committed:false}))].filter(t=>t.name);}
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: nd(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
   const staged = (await env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => null)) || [];
@@ -6675,6 +6680,8 @@ async function autoGroupStacks(env, cid, stacks, groups) {
 }
 async function findClusterKeywordsForStack(env, hdr, stack, campaignId, topicId) {
   if ((!stack && !topicId) || !campaignId) return "";
+  const structure=await env.TRADES.get('hub:structure:'+hierarchyId(campaignId),'json');
+  if(structure){const v=hubStructureView(structure),topics=[...v.committed,...v.staged],t=topicId?topics.find(t=>hierarchyId(t.id)===hierarchyId(topicId)):topics.find(t=>t.name===stack);return t?.keywords||"";}
   const norm = s => String(s || "").replace(/-/g, "");
   const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
   const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
@@ -13947,7 +13954,12 @@ export default {
   // Child generation (generateTitleAssets + parentAssetId): for this one request the title's pillar reads come from the
   // parent asset (PILLAR_SOURCE), then every asset it created under the title gets "Parent Asset" = that parent.
   async fetch(request, env, ctx) {
-    return hubWithAssetWrites(env, () => this.fetchScoped(request, env, ctx));
+    return hubWithAssetWrites(env, async () => {
+      hierarchyEnv=env;
+      await hubSitesMerge(env);
+      try{return await hubStructureRuntime(env).boundary(request,ctx,r=>this.fetchScoped(r,env,ctx));}
+      catch(error){return new Response(JSON.stringify({error:error.message,...(error.busy?{busy:true}:{})}),{status:error.busy?409:500,headers:{...CORS,'Access-Control-Allow-Origin':resolveOrigin(request),'Content-Type':'application/json'}});}
+    });
   },
   async fetchScoped(request, env, ctx) {
     hierarchyEnv = env;
@@ -14666,7 +14678,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$|^publishHubAsset$|^publishHubSectionAsset$|^hubRepublishSweep$|^hubRepublishAsset$|^designResearchPass$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$|^publishHubAsset$|^publishHubSectionAsset$|^hubRepublishSweep$|^hubRepublishAsset$|^designResearchPass$|^(syncHubStructure|restoreHubStructure|resolveHubStructureConflict|restoreHubStructureTopic|migrateHubStructure)$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -37121,7 +37133,15 @@ Call submit_keyword_cluster with your result.`;
         return json({ success: true, staged });
       }
 
+      if(body.action==='enableHubStructureSync')return json(await hubStructureRuntime(env).enable());
+      if(['syncHubStructure','getHubStructureSync','migrateHubStructure','restoreHubStructure','resolveHubStructureConflict','restoreHubStructureTopic'].includes(body.action)) {
+        // Placement metadata does not change rendered asset content.
+        const scope=hubWriteScope.getStore();if(scope)scope.suppressed=true;
+        try{return json(await hubStructureRuntime(env).action(body));}catch(error){return json({error:error.message,...(error.busy?{busy:true}:{})},error.busy?409:400);}
+      }
       if (body.action === "getKeywordClusters") {
+        const structure=await env.TRADES.get('hub:structure:'+hierarchyId(body.campaignId),'json');
+        if(structure){const view=hubStructureView(structure);return json({success:true,staged:view.staged,committed:view.committed,topicClusters:view.topicClusters,archived:view.archived,sync:await hubStructureRuntime(env).action({action:'getHubStructureSync',campaignId:body.campaignId})});}
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
@@ -37169,7 +37189,7 @@ Call submit_keyword_cluster with your result.`;
         const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
         const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
         const topics = [
-          ...rows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+          ...rows.map(r => ({ id: hierarchyText(r.properties?.["Topic Key"]?.rich_text) || r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
           ...staged.map(c => ({ id: String(c.id), name: c.name || "", keywords: c.keywords || "" })),
         ].filter(t => t.id && t.name);
         if (topics.length < 2) return json({ error: "Need at least 2 topics to cluster." }, 400);
@@ -37285,7 +37305,7 @@ Make 2-6 BROAD clusters (fewer is better; it is acceptable to put many topics in
         const keywords = rtx(research, "Keywords");
         if (!keywords) return json({ error: "No Keywords on file for this campaign's Research record" }, 400);
 
-        const committedPage = isStaged ? null : committedRows.find(r => r.id.replace(/-/g, "") === norm(clusterId));
+        const committedPage = isStaged ? null : committedRows.find(r => (hierarchyText(r.properties?.["Topic Key"]?.rich_text)||r.id.replace(/-/g, "")) === norm(clusterId));
         if (!isStaged && !committedPage) return json({ error: "Cluster not found — it may have been archived" }, 404);
         const intentOf = r => SEARCH_INTENT_FROM_LABEL[r.properties?.["Search Intent"]?.select?.name] || "";
         const target = isStaged
@@ -37366,11 +37386,11 @@ Call submit_keyword_cluster with your result.`;
           previous: { name: target.name || "", keywords: target.keywords || "", rationale: target.rationale || "", searchIntent: target.searchIntent || "" } });
 
         if (isStaged) {
-          staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale, searchIntent };
+          staged[stagedIdx] = { ...staged[stagedIdx], id: clusterId, name, keywords: newKeywords, rationale, searchIntent };
           await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
         } else {
           if (searchIntent) await ensureClusterIntentProperty();
-          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(norm(clusterId))}`, {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(norm(committedPage.id))}`, {
             method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
               "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
               "Cluster Keywords": { rich_text: [{ type: "text", text: { content: newKeywords } }] },
@@ -37380,11 +37400,11 @@ Call submit_keyword_cluster with your result.`;
           });
           const r = await resp.json();
           if (!resp.ok) return json({ error: r.message || "Failed to update cluster" }, resp.status);
-          const idx2 = committedRows.findIndex(r2 => r2.id.replace(/-/g, "") === norm(clusterId));
+          const idx2 = committedRows.findIndex(r2 => (hierarchyText(r2.properties?.["Topic Key"]?.rich_text)||r2.id.replace(/-/g, "")) === norm(clusterId));
           if (idx2 >= 0) committedRows[idx2] = { ...committedRows[idx2], properties: { ...committedRows[idx2].properties, Name: { title: [{ plain_text: name }] }, "Cluster Keywords": { rich_text: [{ plain_text: newKeywords }] }, Rationale: { rich_text: [{ plain_text: rationale }] }, "Search Intent": { select: { name: searchIntent ? SEARCH_INTENT_LABELS[searchIntent] : null } } } };
         }
 
-        const committed = committedRows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), searchIntent: intentOf(r), url: r.url }));
+        const committed = committedRows.map(r => ({ id: hierarchyText(r.properties?.["Topic Key"]?.rich_text) || r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), searchIntent: intentOf(r), url: r.url }));
         return json({ success: true, staged, committed });
       }
 
@@ -37747,7 +37767,7 @@ Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
         } else {
           committedRows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
           rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
-          const page = committedRows.find(r => r.id.replace(/-/g, "") === norm(clusterId));
+          const page = committedRows.find(r => (hierarchyText(r.properties?.["Topic Key"]?.rich_text)||r.id.replace(/-/g, "")) === norm(clusterId));
           if (!page) return json({ error: "Cluster not found — it may have been archived" }, 404);
           cluster = { name: (page.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(page, "Cluster Keywords"), rationale: rtx(page, "Rationale") };
         }
@@ -52140,7 +52160,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
+    if(event.cron==='0 0 * * *')cw('hubStructureNightly',hubStructureNightly(env));
     if (event.cron === "*/4 * * * *") {
+      cw('hubStructureQueue',hubStructureDrain(env));
       cw("kwHubProposeTick", kwHubProposeTick(env));
       cw("kwHubAutoTick", kwHubAutoTick(env));
       cw("kwHubRestructureTick", kwHubRestructureTick(env));
@@ -53122,7 +53144,8 @@ async function kwHubState(env, campaignId) {
   const research = resRows.slice().sort((a, b) => score(b) - score(a))[0] || null;
   const assign = {}, assignKey = {};
   for (const [k, v] of Object.entries((tc && tc.assign) || {})) { const n = String(k).replace(/-/g, ""); assign[n] = v; assignKey[n] = k; }
-  const topics = [
+  const structure=await env.TRADES.get("hub:structure:"+cid,"json"),view=structure?hubStructureView(structure):null;
+  const topics = view?[...view.committed.map(t=>({...t,keywords:kwSplit(t.keywords),committed:true,cluster:view.topicClusters.assign[t.id]||""})),...view.staged.map(t=>({...t,keywords:kwSplit(t.keywords),committed:false,cluster:view.topicClusters.assign[t.id]||""}))]:[
     ...committedRows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: kwTitleOf(r), keywords: kwSplit(kwRt(r, "Cluster Keywords")), committed: true, cluster: assign[id] || "" }; }),
     ...(Array.isArray(staged) ? staged : []).filter(c => c && c.id).map(c => ({ id: String(c.id), name: String(c.name || "").trim(), keywords: kwSplit(c.keywords), committed: false, cluster: assign[String(c.id).replace(/-/g, "")] || "" })),
   ];
@@ -53444,9 +53467,9 @@ async function kwHubApply(env, campaignId, ops, name) {
   await tryW("proposed topics", () => env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(staged)));
   // committed topics (Notion) — keyword list + name only; emptied ones archived
   for (const t of before.topics.filter(x => x.committed)) {
-    if (fx.removed.includes(t.id)) await tryW(`archive "${t.name}"`, () => kwNotionPatch(env, t.id, { Status: { select: { name: "Archived" } } }));
+    if (fx.removed.includes(t.id)) await tryW(`archive "${t.name}"`, () => kwStructureTopicPatch(env, t.id, { Status: { select: { name: "Archived" } } }));
     else if (fx.changed.includes(t.id)) { const n = now.get(t.id);
-      await tryW(`update "${n.name}"`, async () => kwNotionPatch(env, t.id, { Name: { title: [{ type: "text", text: { content: n.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(join(n)) } })); }
+      await tryW(`update "${n.name}"`, async () => kwStructureTopicPatch(env, t.id, { Name: { title: [{ type: "text", text: { content: n.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(join(n)) } })); }
   }
   // clusters → topics (KV seotopicclusters), keeping the key format each topic already had
   const known = new Set(before.topics.map(t => t.id.replace(/-/g, "")));
@@ -53486,7 +53509,7 @@ async function kwHubApply(env, campaignId, ops, name) {
     if (hit.length) { let ok = true; try { await kwEnsureTitleProps(env); } catch (e) { ok = false; errors.push(e.message); }
       if (ok) for (const t of hit) await tryW(`title "${t.name}"`, () => kwNotionPatch(env, t.id, { "Keywords Out of Sync": { checkbox: true }, "Keywords Updated At": { date: { start: new Date().toISOString() } } })); } }
   const load = await kwHubLoad(env, cid, name);
-  return { ...load, applied: true, lines, errors };
+  return { ...load, applied: true, lines, errors, structureTouched:{topicIds:[],productIds:touch.map(p=>p.id)} };
 }
 
 async function kwHubUndo(env, campaignId) {
@@ -53497,7 +53520,7 @@ async function kwHubUndo(env, campaignId) {
   await tryW("clusters", () => env.TRADES.put("seotopicclusters:" + cid, JSON.stringify(b.tc || { clusters: [], assign: {} })));
   if (b.stackgroups) await tryW("product groups", () => env.TRADES.put("stackgroups:" + cid, JSON.stringify(b.stackgroups)));
   if (b.main) await tryW("Main Keywords", async () => kwNotionPatch(env, b.main.id, { Keywords: { rich_text: await kwNotionRichText(b.main.text) } }));
-  for (const c of b.committed || []) await tryW(`topic "${c.name}"`, async () => kwNotionPatch(env, c.id, { Status: { select: { name: "Active" } },
+  for (const c of b.committed || []) await tryW(`topic "${c.name}"`, async () => kwStructureTopicPatch(env, c.id, { Status: { select: { name: "Active" } },
     Name: { title: [{ type: "text", text: { content: c.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(c.keywords) } }));
   if (await env.TRADES.get("kwhub:props")) for (const p of b.products || []) await tryW("product " + p.id, () => kwNotionPatch(env, p.id, {
     "Topic ID": { rich_text: p.topicIdProp ? [{ type: "text", text: { content: p.topicIdProp } }] : [] }, "Keywords Out of Sync": { checkbox: !!p.outOfSync } }));
@@ -55682,4 +55705,49 @@ function paperSummary(A) {
   return { value: Math.round((A.cash + openVal) * 100) / 100, cash: A.cash, openValue: Math.round(openVal * 100) / 100, closed: A.closed.length, wins: w,
     winRate: A.closed.length ? Math.round(w / A.closed.length * 100) : null, avgPct: A.closed.length ? Math.round(A.closed.reduce((s, c) => s + c.exitPct, 0) / A.closed.length * 10) / 10 : null,
     realized: Math.round(A.closed.reduce((s, c) => s + c.pnl, 0) * 100) / 100 };
+}
+
+
+// Hub keyword card <-> Notion: migration snapshots precede seeding; no model calls.
+function hubStructureRuntime(env) {
+  return structureRuntime(env,{
+    fetch, hubs:HUB_SITES, hierarchyModel, intentLabels:SEARCH_INTENT_LABELS,intentFromLabel:SEARCH_INTENT_FROM_LABEL,
+    dbs:{topics:SEO_KEYWORD_CLUSTERS_DB,products:PRODUCTS_DB,titles:CONTENT_STRATEGY_DB,assets:ASSETS_DB},
+    hold:entry=>flowHold(env,entry),response:data=>json(data),
+    authorized:body=>verifyToken(body.token,String(env.HMAC_SECRET||'').trim()),
+    kick:cid=>hubStructureInvoke(env,{action:'syncHubStructure',campaignId:cid})
+  });
+}
+async function hubStructureInvoke(env,body) {
+  const token=await signToken(String(env.HMAC_SECRET||'').trim(),900000);
+  const response=await env.SELF.fetch('https://internal.local/',{method:'POST',headers:{'Content-Type':'application/json','Origin':'https://cabuzzard.github.io'},body:JSON.stringify({...body,token,__inner:true})});
+  const result=await response.json();if(!response.ok||result.error)throw Error(result.error||'Structure sync failed');return result;
+}
+async function hubStructureNightly(env) {
+  if(!await env.TRADES.get('sync:enabled:v1'))return {enabled:false};
+  await hubSitesMerge(env);
+  for(const h of HUB_SITES)await env.TRADES.put('sync:queue:'+hierarchyId(h.campaignId),JSON.stringify({at:Date.now(),source:'nightly'}));
+  return hubStructureDrain(env,HUB_SITES.length);
+}
+async function hubStructureDrain(env,limit=2) {
+  if(!await env.TRADES.get('sync:enabled:v1'))return {enabled:false};
+  await hubSitesMerge(env);const results=[];
+  for(const h of HUB_SITES){const cid=hierarchyId(h.campaignId),q=await env.TRADES.get('sync:queue:'+cid,'json');if(!q||q.doneAt>=q.at)continue;
+    try{results.push(await hubStructureInvoke(env,{action:'syncHubStructure',campaignId:cid}));const latest=await env.TRADES.get('sync:queue:'+cid,'json');if(latest?.at===q.at)await env.TRADES.put('sync:queue:'+cid,JSON.stringify({...q,doneAt:Date.now()}));}
+    catch(error){results.push({campaignId:cid,error:error.message});}
+    if(results.length>=limit)break;
+  }return {results,modelCalls:0};
+}
+
+// The canonical card keeps logical IDs even when a staged topic becomes committed.
+async function kwStructureTopicPatch(env,id,properties) {
+  const nid=hierarchyId(id);
+  for(const h of HUB_SITES){const cid=hierarchyId(h.campaignId),doc=await env.TRADES.get('hub:structure:'+cid,'json');if(!doc)continue;
+    const key=doc.items['topic:'+nid]?'topic:'+nid:Object.keys(doc.notionIds||{}).find(k=>hierarchyId(doc.notionIds[k])===nid);if(!key)continue;
+    const old=doc.items[key],raw={...old.raw};
+    if(properties.Name)raw.name=hierarchyText(properties.Name.title);
+    if(properties['Cluster Keywords'])raw.keywords=hierarchyText(properties['Cluster Keywords'].rich_text);
+    doc.items[key]={...old,raw,...(properties.Status?{archived:properties.Status.select?.name==='Archived',stage:'committed'}:{})};doc.changedAt[key]=Date.now();
+    await env.TRADES.put('hub:structure:'+cid,JSON.stringify(doc));await hubStructureRuntime(env).io.project(cid,doc);return;
+  }return kwNotionPatch(env,id,properties);
 }
