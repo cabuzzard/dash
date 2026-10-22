@@ -1,5 +1,15 @@
 [
   {
+    "slug": "garden-visit",
+    "title": "Experience a Garden Without Barriers — Plan Your Visit to Sunflower Acres",
+    "intro": "Most flower farms are beautiful from the parking lot. The field starts about thirty feet past where the pavement ends. Sunflower Acres in Concord, California was built the other way around — the path continues from the accessible parking space through the gate and into the sunflower rows without a s",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
+    "contentHash": "3eab27934d24218417c8c70a424005e5f7877dca22ccebaa7350ff68f6d8f695",
+    "contentEditedAt": "2026-10-22T14:03:00.000Z",
+    "refreshedAt": "2026-10-22T15:04:21.667Z"
+  },
+  {
     "slug": "garden-shop",
     "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
     "intro": "```json\n{\n  \"kicker\": \"Garden Shop\",\n  \"name\": \"Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations\",\n  \"promise\": \"Seasonal plants, garden-grown flowers, and handmade botanical gifts from a working farm in Concord — with real stock, real origins, and clear pickup or shippi",
@@ -18,15 +28,5 @@
     "contentHash": "e883adf9e7fc6c41537ee17f4082b83a56dae7d9e98feee6fb52f07bebe45858",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:03:50.661Z"
-  },
-  {
-    "slug": "garden-visit",
-    "title": "Experience a Garden Without Barriers — Plan Your Visit to Sunflower Acres",
-    "intro": "Most flower farms are beautiful from the parking lot. The field starts about thirty feet past where the pavement ends. Sunflower Acres in Concord, California was built the other way around — the path continues from the accessible parking space through the gate and into the sunflower rows without a s",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
-    "contentHash": "3fffea1ed7cccdd537d43f6ae65c4925a952a95155887ff79ec20e403ed809f6",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:03:30.317Z"
   }
 ]
