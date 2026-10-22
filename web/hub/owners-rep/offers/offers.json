@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "slug": "on-your-side-ongoing-build-coordination",
+    "name": "Your Project. Your Money. Someone Watching Out for You.",
+    "promise": "For homeowners managing a custom build or major renovation. Get independent eyes on every pay application, change order, and decision — someone on your side of the table, with a written record to back it up.",
+    "url": "../blog/on-your-side-ongoing-build-coordination/",
+    "contentHash": "4c33edc92886be74e91c6ce4ce8b2bcfd74184fd66dfbec37e1c41022be19843",
+    "contentEditedAt": "2026-10-22T16:25:00.000Z",
+    "refreshedAt": "2026-10-22T16:25:24.974Z"
+  },
+  {
     "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
     "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
     "name": "Before You Build, Know What You're Getting Into-Independent Review",
@@ -18,15 +28,5 @@
     "contentHash": "9beae68078cc114b8e053d7f8d02c843478bb778c402f59360056c20eca88447",
     "contentEditedAt": "2026-10-22T15:37:00.000Z",
     "refreshedAt": "2026-10-22T15:37:26.037Z"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
-    "slug": "on-your-side-ongoing-build-coordination",
-    "name": "Clear, Honest, Independent — Owner's Representative & Project Coordination",
-    "promise": "For homeowners managing a custom build or major renovation. Get independent eyes on every pay application, change order, and decision — someone on your side of the table, with a written record to back it up.",
-    "url": "../blog/on-your-side-ongoing-build-coordination/",
-    "contentHash": "6ef2a5988b00b23e0cf2518cb5babecf1b19acebb0748d309d18406d59b6d63a",
-    "contentEditedAt": "2026-10-22T15:34:00.000Z",
-    "refreshedAt": "2026-10-22T15:34:45.917Z"
   }
 ]
