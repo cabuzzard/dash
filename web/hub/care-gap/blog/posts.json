@@ -1,5 +1,15 @@
 [
   {
+    "slug": "housed",
+    "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
+    "intro": "You are working — often more than one job — and still behind on rent. The eviction notice arrived while you were on a double shift. The system around you was built to help the person you care for, not you.\n\nThis program exists to change that. Keeping Caregivers Housed is a structured housing stabili",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
+    "contentHash": "dd7971105795e72d58ef874054942c05ceca4dbaf3e78f2acf9ffdb9451b1b5d",
+    "contentEditedAt": "2026-10-22T22:42:00.000Z",
+    "refreshedAt": "2026-10-22T22:42:34.725Z"
+  },
+  {
     "slug": "give-a-caregiver-a-roof",
     "title": "Give a Caregiver a Roof",
     "intro": "Most campaigns in this space fund the person receiving care. This one funds the person making care possible.\n\nYou already know what it costs. You have watched someone — or lived it yourself — show up every single day for an aging or disabled person without a paycheck, a title, or a break. You have s",
@@ -18,15 +28,5 @@
     "contentHash": "e370eaf1cfe34199c5bd433cd01ea87d3cd146a73cb51aa863b9b6c9a9b938e7",
     "contentEditedAt": "2026-10-22T22:38:00.000Z",
     "refreshedAt": "2026-10-22T22:38:34.707Z"
-  },
-  {
-    "slug": "housed",
-    "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
-    "intro": "You are working — often more than one job — and still behind on rent. The eviction notice arrived while you were on a double shift. The system around you was built to help the person you care for, not you.\n\nThis program exists to change that. Keeping Caregivers Housed is a structured housing stabili",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
-    "contentHash": "12055b228b4ccf18b63620428129f4139bd9029cb55301cc627b7a5952fb2c7d",
-    "contentEditedAt": "2026-10-22T16:28:00.000Z",
-    "refreshedAt": "2026-10-22T16:28:23.084Z"
   }
 ]

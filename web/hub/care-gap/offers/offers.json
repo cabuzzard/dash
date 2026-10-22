@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
+    "slug": "housed",
+    "name": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
+    "promise": "For direct care workers and unpaid family caregivers whose housing is at risk — a purpose-built pathway that assesses your situation, navigates you to real funded programs, and keeps you housed so you can keep showing up.",
+    "url": "../blog/housed/",
+    "contentHash": "dd7971105795e72d58ef874054942c05ceca4dbaf3e78f2acf9ffdb9451b1b5d",
+    "contentEditedAt": "2026-10-22T22:42:00.000Z",
+    "refreshedAt": "2026-10-22T22:42:34.725Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81aaa826c48262bbc87e",
     "slug": "give-a-caregiver-a-roof",
     "name": "Give a Caregiver a Roof",
@@ -18,15 +28,5 @@
     "contentHash": "e370eaf1cfe34199c5bd433cd01ea87d3cd146a73cb51aa863b9b6c9a9b938e7",
     "contentEditedAt": "2026-10-22T22:38:00.000Z",
     "refreshedAt": "2026-10-22T22:38:34.707Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
-    "slug": "housed",
-    "name": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
-    "promise": "For direct care workers and unpaid family caregivers whose housing is at risk — a purpose-built pathway that assesses your situation, navigates you to real funded programs, and keeps you housed so you can keep showing up.",
-    "url": "../blog/housed/",
-    "contentHash": "12055b228b4ccf18b63620428129f4139bd9029cb55301cc627b7a5952fb2c7d",
-    "contentEditedAt": "2026-10-22T16:28:00.000Z",
-    "refreshedAt": "2026-10-22T16:28:23.084Z"
   }
 ]
