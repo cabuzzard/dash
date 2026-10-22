@@ -1,5 +1,15 @@
 [
   {
+    "slug": "corporate-aquarium-design-installation",
+    "title": "Corporate Aquarium Design & Installation",
+    "intro": "A living aquarium is one of the few design features that actively improves with time — but only if it was specified correctly from day one. This is a practitioner-led design, installation, and care-planning service for commercial interiors: offices, hotel lobbies, restaurant environments, reception ",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81ebba25f509074e6a3b",
+    "contentHash": "0bd10ad7633f220aed68881607494ee1f35b1cdacbc964d63a4ca573fa5fb3eb",
+    "contentEditedAt": "2026-10-22T16:15:00.000Z",
+    "refreshedAt": "2026-10-22T16:15:07.578Z"
+  },
+  {
     "slug": "biogenerative-installation-feasibility-design",
     "title": "Biogenerative Installation Feasibility & Design",
     "intro": "You can picture the system. A constructed wetland, a living filtration installation, an ecological water landscape that runs on biology rather than machinery. The concept is solid. What you do not have is a clear line from that concept to a permit, a contractor brief, and a build that performs as de",
@@ -18,15 +28,5 @@
     "contentHash": "79d5703955ae9fc6072ee007ff2c5b712d4200698f9705bf17df97a762c7e01b",
     "contentEditedAt": "2026-10-22T16:09:00.000Z",
     "refreshedAt": "2026-10-22T16:09:24.517Z"
-  },
-  {
-    "slug": "corporate-aquarium-design-installation",
-    "title": "Corporate Aquarium Design & Installation",
-    "intro": "A living aquarium is one of the few design features that actively improves with time — but only if it was specified correctly from day one. This is a practitioner-led design, installation, and care-planning service for commercial interiors: offices, hotel lobbies, restaurant environments, reception ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81ebba25f509074e6a3b",
-    "contentHash": "0122bcbf12c9c8a90d431164df929d39918c090984b573a5adf4780ae6ffd88f",
-    "contentEditedAt": "2026-10-22T14:04:00.000Z",
-    "refreshedAt": "2026-10-22T16:05:22.895Z"
   }
 ]
