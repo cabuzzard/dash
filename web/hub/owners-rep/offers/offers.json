@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "slug": "on-your-side-ongoing-build-coordination",
+    "name": "Owner's Representative & Project Coordination",
+    "promise": "Your project. Your money. Someone watching out for you. Get clearer budgets, schedules, change orders and decisions through independent owner-side coordination.",
+    "url": "../blog/on-your-side-ongoing-build-coordination/",
+    "contentHash": "b422e8d94e29dc5293c4bd6cf7a3464703b13ac634354cfefdb51e9484bf1c7e",
+    "contentEditedAt": "2026-10-22T03:05:00.000Z",
+    "refreshedAt": "2026-10-22T03:32:05.908Z"
+  },
+  {
     "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
     "slug": "owner-side-contract-review",
     "name": "Construction Project Health Check",
@@ -18,12 +28,5 @@
     "contentHash": "9d43922f730cc85fa3962510be9768a7a8e595ef89940fda2af8fa94b6ffd5d3",
     "contentEditedAt": "2026-10-21T17:01:00.000Z",
     "refreshedAt": "2026-10-22T03:31:46.286Z"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
-    "slug": "on-your-side-ongoing-build-coordination",
-    "name": "On Your Side-Ongoing Build Coordination",
-    "promise": "You stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of you with context before you sign anything.",
-    "url": "../blog/on-your-side-ongoing-build-coordination/"
   }
 ]

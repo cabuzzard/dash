@@ -1,5 +1,15 @@
 [
   {
+    "slug": "on-your-side-ongoing-build-coordination",
+    "title": "Owner's Representative & Project Coordination",
+    "intro": "Your project. Your money. Someone watching out for you. Get clearer budgets, schedules, change orders and decisions through independent owner-side coordination.",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "contentHash": "b422e8d94e29dc5293c4bd6cf7a3464703b13ac634354cfefdb51e9484bf1c7e",
+    "contentEditedAt": "2026-10-22T03:05:00.000Z",
+    "refreshedAt": "2026-10-22T03:32:05.908Z"
+  },
+  {
     "slug": "owner-side-contract-review",
     "title": "Construction Project Health Check",
     "intro": "Worried about your contractor? Get an independent review of project documents, costs, schedule and change orders—with clear findings and prioritized next steps.",
@@ -18,12 +28,5 @@
     "contentHash": "9d43922f730cc85fa3962510be9768a7a8e595ef89940fda2af8fa94b6ffd5d3",
     "contentEditedAt": "2026-10-21T17:01:00.000Z",
     "refreshedAt": "2026-10-22T03:31:46.286Z"
-  },
-  {
-    "slug": "on-your-side-ongoing-build-coordination",
-    "title": "On Your Side-Ongoing Build Coordination",
-    "intro": "For Homeowners building a custom home, major renovation, or owner-builder project — spending serious money with no independent party reading the paperwork on their behalf.\n\nYou stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of y",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d"
   }
 ]
