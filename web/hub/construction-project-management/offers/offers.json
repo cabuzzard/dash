@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
+    "slug": "ai-field-deployment",
+    "name": "Construction AI Automation: RFIs, Change Orders & Project Reports",
+    "promise": "For contractors drowning in document overhead — get RFIs processed, change orders filed, and project reports out consistently without touching each one yourself.",
+    "url": "../blog/ai-field-deployment/",
+    "contentHash": "38663406974c55d3d815973ee9f624fa328dc60f4ed6a0f3e07451afffa9cac4",
+    "contentEditedAt": "2026-10-22T21:38:00.000Z",
+    "refreshedAt": "2026-10-22T21:38:35.960Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
     "slug": "project-coordination-retainer",
     "name": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
@@ -18,15 +28,5 @@
     "contentHash": "17490df2d53db699c10bfb9e219c7e41e56991669de0a46a893c32cdcb589e19",
     "contentEditedAt": "2026-10-22T16:39:00.000Z",
     "refreshedAt": "2026-10-22T16:39:26.933Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
-    "slug": "ai-field-deployment",
-    "name": "Construction AI Automation: RFIs, Change Orders & Project Reports",
-    "promise": "For contractors drowning in document overhead — get RFIs processed, change orders filed, and project reports out consistently without touching each one yourself.",
-    "url": "../blog/ai-field-deployment/",
-    "contentHash": "92caffc52aa8429af10f3c43c2ed451566d95f5977bd3e56613703845187f312",
-    "contentEditedAt": "2026-10-22T16:38:00.000Z",
-    "refreshedAt": "2026-10-22T16:38:28.930Z"
   }
 ]
