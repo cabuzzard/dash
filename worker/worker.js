@@ -487,7 +487,7 @@ async function thumbnailSubjectBrief(env,campaignId,subject,exclusions) {
   const scenes=(Array.isArray(recent)?recent:[]).slice(-5).map(x=>String(x.scene||'').slice(0,180)).filter(Boolean);
   return '\n\nSUBJECT SOURCE — this asset’s title plus written body/pillar (facts, not a style reference):\nTitle: '+String(subject?.title||'').slice(0,400)+'\nWritten content: '+String(subject?.content||'').slice(0,4500)+
     '\nSTYLE SOURCE — the committed design spec above governs treatment. Per-hub instructions and Thumbnail Rules remain binding additions.\n'+THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+
-    '\nWrite a distinct per-asset depiction. The requested word count applies to the scene description; the program adds this mandatory instruction verbatim to the image prompt:\n'+THUMBNAIL_SUBJECT_RULE+
+    '\nSUBJECT SELECTION OVERRIDE: Spec subject/cast/motif examples are STYLE references, never a replacement subject. First identify what this asset actually discusses and show that real activity, place or object. For a service, depict the actual work being done or its actual customer situation. Do not use tools, cables, gears, arrows, mascots or other visual metaphors as stand-ins for a service, software or business process. A scene made only of the hub motif fails this task. Describe specific visible details grounded in the written content. Begin your scene description with "Subject: <the asset’s concrete subject>. Scene: <the literal depiction>".\nWrite a distinct per-asset depiction. The requested word count applies to the scene description; the program adds this mandatory instruction verbatim to the image prompt:\n'+THUMBNAIL_SUBJECT_RULE+
     (scenes.length?'\nRecent subjects/scenes on this hub — do not repeat:\n'+scenes.map(x=>'- '+x).join('\n'):'')+
     (exclusions?'\nExisting hub subject exclusions (choose a relevant alternative treatment): '+String(exclusions).slice(0,1200):'');
 }
@@ -35596,7 +35596,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
 WHAT IT IS: a WIDE 16:9 banner — this hub's blog post header image (a headline gets laid over it separately on the hub page afterward — never baked into the image). Keep the top ~45% calm and near-empty so type reads cleanly across the full width. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
 
-Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
+Use this committed spec for style treatment — palette, medium, lighting and composition. Its motif and cast never substitute for the asset subject:
 ${spec}
 
 THE ARTICLE THIS THUMBNAIL IS FOR:
