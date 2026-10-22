@@ -16,24 +16,13 @@ function setup(library=[],photo=null){
  const call=async(extra={})=>context.grokImageFetch(env,{campaignId:'abc',...extra},{method:'POST',body:JSON.stringify({model:'grok-imagine-image-2.0',prompt:'Create a staged thumbnail',n:1,aspect_ratio:'16:9',resolution:'2k'})});
  return {context,env,requests,reads,call};
 }
-test('Grok receives actual uploaded images on image-edit endpoint',async()=>{
- const x=setup([{id:'1',url:'https://example.test/guide.png',role:'brand-guide',name:'Guide',notes:'Warm ink and watercolor'},{id:'2',url:'https://example.test/motif.png',role:'motif-reference'}]);
- const r=await x.call(),request=x.requests.at(-1);assert.match(request.url,/images\/edits$/);
- assert.deepEqual(request.body.images.map(i=>i.url),['https://example.test/guide.png','https://example.test/motif.png']);assert.match(request.body.prompt,/Warm ink and watercolor/);assert.equal(request.body.aspect_ratio,'16:9');
- assert.equal(x.context.referenceMeta.get(r).attached,2);
+test('renderer always sends text only despite uploaded references',async()=>{
+ const x=setup([{url:'https://example.test/guide.png',role:'brand-guide',notes:'Warm ink'}]);const r=await x.call();
+ const request=x.requests.at(-1);assert.match(request.url,/images\/generations$/);assert.equal(request.body.image,undefined);assert.equal(request.body.images,undefined);assert.equal(request.body.prompt,'Create a staged thumbnail');assert.equal(x.context.referenceMeta.get(r).attached,0);
 });
-test('single reference uses documented image field; empty library retains generation path',async()=>{
- let x=setup([{url:'https://example.test/guide.png',role:'brand-guide'}]);await x.call();assert.equal(x.requests.at(-1).body.image.url,'https://example.test/guide.png');assert.equal(x.requests.at(-1).body.images,undefined);
- x=setup();await x.call();assert.match(x.requests.at(-1).url,/images\/generations$/);assert.equal(x.requests.at(-1).body.prompt,'Create a staged thumbnail');
-});
-test('five-image limit ranks approved references and keeps previous image first',async()=>{
- const library=[...Array.from({length:7},(_,i)=>({url:`https://example.test/site${i}.png`,role:'site-image'})),{url:'https://example.test/guide.png',role:'brand-guide'},{url:'https://example.test/approved.png',role:'approved-example'}];
- const x=setup(library);const r=await x.call({previousImageUrl:'https://example.test/previous.png'});const images=x.requests.at(-1).body.images;
- assert.equal(images.length,5);assert.equal(images[0].url,'https://example.test/previous.png');assert.equal(images[1].url,'https://example.test/approved.png');assert.equal(images[2].url,'https://example.test/guide.png');assert.equal(x.context.referenceMeta.get(r).available,10);
-});
-test('removed images are not sent and duplicate URLs are not repeated',async()=>{
- const x=setup([{url:'https://example.test/kept.png',role:'brand-guide'},{url:'https://example.test/kept.png',role:'approved-example'}]);await x.call();const req=x.requests.at(-1).body;
- assert.equal(req.image.url,'https://example.test/kept.png');assert.doesNotMatch(JSON.stringify(req),/removed.png/);
+test('previous images, seed photos and large libraries never reach render models',async()=>{
+ const x=setup(Array.from({length:7},(_,i)=>({url:`https://example.test/${i}.png`,role:'site-image'})),{url:'https://example.test/seed.png'});
+ await x.call({previousImageUrl:'https://example.test/previous.png'});const body=x.requests.at(-1).body;assert.equal(body.image,undefined);assert.equal(body.images,undefined);assert.doesNotMatch(JSON.stringify(body),/example.test/);
 });
 test('asset and dynamically registered hub contexts resolve the correct library',async()=>{
  const x=setup([{url:'https://example.test/guide.png'}]);await x.call({campaignId:'',assetId:'asset'});assert.equal(x.reads.at(-1),'design:inputs:abc');assert.match(x.requests[0].url,/api.notion.com/);
@@ -72,7 +61,7 @@ test('persisted image metadata update keeps URL, ID, cached description and othe
  const inputs={mediaLibrary:[{id:'ref',url:'https://example.test/ref.png',name:'Guide',role:'brand-guide',notes:'Old',visualRead:'Observed watercolor',at:'original'},{id:'other',url:'https://example.test/other.png',notes:'Untouched'}]};let stored;
  await editLibrary({update:{id:'ref',name:'Revised guide',role:'motif-reference',notes:'Use the texture; avoid the scene',url:'https://example.test/ignore.png'}},inputs,async(k,v)=>stored=JSON.parse(JSON.stringify(v)),extra=>extra,{},'hub',{inputs:'inputs'},'library');
  assert.equal(stored.mediaLibrary.length,2);assert.equal(stored.mediaLibrary[0].id,'ref');assert.equal(stored.mediaLibrary[0].url,'https://example.test/ref.png');assert.equal(stored.mediaLibrary[0].visualRead,'Observed watercolor');assert.equal(stored.mediaLibrary[1].notes,'Untouched');assert.equal(stored.mediaLibrary[0].notes,'Use the texture; avoid the scene');
- const x=setup(stored.mediaLibrary);await x.call();assert.match(x.requests.at(-1).body.prompt,/Use the texture; avoid the scene/);
+ const x=setup(stored.mediaLibrary);await x.call();assert.equal(x.requests.at(-1).body.prompt,'Create a staged thumbnail');assert.equal(x.requests.at(-1).body.images,undefined);
 });
 test('metadata validation rejects missing images and invalid fields without writes',async()=>{
  const inputs={mediaLibrary:[{id:'ref',name:'Guide',notes:'Old',role:'brand-guide'}]};let writes=0;
