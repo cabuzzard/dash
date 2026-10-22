@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
+    "slug": "the-tracks",
+    "name": "The Tracks",
+    "promise": "Original guitar backing tracks that feel like real songs. Listen, find a groove and download available tracks to play along.",
+    "url": "../blog/the-tracks/",
+    "contentHash": "36d05a9d0c4c1a270e92d3193eaa80a02a4a3f3340377df916fa091b8a61b2b6",
+    "contentEditedAt": "2026-10-22T03:41:00.000Z",
+    "refreshedAt": "2026-10-22T04:01:44.279Z"
+  },
+  {
     "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
     "slug": "weekly-sessions",
     "name": "The Sessions",
@@ -8,16 +18,6 @@
     "contentHash": "6736ff0f7cd8d235932e8a897ff0eb0d63cdfa7546a0e5eedbadaff61e492983",
     "contentEditedAt": "2026-10-22T03:42:00.000Z",
     "refreshedAt": "2026-10-22T04:01:30.536Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
-    "slug": "the-tracks",
-    "name": "The Tracks",
-    "promise": "Drop in and feel it lock — a real mix with somewhere to go, built by a player with the same ear you have.",
-    "url": "../blog/the-tracks/",
-    "contentHash": "fa4d5033391ea0439684e266edc745f38a1084b06ef57c99f41529bbeb124269",
-    "contentEditedAt": "2026-10-21T07:43:00.000Z",
-    "refreshedAt": "2026-10-22T03:34:10.596Z"
   },
   {
     "assetId": "4001f7d3a4bb81f9b114c01ddb3bd41a",
