@@ -1,5 +1,15 @@
 [
   {
+    "slug": "ai-field-deployment",
+    "title": "Construction AI Automation: RFIs, Change Orders & Project Reports",
+    "intro": "Your construction operation already has the software. What it does not have is someone operating it at full capacity — configuring the automation, reviewing the outputs, and keeping the workflows running as your projects evolve. Construction AI Automation is a done-for-you service: a human operator ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
+    "contentHash": "94ab3d20eb5fadedaffa0804b40006d71c047e074fd4e316a899c04dfe33cae2",
+    "contentEditedAt": "2026-10-22T14:01:00.000Z",
+    "refreshedAt": "2026-10-22T16:07:00.012Z"
+  },
+  {
     "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
     "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
     "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
@@ -18,15 +28,5 @@
     "contentHash": "a53145b571ba95cbe13e3909f25c75bcac1eacc90defe9e4fe97d09eefaf4f7d",
     "contentEditedAt": "2026-10-22T13:54:00.000Z",
     "refreshedAt": "2026-10-22T14:01:32.753Z"
-  },
-  {
-    "slug": "ai-field-deployment",
-    "title": "Construction AI Automation: RFIs, Change Orders & Project Reports",
-    "intro": "Your construction operation already has the software. What it does not have is someone operating it at full capacity — configuring the automation, reviewing the outputs, and keeping the workflows running as your projects evolve. Construction AI Automation is a done-for-you service: a human operator ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
-    "contentHash": "65733883c1c348ca597f3e235893327e52516a1583c357f2d8dbd719a7c8fb2b",
-    "contentEditedAt": "2026-10-22T13:54:00.000Z",
-    "refreshedAt": "2026-10-22T14:01:16.551Z"
   }
 ]
