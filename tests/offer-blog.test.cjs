@@ -32,6 +32,16 @@ function setup(rows=[]){
  return {ctx,files,pages,patches,writes,reads};
 }
 const request=kind=>({action:'getHubBlog',campaignId:hub.campaignId,slug:hub.slug,kind,withIds:true});
+
+test('Offer Page overrides legacy prose while retaining the card CTA URL and contract label',()=>{
+ const x=setup(),props={'Offer Page':{rich_text:rt('Distinct contract opening.\n\n## Who it is for\n\nWritten for owners.\n\n## Next step\n\nBook the review.')},Body:{rich_text:rt('Short card blurb.')},'CTA Label':{rich_text:rt('Start here')}};
+ const blocks=[block('code',JSON.stringify({promise:'Old promise',ctaUrl:'https://example.test/book',ctaLabel:'Old label'})),block('paragraph','Stale prose must not render.'),block('heading_2','Old section'),block('paragraph','Old content')];
+ const parts=x.ctx.offerBlogParts(props,blocks);assert.equal(parts.intro,'Distinct contract opening.');assert.equal(parts.sections[0].heading,'Who it is for');assert.equal(parts.cta.href,'https://example.test/book');assert.equal(parts.cta.label,'Start here');assert.ok(!JSON.stringify(parts).includes('Stale prose'));assert.equal(props.Body.rich_text[0].plain_text,'Short card blurb.');
+});
+test('empty Offer Page preserves the existing legacy block rendering exactly',()=>{
+ const x=setup(),blocks=[block('paragraph','Legacy opening'),block('heading_2','Legacy section'),block('paragraph','Legacy details')],props={Body:{rich_text:rt('Card blurb')}};
+ assert.deepEqual(x.ctx.offerBlogParts({...props,'Offer Page':{rich_text:[]}},blocks),x.ctx.offerBlogParts(props,blocks));
+});
 test('publish/unpublish/republish uses the SEO page generator and removes only its manifest entry',async()=>{
  const page=asset(),x=setup([page]);
  const first=await x.ctx.syncOfferAssetBlog({}, {},page);

@@ -1686,6 +1686,7 @@ function validateWritingContract(contract,fields) {
     const value=fields?.[name];if(typeof value!=='string'||!value.trim()){violations.push(`${name}: required non-empty text`);continue;}
     let m;const lines=value.trim().split(/\r?\n/).filter(x=>x.trim());
     if((m=/≤\s*(\d+)\s+characters/i.exec(rule))&&Array.from(value).length>+m[1])violations.push(`${name}: exceeds ${m[1]} characters`);
+    if((m=/at least\s+(\d+)\s+words/i.exec(rule))&&value.trim().split(/\s+/).length<+m[1])violations.push(`${name}: expected at least ${m[1]} words`);
     if((m=/exactly\s+(\d+)\s+lines/i.exec(rule))&&lines.length!==+m[1])violations.push(`${name}: expected exactly ${m[1]} lines, got ${lines.length}`);
     if((m=/exactly\s+(\d+)\s+tags.*comma-separated/i.exec(rule))){const tags=value.split(',').map(x=>x.trim());if(tags.length!==+m[1]||tags.some(x=>!x))violations.push(`${name}: expected exactly ${m[1]} comma-separated tags`);}
     if((m=/at least\s+(\d+)\s+Q&A pairs/i.exec(rule))){const pairs=value.match(/Q:\s*\S[\s\S]*?\s+A:\s*\S[\s\S]*?(?=\s+Q:|$)/g)||[];if(pairs.length<+m[1])violations.push(`${name}: expected at least ${m[1]} Q&A pairs`);}
@@ -4716,7 +4717,7 @@ async function hubTrackNotionWrite(scope, address, options) {
   let before = null, payload;
   try { payload = typeof options.body === 'string' ? JSON.parse(options.body) : {}; } catch (e) { payload = {}; }
   const relevant = !isPage || payload.archived !== undefined || payload.in_trash !== undefined || Object.keys(payload.properties || {}).some(k =>
-    ['Body','Platform Title','Asset Title','Thumbnail','Hub Section','Content Hub','Asset Status','Interview Sync',TOPICAL_REWRITE_PROP,'Campaign','Product','Content Strategy'].includes(k));
+    ['Body','Offer Page','CTA Label','Platform Title','Asset Title','Thumbnail','Hub Section','Content Hub','Asset Status','Interview Sync',TOPICAL_REWRITE_PROP,'Campaign','Product','Content Strategy'].includes(k));
   if (!relevant) return globalThis.fetch(address, options);
   // Capture prior placement for moves/unpublishes; failures are not permission to publish.
   if (isPage) {
@@ -4857,7 +4858,7 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     }
     const blocks = await offerBlogBlocks(ivHdr(), page.id);
     const offerPage = hubRichText(p['Offer Page']?.rich_text);   // contract-written offers (only when present, so older hashes don't move)
-    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage } : {}) };
+    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage, ctaLabel:hubRichText(p['CTA Label']?.rich_text) } : {}) };
     const contentHash = await hubContentHash(content), bodyHash = await hubContentHash(content.body), blocksHash = await hubContentHash(content.blocks);
     const hash = await hubContentHash({ content, title: payload.title, thumbnail: p.Thumbnail?.url || '', section: sec, hub: hub.slug });
     payload.blocks = blocks; payload.hash = hash;
@@ -4895,7 +4896,8 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     const stamp = { contentHash: hash, contentEditedAt: page.last_edited_time || null, refreshedAt: new Date().toISOString() };
     const result = await hubPublicationTransaction(env, async txEnv => {
       txEnv.__hubPublication.stamp = stamp;
-      txEnv.__hubPublication.source = { assetId: aid, blocks: bodySource ? [] : blocks };
+      // Offer Page supplies the prose; keep the existing OFFER CARD available for its CTA link.
+      txEnv.__hubPublication.source = { assetId: aid, blocks: offerPage || !bodySource ? blocks : [] };
       const site = await publishHubAssetToLiveSite(txEnv, ivHdr(), page);
       if (!site.published || !site.liveUrl) throw new Error(site.error || 'Hub renderer did not publish');
       const index = await syncHubOfferIndex(txEnv, ivHdr(), page, site);
