@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
+    "slug": "caregiver-circle",
+    "name": "Finding Support When Caregiving Becomes Unsustainable",
+    "promise": "For family and professional caregivers running on empty — peer connection, resource referrals, and practical guidance built entirely around you, not the person you're caring for.",
+    "url": "../blog/caregiver-circle/",
+    "contentHash": "efef3c1c87d5958436520b53b788f71abcb61b01fcafc54bc9f7edf8e784ca4c",
+    "contentEditedAt": "2026-10-22T13:16:00.000Z",
+    "refreshedAt": "2026-10-22T13:16:40.649Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
     "slug": "housed",
     "name": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
@@ -8,16 +18,6 @@
     "contentHash": "d08f8f1fe3ac7585c93f57a06d971bc836180ec91e5883af910c5838ce2047bb",
     "contentEditedAt": "2026-10-22T13:16:00.000Z",
     "refreshedAt": "2026-10-22T13:16:14.039Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
-    "slug": "caregiver-circle",
-    "name": "Caregiver Circle",
-    "promise": "The isolation breaks on day one — and the research burden stops being yours alone to carry.",
-    "url": "../blog/caregiver-circle/",
-    "contentHash": "b5f4212f4bd0d71e0ebd80c5d0f060d95c133147938b4fb2be6fccc15a4806c8",
-    "contentEditedAt": "2026-10-21T07:42:00.000Z",
-    "refreshedAt": "2026-10-22T03:32:52.124Z"
   },
   {
     "assetId": "4001f7d3a4bb81aaa826c48262bbc87e",
