@@ -54481,7 +54481,8 @@ function dsFieldsOf(j) {
   const out = {};
   const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) { const key = pre ? pre + "." + k : k;
     if (DS_KEYS.has(key)) out[key] = v;
-    else if (v && typeof v === "object" && !Array.isArray(v) && !("v" in v) && !("value" in v)) walk(v, key); } };
+    else if (DS_KEYS.has(k)) out[k] = v;
+    else if (v && typeof v === "object" && !Array.isArray(v) && !("v" in v) && !("value" in v)) walk(v, [...DS_KEYS].some(x=>x.startsWith(key+'.')) ? key : ''); } };
   walk(raw, ""); return out;
 }
 // Reviewer replies arrive pasted from chat UIs: fences lost or kept, curly quotes, // comments, prose after the block,
@@ -54653,15 +54654,22 @@ async function designResearchPass(env, body) {
     operatorConstraints: Object.fromEntries(Object.entries(stage).filter(([,f])=>f?.g||f?.src==='manual').map(([k,f])=>[k,{v:f.v,g:f.g||''}])),
     schema: DS_SCHEMA.map(section => ({ tier: section.tier, fields: section.fields })), formats: DS_ASSETS.map(([id]) => id)
   });
-  if (body.dryRun) return { success:true, plannedModelCalls:1, maxSearchCalls:5, maxOutputTokens:12000, imageAttachments:0, promptCharacters:prompt.length, approxInputTokens:Math.ceil(prompt.length/4) };
+  if (body.dryRun) return { success:true, plannedModelCalls:body.repairHeldAt?0:1, maxToolCalls:5, searchCallsHardLimit:null, maxOutputTokens:12000, imageAttachments:0, promptCharacters:prompt.length, approxInputTokens:Math.ceil(prompt.length/4), estimateExcludesSearchContext:true };
   let heldResult = null, providerEvidence = null;
   try {
-    if (!String(env.XAI_API_KEY || '').trim()) throw new Error('XAI_API_KEY not configured');
-    const response = await fetch('https://api.x.ai/v1/responses', { method: 'POST', headers: { Authorization: 'Bearer ' + String(env.XAI_API_KEY || '').trim(), 'Content-Type': 'application/json' },
+    let data;
+    if(body.repairHeldAt) {
+      const held=(await env.TRADES.get('flow:held:v1','json')||[]).find(x=>x.at===body.repairHeldAt&&x.action==='designResearchPass'&&x.payload?.campaignId===cid);
+      if(!held?.payload?.providerEvidence||!held.payload.result)throw new Error('No repairable held research with provider evidence for this campaign');
+      data={...held.payload.providerEvidence,output_text:held.payload.result};
+    } else {
+      if (!String(env.XAI_API_KEY || '').trim()) throw new Error('XAI_API_KEY not configured');
+      const response = await fetch('https://api.x.ai/v1/responses', { method: 'POST', headers: { Authorization: 'Bearer ' + String(env.XAI_API_KEY || '').trim(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: 'grok-4.7', reasoning:{effort:'low'}, max_output_tokens:12000, max_tool_calls:5, include:['web_search_call.action.sources'], input: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search', enable_image_understanding:false }] }) });
-    const data = await response.json();
+      data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || 'Design research failed: ' + response.status);
+    }
     providerEvidence = { id:data.id || null, usage:data.usage || null, status:data.status || null, output:(data.output || []).map(o => ({ type:o.type, action:o.action, content:(o.content || []).map(c => ({type:c.type,annotations:c.annotations})) })) };
-    if (!response.ok) throw new Error(data.error?.message || 'Design research failed: ' + response.status);
     const raw = data.output_text || (data.output || []).flatMap(o => o.content || []).map(x => x.text || '').join('\n'), result = dsParseJson(raw);
     heldResult=raw;
     if(data.status&&data.status!=='completed')throw new Error('Research response incomplete; result held for repair');
@@ -54674,10 +54682,11 @@ async function designResearchPass(env, body) {
     const formats = (result.formats || []).filter(x => DS_ASSETS.some(([id]) => id === x.id) && String(x.findings || '').trim()).map(x => ({ id: x.id, findings: String(x.findings).slice(0, 2000), sources: (x.sources || []).map(String).filter(u => providerSources.has(u)).slice(0, 8) })).filter(x => x.sources.length);
     if (!sources.length || !formats.length) throw new Error('Research needs sourced market observations before staging');
     const latestSaved = await env.TRADES.get(savedKey, 'json'), latest = await env.TRADES.get(stageKey, 'json') || latestSaved?.spec || {};
-    const merged = dsMerge(latest, fields, false, true), stamp = { at: new Date().toISOString(), formatsCovered: formats.map(x => x.id), fieldsProposed: Object.keys(fields).length, sources, formats, modelCalls: 1, promptCharacters: prompt.length, usage: data.usage || null, source: 'grok' };
+    const modelCalls=body.repairHeldAt?0:1;
+    const merged = dsMerge(latest, fields, false, true), stamp = { at: new Date().toISOString(), formatsCovered: formats.map(x => x.id), fieldsProposed: Object.keys(fields).length, sources, formats, modelCalls, repairedFrom:body.repairHeldAt||null, promptCharacters: prompt.length, usage: data.usage || null, source: 'grok' };
     await env.TRADES.put(stageKey, JSON.stringify(merged.spec));
     await env.TRADES.put('design:research:' + cid, JSON.stringify(stamp));
-    return { success: true, applied: merged.applied, suggested: merged.suggested, research: stamp, staged: merged.spec, modelCalls: 1 };
+    return { success: true, applied: merged.applied, suggested: merged.suggested, research: stamp, staged: merged.spec, modelCalls };
   } catch (error) {
     await flowHold(env, { action: 'designResearchPass', reason: error.message, payload: { campaignId: cid, keywords, inputsKey: inputKey, stageKey, prompt, result: heldResult, providerEvidence } });
     return { error: error.message, held: true };
