@@ -1,5 +1,15 @@
 [
   {
+    "slug": "housed",
+    "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
+    "intro": "You are working — often more than one job — and still behind on rent. The eviction notice arrived while you were on a double shift. The system around you was built to help the person you care for, not you. This program exists to change that. Keeping Caregivers Housed is a structured housing stabilit",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
+    "contentHash": "d08f8f1fe3ac7585c93f57a06d971bc836180ec91e5883af910c5838ce2047bb",
+    "contentEditedAt": "2026-10-22T13:54:00.000Z",
+    "refreshedAt": "2026-10-22T14:01:08.894Z"
+  },
+  {
     "slug": "give-a-caregiver-a-roof",
     "title": "Give a Caregiver a Roof",
     "intro": "Most campaigns in this space fund the person receiving care. This one funds the person making care possible. When an unpaid caregiver loses housing stability — because they left the workforce, reduced their hours, or spent every margin of their income holding someone else's life together — the care ",
@@ -18,15 +28,5 @@
     "contentHash": "efef3c1c87d5958436520b53b788f71abcb61b01fcafc54bc9f7edf8e784ca4c",
     "contentEditedAt": "2026-10-22T13:54:00.000Z",
     "refreshedAt": "2026-10-22T14:00:52.143Z"
-  },
-  {
-    "slug": "housed",
-    "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
-    "intro": "You are working — often more than one job — and still behind on rent. The eviction notice arrived while you were on a double shift. The system around you was built to help the person you care for, not you. This program exists to change that. Keeping Caregivers Housed is a structured housing stabilit",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
-    "contentHash": "d08f8f1fe3ac7585c93f57a06d971bc836180ec91e5883af910c5838ce2047bb",
-    "contentEditedAt": "2026-10-22T13:16:00.000Z",
-    "refreshedAt": "2026-10-22T13:16:14.039Z"
   }
 ]
