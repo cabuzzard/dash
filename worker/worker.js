@@ -17487,7 +17487,7 @@ Return: {
         const sectionHeadings = {};
         const keywordTopics = {}, keywordTopicClusters = {};
         topicRows.forEach(t => {
-          const p = t.properties || {}, cid = dropDash((p.Campaign?.relation || [])[0]?.id || ""), id = dropDash(t.id);
+          const p = t.properties || {}, cid = dropDash((p.Campaign?.relation || [])[0]?.id || ""), id = (p["Topic Key"]?.rich_text || []).map(x=>x.plain_text??x.text?.content??"").join("") || dropDash(t.id);
           if (!cid || !id) return;
           (keywordTopics[cid] ||= {})[id] = (p.Name?.title || []).map(x => x.plain_text).join("").trim() || "Untitled topic";
         });
@@ -18535,8 +18535,9 @@ ${JSON.stringify(products)}`;
         const byName = new Map();
         for (const t of staged) if (t && t.name) byName.set(String(t.name).trim().toLowerCase(), { id: String(t.id).replace(/-/g, ""), existing: true });
         for (const t of committed) {
+          if(t.archived||t.in_trash||t.properties?.Status?.select?.name==='Archived')continue;
           const name = (t.properties?.Name?.title || []).map(x => x.plain_text).join("").trim();
-          if (name) byName.set(name.toLowerCase(), { id: t.id.replace(/-/g, ""), existing: true });
+          if (name) byName.set(name.toLowerCase(), { id: hierarchyText(t.properties?.["Topic Key"]?.rich_text)||t.id.replace(/-/g, ""), existing: true });
         }
         let created = 0, reused = 0, seq = 0;
         for (const g of groups) {
@@ -37314,7 +37315,7 @@ Make 2-6 BROAD clusters (fewer is better; it is acceptable to put many topics in
 
         const otherFixed = [
           ...staged.filter(c => c.id !== clusterId).map(c => ({ name: c.name, keywords: c.keywords })),
-          ...committedRows.filter(r => r.id.replace(/-/g, "") !== norm(clusterId)).map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+          ...committedRows.filter(r => (hierarchyText(r.properties?.["Topic Key"]?.rich_text)||r.id.replace(/-/g, "")) !== norm(clusterId)).map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
         ];
 
         const prompt = `Regenerate ONE keyword cluster (an SEO silo) from this campaign's Main Keywords pool — refine or rethink just this one; leave every other cluster exactly as it is.

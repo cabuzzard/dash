@@ -1,0 +1,8 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('worker/worker.js','utf8'),rich=s=>({rich_text:[{plain_text:s}]}),title=s=>({title:[{plain_text:s}]});
+test('Content table resolves a committed staged topic by its stable key instead of its new Notion page ID',()=>{
+ const start=source.indexOf('        topicRows.forEach(t => {'),end=source.indexOf('        await Promise.all(campIds',start),ctx=vm.createContext({topicRows:[{id:'physical-notion-id',properties:{Campaign:{relation:[{id:'hub'}]},Name:title('Committed topic'),'Topic Key':rich('smv-stable')}}],dropDash:x=>String(x||'').replace(/-/g,''),keywordTopics:{}});vm.runInContext(source.slice(start,end),ctx);assert.equal(ctx.keywordTopics.hub['smv-stable'],'Committed topic');assert.equal(ctx.keywordTopics.hub.physicalnotionid,undefined);
+});
+test('topic categorization reuses stable keys and cannot silently reuse an archived topic',()=>{
+ const a=source.indexOf('if (body.action === "categorizeUntopicedProducts")'),start=source.indexOf('        for (const t of committed) {',a),end=source.indexOf('        let created',start),ctx=vm.createContext({committed:[{id:'physical-active',properties:{Name:title('Same topic'),Status:{select:{name:'Active'}},'Topic Key':rich('smv-active')}},{id:'physical-archived',properties:{Name:title('Same topic'),Status:{select:{name:'Archived'}},'Topic Key':rich('smv-archived')}}],byName:new Map(),hierarchyText:r=>(r||[]).map(x=>x.plain_text).join('')});vm.runInContext(source.slice(start,end),ctx);assert.equal(ctx.byName.get('same topic').id,'smv-active');
+});
