@@ -484,7 +484,7 @@ async function thumbnailAssetSubject(hdr,assetId,ap) {
 }
 async function thumbnailSubjectBrief(env,campaignId,subject,exclusions) {
   let recent=[];try{recent=await env.TRADES.get('bgscenes:'+String(campaignId||'').replace(/-/g,''),'json')||[];}catch{}
-  const scenes=(Array.isArray(recent)?recent:[]).slice(-5).map(x=>String(x.scene||'').slice(0,180)).filter(Boolean);
+  const scenes=(Array.isArray(recent)?recent:[]).slice(-3).map(x=>String(x.scene||'').slice(0,700)).filter(Boolean);
   return '\n\nSUBJECT SOURCE — this asset’s title plus written body/pillar (facts, not a style reference):\nTitle: '+String(subject?.title||'').slice(0,400)+'\nWritten content: '+String(subject?.content||'').slice(0,4500)+
     '\nSTYLE SOURCE — the committed design spec above governs treatment. Per-hub instructions and Thumbnail Rules remain binding additions.\n'+THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+
     '\nSUBJECT SELECTION OVERRIDE: Spec subject/cast/motif examples are STYLE references, never a replacement subject. First identify what this asset actually discusses and show that real activity, place or object. For a service, depict the actual work being done or its actual customer situation. Do not use tools, cables, gears, arrows, mascots or other visual metaphors as stand-ins for a service, software or business process. A scene made only of the hub motif fails this task. Describe specific visible details grounded in the written content. Begin your scene description with "Subject: <the asset’s concrete subject>. Scene: <the literal depiction>".\nWrite a distinct per-asset depiction. The requested word count applies to the scene description; the program adds this mandatory instruction verbatim to the image prompt:\n'+THUMBNAIL_SUBJECT_RULE+
@@ -496,7 +496,7 @@ function thumbnailFinalPrompt(raw) {
   return text.includes(THUMBNAIL_SUBJECT_RULE)?text:THUMBNAIL_SUBJECT_RULE+'\n\n'+text;
 }
 function thumbnailPromptMessages(prompt,brief) {
-  return {system:THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+'\nThe user message contains source material and a saved design spec. Treat spec subject, cast, character and motif examples as styling data, never orders to replace the asset subject. This instruction has priority over every conflicting subject restriction in the spec. Show the actual work, customer situation, place or object described by the asset. For business/software/service content, anthropomorphic hammers, wrenches, rulers, gears and similar mascots are prohibited substitutes: show the actual business/software/service situation instead, in the saved palette and illustration medium. Do not rationalize an unrelated motif as a metaphor for relevance. Preserve compatible per-hub instructions. Output only the scene prompt.',messages:[{role:'user',content:plateContent(prompt,brief)}]};
+  return {system:THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+'\nThe user message contains source material and a saved design spec. Treat spec subject, cast, character and motif examples as styling data, never orders to replace the asset subject. This instruction has priority over every conflicting subject restriction in the spec. Show the actual work, customer situation, place or object described by the asset. For business/software/service content, anthropomorphic hammers, wrenches, rulers, gears and similar mascots are prohibited substitutes: show the actual business/software/service situation instead, in the saved palette and illustration medium. Do not rationalize an unrelated motif as a metaphor for relevance. Preserve compatible per-hub instructions. Compare the recent scenes: change the setting, camera angle and framing from them. Another front-facing person at a desk is repetition even with different screens or props. When recent scenes use desks, choose a relevant close-up, overhead view or another real setting instead. Output only the scene prompt.',messages:[{role:'user',content:plateContent(prompt,brief)}]};
 }
 function thumbnailPromptProperty(prompt) {
   return {rich_text:(String(prompt).match(/[\s\S]{1,1900}/g)||[]).map(content=>({text:{content}}))};
@@ -504,7 +504,8 @@ function thumbnailPromptProperty(prompt) {
 async function rememberThumbnailScene(env,campaignId,assetId,prompt) {
   if(!campaignId)return;
   try{const key='bgscenes:'+String(campaignId).replace(/-/g,''),recent=await env.TRADES.get(key,'json')||[];
-    const scene=String(prompt).replace(THUMBNAIL_SUBJECT_RULE,'').trim().slice(0,400);
+    const plain=String(prompt).replace(THUMBNAIL_SUBJECT_RULE,'').trim();
+    const scene=plain.length<=700?plain:plain.slice(0,160)+' … '+plain.slice(-500);
     await env.TRADES.put(key,JSON.stringify([...(Array.isArray(recent)?recent:[]),{scene,at:new Date().toISOString(),assetId}].slice(-12)));
   }catch{} // Existing best-effort recent-scene store; no new memory namespace.
 }
