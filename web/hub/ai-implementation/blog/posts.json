@@ -1,5 +1,15 @@
 [
   {
+    "slug": "done-for-you-lead-gen",
+    "title": "Your AI Workflow Audit & Roadmap",
+    "intro": "You are already running. You have tools, vendors, and some version of a lead generation process in motion. The problem is nothing connects, you cannot tell what is actually working, and every hour you spend manually following up, qualifying, or chasing approvals is an hour your competitors are not s",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
+    "contentHash": "7ad9d250136dce939bc0e17c059f0dc825eae8ef43acbe1ad41853d6bd34b2a5",
+    "contentEditedAt": "2026-10-22T16:29:00.000Z",
+    "refreshedAt": "2026-10-22T16:29:28.358Z"
+  },
+  {
     "slug": "ai-content-partner",
     "title": "Fractional AI Operations: Your AI Systems Partner Without the Full-Time Hire",
     "intro": "You have the tools. You have some content. What you do not have is a system — and right now, you are the system. Every brief, every approval, every manual handoff runs through you, and the whole operation stalls the moment your attention goes somewhere else. Fractional AI Automation & Content Operat",
@@ -28,15 +38,5 @@
     "contentHash": "d65aa5b86b35d7f0b954a66b5dd452acfb8aa802cbd374fe383f992b61607540",
     "contentEditedAt": "2026-10-22T14:00:00.000Z",
     "refreshedAt": "2026-10-22T16:02:31.153Z"
-  },
-  {
-    "slug": "done-for-you-lead-gen",
-    "title": "Your AI Workflow Audit & Roadmap",
-    "intro": "You are already running. You have tools, vendors, and some version of a lead generation process in motion. The problem is nothing connects, you cannot tell what is actually working, and every hour you spend manually following up, qualifying, or chasing approvals is an hour your competitors are not s",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
-    "contentHash": "79f4ca122d0aba12030c2a344bbafeb0b92ad091b6a865aa220a845a2ae72923",
-    "contentEditedAt": "2026-10-22T13:46:00.000Z",
-    "refreshedAt": "2026-10-22T13:46:20.830Z"
   }
 ]
