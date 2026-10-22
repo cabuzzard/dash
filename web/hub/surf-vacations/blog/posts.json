@@ -1,5 +1,15 @@
 [
   {
+    "slug": "surf-resort-finder",
+    "title": "Surf Resort Finder & Booking",
+    "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Resort Finder & Booking\",\n  \"promise\": \"Find the right resort or charter for your level and group — and book it in one flow, with every inclusion visible before you pay.\",\n  \"ctaLabel\": \"Find Your Resort\",\n  \"ctaUrl\": \"\"\n}\n```\n\nThe surf trip ",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
+    "contentHash": "e8bd14a3c688443c5c0daa2bd05eb4280d8e4f65ad61e46887d17d1b6c83b0c7",
+    "contentEditedAt": "2026-10-22T13:10:00.000Z",
+    "refreshedAt": "2026-10-22T13:10:49.740Z"
+  },
+  {
     "slug": "charter-match",
     "title": "Charter Match",
     "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Charter Match\",\n  \"promise\": \"Your actual profile — skill level, dates, budget — matched to vetted liveaboard quotes in one flow, not a three-month email chain.\",\n  \"ctaLabel\": \"Match My Charter\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou know which destinations you want. Me",
@@ -18,15 +28,5 @@
     "contentHash": "594008f93d18285b4718b3603fe3b64f9c2e2e4c3360e765e11b9a5a67a17d6c",
     "contentEditedAt": "2026-10-22T13:09:00.000Z",
     "refreshedAt": "2026-10-22T13:09:21.341Z"
-  },
-  {
-    "slug": "surf-resort-finder",
-    "title": "Surf Resort Finder",
-    "intro": "Find a surf resort or live-aboard charter that matches your level, your group, and your swell window — and book it in one place, with every cost on the table before you commit.",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
-    "contentHash": "97bcad1b9c4647380455a3bf4e9121a21bbf5987ba8ec06c50c11081088d0ba0",
-    "contentEditedAt": "2026-10-22T01:58:00.000Z",
-    "refreshedAt": "2026-10-22T03:30:33.793Z"
   }
 ]
