@@ -1,5 +1,15 @@
 [
   {
+    "slug": "premium-newsletter",
+    "title": "Premium Newsletter",
+    "intro": "```json\n{\n  \"kicker\": \"Premium Newsletter\",\n  \"name\": \"Premium Newsletter\",\n  \"promise\": \"A weekly sourcing signal that puts you in front of off-market and below-market multifamily deals before the buyers who only search what's listed.\",\n  \"ctaLabel\": \"Subscribe\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou're doing ",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81ed9a98cfaa03031b3b",
+    "contentHash": "96a5f023a42747004d40884505a826f7ab0e65c34c6dd2059168708b85291b10",
+    "contentEditedAt": "2026-10-22T16:20:00.000Z",
+    "refreshedAt": "2026-10-22T16:20:18.140Z"
+  },
+  {
     "slug": "deal-intelligence",
     "title": "Multifamily Acquisition Analysis — Underwriting & Due Diligence Support for Investors",
     "intro": "Most investors who blow a multifamily acquisition don't get the math wrong. They get the assumptions wrong — and nobody checked them against source documents before money moved. This service exists for the buyer who knows the deal might be real but isn't confident enough in the analysis to act. That",
@@ -18,15 +28,5 @@
     "contentHash": "d48b13d2a3fb43a39f01f2f7732f7102abb21a6430d02a7b36b71e4274f896da",
     "contentEditedAt": "2026-10-22T16:16:00.000Z",
     "refreshedAt": "2026-10-22T16:16:35.461Z"
-  },
-  {
-    "slug": "premium-newsletter",
-    "title": "Premium Newsletter",
-    "intro": "```json\n{\n  \"kicker\": \"Premium Newsletter\",\n  \"name\": \"Premium Newsletter\",\n  \"promise\": \"A weekly sourcing signal that puts you in front of off-market and below-market multifamily deals before the buyers who only search what's listed.\",\n  \"ctaLabel\": \"Subscribe\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou're doing ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81ed9a98cfaa03031b3b",
-    "contentHash": "5eb57f19101687f021c8ff84ed55bd17946c51d3dd70d9b38050ff5e4c6111ab",
-    "contentEditedAt": "2026-10-22T14:02:00.000Z",
-    "refreshedAt": "2026-10-22T16:05:52.162Z"
   }
 ]
