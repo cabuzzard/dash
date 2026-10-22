@@ -1,5 +1,12 @@
 [
   {
+    "slug": "the-medicare-clarity-premium-newsletter",
+    "title": "The Medicare Clarity Premium Newsletter",
+    "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Premium Newsletter\",\n  \"promise\": \"Stay current on Medicare without trusting a source that's trying to sell you a plan.\",\n  \"ctaLabel\": \"Subscribe Free\",\n  \"ctaUrl\": \"\"\n}\n```\n\nEvery Medicare search you do triggers the same spiral: spam calls within the hour, ",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb811d8089d3b74b3205c2"
+  },
+  {
     "slug": "care-command",
     "title": "Medicare Plan Review & Guidance",
     "intro": "You are already doing the work of a care manager. You are tracking appointments, chasing referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the ",
