@@ -25,7 +25,7 @@
     const group = () => GROUPS.find(g => g.id === S.group) || GROUPS[0];
     const sections = g => S.schema.filter(g.match);
     const keys = g => sections(g).flatMap(s => s.fields.map(f => f[0]));
-    const changed = k => ((S.staged[k] || {}).v || '') !== ((S.saved[k] || {}).v || '');
+    const changed = k => ['v','g'].some(f=>((S.staged[k]||{})[f]||'')!==((S.saved[k]||{})[f]||''));
     const changedKeys = g => keys(g).filter(changed);
     const say = (m, kind) => { S.msg = m || ''; S.kind = kind || ''; render(); };
     // Preview one section over saved values. Missing fields leave the live hub unchanged.
@@ -49,7 +49,7 @@
     }
     async function saveGroup() { const g = group(), ks = changedKeys(g); if (!ks.length) return say('There are no staged changes in this section.', 'ok'); S.busy = 'Committing this section to the design database…'; render(); try { const r = await call('save', { keys: ks }); take(r); S.busy = ''; await preview(true); if (cfg.onSaved) cfg.onSaved(r); say(`${ks.length} approved fields committed${r.notionError ? '; database mirror warning: ' + r.notionError : ' to the campaign design system.'}`, r.notionError ? 'bad' : 'ok'); } catch (e) { S.busy = ''; say('Commit failed: ' + e.message, 'bad'); } }
     async function revertGroup() { const g = group(); try { take(await call('revert', { keys: keys(g) })); await preview(true); say(`${g.name} reverted to its saved values.`, 'ok'); } catch (e) { say('Revert failed: ' + e.message, 'bad'); } }
-    async function edit(k, v) { try { take(await call('edit', { key: k, v })); S.edit = null; await preview(true); say(`${k} staged in this section.${S.previewError ? ' Preview could not finish: ' + S.previewError : ''}`, S.previewError ? 'bad' : 'ok'); } catch (e) { say('Edit failed: ' + e.message, 'bad'); } }
+    async function edit(k, v, g) { try { take(await call('edit', { key: k, v, ...(g!==undefined?{g}:{}) })); S.edit = null; await preview(true); say(`${k} staged in this section.${S.previewError ? ' Preview could not finish: ' + S.previewError : ''}`, S.previewError ? 'bad' : 'ok'); } catch (e) { say('Edit failed: ' + e.message, 'bad'); } }
     async function uploadPhoto(file) {
       if (!file) return; S.busy = 'Uploading the reference image…'; render();
       try { const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); }); take(await call('photo', { data })); S.busy = ''; say('Reference image stored. Include it when you use the copied prompt in ChatGPT.', 'ok'); }
@@ -80,7 +80,7 @@
       S.busy = 'Saving image guidance...'; S.libraryEditError = ''; render();
       try {
         take(await call('library', { update: { id: draft.id, name: draft.name.trim(), role: draft.role, notes: draft.notes.trim() } }));
-        S.busy = ''; closeLibraryEdit('Image guidance saved. Future ChatGPT prompts and Grok image requests will use it.');
+        S.busy = ''; closeLibraryEdit('Image guidance saved. Future spec-building analysis will use it; renders use the committed text spec.');
       } catch (e) { S.busy = ''; S.libraryEditError = e.message; render(); }
     }
     function renderLibraryEdit() {
@@ -116,7 +116,7 @@
     async function testThumbnail() {
       const previous = S.testThumb, direction = S.thumbDirection.trim().slice(0, 1000);
       if (previous && !direction) return say('Add regeneration direction below the thumbnail first: what should change, and what should stay?', 'bad');
-      const lines = Object.entries(previewSpec()).filter(([k, f]) => f && f.v && (/^(color|type|img|ref|ovl|avoid)\./.test(k) || k.startsWith('asset.youtube_thumb.') || k.startsWith('asset.blog_thumb.'))).map(([k, f]) => `${k}: ${f.v}${f.why ? ' — ' + f.why : ''}`);
+      const lines = Object.entries(previewSpec()).filter(([k, f]) => f && f.v && (/^(color|type|img|ref|ovl|avoid)\./.test(k) || k.startsWith('asset.youtube_thumb.') || k.startsWith('asset.blog_thumb.'))).map(([k, f]) => `${k}: ${f.v}${f.g?'\nOperator guidance: '+f.g:''}${f.why ? ' — ' + f.why : ''}`);
       if (!lines.length) return say('Stage the imagery and thumbnail fields first.', 'bad');
       S.busy = 'Generating a 16:9 thumbnail from the staged values…'; S.thumbStarted = Date.now(); render();
       try {
@@ -139,8 +139,8 @@
       const a = S.staged[k] || {}, b = S.saved[k] || {}, diff = changed(k), editing = S.edit === k;
       return `<div style="display:grid;grid-template-columns:minmax(145px,28%) 1fr;gap:10px;padding:7px 8px;border-top:1px solid ${C.line};${diff ? `border-left:4px solid ${C.stage};background:rgba(246,173,85,.07);` : ''}">
         <div style="font-size:11px;color:${C.ink2};">${esc(label)}<div style="font-size:9px;color:${C.ink3};">${esc(k)}</div></div>
-        <div>${editing ? `<input data-edit-value="${esc(k)}" value="${esc(a.v || '')}" placeholder="${esc(hint || '')}" style="${input}"><div style="margin-top:4px;"><button data-act="editSave" data-k="${esc(k)}" style="${primary}">Stage</button> <button data-act="editCancel" style="${btn}">Cancel</button></div>` : `<div data-act="edit" data-k="${esc(k)}" title="Click to edit" style="font-size:12px;cursor:text;color:${a.v ? C.ink : C.ink3};">${a.v ? esc(a.v) : `<i>${esc(hint || 'empty')}</i>`}</div>`}
-          ${diff ? `<div style="font-size:10px;color:${C.ink3};margin-top:3px;"><b style="color:${C.stage};">STAGED</b> · saved: ${b.v ? esc(b.v) : '<i>empty</i>'}</div>` : ''}${a.why ? `<div style="font-size:10px;color:${C.ink3};margin-top:2px;">${esc(a.why)}</div>` : ''}</div></div>`;
+        <div>${editing ? `<textarea data-edit-value="${esc(k)}" rows="${k.endsWith('.instructions')?6:2}" placeholder="${esc(hint || '')}" style="${input}">${esc(a.v || '')}</textarea><label style="font-size:11px">Operator guidance for this field<textarea data-edit-guidance="${esc(k)}" rows="3" style="${input}">${esc(a.g || '')}</textarea></label><div style="margin-top:4px;"><button data-act="editSave" data-k="${esc(k)}" style="${primary}">Stage</button> <button data-act="editCancel" style="${btn}">Cancel</button></div>` : `<div data-act="edit" data-k="${esc(k)}" title="Click to edit" style="font-size:12px;cursor:text;color:${a.v ? C.ink : C.ink3};">${a.v ? esc(a.v) : `<i>${esc(hint || 'empty')}</i>`}</div>`}
+          ${diff ? `<div style="font-size:10px;color:${C.ink3};margin-top:3px;"><b style="color:${C.stage};">STAGED</b> · saved: ${b.v ? esc(b.v) : '<i>empty</i>'}</div>` : ''}${a.g ? `<div style="font-size:11px;margin-top:4px;"><b>Operator guidance:</b> ${esc(a.g)}</div>` : ''}<button data-act="edit" data-k="${esc(k)}" style="${btn}">Guidance</button>${a.why ? `<div style="font-size:10px;color:${C.ink3};margin-top:2px;">${esc(a.why)}</div>` : ''}</div></div>`;
     }
     function render() {
       const g = group(), secs = sections(g), diffs = changedKeys(g), photo = S.inputs.photo || {}, library = S.inputs.mediaLibrary || [];
@@ -174,7 +174,7 @@
       else if (a === 'libEdit') openLibraryEdit(el.dataset.id);
       else if (a === 'libEditCancel') closeLibraryEdit();
       else if (a === 'libRemove') removeLibrary(el.dataset.id);
-      else if (a === 'edit') { S.edit = el.dataset.k; render(); } else if (a === 'editCancel') { S.edit = null; render(); } else if (a === 'editSave') { const x = root.querySelector(`[data-edit-value="${CSS.escape(el.dataset.k)}"]`); edit(el.dataset.k, x ? x.value.trim() : ''); }
+      else if (a === 'edit') { S.edit = el.dataset.k; render(); } else if (a === 'editCancel') { S.edit = null; render(); } else if (a === 'editSave') { const x = root.querySelector(`[data-edit-value="${CSS.escape(el.dataset.k)}"]`); const g=root.querySelector(`[data-edit-guidance="${CSS.escape(el.dataset.k)}"]`); edit(el.dataset.k, x ? x.value.trim() : '',g?g.value:''); }
     });
     load();
     return { reload: load, previewStaged: preview, state: S };
