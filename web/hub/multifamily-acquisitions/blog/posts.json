@@ -1,5 +1,15 @@
 [
   {
+    "slug": "commercial-deal-finder",
+    "title": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
+    "intro": "You know what you want to buy. You have the capital, the criteria, and the operational capacity to close. What you don't have is a pipeline of deals that actually fit — properties sourced against your buy box, analyzed before they reach you, with the investment thesis already laid out.\n\nThat's what ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
+    "contentHash": "6e78541258548b9cf4b82a1ccf369d6d40a1342b6f5ace8bdc2042e6d6c0a3d8",
+    "contentEditedAt": "2026-10-22T22:10:00.000Z",
+    "refreshedAt": "2026-10-22T22:32:50.565Z"
+  },
+  {
     "slug": "deal-intelligence",
     "title": "Verified Underwriting & Due Diligence Support for Multifamily Buyers",
     "intro": "You already know what you want to buy. You have a buy box, you have capital, and you have a candidate sitting in front of you that might be real. What you don't have is certainty — and at commercial scale, that gap between \"this looks interesting\" and \"I'm confident enough to move\" is exactly where ",
@@ -18,15 +28,5 @@
     "contentHash": "0fbc2db01d35730666fe00237d519da240419194bb3876f24856782603ed38a2",
     "contentEditedAt": "2026-10-22T22:12:00.000Z",
     "refreshedAt": "2026-10-22T22:12:39.395Z"
-  },
-  {
-    "slug": "commercial-deal-finder",
-    "title": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
-    "intro": "You know what you want to buy. You have the capital, the criteria, and the operational capacity to close. What you don't have is a pipeline of deals that actually fit — properties sourced against your buy box, analyzed before they reach you, with the investment thesis already laid out.\n\nThat's what ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
-    "contentHash": "68f1a80cb39170d80252ca506eec91b5fc68e9b95fa4121e2c1bff2a634474e3",
-    "contentEditedAt": "2026-10-22T16:36:00.000Z",
-    "refreshedAt": "2026-10-22T16:36:39.035Z"
   }
 ]

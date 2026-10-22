@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
+    "slug": "commercial-deal-finder",
+    "name": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
+    "promise": "For active investors, acquisition firms, and operators with capital ready to deploy. Packaged multifamily deals — sourced, analyzed, and matched to your buy box — arrive ready to underwrite or act on.",
+    "url": "../blog/commercial-deal-finder/",
+    "contentHash": "6e78541258548b9cf4b82a1ccf369d6d40a1342b6f5ace8bdc2042e6d6c0a3d8",
+    "contentEditedAt": "2026-10-22T22:10:00.000Z",
+    "refreshedAt": "2026-10-22T22:32:50.565Z"
+  },
+  {
     "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
     "slug": "deal-intelligence",
     "name": "Verified Underwriting & Due Diligence Support for Multifamily Buyers",
@@ -18,15 +28,5 @@
     "contentHash": "0fbc2db01d35730666fe00237d519da240419194bb3876f24856782603ed38a2",
     "contentEditedAt": "2026-10-22T22:12:00.000Z",
     "refreshedAt": "2026-10-22T22:12:39.395Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
-    "slug": "commercial-deal-finder",
-    "name": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
-    "promise": "For active investors, acquisition firms, and operators with capital ready to deploy. Packaged multifamily deals — sourced, analyzed, and matched to your buy box — arrive ready to underwrite or act on.",
-    "url": "../blog/commercial-deal-finder/",
-    "contentHash": "68f1a80cb39170d80252ca506eec91b5fc68e9b95fa4121e2c1bff2a634474e3",
-    "contentEditedAt": "2026-10-22T16:36:00.000Z",
-    "refreshedAt": "2026-10-22T16:36:39.035Z"
   }
 ]
