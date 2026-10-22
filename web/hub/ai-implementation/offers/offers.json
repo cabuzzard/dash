@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
+    "slug": "ai-operations-partner",
+    "name": "AI Automation Services for Small Businesses",
+    "promise": "For small business owners whose manual workflows are eating owner time — a done-for-you build that implements, integrates, and hands over working AI automation your team can operate from day one.",
+    "url": "../blog/ai-operations-partner/",
+    "contentHash": "053737ea1b1603d8d4ba0b63d105f5b70869e04341043ede9ac55b140d9ba238",
+    "contentEditedAt": "2026-10-22T13:18:00.000Z",
+    "refreshedAt": "2026-10-22T13:18:32.319Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8145bb6afa30c7bc35b6",
     "slug": "ai-content-partner",
     "name": "Fractional AI Operations: Your AI Systems Partner Without the Full-Time Hire",
@@ -18,15 +28,5 @@
     "contentHash": "8c5256aeadae9e53abb3f27f3e94738b66ac858862f43d3a1d94424daed445e2",
     "contentEditedAt": "2026-10-22T13:17:00.000Z",
     "refreshedAt": "2026-10-22T13:17:32.824Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
-    "slug": "ai-operations-partner",
-    "name": "AI Operations Partner",
-    "promise": "Your full business pipeline — lead gen, follow-up, customer service, internal handoffs — runs automatically, under one integrated system, without you managing the machinery.",
-    "url": "../blog/ai-operations-partner/",
-    "contentHash": "229bf08195e10573c7d910dad6d0b0cabfb4fcd0b20ab1528abf75646b80c2fc",
-    "contentEditedAt": "2026-10-21T07:42:00.000Z",
-    "refreshedAt": "2026-10-22T03:33:23.099Z"
   }
 ]
