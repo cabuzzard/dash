@@ -1,5 +1,15 @@
 [
   {
+    "slug": "caregiver-circle",
+    "title": "Finding Support When Caregiving Becomes Unsustainable",
+    "intro": "You are not a patient. You do not have a diagnosis. What you have is a schedule that leaves no room for you, and a weight that has been building long enough that you have stopped being able to name it. This community exists because 53 million caregivers are navigating a system designed entirely arou",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
+    "contentHash": "3f27657cf2d1a1be3f3f56be9e1614a5479bbfcfd1f2ed4ee68477af7b86c260",
+    "contentEditedAt": "2026-10-22T15:47:00.000Z",
+    "refreshedAt": "2026-10-22T15:47:59.308Z"
+  },
+  {
     "slug": "housed",
     "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
     "intro": "You are working — often more than one job — and still behind on rent. The eviction notice arrived while you were on a double shift. The system around you was built to help the person you care for, not you. This program exists to change that. Keeping Caregivers Housed is a structured housing stabilit",
@@ -18,15 +28,5 @@
     "contentHash": "5cae77dfcc51683a35d7b7363454ef90fedbfe0d37f01470afadc0967c9eb9d3",
     "contentEditedAt": "2026-10-22T13:54:00.000Z",
     "refreshedAt": "2026-10-22T14:00:59.590Z"
-  },
-  {
-    "slug": "caregiver-circle",
-    "title": "Finding Support When Caregiving Becomes Unsustainable",
-    "intro": "You are not a patient. You do not have a diagnosis. What you have is a schedule that leaves no room for you, and a weight that has been building long enough that you have stopped being able to name it. This community exists because 53 million caregivers are navigating a system designed entirely arou",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
-    "contentHash": "efef3c1c87d5958436520b53b788f71abcb61b01fcafc54bc9f7edf8e784ca4c",
-    "contentEditedAt": "2026-10-22T13:54:00.000Z",
-    "refreshedAt": "2026-10-22T14:00:52.143Z"
   }
 ]
