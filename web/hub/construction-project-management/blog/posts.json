@@ -1,5 +1,15 @@
 [
   {
+    "slug": "project-coordination-retainer",
+    "title": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
+    "intro": "You're the PM on every job right now. You know it, and you know it's not sustainable. Schedules live in your head, submittals stack up until they're emergencies, change orders go out late and get argued over, and cost bleed shows up at closeout instead of while you can still recover it. Hiring a ful",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
+    "contentHash": "ead26814fef5457d61ead41ee95c1a71117c5cc9819821f9168b67437f7766bb",
+    "contentEditedAt": "2026-10-22T16:38:00.000Z",
+    "refreshedAt": "2026-10-22T17:04:33.426Z"
+  },
+  {
     "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
     "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
     "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
@@ -18,15 +28,5 @@
     "contentHash": "92caffc52aa8429af10f3c43c2ed451566d95f5977bd3e56613703845187f312",
     "contentEditedAt": "2026-10-22T16:38:00.000Z",
     "refreshedAt": "2026-10-22T16:38:28.930Z"
-  },
-  {
-    "slug": "project-coordination-retainer",
-    "title": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
-    "intro": "You're the PM on every job right now. You know it, and you know it's not sustainable. Schedules live in your head, submittals stack up until they're emergencies, change orders go out late and get argued over, and cost bleed shows up at closeout instead of while you can still recover it. Hiring a ful",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
-    "contentHash": "6d3a305b8f5a83788640cc644408557ee015f4cc76fb8e89f462d3405faa469b",
-    "contentEditedAt": "2026-10-22T16:21:00.000Z",
-    "refreshedAt": "2026-10-22T16:21:16.955Z"
   }
 ]
