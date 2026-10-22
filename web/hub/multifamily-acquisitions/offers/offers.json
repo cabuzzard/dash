@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
+    "slug": "deal-intelligence",
+    "name": "Verified Underwriting & Due Diligence Support for Multifamily Buyers",
+    "promise": "For capital-disciplined multifamily buyers who can't move on unverified numbers. Get a finished work product — screened, underwritten, and stress-tested — before due diligence starts.",
+    "url": "../blog/deal-intelligence/",
+    "contentHash": "0cef94f53f135b3a512bab8f49cae5fbbf50b1c865c73372ebf75ef279b132e3",
+    "contentEditedAt": "2026-10-22T16:37:00.000Z",
+    "refreshedAt": "2026-10-22T16:37:21.917Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
     "slug": "commercial-deal-finder",
     "name": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
@@ -18,15 +28,5 @@
     "contentHash": "96a5f023a42747004d40884505a826f7ab0e65c34c6dd2059168708b85291b10",
     "contentEditedAt": "2026-10-22T16:20:00.000Z",
     "refreshedAt": "2026-10-22T16:20:18.140Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
-    "slug": "deal-intelligence",
-    "name": "Multifamily Acquisition Analysis — Underwriting & Due Diligence Support for Investors",
-    "promise": "For capital-disciplined multifamily buyers who can't afford to move on unverified numbers. Get a finished work product — screened, underwritten, and stress-tested — so your decision is grounded before due diligence starts.",
-    "url": "../blog/deal-intelligence/",
-    "contentHash": "11299d071b19db3771d8ed99b9ded5a0e772ec68fcf86ae23085a33112431c37",
-    "contentEditedAt": "2026-10-22T16:18:00.000Z",
-    "refreshedAt": "2026-10-22T16:18:33.955Z"
   }
 ]
