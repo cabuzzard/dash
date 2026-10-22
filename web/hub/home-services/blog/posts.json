@@ -1,5 +1,15 @@
 [
   {
+    "slug": "live-in-property-caretaker-work-trade-resident-care",
+    "title": "Live-In Property Caretaker — Work-Trade & Resident Care",
+    "intro": "A property that runs itself while you're away isn't a fantasy — it's what happens when the right person is already there.\n\nYou know the feeling. You leave town and spend the first two days of the trip half-thinking about the place — whether the irrigation held, whether the animals are on schedule, w",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb81859b09d0c65acffff4",
+    "contentHash": "012da5aed3aa976c59fac9255e53f991dc5385edcbf71ac356f6b60813b138be",
+    "contentEditedAt": "2026-10-22T23:10:00.000Z",
+    "refreshedAt": "2026-10-22T23:10:49.655Z"
+  },
+  {
     "slug": "rental-property-care-owner-support-local-oversight",
     "title": "Rental Property Care & Owner Support — Local Oversight",
     "intro": "You own a rental property in Northern California. You're not next door to it. You're managing the listing yourself — or you've patched something together — and you already know the gap: nobody local you can actually call when something needs eyes, when a turnover gets missed, when a vendor doesn't s",
@@ -8,16 +18,6 @@
     "contentHash": "6b5bb16d337ef80945394f937fad53d08c15a0c73fc35953e23d08ef0365519c",
     "contentEditedAt": "2026-10-22T16:27:00.000Z",
     "refreshedAt": "2026-10-22T16:34:05.568Z"
-  },
-  {
-    "slug": "live-in-property-caretaker-work-trade-resident-care",
-    "title": "Live-In Property Caretaker — Work-Trade & Resident Care",
-    "intro": "A property that runs itself while you're away isn't a fantasy — it's what happens when the right person is already there.\n\nYou know the feeling. You leave town and spend the first two days of the trip half-thinking about the place — whether the irrigation held, whether the animals are on schedule, w",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb81859b09d0c65acffff4",
-    "contentHash": "607f423d6c68004c224bc340039035736425d908c3098a14c742fc69339ad1ca",
-    "contentEditedAt": "2026-10-22T16:27:00.000Z",
-    "refreshedAt": "2026-10-22T16:27:30.327Z"
   },
   {
     "slug": "property-caretaking",
