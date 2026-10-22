@@ -1,5 +1,15 @@
 [
   {
+    "slug": "medicare-clarity-consult",
+    "title": "Medicare Clarity Consulting",
+    "intro": "You are not confused because you're unsophisticated. You are confused because every source you've found so far — the comparison websites, the toll-free numbers, the friendly mailers — is funded by the carriers who want you to pick their plan. A Medicare Clarity Consultation is the one hour in this p",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
+    "contentHash": "dbdc90e07a72b99b40e54492cf6414da6104d15e2870da6d3ad234092c94c754",
+    "contentEditedAt": "2026-10-22T16:39:00.000Z",
+    "refreshedAt": "2026-10-22T16:39:16.637Z"
+  },
+  {
     "slug": "the-medicare-clarity-premium-newsletter",
     "title": "The Medicare Clarity Premium Newsletter",
     "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Premium Newsletter\",\n  \"promise\": \"Stay current on Medicare without trusting a source that's trying to sell you a plan.\",\n  \"ctaLabel\": \"Subscribe Free\",\n  \"ctaUrl\": \"\"\n}\n```\n\nEvery Medicare search you do triggers the same spiral: spam calls within the hour, ",
@@ -18,15 +28,5 @@
     "contentHash": "8a9d2c3e9379dc11e6dc8708308f5c5769588a57ba70be41ad2e6591e6fc97ed",
     "contentEditedAt": "2026-10-22T16:24:00.000Z",
     "refreshedAt": "2026-10-22T16:24:25.396Z"
-  },
-  {
-    "slug": "medicare-clarity-consult",
-    "title": "Medicare Clarity Consulting",
-    "intro": "You are not confused because you're unsophisticated. You are confused because every source you've found so far — the comparison websites, the toll-free numbers, the friendly mailers — is funded by the carriers who want you to pick their plan. A Medicare Clarity Consultation is the one hour in this p",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
-    "contentHash": "6db5d94fa3d6be582b6a478856b3aad40d8686ea1c0a4f140a7613de034ba16f",
-    "contentEditedAt": "2026-10-22T16:23:00.000Z",
-    "refreshedAt": "2026-10-22T16:23:43.037Z"
   }
 ]
