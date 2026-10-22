@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
+    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
+    "name": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
+    "promise": "For homeowners and project owners about to commit serious money to a build — get an independent review of your plans, bids, budget and contract before you sign, while every finding is still free to fix.",
+    "url": "../blog/before-you-build-know-what-you-re-getting-into-independent-planning-bu/",
+    "contentHash": "0216469e69243703a60836b5e9f476808b2b317084982e7aba4bc1a8870cc4be",
+    "contentEditedAt": "2026-10-22T15:31:00.000Z",
+    "refreshedAt": "2026-10-22T15:31:39.045Z"
+  },
+  {
     "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
     "slug": "owner-side-contract-review",
     "name": "Construction Project Health Check—Independent Review",
@@ -18,15 +28,5 @@
     "contentHash": "29b59c0552d9bdb4e0a868854fae435ffce0cc16a7fdff79845afc677d736fef",
     "contentEditedAt": "2026-10-22T13:55:00.000Z",
     "refreshedAt": "2026-10-22T14:02:59.841Z"
-  },
-  {
-    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
-    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
-    "name": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
-    "promise": "For homeowners and project owners about to commit serious money to a build — get an independent review of your plans, bids, budget and contract before you sign, while every finding is still free to fix.",
-    "url": "../blog/before-you-build-know-what-you-re-getting-into-independent-planning-bu/",
-    "contentHash": "b7edd9a3a8587418208f942befc19c992a933c9f39a41d672266861de072db4c",
-    "contentEditedAt": "2026-10-22T13:55:00.000Z",
-    "refreshedAt": "2026-10-22T14:02:51.875Z"
   }
 ]
