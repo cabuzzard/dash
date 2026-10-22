@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
+    "slug": "garden-shop",
+    "name": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
+    "promise": "For local gardeners, gift shoppers, and flower buyers who want something real. Seasonal plants, garden-grown flowers, and handmade botanical gifts — with actual stock, care guidance, and pickup or shipping terms.",
+    "url": "../blog/garden-shop/",
+    "contentHash": "851c5ec8a5e7fd8962d4ae059862cbaf144eed1b254fd9078433d74b1243e687",
+    "contentEditedAt": "2026-10-22T13:11:00.000Z",
+    "refreshedAt": "2026-10-22T13:11:47.524Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81368b68ce652e2679a9",
     "slug": "garden-visit",
     "name": "Experience a Garden Without Barriers — Plan Your Visit to Sunflower Acres",
@@ -8,16 +18,6 @@
     "contentHash": "3fffea1ed7cccdd537d43f6ae65c4925a952a95155887ff79ec20e403ed809f6",
     "contentEditedAt": "2026-10-22T13:11:00.000Z",
     "refreshedAt": "2026-10-22T13:11:10.328Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
-    "slug": "garden-shop",
-    "name": "Garden Shop",
-    "promise": "Bring a little Sunflower Acres home with seasonal flowers, plants and handmade botanical gifts, offered as inventory becomes available.",
-    "url": "../blog/garden-shop/",
-    "contentHash": "c76b96c2f90b58a22d001c63066a66666125cc0f12855323bd3d6f95a31b3189",
-    "contentEditedAt": "2026-10-22T02:46:00.000Z",
-    "refreshedAt": "2026-10-22T03:31:26.629Z"
   },
   {
     "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
