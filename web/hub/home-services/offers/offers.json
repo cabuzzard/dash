@@ -1,18 +1,20 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
+    "slug": "property-caretaking",
+    "name": "Resident Caretaker & Home Watch",
+    "promise": "Leave your property in capable hands. Get agreed home checks, seasonal upkeep, grounds oversight, and clear owner updates from one accountable caretaker.",
+    "url": "../blog/property-caretaking/",
+    "contentHash": "ccba8a12d75d1098065ed36812d9db518001e0f4b74a435f762874b7c81b54ca",
+    "contentEditedAt": "2026-10-22T03:23:00.000Z",
+    "refreshedAt": "2026-10-22T03:32:28.629Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81e38d7beb8cc0d8dbe7",
     "slug": "trusted-house-sitters",
     "name": "Trusted House Sitters",
     "promise": "Lock the door, get on the plane, and come home to the house you left.",
     "url": "../blog/trusted-house-sitters/",
-    "image": ""
-  },
-  {
-    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
-    "slug": "property-caretaking",
-    "name": "Property Caretaking",
-    "promise": "Your second home gets checked on schedule, problems get caught small, and you stop dreading what you'll find when you pull into the driveway.",
-    "url": "../blog/property-caretaking/",
     "image": ""
   }
 ]
