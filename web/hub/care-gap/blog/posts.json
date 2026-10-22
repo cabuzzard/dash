@@ -1,5 +1,15 @@
 [
   {
+    "slug": "caregiver-circle",
+    "title": "Caregiver Circle",
+    "intro": "The isolation breaks on day one — and the research burden stops being yours alone to carry.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
+    "contentHash": "b5f4212f4bd0d71e0ebd80c5d0f060d95c133147938b4fb2be6fccc15a4806c8",
+    "contentEditedAt": "2026-10-21T07:42:00.000Z",
+    "refreshedAt": "2026-10-22T03:32:52.124Z"
+  },
+  {
     "slug": "give-a-caregiver-a-roof",
     "title": "Give a Caregiver a Roof",
     "intro": "Your dollar gives a housing-insecure caregiver a stable place to sleep, so they can keep showing up without destroying themselves in the process.",
@@ -15,12 +25,5 @@
     "intro": "For Direct care workers and home health aides whose rent is one missed shift from trouble.\n\nYour household stays stable through the gap — before the eviction, before the job loss, not after.",
     "date": "2026-10-21",
     "assetId": "4001f7d3a4bb8162a24bd68d699632eb"
-  },
-  {
-    "slug": "caregiver-circle",
-    "title": "Caregiver Circle",
-    "intro": "For Unpaid caregivers navigating Medicare and burnout at the same time.\n\nThe isolation breaks on day one — and the research burden stops being yours alone to carry.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81cab954e96c0d292165"
   }
 ]
