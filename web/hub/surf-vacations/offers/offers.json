@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
+    "slug": "charter-match",
+    "name": "Find Your Dream Surf Charter — Explore the World's Best Surf Breaks by Boat",
+    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
+    "url": "../blog/charter-match/",
+    "contentHash": "a2439c2ce49c2da089e6c1f5b6c6dcf9b5159992fc16d810b505f56bebd116e9",
+    "contentEditedAt": "2026-10-22T16:22:00.000Z",
+    "refreshedAt": "2026-10-22T16:22:09.579Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
     "slug": "surf-camp-finder",
     "name": "Surf Camp Finder",
@@ -18,15 +28,5 @@
     "contentHash": "4095ec46e474d89a47a9aed63687f4908f2074bd9cb0e8e43f102b99ab325875",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:02:05.310Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
-    "slug": "charter-match",
-    "name": "Charter Match",
-    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
-    "url": "../blog/charter-match/",
-    "contentHash": "7fd99ead453aa779d3db71adbb4d7b176325b92878d6e26dab5bb92a74770b60",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:01:34.600Z"
   }
 ]

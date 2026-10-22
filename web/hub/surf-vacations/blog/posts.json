@@ -1,5 +1,15 @@
 [
   {
+    "slug": "charter-match",
+    "title": "Find Your Dream Surf Charter — Explore the World's Best Surf Breaks by Boat",
+    "intro": "You've read the trip reports. You know the names — Macaronis, Cokes, Lance's Right. You've watched the Mentawai edits, priced out the Maldives, and opened more browser tabs than you can count. What you don't have is a reliable answer to the question that actually matters: which boat, which operator,",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
+    "contentHash": "a2439c2ce49c2da089e6c1f5b6c6dcf9b5159992fc16d810b505f56bebd116e9",
+    "contentEditedAt": "2026-10-22T16:22:00.000Z",
+    "refreshedAt": "2026-10-22T16:22:09.579Z"
+  },
+  {
     "slug": "surf-camp-finder",
     "title": "Surf Camp Finder",
     "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Camp Finder\",\n  \"promise\": \"Find a verified surf camp matched to your level and book it in one session.\",\n  \"ctaLabel\": \"Find Your Surf Camp\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou already know you want to go. The destination is somewhere in the back of ",
@@ -18,15 +28,5 @@
     "contentHash": "4095ec46e474d89a47a9aed63687f4908f2074bd9cb0e8e43f102b99ab325875",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:02:05.310Z"
-  },
-  {
-    "slug": "charter-match",
-    "title": "Charter Match",
-    "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Charter Match\",\n  \"promise\": \"Your actual profile — skill level, dates, budget — matched to vetted liveaboard quotes in one flow, not a three-month email chain.\",\n  \"ctaLabel\": \"Match My Charter\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou know which destinations you want. Me",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
-    "contentHash": "7fd99ead453aa779d3db71adbb4d7b176325b92878d6e26dab5bb92a74770b60",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:01:34.600Z"
   }
 ]
