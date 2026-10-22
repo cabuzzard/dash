@@ -4407,6 +4407,10 @@ function offerBlogParts(props, blocks) {
     else intro += (intro ? '\n\n' : '') + text;
   }
   const body = rt(props.Body?.rich_text).trim();
+  // Contract-written offer (Current Methods "Offer – Content Hub": Offer Page = the full page, Body = the card blurb) —
+  // its Offer Page wins over older page blocks; the old OFFER CARD still supplies the CTA link
+  const offerPage = rt(props['Offer Page']?.rich_text).trim();
+  if (offerPage) return { ...topicalArticleParts(offerPage), cta: card?.ctaUrl ? { href: card.ctaUrl, label: rt(props['CTA Label']?.rich_text).trim() || card.ctaLabel } : undefined };
   if (!intro && !sections.length && body) return { ...topicalArticleParts(body), cta: card?.ctaUrl ? { href: card.ctaUrl, label: card.ctaLabel } : undefined };
   if (!intro) intro = body || String(card?.promise || '');
   if (!intro && !sections.some(s => s.body)) throw new Error('Offer has no written content to publish');
@@ -4845,7 +4849,8 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
       return {assetId:aid,pruned:true,reason:'not in Keywords hierarchy'};
     }
     const blocks = await offerBlogBlocks(ivHdr(), page.id);
-    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })) };
+    const offerPage = hubRichText(p['Offer Page']?.rich_text);   // contract-written offers (only when present, so older hashes don't move)
+    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage } : {}) };
     const contentHash = await hubContentHash(content), bodyHash = await hubContentHash(content.body), blocksHash = await hubContentHash(content.blocks);
     const hash = await hubContentHash({ content, title: payload.title, thumbnail: p.Thumbnail?.url || '', section: sec, hub: hub.slug });
     payload.blocks = blocks; payload.hash = hash;
