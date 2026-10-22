@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
+    "slug": "owner-side-contract-review",
+    "name": "Construction Project Health Check",
+    "promise": "Worried about your contractor? Get an independent review of project documents, costs, schedule and change orders—with clear findings and prioritized next steps.",
+    "url": "../blog/owner-side-contract-review/",
+    "contentHash": "137a1420a2fe7792f532fb720da74d2dcd7686cc52337bb99275942fef0b7552",
+    "contentEditedAt": "2026-10-22T03:05:00.000Z",
+    "refreshedAt": "2026-10-22T03:31:56.813Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81748d81ebb9a9d801bf",
     "slug": "built-to-fit-software",
     "name": "Built-to-Fit Software",
@@ -15,13 +25,5 @@
     "name": "On Your Side-Ongoing Build Coordination",
     "promise": "You stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of you with context before you sign anything.",
     "url": "../blog/on-your-side-ongoing-build-coordination/"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
-    "slug": "owner-side-contract-review",
-    "name": "Owner-Side Contract Review",
-    "promise": "Before you sign or approve another dollar, you'll know exactly what the documents say, what's missing, and what to push back on.",
-    "url": "../blog/owner-side-contract-review/",
-    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/homeowner-rep-contract-review-blog-thumbnail-mvibw63t.png"
   }
 ]

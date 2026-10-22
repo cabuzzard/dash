@@ -1,5 +1,15 @@
 [
   {
+    "slug": "owner-side-contract-review",
+    "title": "Construction Project Health Check",
+    "intro": "Worried about your contractor? Get an independent review of project documents, costs, schedule and change orders—with clear findings and prioritized next steps.",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
+    "contentHash": "137a1420a2fe7792f532fb720da74d2dcd7686cc52337bb99275942fef0b7552",
+    "contentEditedAt": "2026-10-22T03:05:00.000Z",
+    "refreshedAt": "2026-10-22T03:31:56.813Z"
+  },
+  {
     "slug": "built-to-fit-software",
     "title": "Built-to-Fit Software",
     "intro": "Software built around your actual workflow — not the average contractor's — so your team stops bending process to fit a platform that was never designed for your jobs.",
@@ -15,12 +25,5 @@
     "intro": "For Homeowners building a custom home, major renovation, or owner-builder project — spending serious money with no independent party reading the paperwork on their behalf.\n\nYou stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of y",
     "date": "2026-10-21",
     "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d"
-  },
-  {
-    "slug": "owner-side-contract-review",
-    "title": "Owner-Side Contract Review",
-    "intro": "For Homeowners holding a contract, bid package, pay application, or change order they don't fully trust.\n\nBefore you sign or approve another dollar, you'll know exactly what the documents say, what's missing, and what to push back on.",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567"
   }
 ]
