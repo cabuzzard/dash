@@ -5493,11 +5493,12 @@ async function bulkDeleteAssets() {
 // the save step is identical either way.
 async function generateBackgroundForKind(assetId, isOffer, kind) {
   let r;
-  if (kind === 'blog-thumbnail') r = isOffer ? await w('generateOfferImage', { assetId, kind: 'blog-thumbnail', codexDesign: true }) : await w('generateBlogPostThumbnail', { assetId, codexDesign: true });
-  else if (kind === 'ig-background') r = await w('generateOfferImage', { assetId, kind: 'ig-background', codexDesign: true });
-  else if (kind === 'post-image') r = await w('generateSocialBackgroundForAsset', { assetId, codexDesign: true });
+  if (kind === 'blog-thumbnail') r = isOffer ? await w('generateOfferImage', { assetId, kind: 'blog-thumbnail', codexDesign: true, save: true }) : await w('generateBlogPostThumbnail', { assetId, codexDesign: true, save: true });
+  else if (kind === 'ig-background') r = await w('generateOfferImage', { assetId, kind: 'ig-background', codexDesign: true, save: true });
+  else if (kind === 'post-image') r = await w('generateSocialBackgroundForAsset', { assetId, codexDesign: true, save: true });
   else throw new Error('Unknown kind: ' + kind);
   if (!r || !r.imageUrl) throw new Error((r && r.error) || 'No image returned');
+  if (r.saved && r.url) return r.url;   // the worker rendered AND saved it (save:true)
   const s = await w('saveOfferImage', { assetId, kind, imageUrl: r.imageUrl, prompt: r.prompt, background: true });
   return s.url;
 }
@@ -8243,14 +8244,15 @@ function _offerImgShow(kind, url, prompt) {
   }
   document.getElementById(c.regen).style.display = _offerImgPrompt[kind] ? '' : 'none';
 }
-async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl) {
+async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl, savedUrl) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Saving to Notion…';
   try {
     // background:true — this path is always a FRESH wordless render (never
     // a text-composite save, those call saveOfferImage directly), so it
     // also stamps the "* Source" property, giving "Add title text" a clean
     // plate to composite onto later instead of the just-generated value.
-    const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt, background: true });
+    // savedUrl = the worker already rendered AND saved it (save:true) — survives the page closing mid-render
+    const s = savedUrl ? { url: savedUrl } : await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt, background: true });
     _offerImgShow(kind, s.url, prompt);
     if (kind === 'blog-thumbnail') {
       document.getElementById('pubThumbnail').value = s.url;
@@ -8299,10 +8301,10 @@ async function genOfferImage(kind, codexDesign = true) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateOfferImage', { assetId: myAsset, kind, codexDesign: !!codexDesign });
+    const r = await w('generateOfferImage', { assetId: myAsset, kind, codexDesign: !!codexDesign, save: true });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow(kind, null, r.prompt);
-    await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
+    await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl, r.saved ? r.url : '');
   } catch (e) {
     genBtn.disabled = false; genBtn.textContent = '✨ Generate';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
@@ -8355,11 +8357,11 @@ async function genBlogThumbnail(action, codexDesign = true) {
     // every other image kind here uses. Skipping this step is the bug to
     // watch for: the field would show a url that 404s once xAI's temp CDN
     // link expires, and nothing would actually be saved to Notion.
-    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset, codexDesign: !!codexDesign });
+    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset, codexDesign: !!codexDesign, save: true });
     if (r.thumbText && PUB_ASSET_CACHE[myAsset] && !PUB_ASSET_CACHE[myAsset].thumbnailText) PUB_ASSET_CACHE[myAsset].thumbnailText = r.thumbText;
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow('blog-thumbnail', null, r.prompt);
-    await _offerImgFinish('blog-thumbnail', myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
+    await _offerImgFinish('blog-thumbnail', myAsset, r.imageUrl, r.prompt, genBtn, statusEl, r.saved ? r.url : '');
   } catch (e) {
     genBtn.disabled = false; genBtn.textContent = '✨ Retry';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
@@ -8621,10 +8623,10 @@ async function genSinglePostImage(codexDesign = true) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset, codexDesign: !!codexDesign });
+    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset, codexDesign: !!codexDesign, save: true });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     statusEl.textContent = 'Saving to Notion…';
-    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl, background: true });
+    const s = r.saved && r.url ? { url: r.url } : await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl, background: true });
     document.getElementById('pubPostImage').value = s.url;
     document.getElementById('pubPostImageSource').value = s.url;
     const ppImg = document.getElementById('pubPostImagePreview');

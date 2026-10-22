@@ -1072,6 +1072,9 @@ function hubNewsNextAt(steady) {
   }
   return Math.round(t);
 }
+// Image generators that can render + save in one request (body.save === true) → the saveOfferImage kind they fill
+// ("" = the caller's own body.kind, for generateOfferImage's ig-background / blog-thumbnail).
+const GEN_SAVE_KIND = { generateOfferImage: "", generateBlogPostThumbnail: "blog-thumbnail", generateYouTubeThumbnail: "blog-thumbnail", generateSocialBackgroundForAsset: "post-image" };
 async function selfAction(env, action, extra) {
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -35013,6 +35016,18 @@ Rules:
       // writeImageSpec turns it into the spec; a second Claude call writes
       // the Grok prompt for THIS offer + kind, obeying the spec. Synchronous
       // (xAI images return the URL directly) → { imageUrl, sync:true }.
+      // save:true on an image generator = render AND persist in this one request (render → saveOfferImage, both
+      // server-side), so the image is kept even if the page that asked for it is closed mid-render. Without it the
+      // page made the save call itself, after a 30-60 s render, and leaving the page lost the render.
+      if (body.save === true && !body.__genSave && GEN_SAVE_KIND[body.action] !== undefined) {
+        const { token: _t, save: _s, ...rest } = body;
+        const r = await selfAction(env, body.action, { ...rest, __genSave: true });
+        if (!r || !r.imageUrl || r.promptOnly) return json(r || { error: "No response from the generator" });
+        const kind = GEN_SAVE_KIND[body.action] || body.kind;
+        const s = await selfAction(env, "saveOfferImage", { assetId: body.assetId, kind, imageUrl: r.imageUrl, prompt: r.prompt, background: true });
+        if (!s || !s.url) return json({ ...r, saved: false, saveError: (s && s.error) || "save failed" });
+        return json({ ...r, saved: true, url: s.url, kind });
+      }
       if (body.action === "generateOfferImage") {
         const { assetId, kind } = body;
         if (!assetId || !["ig-background", "blog-thumbnail"].includes(kind)) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
