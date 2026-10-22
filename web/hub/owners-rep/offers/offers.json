@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
+    "slug": "owner-side-contract-review",
+    "name": "Construction Project Health Check—Independent Review",
+    "promise": "For homeowners mid-build who sense something is wrong. Get an independent review of your contracts, pay applications, change orders, and schedule — with written findings and a prioritized action list.",
+    "url": "../blog/owner-side-contract-review/",
+    "contentHash": "48d9384b1875e29a20e39e3e8104fdd36c2ee5426eea86f2a709413a751f7bc9",
+    "contentEditedAt": "2026-10-22T13:56:00.000Z",
+    "refreshedAt": "2026-10-22T14:03:07.640Z"
+  },
+  {
     "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
     "slug": "on-your-side-ongoing-build-coordination",
     "name": "Clear, Honest, Independent — Owner's Representative & Project Coordination",
@@ -18,15 +28,5 @@
     "contentHash": "b7edd9a3a8587418208f942befc19c992a933c9f39a41d672266861de072db4c",
     "contentEditedAt": "2026-10-22T13:55:00.000Z",
     "refreshedAt": "2026-10-22T14:02:51.875Z"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
-    "slug": "owner-side-contract-review",
-    "name": "Construction Project Health Check—Independent Review",
-    "promise": "For homeowners mid-build who sense something is wrong. Get an independent review of your contracts, pay applications, change orders, and schedule — with written findings and a prioritized action list.",
-    "url": "../blog/owner-side-contract-review/",
-    "contentHash": "48d9384b1875e29a20e39e3e8104fdd36c2ee5426eea86f2a709413a751f7bc9",
-    "contentEditedAt": "2026-10-22T13:14:00.000Z",
-    "refreshedAt": "2026-10-22T13:14:15.835Z"
   }
 ]
