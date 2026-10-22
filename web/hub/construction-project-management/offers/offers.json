@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
+    "slug": "project-coordination-retainer",
+    "name": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
+    "promise": "For GCs and specialty contractors running 3–15 active jobs with no in-house PM. Every job gets current schedules, processed paperwork, and a coordinator watching the gaps — so you stop being the bottleneck.",
+    "url": "../blog/project-coordination-retainer/",
+    "contentHash": "10a41dad94a216e29d3cc8f16af7d2d307828701230877a877c7064b8b9154dd",
+    "contentEditedAt": "2026-10-22T22:10:00.000Z",
+    "refreshedAt": "2026-10-22T22:10:39.265Z"
+  },
+  {
     "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
     "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
     "name": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
@@ -18,15 +28,5 @@
     "contentHash": "f7cc18af3f2e51dda21938519feeaf5eaceb90f6f2059fb82f1391fc11db647d",
     "contentEditedAt": "2026-10-22T22:02:00.000Z",
     "refreshedAt": "2026-10-22T22:02:43.371Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
-    "slug": "project-coordination-retainer",
-    "name": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
-    "promise": "For GCs and specialty contractors running 3–15 active jobs with no in-house PM. Every job gets current schedules, processed paperwork, and a coordinator watching the gaps — so you stop being the bottleneck.",
-    "url": "../blog/project-coordination-retainer/",
-    "contentHash": "544b754f3c46f1a123f1700b28d5bd248de004b86bcd905ded85e6cb338e4227",
-    "contentEditedAt": "2026-10-22T21:44:00.000Z",
-    "refreshedAt": "2026-10-22T21:44:12.327Z"
   }
 ]
