@@ -16,13 +16,14 @@ test('actual save handler gates graph and methods, permits other tables, and rea
  const start=src.indexOf('      if (body.action === "saveInfoFlowTable")'),end=src.indexOf('      if (body.action === "getGoverningFlow")',start);
  vm.runInContext('let GOVERNING_FLOW_CACHE=null;async function save(body){'+src.slice(start,end)+'}',ctx);
  const table={columns:[{id:'c',name:'Name'}],rows:[{id:'r',cells:{c:'Existing'}}]};
- for(const name of ['informationflowgraph','currentmethods']){
+ for(const name of ['informationflowgraph']){
   map.set('infoflow:table:'+name,JSON.stringify(table));const before=map.get('infoflow:table:'+name);
   const refused=await ctx.save({action:'saveInfoFlowTable',name,table});assert.equal(refused.status,403);assert.equal(refused.data.reason,'governance_locked');assert.equal(map.get('infoflow:table:'+name),before);
   const unlock=await ctx.governanceUnlock(env,code);assert.equal((await ctx.save({action:'saveInfoFlowTable',name,table,governanceUnlock:unlock.unlockToken})).status,200);
   assert.equal(JSON.parse(map.get('infoflow:table:'+name)).rows[0].cells.c,'Existing');
  }
  assert.equal((await ctx.save({action:'saveInfoFlowTable',name:'test-normal',table})).status,200);
- assert.equal(JSON.parse(map.get('governance:attempts')).length,2);
+ assert.equal((await ctx.save({action:'saveInfoFlowTable',name:'currentmethods',table})).status,200);   // the worksheet is unlocked permanently
+ assert.equal(JSON.parse(map.get('governance:attempts')).length,1);
 });
 test('browser control never persists unlock token; shared call attaches it and handles refusals',()=>{const ui=fs.readFileSync('shared/governance.js','utf8'),html=fs.readFileSync('index.html','utf8');assert.doesNotMatch(ui,/localStorage|sessionStorage/);new vm.Script(ui);assert.match(html,/window\.Governance\?\.attach\(payload\)/);assert.match(ui,/type="password"/);});

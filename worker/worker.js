@@ -2439,7 +2439,9 @@ function unpackInfoFlow(t) {
 }
 
 // Governance unlocks are purpose-bound and never accepted as ordinary dashboard sessions.
-const GOVERNANCE_TABLES = new Set(['infoflow:table:informationflowgraph', 'infoflow:table:currentmethods']);
+// Only the governing graph is code-locked. Current Methods (the method → asset worksheet) is operator-unlocked for good
+// (2026-10-22: "unlock the worksheet permanently" — Claude maintains it).
+const GOVERNANCE_TABLES = new Set(['infoflow:table:informationflowgraph']);
 const GOVERNANCE_TTL = 15 * 60 * 1000;
 let governanceLogQueue = Promise.resolve();
 async function governanceHash(value) {
