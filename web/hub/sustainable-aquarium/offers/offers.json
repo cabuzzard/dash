@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
+    "slug": "tank-diagnosis",
+    "name": "Start Your Natural Aquarium",
+    "promise": "For freshwater hobbyists who want a soil-based planted tank that runs itself. Get a custom substrate, plant, and stocking plan built for your specific setup — from a practitioner running the method on live tanks.",
+    "url": "../blog/tank-diagnosis/",
+    "contentHash": "2cb8c4f0e49f3687324c61ed1bacbc6c876f6dc24256e1ed04a4b206f8adfd14",
+    "contentEditedAt": "2026-10-22T22:38:00.000Z",
+    "refreshedAt": "2026-10-22T22:38:19.093Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
     "slug": "biogenerative-installation-feasibility-design",
     "name": "Know If Your Living Water System Is Buildable Before You Break Ground",
@@ -18,15 +28,5 @@
     "contentHash": "7a495480c24dbf6d38991d437e93abb805d6c24ecd13eb8e931c756bf3b107f8",
     "contentEditedAt": "2026-10-22T22:31:00.000Z",
     "refreshedAt": "2026-10-22T22:31:23.551Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
-    "slug": "tank-diagnosis",
-    "name": "Start Your Natural Aquarium",
-    "promise": "For freshwater hobbyists who want a soil-based planted tank that runs itself. Get a custom substrate, plant, and stocking plan built for your specific setup — from a practitioner running the method on live tanks.",
-    "url": "../blog/tank-diagnosis/",
-    "contentHash": "5ce38c51a68d3cfa3b2b31a2cd3769c5a622bf17d51d144fa2f0dabe89c8cd29",
-    "contentEditedAt": "2026-10-22T16:35:00.000Z",
-    "refreshedAt": "2026-10-22T16:35:15.907Z"
   }
 ]
