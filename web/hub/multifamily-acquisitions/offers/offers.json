@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81ed9a98cfaa03031b3b",
+    "slug": "premium-newsletter",
+    "name": "Premium Newsletter",
+    "promise": "For limited-capital investors hunting off-market and below-market multifamily deals. Every week: what shifted, where the real inventory is, and exactly what to do next.",
+    "url": "../blog/premium-newsletter/",
+    "contentHash": "17bf48ce76155a8d97564ac5c5121d8bbcde4fa122c1e08564c1a1b4b13eccd5",
+    "contentEditedAt": "2026-10-22T13:55:00.000Z",
+    "refreshedAt": "2026-10-22T14:02:44.720Z"
+  },
+  {
     "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
     "slug": "deal-intelligence",
     "name": "Multifamily Acquisition Analysis — Underwriting & Due Diligence Support for Investors",
@@ -18,15 +28,5 @@
     "contentHash": "822ce8567c93ff6c44aa407f66018d933a35543dde58de17ecf38e7437193c12",
     "contentEditedAt": "2026-10-22T13:55:00.000Z",
     "refreshedAt": "2026-10-22T14:02:30.488Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81ed9a98cfaa03031b3b",
-    "slug": "premium-newsletter",
-    "name": "Premium Newsletter",
-    "promise": "For limited-capital investors hunting off-market and below-market multifamily deals. Every week: what shifted, where the real inventory is, and exactly what to do next.",
-    "url": "../blog/premium-newsletter/",
-    "contentHash": "17bf48ce76155a8d97564ac5c5121d8bbcde4fa122c1e08564c1a1b4b13eccd5",
-    "contentEditedAt": "2026-10-22T13:25:00.000Z",
-    "refreshedAt": "2026-10-22T13:25:53.317Z"
   }
 ]
