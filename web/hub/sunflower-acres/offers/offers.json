@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
+    "slug": "garden-fund",
+    "name": "Sunflower Acres Accessible Garden Fund — Donations & Sponsorships",
+    "promise": "For donors, local businesses, and community organizations who want their contribution to build something real. Every project is scoped, costed, and tracked before a dollar is accepted.",
+    "url": "../blog/garden-fund/",
+    "contentHash": "dada4c9c1657d562675300541dd395d00a3419811a5dff4c8a076edf79134e23",
+    "contentEditedAt": "2026-10-22T16:24:00.000Z",
+    "refreshedAt": "2026-10-22T16:24:11.948Z"
+  },
+  {
     "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
     "slug": "garden-shop",
     "name": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
@@ -18,15 +28,5 @@
     "contentHash": "eb51c6a299f1008f8202b4b43e1ed006a89eabfdc3dee3af23faa22f885421b4",
     "contentEditedAt": "2026-10-22T16:23:00.000Z",
     "refreshedAt": "2026-10-22T16:23:13.766Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
-    "slug": "garden-fund",
-    "name": "Sunflower Acres Accessible Garden Fund — Donations & Sponsorships",
-    "promise": "For donors, local businesses, and community organizations who want their contribution to build something real. Every project is scoped, costed, and tracked before a dollar is accepted.",
-    "url": "../blog/garden-fund/",
-    "contentHash": "10a12fd84f7f7951dda95e552d1e878734eb04f3c5f55917baedfe30c9d01c01",
-    "contentEditedAt": "2026-10-22T15:29:00.000Z",
-    "refreshedAt": "2026-10-22T15:29:05.427Z"
   }
 ]
