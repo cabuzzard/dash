@@ -1,5 +1,15 @@
 [
   {
+    "slug": "owner-side-contract-review",
+    "title": "Construction Project Health Check—Independent Review",
+    "intro": "You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
+    "contentHash": "9beae68078cc114b8e053d7f8d02c843478bb778c402f59360056c20eca88447",
+    "contentEditedAt": "2026-10-22T15:37:00.000Z",
+    "refreshedAt": "2026-10-22T15:37:26.037Z"
+  },
+  {
     "slug": "on-your-side-ongoing-build-coordination",
     "title": "Clear, Honest, Independent — Owner's Representative & Project Coordination",
     "intro": "Your architect manages design. Your contractor manages the build. Neither one is hired to protect your budget, question a pay application, or tell you a change order doesn't hold up. That gap — between what your design team covers and what your contractor is accountable for — is where money moves, s",
@@ -18,15 +28,5 @@
     "contentHash": "0216469e69243703a60836b5e9f476808b2b317084982e7aba4bc1a8870cc4be",
     "contentEditedAt": "2026-10-22T15:31:00.000Z",
     "refreshedAt": "2026-10-22T15:31:39.045Z"
-  },
-  {
-    "slug": "owner-side-contract-review",
-    "title": "Construction Project Health Check—Independent Review",
-    "intro": "You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
-    "contentHash": "48d9384b1875e29a20e39e3e8104fdd36c2ee5426eea86f2a709413a751f7bc9",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:03:07.640Z"
   }
 ]
