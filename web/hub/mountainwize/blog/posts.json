@@ -1,5 +1,15 @@
 [
   {
+    "slug": "soul-purpose-call",
+    "title": "Soul Purpose Call",
+    "intro": "You leave knowing exactly what's underneath the restlessness — not a symptom list, the specific internal mechanics driving it.",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb8116a5d5c5c4358c6a57",
+    "contentHash": "735c647145deb3437ac697336b638504e098877e3bbb4f87dccce1b8cfc5d18f",
+    "contentEditedAt": "2026-10-21T16:36:00.000Z",
+    "refreshedAt": "2026-10-22T03:35:01.180Z"
+  },
+  {
     "slug": "inner-edge",
     "title": "Inner Edge",
     "intro": "You become the master of your inner environment — a man whose inner state matches the quality of the life he has built, moving on decisions without waiting for certainty.",
@@ -38,12 +48,5 @@
     "contentHash": "9bbdf9caa442df2d7813e8616ea7f3a22f4878e9e768fcd7317857107281ebf7",
     "contentEditedAt": "2026-10-21T07:38:00.000Z",
     "refreshedAt": "2026-10-22T03:34:18.549Z"
-  },
-  {
-    "slug": "soul-purpose-call",
-    "title": "Soul Purpose Call",
-    "intro": "For High-achieving men over 40 who hit every target and still cannot name what they are actually building toward.\n\nYou leave knowing exactly what's underneath the restlessness — not a symptom list, the specific internal mechanics driving it.",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb8116a5d5c5c4358c6a57"
   }
 ]
