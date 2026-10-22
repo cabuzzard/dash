@@ -2,6 +2,8 @@
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
 import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
+import { AsyncLocalStorage } from 'node:async_hooks';
+const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
 let hierarchyEnv;
@@ -97,6 +99,10 @@ async function hierarchyFetch(url, options={}) {
       const kind=props['Asset Status'] ? 'asset' : db===hierarchyId(CONTENT_STRATEGY_DB) ? 'title' : '';
       if(kind) await requireHierarchyPlacement(hierarchyEnv,{...current,properties:{...current.properties,...props}},kind);
     }
+  }
+  const scope = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore();
+  if (scope && !scope.suppressed && /^https:\/\/api\.notion\.com\/v1\/(pages|blocks)\//.test(address) && ['PATCH','DELETE'].includes(method)) {
+    return hubTrackNotionWrite(scope, address, options);
   }
   return globalThis.fetch(url,options);
 }
@@ -1755,9 +1761,10 @@ async function topicalSaveWriting(env, input, text, extraProps = {}) {
     const r = await fetch(`https://api.notion.com/v1/blocks/${ivDash(aid)}/children`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ children: blocks.slice(i, i + 90) }) });
     if (!r.ok) { const d = await r.json(); throw new Error(d.message || 'Could not save the writing'); }
   }
-  const properties = { Body: { rich_text: ivRt(text) }, 'Asset Status': { select: { name: 'Review' } },
+  const keepPublished = state.page.properties['Asset Status']?.select?.name === 'Published';
+  const properties = { Body: { rich_text: ivRt(text) }, 'Asset Status': { select: { name: keepPublished ? 'Published' : 'Review' } },
     'Interview Sync': { select: { name: 'In Sync' } }, ...extraProps };
-  if (skipInterview || state.page.properties[TOPICAL_REWRITE_PROP]) properties[TOPICAL_REWRITE_PROP] = { checkbox: skipInterview };
+  if (skipInterview || state.page.properties[TOPICAL_REWRITE_PROP]) properties[TOPICAL_REWRITE_PROP] = { checkbox: skipInterview || (keepPublished && !!state.page.properties[TOPICAL_REWRITE_PROP]?.checkbox) };
   const r = await fetch(`https://api.notion.com/v1/pages/${ivDash(aid)}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ properties }) });
   const d = await r.json(); if (!r.ok || !d.id) throw new Error(d.message || 'Could not save writing and rewrite state');
   // Replace prior prose only after the new writing AND marker have saved. Preserve child pages/databases/attachments.
@@ -1766,7 +1773,7 @@ async function topicalSaveWriting(env, input, text, extraProps = {}) {
     const del = await fetch(`https://api.notion.com/v1/blocks/${block.id}`, { method: 'DELETE', headers: hdr });
     if (!del.ok) cleanupWarning = 'Writing saved; some previous body blocks need cleanup.';
   }
-  return { ok: true, words: text.split(/\s+/).length, status: 'Review', writtenWithoutInterview: skipInterview, ...(cleanupWarning ? { warning: cleanupWarning } : {}) };
+  return { ok: true, words: text.split(/\s+/).length, status: keepPublished ? 'Published' : 'Review', writtenWithoutInterview: !!properties[TOPICAL_REWRITE_PROP]?.checkbox, ...(cleanupWarning ? { warning: cleanupWarning } : {}) };
 }
 async function writeTopicalPost(env, assetId, options = {}) {
   const input = await topicalWriteInputs(env, assetId, options);
@@ -4147,6 +4154,7 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
   const fromB64Text = b64 => new TextDecoder().decode(Uint8Array.from(atob(String(b64).replace(/\n/g, '')), c => c.charCodeAt(0)));
   const getFile = async path => {
+    if (env.__hubPublication) return env.__hubPublication.getFile(path);
     const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
     if(r.status===404)return {sha:null,text:null};
     if(!r.ok)throw new Error("Could not read hub file: "+path+" ("+r.status+")");
@@ -4154,6 +4162,7 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
     return { sha: j?.sha || null, text: j?.content ? fromB64Text(j.content) : null };
   };
   const putFile = async (path, text, message) => {
+    if (env.__hubPublication) return env.__hubPublication.putFile(path, text);
     const { sha } = await getFile(path);
     const putBody = { message, content: toB64Text(text), branch: BRANCH };
     if (sha) putBody.sha = sha;
@@ -4215,6 +4224,7 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
     s = { ...EDITORIAL, ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
   }
   const deleteFile = async path => {
+    if (env.__hubPublication) return env.__hubPublication.deleteFile(path);
     const {sha}=await getFile(path); if(!sha)return;
     const gap=1100-(Date.now()-HUB_PUT_LAST);if(gap>0)await new Promise(resolve=>setTimeout(resolve,gap));
     const response=await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`,{method:'DELETE',headers:{...gh,'Content-Type':'application/json'},body:JSON.stringify({message:'Prune unpublished hub page: '+path,sha,branch:BRANCH})});
@@ -4241,6 +4251,9 @@ async function salesProofFor(productId) {
 }
 
 async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId }) {
+  const prior = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore()?.writes.get(hubAssetId(assetId))?.before;
+  const priorUrl = prior?.properties?.['Content URL']?.url || prior?.properties?.['Site URL']?.url;
+  if (!env.__hubPublication && !env.__hubExplicitPublish && prior?.properties?.['Asset Status']?.select?.name === 'Published' && priorUrl) return { published: true, liveUrl: priorUrl, deferred: 'request republication boundary' };
   if(assetId){const page=await ivPage(assetId);await requireHierarchyPlacement(env,page);await requireAssetWriting(page);}
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub });
   if (t.error) return { published: false, error: t.error };
@@ -4276,7 +4289,7 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
   let slug = mine ? mine.slug : base0;
   if (!mine && aid && posts.some(p => p && p.slug === base0 && p.assetId && p.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
   posts = posts.filter(p => p && p.slug !== slug && !(aid && p.assetId === aid));
-  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}) });
+  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}), ...(env.__hubPublication?.stamp || {}) });
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
@@ -4406,7 +4419,7 @@ async function publishOfferAssetBlog(env, hdr, page) {
   if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) return { skipped: 'no matching content hub' };
   const aid = page.id.replace(/-/g, '');
   const text = value => (value || []).map(t => t.plain_text ?? t.text?.content ?? '').join('').trim();
-  const parts = offerBlogParts(p, await offerBlogBlocks(hdr, ivDash(aid)));
+  const parts = offerBlogParts(p, env.__hubPublication?.source?.assetId === aid ? env.__hubPublication.source.blocks : await offerBlogBlocks(hdr, ivDash(aid)));
   const result = await publishSeoPostToLiveSite({ env, hdr, dash: ivDash, campaignId, spec: null, assetId: aid,
     workingTitle: text(p['Asset Title']?.title), seoTitle: text(p['Platform Title']?.rich_text),
     ...parts, thumbnail: p.Thumbnail?.url || '', sub: 'blog' });
@@ -4522,7 +4535,7 @@ async function syncHubOfferIndex(env,hdr,page,site) {
   const aid=hubAssetId(page.id),next=list.filter(x=>hubAssetId(x.assetId)!==aid);
   if(hubSectionOf(p)==='offers'){
     const match=String(site.liveUrl||'').match(/\/blog\/([a-z0-9-]+)\/$/);if(!match)throw new Error('Missing published blog URL');
-    next.unshift({assetId:aid,slug:match[1],name:hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title),promise:hubRichText(p.Body?.rich_text),url:`../blog/${match[1]}/`});
+    next.unshift({assetId:aid,slug:match[1],name:hubRichText(p['Platform Title']?.rich_text)||hubRichText(p['Asset Title']?.title),promise:hubRichText(p.Body?.rich_text),url:`../blog/${match[1]}/`,...(env.__hubPublication?.stamp || {})});
   }
   return reconcileHubDir({env,hdr,dash:ivDash,campaignId:cid,sub:'offers',desiredEntries:next});
 }
@@ -4535,7 +4548,7 @@ async function publishHubAssetToLiveSite(env, hdr, page) {
   const hub = HUB_SITES.find(h=>hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id));
   if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) throw new Error('The Content Hub must match this asset’s campaign');
   if (sec === 'offers' && offerBlogAsset(p)) return publishOfferAssetBlog(env,hdr,page);
-  const parts = offerBlogParts(p,await offerBlogBlocks(hdr,page.id));
+  const parts = offerBlogParts(p,env.__hubPublication?.source?.assetId === hubAssetId(page.id) ? env.__hubPublication.source.blocks : await offerBlogBlocks(hdr,page.id));
   const result = await publishSeoPostToLiveSite({env,hdr,dash:ivDash,campaignId:hub.campaignId,assetId:hubAssetId(page.id),
     workingTitle:hubRichText(p['Asset Title']?.title),seoTitle:hubRichText(p['Platform Title']?.rich_text),thumbnail:p.Thumbnail?.url || '',...parts});
   if (!result.published || !result.liveUrl) throw new Error(result.error || 'Hub page was not published');
@@ -4618,6 +4631,8 @@ async function publishHubSectionSelection(env,assetId,section,campaignId) {
 }
 
 async function syncOfferAssetBlog(env, hdr, page) {
+  const prior = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore()?.writes.get(hubAssetId(page.id))?.before;
+  if (prior?.properties?.['Asset Status']?.select?.name === 'Published') return { deferred: 'request republication boundary' };
   const p = page.properties || {};
   if (!offerBlogAsset(p)) return { skipped: 'not an offer blog asset' };
   if (p['Asset Status']?.select?.name === 'Published' && hubSectionOf(p) === 'offers') return publishOfferAssetBlog(env, hdr, page);
@@ -4648,6 +4663,271 @@ async function syncOfferAssetBlog(env, hdr, page) {
 // thumbnail save itself.
 // Offer counterpart of republishBlogThumbnailToLiveSite: rebuild ONE live offer page from its asset (card + body + Thumbnail)
 // Explicit offer rewrite: never silently create a replacement record for an existing card.
+// Part 11: request-local write observation, atomic republication, and Notion-edit backstop.
+async function hubWithAssetWrites(env, operation) {
+  const scope = { env, writes: new Map(), suppressed: false, results: [] };
+  return hubWriteScope.run(scope, async () => {
+    let response;
+    try {
+      response = await operation();
+      if (scope.writes.size && /application\/json/.test(response?.headers.get('Content-Type') || '')) {
+        const result = await response.clone().json();
+        if (response.status >= 400 || result.error) scope.failed = result.error || 'Source save failed with HTTP ' + response.status;
+      }
+    } catch (error) { scope.failed = error.message; throw error; }
+    finally { await hubFlushAssetWrites(scope); }
+    if (scope.results.length && /application\/json/.test(response?.headers.get('Content-Type') || '')) {
+      const data = await response.json();
+      return new Response(JSON.stringify({ ...data, hubRepublishing: scope.results }), { status: response.status, headers: response.headers });
+    }
+    return response;
+  });
+}
+async function hubNotionAssetParent(id, headers) {
+  for (let depth = 0; id && depth < 12; depth++) {
+    let response = await globalThis.fetch('https://api.notion.com/v1/blocks/' + id, { headers });
+    if (!response.ok) return null;
+    const block = await response.json(), parent = block.parent || {};
+    if (parent.type === 'page_id') {
+      response = await globalThis.fetch('https://api.notion.com/v1/pages/' + parent.page_id, { headers });
+      if (!response.ok) return null;
+      const page = await response.json();
+      return hubAssetId(page.parent?.database_id) === hubAssetId(ASSETS_DB) ? page : null;
+    }
+    id = parent.block_id;
+  }
+  return null;
+}
+async function hubTrackNotionWrite(scope, address, options) {
+  const match = /\/v1\/(pages|blocks)\/([^/?]+)/.exec(address), isPage = match[1] === 'pages';
+  let before = null, payload;
+  try { payload = typeof options.body === 'string' ? JSON.parse(options.body) : {}; } catch (e) { payload = {}; }
+  const relevant = !isPage || payload.archived !== undefined || payload.in_trash !== undefined || Object.keys(payload.properties || {}).some(k =>
+    ['Body','Platform Title','Asset Title','Thumbnail','Hub Section','Content Hub','Asset Status','Interview Sync',TOPICAL_REWRITE_PROP,'Campaign','Product','Content Strategy'].includes(k));
+  if (!relevant) return globalThis.fetch(address, options);
+  // Capture prior placement for moves/unpublishes; failures are not permission to publish.
+  if (isPage) {
+    const response = await globalThis.fetch(address, { headers: options.headers });
+    if (response.ok) before = await response.json();
+    if (hubAssetId(before?.parent?.database_id) !== hubAssetId(ASSETS_DB)) before = null;
+  } else {
+    // Appending children uses the asset page ID; edits/deletes use an individual block ID.
+    const pageResponse = await globalThis.fetch('https://api.notion.com/v1/pages/' + match[2], { headers: options.headers });
+    const page = pageResponse.ok ? await pageResponse.json() : null;
+    before = hubAssetId(page?.parent?.database_id) === hubAssetId(ASSETS_DB) ? page : await hubNotionAssetParent(match[2], options.headers);
+  }
+  if (before && payload.properties?.Body && before.properties?.['Asset Status']?.select?.name === 'Published'
+      && /^(write|rewrite|generate|regenerate|refreshBlogAsset|refineAsset)/.test(scope.action || '')
+      && payload.properties['Asset Status']?.select?.name === 'Review') {
+    payload.properties['Asset Status'] = { select: { name: 'Published' } };
+    options = { ...options, body: JSON.stringify(payload) };
+  }
+  const response = await globalThis.fetch(address, options);
+  if (response.ok && before) {
+    const aid = hubAssetId(before.id);
+    if (!scope.writes.has(aid)) scope.writes.set(aid, { before, blockChanged: false });
+    if (!isPage) scope.writes.get(aid).blockChanged = true;
+  }
+  return response;
+}
+async function hubFlushAssetWrites(scope) {
+  if (!scope.writes.size) return;
+  scope.suppressed = true;
+  for (const [assetId, change] of scope.writes) {
+    try {
+      if (scope.failed) throw new Error('Source save did not complete: ' + scope.failed);
+      scope.results.push(await hubRefreshPlacedAsset(scope.env, assetId, { before: change.before, blockChanged: change.blockChanged, source: scope.action || 'worker-save' }));
+    }
+    catch (error) {
+      await hubHoldRepublication(scope.env, assetId, { source: scope.action || 'worker-save', before: change.before, campaignId:ivRid(change.before.properties||{},'Campaign'), title:hubRichText(change.before.properties?.['Asset Title']?.title) }, error);
+      scope.results.push({ assetId, held: true, reason: error.message });
+    }
+  }
+}
+async function hubContentHash(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+}
+async function hubPublicationTransaction(env, operation) {
+  const gh = async (path, body, method = 'POST') => {
+    const response = await fetch('https://api.github.com/repos/cabuzzard/dash/' + path, {
+      method: body === undefined ? 'GET' : method,
+      headers: { Authorization: 'Bearer ' + (env.GITHUB_TOKEN || '').trim(), Accept: 'application/vnd.github+json', 'User-Agent': 'dash-worker', 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    if (response.status === 404 && body === undefined) return null;
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Hub publication GitHub HTTP ' + response.status);
+    return data;
+  };
+  const ref = await gh('git/ref/heads/main');
+  if (!ref?.object?.sha) throw new Error('Cannot read hub publication base commit');
+  const commit = await gh('git/commits/' + ref.object.sha), files = new Map();
+  const tx = {
+    getFile: async path => {
+      if (files.has(path)) return { sha: 'staged', text: files.get(path) };
+      const file = await gh('contents/' + path + '?ref=' + ref.object.sha);
+      if (!file) return { sha: null, text: null };
+      if (!file.content) throw new Error('Hub file content unavailable: ' + path);
+      return { sha: file.sha, text: new TextDecoder().decode(Uint8Array.from(atob(file.content.replace(/\n/g, '')), c => c.charCodeAt(0))) };
+    },
+    putFile: async (path, text) => { files.set(path, text); },
+    deleteFile: async path => { if ((await tx.getFile(path)).sha) files.set(path, null); }
+  };
+  const result = await operation({ ...env, __hubPublication: tx });
+  if (files.size) {
+    const tree = await gh('git/trees', { base_tree: commit.tree.sha, tree: [...files].map(([path, content]) => ({ path, mode: '100644', type: 'blob', ...(content === null ? { sha: null } : { content }) })) });
+    const next = await gh('git/commits', { message: 'Refresh placed hub asset and publication stamps', tree: tree.sha, parents: [ref.object.sha] });
+    // A concurrent main update rejects this ref change. No partially updated files become live.
+    await gh('git/refs/heads/main', { sha: next.sha, force: false }, 'PATCH');
+  }
+  return result;
+}
+async function hubHoldRepublication(env, assetId, payload, error) {
+  const held = { assetId, at: new Date().toISOString(), rule: 'hub-republication', reason: error.message || String(error), payload };
+  await env.TRADES.put('hub:republish:held:' + assetId, JSON.stringify(held));
+  await flowHold(env, { action: 'hubRepublishAsset', rule: held.rule, reason: held.reason, payload: held });
+  return { assetId, held: true, reason: held.reason };
+}
+async function hubRepublicationHeld(env, campaignId) {
+  const out = []; let cursor;
+  do {
+    const page = await env.TRADES.list({ prefix: 'hub:republish:held:', ...(cursor ? { cursor } : {}) });
+    for (const key of page.keys) {
+      const entry = await env.TRADES.get(key.name, 'json');
+      if (entry && (!campaignId || hubAssetId(entry.payload?.campaignId) === hubAssetId(campaignId))) out.push(entry);
+    }
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+  return out;
+}
+async function hubRepublicationDigest(env, campaignId) {
+  const held = await hubRepublicationHeld(env, campaignId);
+  return held.length ? '\n\n## Hub republication held\n\n' + held.map(h => '- ' + (h.payload?.title || h.assetId) + ': ' + h.reason + ' (asset ' + h.assetId + ')').join('\n') : '';
+}
+async function hubRefreshPlacedAsset(env, assetId, options = {}) {
+  const aid = hubAssetId(assetId), key = 'hub:republish:asset:' + aid;
+  let page, payload = { source: options.source || 'sweep' };
+  try {
+    page = options.page || await ivPage(aid);
+    const p = page.properties || {}, cid = hubAssetId(ivRid(p, 'Campaign'));
+    const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === cid);
+    const previous = await env.TRADES.get(key, 'json'), sec = hubSectionOf(p);
+    payload = { ...payload, campaignId: cid, title: hubRichText(p['Platform Title']?.rich_text) || hubRichText(p['Asset Title']?.title), page };
+    const priorHub = HUB_SITES.find(h => h.slug === (options.hubSlug || previous?.hub)) || (options.before && HUB_SITES.find(h => hubAssetId(h.campaignId) === ivRid(options.before.properties||{},'Campaign')));
+    if (priorHub && priorHub.slug !== hub?.slug) {
+      const oldPage = { ...page, properties: { ...p, Campaign: {relation:[{id:priorHub.campaignId}]} } };
+      await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), oldPage));
+      await env.TRADES.put(key, JSON.stringify({...previous,wasRouted:false,suspended:false,at:Date.now()}));
+      return {assetId:aid,pruned:true,reason:'asset moved away from this hub'};
+    }
+    const manifest = options.manifest || (hub ? await hubBlogManifest(env, hub) : []);
+    const indexed = manifest.find(m => hubAssetId(m.assetId) === aid) || manifest.find(m => !m.assetId && offerBlogPath(p, hub?.slug) === './blog/' + m.slug + '/');
+    const route = hubRoutedState({ status:p['Asset Status']?.select?.name, hubSectionKey:sec, contentHub:p['Content Hub']?.select?.name,
+      deploymentStatus:p['Deployment Status']?.select?.name, liveUrl:p['Content URL']?.url||p['Site URL']?.url||'' }, hub?.slug || '', indexed ? {section:sec,hubSlug:hub?.slug,url:'./blog/'+indexed.slug+'/'} : null);
+    const wasRouted = !!indexed || route.hubLive || (!!previous?.wasRouted && previous.hub === hub?.slug);
+    const explicitOff = page.archived || page.in_trash || p['Asset Status']?.select?.name !== 'Published' || !sec || sec === 'email' || !hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug);
+    if (explicitOff) {
+      if (wasRouted || options.before) {
+        await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), options.before || page));
+        await env.TRADES.put(key, JSON.stringify({ ...previous, wasRouted: false, suspended: false, at: Date.now() }));
+      }
+      return { assetId: aid, skipped: 'not placed and Published' };
+    }
+    // Never turn an unrelated Published record into a placed asset. A suspended route is an explicit restoration ticket.
+    if (!wasRouted) return { assetId: aid, skipped: 'not routed' };
+    const placement = await hierarchyPlacement(env, page, 'asset');
+    if (placement.applies && !placement.placed) {
+      await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), page));
+      await env.TRADES.put(key, JSON.stringify({...previous,hub:hub.slug,wasRouted:true,suspended:true,at:Date.now()}));
+      return {assetId:aid,pruned:true,reason:'not in Keywords hierarchy'};
+    }
+    const blocks = await offerBlogBlocks(ivHdr(), page.id);
+    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })) };
+    const contentHash = await hubContentHash(content), bodyHash = await hubContentHash(content.body), blocksHash = await hubContentHash(content.blocks);
+    const hash = await hubContentHash({ content, title: payload.title, thumbnail: p.Thumbnail?.url || '', section: sec, hub: hub.slug });
+    payload.blocks = blocks; payload.hash = hash;
+    const [tierOf, interviews] = await Promise.all([
+      ivTierFn(env), ivList({ property: 'Campaign', relation: { contains: ivDash(cid) } })
+    ]);
+    const type = p['Asset Type']?.select?.name || '', titleId = ivRid(p, 'Content Strategy');
+    const methodId=ivRid(p,'Method'), methodName=methodId?hubRichText((await ivPage(methodId)).properties?.Name?.title):'';
+    const asset = { id: aid, titleId, rawAssetType: type, ivSync: p['Interview Sync']?.select?.name || '', ivTier: IV_TIER_LABEL[tierOf(methodName||type)], writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox };
+    const own = interviews.filter(iv => iv.scope === 'Asset' && ((iv.assetIds || []).length ? iv.assetIds.some(id => hubAssetId(id) === aid) : hubAssetId(iv.titleId) === titleId && iv.forType === type));
+    const answered = own.length && own.every(iv => iv.status === 'Finished' && (iv.answers || []).some(a => String(a).trim()));
+    const beforeContent = options.before && hubRichText(options.before.properties?.Body?.rich_text);
+    const rewritten = previous?.contentHash ? previous.contentHash !== contentHash : options.before && (beforeContent !== content.body || options.blockChanged);
+    const afterInterview = own.every(iv => !iv.finishedAt || Date.parse(page.last_edited_time || '') >= Date.parse(iv.finishedAt));
+    const clearRewrite = !!asset.writtenWithoutInterview && !!answered && !!rewritten && afterInterview;
+    const sync = hubAssetSyncFields(clearRewrite ? { ...asset, ivSync: 'In Sync', writtenWithoutInterview: false } : asset, interviews);
+    if ((placement.applies && !placement.placed) || !sync.assetSynced) {
+      await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), page));
+      await env.TRADES.put(key, JSON.stringify({ ...previous, hub: hub.slug, wasRouted: true, suspended: true, contentHash: previous?.contentHash || contentHash, bodyHash: previous?.bodyHash || bodyHash, at: Date.now() }));
+      return { assetId: aid, pruned: true, reason: placement.applies && !placement.placed ? 'not in Keywords hierarchy' : 'out of sync' };
+    }
+    if (!previous?.suspended && (previous?.hash || indexed?.contentHash) === hash) return { assetId: aid, skipped: 'current' };
+    if (!content.body) throw new Error('Body is empty; keeping the last good hub page');
+    if (!payload.title) throw new Error('Public title is empty; keeping the last good hub page');
+    const mapping = await writingMethod(env, page);
+    if (!mapping.reason) {
+      const violations = validateWritingContract(mapping.contract, writingFieldValues(p));
+      if (violations.length) throw new Error('Writing contract: ' + violations.join('; '));
+    }
+    // Body edits replace legacy prose blocks. A block-only rewrite still uses the full existing page renderer.
+    const bodyChanged = options.before ? beforeContent !== content.body : previous ? previous.bodyHash !== bodyHash : !!indexed?.intro && !content.body.startsWith(indexed.intro) && !indexed.intro.startsWith(content.body);
+    const blocksChanged = options.blockChanged || (previous?.blocksHash && previous.blocksHash !== blocksHash);
+    const bodySource = bodyChanged || (!!previous?.bodySource && !blocksChanged);
+    const stamp = { contentHash: hash, contentEditedAt: page.last_edited_time || null, refreshedAt: new Date().toISOString() };
+    const result = await hubPublicationTransaction(env, async txEnv => {
+      txEnv.__hubPublication.stamp = stamp;
+      txEnv.__hubPublication.source = { assetId: aid, blocks: bodySource ? [] : blocks };
+      const site = await publishHubAssetToLiveSite(txEnv, ivHdr(), page);
+      if (!site.published || !site.liveUrl) throw new Error(site.error || 'Hub renderer did not publish');
+      const index = await syncHubOfferIndex(txEnv, ivHdr(), page, site);
+      if (index?.error) throw new Error(index.error);
+      return site;
+    });
+    // Only after the atomic hub commit succeeds may rewrite debt be cleared and the source stamp advance.
+    if (clearRewrite) {
+      const response = await hubNotionFetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: { [TOPICAL_REWRITE_PROP]: { checkbox: false }, 'Interview Sync': { select: { name: 'In Sync' } } } }) });
+      if (!response.ok) throw new Error('Hub refreshed, but interview rewrite flag could not be cleared');
+    }
+    await env.TRADES.put(key, JSON.stringify({ ...stamp, hash, contentHash, bodyHash, blocksHash, bodySource, hub: hub.slug, wasRouted: true, suspended: false, liveUrl: result.liveUrl }));
+    await env.TRADES.delete('hub:republish:held:' + aid);
+    return { assetId: aid, republished: true, liveUrl: result.liveUrl, clearedRewrite: clearRewrite };
+  } catch (error) { return hubHoldRepublication(env, aid, payload, error); }
+}
+async function hubRepublishSweep(env, campaignId) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || '').trim();
+  const targets = HUB_SITES.filter(h => !campaignId || hubAssetId(h.campaignId) === hubAssetId(campaignId)), results = [];
+  for (const hub of targets) {
+    // A failed source read aborts before any pruning. Include non-Published rows so explicit removals are discovered too.
+    const [rows, manifest] = await Promise.all([notionQuery(ASSETS_DB, { filter: { property: 'Campaign', relation: { contains: ivDash(hub.campaignId) } } }), hubBlogManifest(env, hub)]);
+    const ids = new Set(rows.map(page => hubAssetId(page.id)));
+    for (const entry of manifest) if (entry.assetId && !ids.has(hubAssetId(entry.assetId))) rows.push(await ivPage(entry.assetId));
+    for (const page of rows) {
+      if (!manifest.some(m => hubAssetId(m.assetId) === hubAssetId(page.id)) && page.properties?.['Deployment Status']?.select?.name !== 'Deployed' && !await env.TRADES.get('hub:republish:asset:' + hubAssetId(page.id))) continue;
+      const result = env.SELF ? await selfAction(env, 'hubRepublishAsset', { assetId: hubAssetId(page.id), hubSlug:hub.slug, source: 'sweep' }) : await hubRefreshPlacedAsset(env, page.id, { page, manifest, hubSlug:hub.slug, source: 'sweep' });
+      results.push({ hub: hub.slug, ...result });
+    }
+  }
+  return { ok: !results.some(r => r.held || r.error), checked: results.length, results };
+}
+async function hubRepublishTick(env) {
+  if (await env.TRADES.get('hub:republish:sweep-lock')) return {busy:true};
+  await env.TRADES.put('hub:republish:sweep-lock','1',{expirationTtl:1800});
+  const results=[];
+  try {
+    await hubSitesMerge(env);
+    for (const hub of HUB_SITES) {
+      const result=await selfAction(env,'hubRepublishSweep',{campaignId:hub.campaignId});
+      results.push({hub:hub.slug,...result});
+    }
+    await env.TRADES.put('hub:republish:last-sweep',JSON.stringify({at:new Date().toISOString(),results:results.map(r=>({hub:r.hub,checked:r.checked,error:r.error,held:(r.results||[]).filter(x=>x.held).length}))}));
+    return {checked:results.reduce((n,r)=>n+(r.checked||0),0),hubs:results.length,failed:results.filter(r=>r.error||r.ok===false).map(r=>r.hub)};
+  } finally { await env.TRADES.delete('hub:republish:sweep-lock'); }
+}
+
 async function offerReuseTarget(hdr, id, expected) {
   const norm = x => String(x || '').replace(/-/g, '');
   const aid = norm(id); if (!/^[a-f0-9]{32}$/i.test(aid)) throw new Error('Invalid offer asset id');
@@ -4658,6 +4938,7 @@ async function offerReuseTarget(hdr, id, expected) {
   return aid;
 }
 async function republishOfferToLiveSite(env, hdr, assetId) {
+  if (typeof hubWriteScope !== 'undefined' && hubWriteScope.getStore()?.writes.has(hubAssetId(assetId))) return { deferred: 'request republication boundary' };
   const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
   try {
     const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
@@ -4692,6 +4973,7 @@ async function republishOfferToLiveSite(env, hdr, assetId) {
   } catch (e) { return { error: e.message }; }
 }
 async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
+  if (typeof hubWriteScope !== 'undefined' && hubWriteScope.getStore()?.writes.has(hubAssetId(assetId))) return { deferred: 'request republication boundary' };
   const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
   try {
     const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
@@ -13171,7 +13453,8 @@ async function adStep(env, cid, S, invoke) {
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
     const label = adPeriod().label;
     S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
-    await adSavePillar(env, S.assetId, w.digest);   // the issue itself, on the asset
+    S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
+    await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
     await digestItemsSave(env, S.assetId, w.sources).catch(e => console.error("digestItemsSave:", e.message));   // its findings, premium / free, for the Digest section
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
       "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
@@ -13467,6 +13750,9 @@ export default {
   // Child generation (generateTitleAssets + parentAssetId): for this one request the title's pillar reads come from the
   // parent asset (PILLAR_SOURCE), then every asset it created under the title gets "Parent Asset" = that parent.
   async fetch(request, env, ctx) {
+    return hubWithAssetWrites(env, () => this.fetchScoped(request, env, ctx));
+  },
+  async fetchScoped(request, env, ctx) {
     hierarchyEnv = env;
     let key = "", parent = "", started = 0;
     if (request.method === "POST" && /json/i.test(request.headers.get("content-type") || "") && +(request.headers.get("content-length") || 1e9) < 300000) {
@@ -13751,6 +14037,7 @@ export default {
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid JSON" }, 400); }
+    if (hubWriteScope.getStore()) hubWriteScope.getStore().action = body.action;
 
     // â"€â"€ auth  -  exchange PIN for a session token (public, no token required) â"€â"€
     if (body.action === "auth") {
@@ -14182,7 +14469,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$|^publishHubAsset$|^publishHubSectionAsset$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$|^backfillHubBlog$|^publishHubAsset$|^publishHubSectionAsset$|^hubRepublishSweep$|^hubRepublishAsset$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -18577,7 +18864,8 @@ ${JSON.stringify(products)}`;
         }
         const run = await env.TRADES.get("digest:auto:state:" + cid, "json"), queued = ((await env.TRADES.get("digest:manual", "json")) || []).includes(cid);
         return json({ ok: true, digests, run: run && !["done", "skip", "error"].includes(run.step) ? { step: run.step, startedAt: run.startedAt } : queued ? { step: "queued" } : null,
-          last: run && ["done", "skip", "error"].includes(run.step) ? { step: run.step, note: run.note || run.error || "", at: run.finishedAt || 0 } : null });
+          last: run && ["done", "skip", "error"].includes(run.step) ? { step: run.step, note: run.note || run.error || "", at: run.finishedAt || 0 } : null,
+          republicationHeld: await hubRepublicationHeld(env, cid) });
       }
       // digestRunNow {campaignId} — a hand run: the SAME research + write as the weekly cron (queued; the */30 cron and this call drive it)
       if (body.action === "digestRunNow") {
@@ -34159,7 +34447,7 @@ Return ONLY a JSON object with these exact keys:
         ]);
         const scanDiff = diffRaw ? JSON.parse(diffRaw) : null;
 
-        return json({ campaigns, diff: scanDiff, lastScanDate: lastScanDate || null });
+        return json({ campaigns, diff: scanDiff, lastScanDate: lastScanDate || null, hubRepublicationHeld: await hubRepublicationHeld(env) });
       }
 
       //Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: getExplodeQueue Î"Ã¶Ã‡Î"Ã¶Ã‡
@@ -39404,13 +39692,17 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           const hubHdr={"Authorization":`Bearer ${NOTION_TOKEN}`,"Notion-Version":NOTION_VERSION};
           if(hasHubSwitch){
             if(body.publishToHub){
-              hubSync=await publishHubAssetToLiveSite(env,hubHdr,result2);
+              const rewritingPlaced = hubBefore?.properties?.['Asset Status']?.select?.name === 'Published' && typeof hubWriteScope !== 'undefined' && hubWriteScope.getStore()?.writes.has(hubAssetId(assetId)) && (await hubAssetRoutedState(env,hubBefore)).hubLive;
+              if (rewritingPlaced) hubSync = { deferred: 'request republication boundary' };
+              else {
+              hubSync=await publishHubAssetToLiveSite({...env,__hubExplicitPublish:true},hubHdr,result2);
               // Remove legacy offers/sales listings for this asset after its blog-form page is safely written.
               const old={...hubBefore,properties:{...hubBefore.properties}};
               old.properties['Content URL']={url:hubBefore.properties?.['Content URL']?.url||''};
               // Keep the newly published blog entry; prune old directory entries only.
               hubSync.legacyPruned=await removeHubAssetListings(env,hubHdr,old,['offers','sales']);
               hubSync.offerIndex=await syncHubOfferIndex(env,hubHdr,result2,hubSync);
+              }
             }else hubSync=await removeHubAssetListings(env,hubHdr,hubBefore);
           }else await syncOfferAssetBlog(env,hubHdr,result2);
         } catch(e) {
@@ -50580,6 +50872,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId)))return json({error:'Valid assetId required'},400);
         return json(await publishSelectedAssetToHub(env,body.assetId));
       }
+      if (body.action === 'hubRepublishAsset') {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId))) return json({error:'Valid assetId required'},400);
+        if (hubWriteScope.getStore()) hubWriteScope.getStore().suppressed = true;
+        return json(await hubRefreshPlacedAsset(env, body.assetId, {source:body.source||'manual-sweep',hubSlug:body.hubSlug}));
+      }
+      if (body.action === 'hubRepublishSweep') return json(await hubRepublishSweep(env, body.campaignId));
+      if (body.action === 'getHubRepublicationHeld') return json({held:await hubRepublicationHeld(env, body.campaignId)});
       if(body.action==='publishHubSectionAsset'){
         if(!body.assetId||!body.section)return json({error:'assetId and section required'},400);
         return json(await publishHubSectionSelection(env,body.assetId,body.section,body.campaignId));
@@ -51481,6 +51780,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
+    return hubWithAssetWrites(env, async () => {
+      const jobs = [];
+      hubWriteScope.getStore().action = 'write-scheduled';
+      await this.scheduledScoped(event, env, { waitUntil: promise => { jobs.push(promise); ctx.waitUntil(promise); } });
+      await Promise.allSettled(jobs);
+    });
+  },
+  async scheduledScoped(event, env, ctx) {
     hierarchyEnv = env;
     // 📜 Cron log (2026-10-10): every job of this run is recorded — name, time, ok / failed — plus the console lines it
     // printed, into KV cron:log:<trigger> (last 60 runs each). Dash → Cron log tab (getCronLog). A job whose catch only
@@ -51519,6 +51826,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/30 * * * *") {
+      cw("hubRepublishSweep", hubRepublishTick(env).then(r => console.log('hubRepublishSweep:', JSON.stringify(r))).catch(e => console.error('hubRepublishSweep failed:',e.message)));
       cw("productStageBackfill", productStageBackfill(env).catch(e => console.error("productStageBackfill failed:", e.message)));
       if (await env.TRADES.get("titleidle:runnow")) { await env.TRADES.delete("titleidle:runnow");
         cw("runTitleIdleSweep", runTitleIdleSweep(env).then(r => console.log(`titleIdleSweep: ${r.moved || 0} → Idea${r.left ? ', ' + r.left + ' left' : ''}`)).catch(e => console.error("runTitleIdleSweep failed:", e.message))); }

@@ -77,7 +77,8 @@ const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds
   f.setInterviews([finished()]);
   const rewrite = await f.context.writeTopicalPost(f.env, aid);
   assert.equal(rewrite.ok, true); assert.ok(f.prompts[1].includes('OWN_ANSWER_SENTINEL'));
-  assert.equal(f.page.properties['Written Without Interview'].checkbox, false, 'finished-interview rewrite clears persistent marker');
+  assert.equal(f.page.properties['Written Without Interview'].checkbox, true, 'published rewrite keeps its marker until the republication commit succeeds');
+  assert.equal(f.page.properties['Asset Status'].select.name, 'Published', 'rewriting a placed asset preserves its publication status');
 
   const failedPublish = fixture(); failedPublish.setPublishError('Blog unavailable');
   const failed = await failedPublish.context.writePublishTopicalFromModal(failedPublish.env, aid, true);

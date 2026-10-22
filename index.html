@@ -16423,7 +16423,7 @@ async function hub2PoolLoad(slug, force) {
   if (_hub2Pool[slug] && !force && !_hub2Pool[slug].error) return hub2PoolPaint(slug);
   _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug);
   try { const r = await call('getDigests', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
-    _hub2Pool[slug] = { digests: r.digests || [], run: r.run || null, last: r.last || null };
+    _hub2Pool[slug] = { digests: r.digests || [], run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
     if (r.digests && r.digests[0] && _hub2DigOpen[slug + '|' + r.digests[0].assetId] === undefined) _hub2DigOpen[slug + '|' + r.digests[0].assetId] = true;   // newest open
     clearTimeout(_hub2Pool[slug].timer); if (r.run) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), 60000); }   // a run is going — check again in a minute
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
@@ -16438,7 +16438,8 @@ function hub2PoolHtml(slug) {
   const B = col => `font-size:10.5px;padding:2px 9px;border:1px solid ${col};border-radius:4px;background:transparent;color:${col};cursor:pointer;`;
   const runLine = P.run ? `<span style="color:#f6ad55;">⏳ A digest run is ${P.run.step === 'queued' ? 'queued' : 'running (' + esc(P.run.step) + ')'} — research takes 10–30 min; this updates itself.</span>`
     : P.last ? `<span style="color:var(--text3);">Last run: ${esc(P.last.step)}${P.last.note ? ' — ' + esc(P.last.note) : ''}${P.last.at ? ' · ' + new Date(P.last.at).toLocaleString() : ''}</span>` : '';
-  const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Same research + write as the weekly cron — a new Digest parent appears here when it is done" onclick="hub2DigRunNow('${slug}',this)">▶ Run a digest now</button>${runLine}</div>`;
+  const heldLine = (P.republicationHeld || []).length ? `<div style="margin:8px 0;color:#f6ad55;font-size:11px;"><b>Hub updates held — the last good pages are preserved</b>${P.republicationHeld.map(h => `<div>${esc(h.payload?.title || h.assetId)}: ${esc(h.reason)}</div>`).join('')}</div>` : '';
+  const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Same research + write as the weekly cron — a new Digest parent appears here when it is done" onclick="hub2DigRunNow('${slug}',this)">▶ Run a digest now</button>${runLine}</div>` + heldLine;
   if (!P.digests.length) return top + '<div style="font-size:11px;color:var(--text3);">No Digest parents yet — ▶ Run a digest now, tick 📰 Digest parent on a title, or wait for Sunday night’s run.</div>';
   return top + P.digests.map(d => hub2DigHtml(slug, d)).join('');
 }
@@ -21757,6 +21758,9 @@ const CRON_REGISTRY = [
   { fn: 'enrichUnprocessedSavedPosts', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Links / content',
     what: 'Cheap "clean save" enrichment of 🔗 Saved Posts — fills Name / Platform / real Date Saved for any row the iOS Shortcut left bare. Never touches Apify / ElevenLabs / Claude.',
     io: 'Notion: 🔗 Saved Posts' },
+  { fn: 'hubRepublishTick', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Content',
+    what: 'Refreshes changed routed assets, prunes assets outside the Keywords hierarchy or out of sync, and restores suspended routes when eligible. Failed updates are held; the last good page is preserved. Worker saves refresh immediately.',
+    io: 'Notion: Assets and interviews · GitHub: hub pages and section manifests · KV: hub:republish:* · holds appear in the hub Digest panel' },
   { fn: 'hubNewsCronTick', cron: '*/30 * * * *', when: 'Randomised per hub: every 3-10 h until a hub has 3, then twice a week · 7am-9pm Pacific', group: 'Links / content',
     what: 'Hub news: every 2 days, one Blog - SEO - News post for each hub still under 3 published news posts — headline + grounded pillar off a rotating main product, article published to the hub blog (News section), Grok blog thumbnail. Each hub has its own random next-post time (never all at once, random minute), so posting does not look machine-timed. Once a hub has 3, it posts twice a week, 2.5-4.5 days apart.',
     io: 'Notion: Content Strategy + Assets · GitHub: web/hub/<slug>/blog/ · KV hubnews:sched / hubnews:log' },
