@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
+    "slug": "surf-resort-finder",
+    "name": "Stop Researching. Start Surfing the Right Break.",
+    "promise": "For surfers and surf-curious travelers who want the right break, the right boat, and no logistical guesswork — find and book your trip in one place, every cost on the table before you commit.",
+    "url": "../blog/surf-resort-finder/",
+    "contentHash": "03a2bc4dbffc0dc91258233c9218978575afc9ad69f9abba984eb22343a39893",
+    "contentEditedAt": "2026-10-22T16:23:00.000Z",
+    "refreshedAt": "2026-10-22T16:23:02.885Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
     "slug": "charter-match",
     "name": "Find Your Dream Surf Charter — Explore the World's Best Surf Breaks by Boat",
@@ -18,15 +28,5 @@
     "contentHash": "bcc3016bf34ab7c7aa2e8ad9b795fdba657caec9af77e97ab3d4cb77be275bcf",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:02:19.609Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
-    "slug": "surf-resort-finder",
-    "name": "Surf Resort Finder & Booking",
-    "promise": "For surfers and surf-curious travelers who want the right break, the right boat, and no logistical guesswork — find and book your trip in one place, every cost on the table before you commit.",
-    "url": "../blog/surf-resort-finder/",
-    "contentHash": "4095ec46e474d89a47a9aed63687f4908f2074bd9cb0e8e43f102b99ab325875",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:02:05.310Z"
   }
 ]

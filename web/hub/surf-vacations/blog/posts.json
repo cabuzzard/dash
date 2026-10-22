@@ -1,5 +1,15 @@
 [
   {
+    "slug": "surf-resort-finder",
+    "title": "Stop Researching. Start Surfing the Right Break.",
+    "intro": "You have the trip in your head. You know the rough destination. You've spent real time on it — surf blogs, resort sites, charter company contact forms that go nowhere, Reddit threads where the advice contradicts itself three comments in. Six tabs open. Nothing resolved. And underneath all of it, a s",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
+    "contentHash": "03a2bc4dbffc0dc91258233c9218978575afc9ad69f9abba984eb22343a39893",
+    "contentEditedAt": "2026-10-22T16:23:00.000Z",
+    "refreshedAt": "2026-10-22T16:23:02.885Z"
+  },
+  {
     "slug": "charter-match",
     "title": "Find Your Dream Surf Charter — Explore the World's Best Surf Breaks by Boat",
     "intro": "You've read the trip reports. You know the names — Macaronis, Cokes, Lance's Right. You've watched the Mentawai edits, priced out the Maldives, and opened more browser tabs than you can count. What you don't have is a reliable answer to the question that actually matters: which boat, which operator,",
@@ -18,15 +28,5 @@
     "contentHash": "bcc3016bf34ab7c7aa2e8ad9b795fdba657caec9af77e97ab3d4cb77be275bcf",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:02:19.609Z"
-  },
-  {
-    "slug": "surf-resort-finder",
-    "title": "Surf Resort Finder & Booking",
-    "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Resort Finder & Booking\",\n  \"promise\": \"Find the right resort or charter for your level and group — and book it in one flow, with every inclusion visible before you pay.\",\n  \"ctaLabel\": \"Find Your Resort\",\n  \"ctaUrl\": \"\"\n}\n```\n\nThe surf trip ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
-    "contentHash": "4095ec46e474d89a47a9aed63687f4908f2074bd9cb0e8e43f102b99ab325875",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:02:05.310Z"
   }
 ]
