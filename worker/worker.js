@@ -4879,7 +4879,8 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
       await env.TRADES.put(key, JSON.stringify({ ...previous, hub: hub.slug, wasRouted: true, suspended: true, contentHash: previous?.contentHash || contentHash, bodyHash: previous?.bodyHash || bodyHash, at: Date.now() }));
       return { assetId: aid, pruned: true, reason: placement.applies && !placement.placed ? 'not in Keywords hierarchy' : 'out of sync' };
     }
-    if (!previous?.suspended && (previous?.hash || indexed?.contentHash) === hash) return { assetId: aid, skipped: 'current' };
+    // force: an explicit manual rebuild (e.g. after a renderer change) — content is unchanged but the page must be re-rendered
+    if (!options.force && !previous?.suspended && (previous?.hash || indexed?.contentHash) === hash) return { assetId: aid, skipped: 'current' };
     if (!content.body) throw new Error('Body is empty; keeping the last good hub page');
     if (!payload.title) throw new Error('Public title is empty; keeping the last good hub page');
     const mapping = await writingMethod(env, page);
@@ -50933,7 +50934,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === 'hubRepublishAsset') {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId))) return json({error:'Valid assetId required'},400);
         if (hubWriteScope.getStore()) hubWriteScope.getStore().suppressed = true;
-        return json(await hubRefreshPlacedAsset(env, body.assetId, {source:body.source||'manual-sweep',hubSlug:body.hubSlug}));
+        return json(await hubRefreshPlacedAsset(env, body.assetId, {source:body.source||'manual-sweep',hubSlug:body.hubSlug,force:body.force===true}));
       }
       if (body.action === 'hubRepublishSweep') return json(await hubRepublishSweep(env, body.campaignId));
       if (body.action === 'getHubRepublicationHeld') return json({held:await hubRepublicationHeld(env, body.campaignId)});
