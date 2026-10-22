@@ -1,5 +1,15 @@
 [
   {
+    "slug": "charter-match",
+    "title": "Charter Match",
+    "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Charter Match\",\n  \"promise\": \"Your actual profile — skill level, dates, budget — matched to vetted liveaboard quotes in one flow, not a three-month email chain.\",\n  \"ctaLabel\": \"Match My Charter\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou know which destinations you want. Me",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
+    "contentHash": "7fd99ead453aa779d3db71adbb4d7b176325b92878d6e26dab5bb92a74770b60",
+    "contentEditedAt": "2026-10-22T14:03:00.000Z",
+    "refreshedAt": "2026-10-22T15:01:34.600Z"
+  },
+  {
     "slug": "surf-resort-finder",
     "title": "Surf Resort Finder & Booking",
     "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Resort Finder & Booking\",\n  \"promise\": \"Find the right resort or charter for your level and group — and book it in one flow, with every inclusion visible before you pay.\",\n  \"ctaLabel\": \"Find Your Resort\",\n  \"ctaUrl\": \"\"\n}\n```\n\nThe surf trip ",
@@ -18,15 +28,5 @@
     "contentHash": "594008f93d18285b4718b3603fe3b64f9c2e2e4c3360e765e11b9a5a67a17d6c",
     "contentEditedAt": "2026-10-22T13:57:00.000Z",
     "refreshedAt": "2026-10-22T14:03:45.058Z"
-  },
-  {
-    "slug": "charter-match",
-    "title": "Charter Match",
-    "intro": "```json\n{\n  \"kicker\": \"Free\",\n  \"name\": \"Charter Match\",\n  \"promise\": \"Your actual profile — skill level, dates, budget — matched to vetted liveaboard quotes in one flow, not a three-month email chain.\",\n  \"ctaLabel\": \"Match My Charter\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou know which destinations you want. Me",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
-    "contentHash": "411c0ec3e594f0008b9dcf30a49e3df2cbac27c69f019d2a5f15ca8ae9c47503",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:03:37.227Z"
   }
 ]
