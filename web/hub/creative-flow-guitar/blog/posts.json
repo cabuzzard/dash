@@ -1,5 +1,15 @@
 [
   {
+    "slug": "weekly-sessions",
+    "title": "Weekly Sessions",
+    "intro": "One song a week, played all the way through — until it feels right, not just correct.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
+    "contentHash": "76fe9552007c908ddef8c1f88b89db25ab13f64a20ca5bb2ae4a337bb743e9d4",
+    "contentEditedAt": "2026-10-21T07:43:00.000Z",
+    "refreshedAt": "2026-10-22T03:33:54.884Z"
+  },
+  {
     "slug": "the-tracks",
     "title": "The Tracks",
     "intro": "For Intermediate and advanced guitarists who know what good sounds like and are done tolerating tracks that just sit there..\n\nDrop in and feel it lock — a real mix with somewhere to go, built by a player with the same ear you have.",
@@ -12,12 +22,5 @@
     "intro": "For Players and deep listeners done settling for music-adjacent.\n\nA shirt built from inside guitarist identity — specific enough that other players ask where you got it before you say a word.",
     "date": "2026-10-21",
     "assetId": "4001f7d3a4bb81f9b114c01ddb3bd41a"
-  },
-  {
-    "slug": "weekly-sessions",
-    "title": "Weekly Sessions",
-    "intro": "For Returning players who grew up on classic rock and want to finally play it with feel.\n\nOne song a week, played all the way through — until it feels right, not just correct.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66"
   }
 ]
