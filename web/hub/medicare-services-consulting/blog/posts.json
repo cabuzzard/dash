@@ -1,5 +1,15 @@
 [
   {
+    "slug": "care-command",
+    "title": "One Person Who Owns Your Parent's Care — Start to Finish",
+    "intro": "You are already doing this job. You are tracking the appointments, chasing the referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the contacts, ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
+    "contentHash": "ff252e767f8a39366f3255e97ad1f8d41c94f2db28422b77f0852f530fde1b7b",
+    "contentEditedAt": "2026-10-22T16:40:00.000Z",
+    "refreshedAt": "2026-10-22T17:04:51.137Z"
+  },
+  {
     "slug": "the-medicare-clarity-premium-newsletter",
     "title": "The Medicare Clarity Premium Newsletter",
     "intro": "Every Medicare search you do triggers the same spiral: spam calls within the hour, \"free guides\" that are actually lead funnels, and advisors who say they're independent while working a carrier quota. You are not confused because you are unsophisticated. You are confused because every resource you f",
@@ -18,15 +28,5 @@
     "contentHash": "dbdc90e07a72b99b40e54492cf6414da6104d15e2870da6d3ad234092c94c754",
     "contentEditedAt": "2026-10-22T16:39:00.000Z",
     "refreshedAt": "2026-10-22T16:39:16.637Z"
-  },
-  {
-    "slug": "care-command",
-    "title": "Medicare Plan Review & Guidance",
-    "intro": "You are already doing the work of a care manager. You are tracking appointments, chasing referrals, translating clinical notes into plain English for the rest of the family, and catching the things that fall between providers who do not talk to each other. You are doing it without the training, the ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
-    "contentHash": "8a9d2c3e9379dc11e6dc8708308f5c5769588a57ba70be41ad2e6591e6fc97ed",
-    "contentEditedAt": "2026-10-22T16:24:00.000Z",
-    "refreshedAt": "2026-10-22T16:24:25.396Z"
   }
 ]
