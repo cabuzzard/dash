@@ -24,9 +24,9 @@ test('previous images, seed photos and large libraries never reach render models
  const x=setup(Array.from({length:7},(_,i)=>({url:`https://example.test/${i}.png`,role:'site-image'})),{url:'https://example.test/seed.png'});
  await x.call({previousImageUrl:'https://example.test/previous.png'});const body=x.requests.at(-1).body;assert.equal(body.image,undefined);assert.equal(body.images,undefined);assert.doesNotMatch(JSON.stringify(body),/example.test/);
 });
-test('asset and dynamically registered hub contexts resolve the correct library',async()=>{
- const x=setup([{url:'https://example.test/guide.png'}]);await x.call({campaignId:'',assetId:'asset'});assert.equal(x.reads.at(-1),'design:inputs:abc');assert.match(x.requests[0].url,/api.notion.com/);
- const y=setup();await y.call({campaignId:'',slug:'hub'});assert.equal(y.reads.at(-1),'design:inputs:abc');
+test('disabled image transport bypasses Notion and reference-library reads',async()=>{
+ const x=setup([{url:'https://example.test/guide.png'}]);await x.call({campaignId:'',assetId:'asset'});assert.equal(x.reads.length,0);assert.equal(x.requests.length,1);assert.match(x.requests[0].url,/images\/generations$/);
+ const y=setup();await y.call({campaignId:'',slug:'hub'});assert.equal(y.reads.length,0);
 });
 test('all eleven Grok image entry points use the shared reference transport',()=>{
  assert.equal((worker.match(/const xr = await grokImageFetch\(/g)||[]).length,11);
@@ -49,9 +49,9 @@ test('copied prompt includes every image and visual summary with no false attach
  assert.match(prompt,/Reference 23/);assert.match(prompt,/Observed watercolor style/);assert.match(prompt,/STOP and ask/);assert.match(prompt,/not automatic image attachments/);assert.doesNotMatch(prompt,/I have attached them|Rewrite any current value you would do differently/);
 });
 
-test('reference-read failure fails the request rather than silently generating without images',async()=>{
+test('unneeded reference-library failures cannot block text-only rendering',async()=>{
  const x=setup();x.env.TRADES.get=async()=>{throw Error('Library unavailable');};
- await assert.rejects(x.call(),/Library unavailable/);assert.equal(x.requests.length,0);
+ await x.call();assert.equal(x.requests.length,1);
 });
 
 const libraryOperation=worker.slice(worker.indexOf('  if (op === "library")'),worker.indexOf('  if (op === "edit")',worker.indexOf('  if (op === "library")')));

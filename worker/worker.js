@@ -513,6 +513,7 @@ ${direction.slice(0, 1500)}
 ` : ""}`;
 }
 function approvedPlateBlock(brief) {
+  if (brief?.hasCommittedSpec) return "";
   const p = brief && brief.approvedPlate;
   if (!p || !p.prompt) return "";
   return `\n\nAPPROVED CAMPAIGN PLATE — the campaign-level Grok render the operator approved${p.approvedAt ? ` (${String(p.approvedAt).slice(0, 10)})` : ""}. It is the reference LOOK for this asset: match its light, colour grade, medium and finish, camera feel and mood so the asset reads as the same campaign. It is NOT the scene: choose this asset's own subject and composition; never copy its objects or layout.${p.attach && p.imageUrl ? " The approved image itself is attached." : ""}\nThe prompt that rendered it: ${String(p.prompt).slice(0, 2500)}`;
@@ -521,6 +522,13 @@ function approvedPlateBlock(brief) {
 const GROK_IMAGE_REFERENCES = new WeakMap();
 // Every hub-scoped Grok image call carries the saved image library as real image inputs.
 async function grokImageFetch(env, context, options) {
+  if (!SEND_IMAGES_TO_MODELS) {
+    const payload=JSON.parse(options.body);
+    delete payload.image; delete payload.images;
+    const response=await fetch('https://api.x.ai/v1/images/generations',{...options,body:JSON.stringify(payload)});
+    GROK_IMAGE_REFERENCES.set(response,{attached:0,available:0,images:[]});
+    return response;
+  }
   let cid = String(context.campaignId || "").replace(/-/g, "");
   if (!cid && (context.slug || context.hubSlug)) cid = String((HUB_SITES.find(h => h.slug === (context.slug || context.hubSlug)) || {}).campaignId || "").replace(/-/g, "");
   if (!cid && context.assetId) {
@@ -552,7 +560,7 @@ async function grokImageFetch(env, context, options) {
 // references on every image-prompt call) are off.
 const SEND_IMAGES_TO_MODELS = false;
 function plateContent(text, brief) {
-  text += "\nThe spec's INSTRUCTIONS FOR THIS FORMAT block is binding - follow it over any conflicting derived choice. Explicit asset guidance overrides hub defaults for this asset; regeneration guidance applies only to this run.";
+  text += "\nThe spec's INSTRUCTIONS FOR THIS FORMAT block is binding - follow it over any conflicting derived choice. Committed field values and operator guidance override conflicting template defaults. Explicit asset guidance overrides hub defaults for this asset; regeneration guidance applies only to this run.";
   if(brief?.assetGuidance)text+='\nSAVED ASSET GUIDANCE (this asset only):\n'+brief.assetGuidance;
   if(brief?.runGuidance)text+='\nREGENERATION GUIDANCE (this run only; do not save as spec):\n'+brief.runGuidance;
   if (!SEND_IMAGES_TO_MODELS) return text;
@@ -570,7 +578,7 @@ function plateContent(text, brief) {
   return [...images.map(i => ({ type: "image", source: { type: "url", url: i.url } })), { type: "text", text: text + `\n\nATTACHED VISUAL AUTHORITIES (in attachment order): ${images.map(i => i.label).join("; ")}. Use them to reproduce the campaign's palette, light, medium, motif and finish. Never copy an example's exact scene, embedded text or layout unless the asset specification explicitly calls for it.` }];
 }
 
-async function assembleImageBrief(env, { campaignId, assetId, override, codexDesign, runGuidance }) {
+async function assembleImageBrief(env, { campaignId, assetId, override, codexDesign, runGuidance, format }) {
   // `override` = a STAGED (unsaved) brief from the Content Hubs card:
   // { register, photography, avoid, notes, palette, fonts }. When present its
   // values replace what's read from the Research record, so the operator can
@@ -580,7 +588,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
   const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const norm = s => String(s || "").replace(/-/g, "");
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null, mediaLibrary: [], assetGuidance: "", runGuidance: String(runGuidance || "").slice(0, 3000) };
+  const out = { campaignId:'', format:format||'', hasCommittedSpec:false, legacySpec:'', hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null, mediaLibrary: [], assetGuidance: "", runGuidance: String(runGuidance || "").slice(0, 3000) };
 
   let cid = norm(campaignId || "");
   let contentHubSel = "", titleId = "", assetProductId = "";
@@ -594,6 +602,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
   }
 
   out.hubSlug = contentHubSel || (HUB_SITES.find(h => norm(h.campaignId) === cid) || {}).slug || "";
+  out.campaignId=cid;
 
   // Codex Design is now the shared image engine for every asset modal. Its
   // committed spec takes precedence over the legacy Research copy, and its
@@ -604,9 +613,13 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
         env.TRADES.get("design:spec:" + cid, "json"),
         env.TRADES.get("design:inputs:" + cid, "json"),
       ]);
-      if (codexDesign && dsSaved && dsSaved.spec) out.storedSpec = `# Codex Design — committed campaign specification\n\n${dsSpecText(dsSaved.spec, true)}`;
+      if (dsSaved?.spec && Object.entries(dsSaved.spec).some(([k,f])=>DS_KEYS.has(k)&&(f?.v||f?.g))) {
+        out.hasCommittedSpec=true;
+        out.storedSpec = `# Codex Design — committed campaign specification\n\n${dsRenderSpecText(dsSaved.spec,format)}`;
+        out.aspectRatio=String(dsSaved.spec['asset.'+format+'.aspect']?.v||'').match(/\b\d+(?:\.\d+)?:\d+(?:\.\d+)?\b/)?.[0]||'';
+      }
       out.mediaLibrary = Array.isArray(dsInputs && dsInputs.mediaLibrary) ? dsInputs.mediaLibrary.filter(x => x && /^https:\/\//.test(x.url || "")) : [];
-      if (out.mediaLibrary.length) out.facts.push(`SAVED HUB SPEC-IMAGE LIBRARY (attached where supported): ${out.mediaLibrary.map(x => `${x.role || "reference"}: ${x.name || "untitled"}${x.notes ? " — " + x.notes : ""}`).join("; ").slice(0, 4000)}`);
+      // Reference images inform staged tier evidence; rendering reads the committed text only.
     } catch (e) { /* Codex Design data is optional for older hubs */ }
   }
 
@@ -630,7 +643,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
         notes:       (ov.notes       != null ? String(ov.notes)       : rtp(rp, "Design Notes")),
       };
       out.guidance = rDesign.notes;
-      if (!out.storedSpec) out.storedSpec = rtp(rp, "Image Spec");   // legacy/fallback frozen spec
+      if (!out.hasCommittedSpec) out.legacySpec = rtp(rp, "Image Spec");
       out.approvedPlate = parseApprovedPlate(rtp(rp, "Approved Plate"));
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
@@ -643,7 +656,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
       const kwv = rtp(rp, "Keywords");
       if (kwv) out.facts.push(`MAIN KEYWORDS (the root of the campaign — the dominant grounding signal; everything visual must fit what these searchers want): ${kwv.slice(0, 2000)}`);
       const SKIP = new Set(["Keywords", "Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Image Spec", "Approved Plate", "Palette", "Fonts", "SEO Audit"]);
-      let budget = 16000;
+      let budget = out.hasCommittedSpec ? 0 : 16000;
       for (const [fld, prop] of Object.entries(rp)) {
         if (SKIP.has(fld) || prop?.type !== "rich_text") continue;
         const v = rtp(rp, fld); if (!v) continue;
@@ -661,7 +674,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
       out.hub = (dj.hubs || {})[out.hubSlug] || null;
     } catch (e) { /* spec is best-effort */ }
   }
-  if (out.hub || (override && (override.palette || override.fonts))) {
+  if (!out.hasCommittedSpec && (out.hub || (override && (override.palette || override.fonts)))) {
     const oh = out.hub || {};
     const d = oh.design || {}, tn = oh.tokenNotes || {};
     const tk = (override && override.palette) ? override.palette : (oh.tokens || {});
@@ -727,9 +740,62 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
   return out;
 }
 
+// Unknown format callers receive global image direction, never every unrelated format.
+function dsRenderSpecText(spec, format) {
+  const projected=Object.fromEntries(Object.entries(spec||{}).filter(([k])=>/^(intent|color|type|img|ref|ovl|avoid)\./.test(k)||(format&&k.startsWith('asset.'+format+'.'))));
+  return DS_TIERS.map(([tier,label])=>{
+    const sections=DS_SCHEMA.filter(s=>s.tier===tier).map(section=>{
+      const fields=section.fields.filter(([k])=>projected[k]?.v||projected[k]?.g);
+      if(!fields.length)return '';
+      return '## '+section.label+'\n'+fields.map(([k])=>{
+        const f=projected[k],value=k.endsWith('.instructions')&&f.v?'INSTRUCTIONS FOR THIS FORMAT (follow exactly):\n'+f.v:k+': '+(f.v||'(empty)');
+        return value+(f.g?'\nOperator guidance for '+k+': '+f.g:'');
+      }).join('\n');
+    }).filter(Boolean);
+    return sections.length?'# '+label+'\n'+sections.join('\n'):'';
+  }).filter(Boolean).join('\n\n');
+}
+async function stageImageSpecDraft(env, brief, {legacyOnly=false}={}) {
+  const cid=brief.campaignId;
+  if(!cid)throw new Error('Cannot stage design draft without a campaign');
+  const key='design:stage:'+cid, stage=await env.TRADES.get(key,'json')||{};
+  if(stage.__draftSpec)return stage.__draftSpec; // cached successes, failures and in-flight attempts; no repeated AI spend
+  const note={at:new Date().toISOString(),source:brief.legacySpec?.length>=200?'legacy':'draft',text:'',status:'pending'};
+  if(legacyOnly&&note.source!=='legacy')throw new Error('No importable legacy spec');
+  await env.TRADES.put(key,JSON.stringify({...stage,__draftSpec:note}));
+  try {
+    if(note.source==='legacy')note.text=brief.legacySpec;
+    else {
+      // Never inject asset-specific or transient direction into a hub draft.
+      const hubBrief=await assembleImageBrief(env,{campaignId:cid});
+      note.text=await writeImageSpec(env,{...hubBrief,assetGuidance:'',runGuidance:''});
+    }
+    if(!note.text.trim())throw new Error('Draft spec was empty');
+    note.status='awaiting_review';
+  } catch(error) {note.status='held';note.error=error.message;}
+  const latest=await env.TRADES.get(key,'json')||{};
+  await env.TRADES.put(key,JSON.stringify({...latest,__draftSpec:note}));
+  return note;
+}
+async function holdImageWithoutSpec(env, brief, request) {
+  if(brief?.hasCommittedSpec)return null;
+  const {token,governanceToken,...payload}=request||{};
+  let draft;
+  try {draft=await stageImageSpecDraft(env,brief);}catch(error){draft={status:'held',error:error.message};}
+  await flowHold(env,{action:payload.action||'imageGeneration',reason:'no committed design spec',payload:{...payload,campaignId:brief?.campaignId,draftStatus:draft.status,draftError:draft.error||null}});
+  return {error:'no_committed_design_spec',held:true,reason:'no committed design spec',draftStatus:draft.status,draftError:draft.error||null};
+}
+async function recordDesignPromptUsage(env,brief,action,data,prompt) {
+  try {
+    const key='design:usage:v1',log=await env.TRADES.get(key,'json')||[];
+    const content=plateContent(prompt,brief);
+    log.push({at:new Date().toISOString(),campaignId:brief.campaignId,action,format:brief.format||null,promptCharacters:typeof content==='string'?content.length:JSON.stringify(content).length,imageAttachments:0,usage:data.usage||null,error:data.error?.type||null});
+    await env.TRADES.put(key,JSON.stringify(log.slice(-100)));
+  } catch(error) {console.error('Design usage log unavailable');}
+}
 async function writeImageSpec(env, brief) {
   const name = (brief.hub && (brief.hub.logoText || brief.hubSlug)) || brief.hubSlug || "this hub";
-  const infoFlow = await getInformationFlowContext(env).catch(() => "");
+  const infoFlow = await governingFlow(env).then(x=>JSON.stringify(x.digest||{})).catch(() => "");
   const prompt = `You are writing an IMAGE ART-DIRECTION SPEC for "${name}". The images are WORDLESS plates — a headline is set afterward in the real fonts, so this spec is about the PICTURE only.
 
 The spec must be MODEL-AGNOSTIC and written for maximum adherence from ANY competent image model: concrete nouns over adjectives, explicit constraints, exact hex values, no model-specific prompt syntax or weighting.
@@ -9819,6 +9885,10 @@ async function transcribeViaElevenLabs(env, mediaUrl) {
 // server-side third parties, so send bytes, not the URL) and asks Claude
 // to transcribe slide by slide.
 async function ocrImagesViaClaude(env, imageUrls) {
+  if(!SEND_IMAGES_TO_MODELS&&imageUrls?.length) {
+    await flowHold(env,{action:'ocrImagesViaClaude',reason:'image_inputs_disabled',payload:{imageUrls}});
+    throw new Error('image_inputs_disabled: carousel images were not sent to a model');
+  }
   if (!env.ANTHROPIC_API_KEY || !imageUrls || !imageUrls.length) return "";
   const parts = [];
   for (const u of imageUrls.slice(0, 10)) {
@@ -15095,9 +15165,10 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               // Returns a candidate only — nothing is committed until op "adopt".
               const XAI = (env.XAI_API_KEY || "").trim(); if (!XAI) return json({ error: "XAI_API_KEY not configured" }, 500);
               const hub = HUB_SITES.find(h => h.slug === slug);
-              const brief = await assembleImageBrief(env, { campaignId: hub.campaignId });
-              const spec = (brief.storedSpec && brief.storedSpec.length > 200) ? brief.storedSpec : await writeImageSpec(env, brief);
-              let plate = ""; try { const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: hub.campaignId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") } } }).catch(() => []);
+              const brief = await assembleImageBrief(env, { campaignId: hub.campaignId,format:kind==='signup'?'signup':'hero',runGuidance:body.guidance });
+              const designHold=await holdImageWithoutSpec(env,brief,body);if(designHold)return json(designHold);
+              const spec = brief.storedSpec;
+              let plate = ""; if(!brief.hasCommittedSpec)try { const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: hub.campaignId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") } } }).catch(() => []);
                 for (const r of rows) { const t = (r.properties?.["Approved Plate"]?.rich_text || []).map(x => x.plain_text).join(""); if (t) { plate = t; break; } } } catch (e) {}
               const role = body.kind === "signup" ? "the supporting image beside the email-signup section (calm, inviting, leaves room around the subject)" : "the HERO image at the top of the home page (the strongest, most iconic picture of what this hub is about)";
               const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
@@ -15106,8 +15177,9 @@ Return: the logo on a transparent background, plus one preview placed on the sit
 `Write ONE prompt for xAI Grok Imagine for ${role} of the website "${hub.name}". Portrait 3:4, shown in the right third of the page on desktop. Follow the art-direction spec exactly.${plate ? " Match the approved campaign plate's look (its prompt is below)." : ""}${body.guidance ? " Apply the operator's note." : ""}
 Two or three vivid sentences, 25-50 words, describing ONE picture: subject and setting, light and time of day, mood, a simple camera view. Describe only what IS in the picture (never mention things to avoid), colours as plain words (no hex codes), no lists or jargon. End with "no text". Return only the prompt.
 
+The spec's INSTRUCTIONS FOR THIS FORMAT block is binding - follow it over any conflicting derived choice.
 ART-DIRECTION SPEC:
-${String(spec).slice(0, 9000)}
+${spec}
 ${plate ? "\nAPPROVED PLATE:\n" + plate.slice(0, 2000) : ""}${body.guidance ? "\nOPERATOR NOTE FOR THIS IMAGE: " + String(body.guidance).slice(0, 800) : ""}${body.previousPrompt ? "\nPREVIOUS PROMPT (revise it per the note):\n" + String(body.previousPrompt).slice(0, 2500) : ""}` }] }) });
               const ad = await ar.json().catch(() => ({}));
               if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
@@ -15765,8 +15837,8 @@ Return ONLY this minified JSON object, nothing before or after:
                   method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Image Spec": { rich_text: {} } } }),
                 });
                 const brief = await assembleImageBrief(env, { campaignId: dash(body.campaignId || "") });
-                const spec = await writeImageSpec(env, brief);
-                if (spec && spec.length > 200) { await writeResearchField(researchId, "Image Spec", spec); wrote.push("Image Spec"); specNote = " · image spec refreshed"; }
+                const draft = await stageImageSpecDraft(env, brief);
+                specNote = draft.status==='awaiting_review' ? ' · draft image spec staged for review' : ' · image spec draft held: '+(draft.error||draft.status);
               } catch (e) { specNote = " · image spec refresh failed (" + e.message + ")"; }
             }
 
@@ -21376,8 +21448,10 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
           const desc = String(body.description || "").trim().slice(0, 1200);
           if (!desc) return json({ error: "Describe the presenter first" }, 400);
+          const brief=await assembleImageBrief(env,{campaignId:body.campaignId,assetId:body.assetId,runGuidance:body.description});
+          const designHold=await holdImageWithoutSpec(env,brief,body);if(designHold)return json(designHold);
           const style = String(body.style || "").trim() || "detailed illustrated comic / graphic-novel style: bold ink outlines, cel shading, hand-drawn texture, warm natural palette";
-          const prompt = `${desc}. A single person, waist-up portrait, standing on the right half of the frame, body and face turned toward the camera, mouth closed in a calm neutral expression, both eyes open and clearly visible, shoulders square, arms relaxed at the sides. Plain flat solid light-grey studio background with nothing else in it — no props, no scenery, no shadows on the wall. Art style: ${style}. No text, no letters, no logos, no watermarks.`;
+          const prompt = `${brief.storedSpec}\nFollow the spec's INSTRUCTIONS FOR THIS FORMAT and operator guidance. Presenter-specific guidance: ${desc}. A single person, waist-up portrait, standing on the right half of the frame, body and face turned toward the camera, mouth closed in a calm neutral expression, both eyes open and clearly visible, shoulders square, arms relaxed at the sides. Plain flat solid light-grey studio background with nothing else in it — no props, no scenery, no shadows on the wall. Art style fallback: ${style}. No text, no letters, no logos, no watermarks.`;
           const xr = await grokImageFetch(env, body, { method: "POST",
             headers: { "Authorization": "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
             body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt, n: 1, aspect_ratio: "4:3", resolution: "2k" }) });
@@ -21939,20 +22013,21 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         }
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
         if (body.subject) slot.subject = String(body.subject).trim().slice(0, 400);
-        const brief = await assembleImageBrief(env, { assetId: aid });
-        let ispec = brief.storedSpec && brief.storedSpec.length > 200 ? brief.storedSpec : "";
-        if (!ispec) { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        const brief = await assembleImageBrief(env, { assetId: aid , format:undefined });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
+        let ispec = brief.storedSpec;
         const charStyle = await lfCharStyle(env, spec.render && spec.render.character);
         const cp = "You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 50-100 words, one paragraph.\n\n"
           + "WHAT IT IS: a 4:3 illustration shown in a framed panel of a YouTube explainer while the narrator says: \"" + String(spec.segments[si].text || "").slice(0, 600) + "\"\n"
           + "THE PICTURE MUST SHOW: " + slot.subject + "\n"
           + "WORDLESS — no text, letters, numbers, charts, logos or UI.\n"
           + (charStyle ? "ART STYLE (match the presenter): " + charStyle + "\n" : "")
-          + "Keep the hub's palette and \"Never\" rules from this spec:\n" + ispec.slice(0, 4000) + "\n\nEnd with: \"No text, no letters, no logos, no watermarks.\"";
+          + "Keep the hub's palette and \"Never\" rules from this spec:\n" + ispec + "\n\nEnd with: \"No text, no letters, no logos, no watermarks.\"";
         const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: cp }] }) });
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: plateContent(cp,brief) }] }) });
         const ad = await ar.json();
+        await recordDesignPromptUsage(env,brief,body.action,ad,cp);
         if (!ar.ok) return json({ error: (ad.error && ad.error.message) || "Claude API error" }, 502);
         const prompt = ((ad.content && ad.content[0] && ad.content[0].text) || "").trim();
         const xr = await grokImageFetch(env, { ...body, assetId: aid }, { method: "POST",
@@ -22009,10 +22084,10 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const aid = String(body.assetId || "").replace(/-/g, "");
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
         const { spec, page } = await lfLoadAsset(aid);
-        const brief = await assembleImageBrief(env, { assetId: aid });
+        const brief = await assembleImageBrief(env, { assetId: aid , format:undefined });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let ispec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) ispec = brief.storedSpec;
-        else { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        ispec = brief.storedSpec;
         ispec += approvedPlateBlock(brief);
         const charStyle = await lfCharStyle(env, spec?.render?.character);
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
@@ -22042,6 +22117,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(cPrompt, brief) }] }) });
         const ad = await ar.json();
+        await recordDesignPromptUsage(env,brief,body.action,ad,cPrompt);
         if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
         const prompt = (ad.content?.[0]?.text || "").trim();
         const xr = await grokImageFetch(env, { ...body, assetId: aid }, { method: "POST",
@@ -22259,10 +22335,11 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       }
       if(body.action==='designResearchPass')return json(await designResearchPass(env,body));
       if(body.action==='designModelAudit') {
-        const brief=await assembleImageBrief(env,{campaignId:body.campaignId,assetId:body.assetId,codexDesign:true});
+        const brief=await assembleImageBrief(env,{campaignId:body.campaignId,assetId:body.assetId,format:body.format||'blog_thumb'});
         const parts={committedSpec:brief.storedSpec||'',facts:(brief.facts||[]).join('\n'),savedAssetGuidance:brief.assetGuidance||'',guidance:brief.guidance||''};
         const characters=Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,v.length]));
-        return json({success:true,characters,totalCharacters:Object.values(characters).reduce((a,b)=>a+b,0),approxTokens:Math.ceil(Object.values(characters).reduce((a,b)=>a+b,0)/4),tokenEstimateMethod:'characters / 4; not provider tokenization',modelCalls:0,renderImageAttachments:0});
+        const recentUsage=(await env.TRADES.get('design:usage:v1','json')||[]).filter(x=>x.campaignId===brief.campaignId).slice(-5);
+        return json({success:true,characters,totalCharacters:Object.values(characters).reduce((a,b)=>a+b,0),approxTokens:Math.ceil(Object.values(characters).reduce((a,b)=>a+b,0)/4),tokenEstimateMethod:'characters / 4; not provider tokenization',recentUsage,modelCalls:0,renderImageAttachments:0});
       }
       if (body.action === 'getGovernanceReport') {
         if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
@@ -32061,8 +32138,7 @@ Return via the submit_reels tool ONLY.`;
 
           const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
           let imageSpec = "";
-          if (brief && brief.storedSpec && brief.storedSpec.length > 200) imageSpec = brief.storedSpec;
-          else { try { imageSpec = brief ? await writeImageSpec(env, brief) : ""; } catch (e) { imageSpec = ""; } }
+          if (brief?.hasCommittedSpec) imageSpec = brief.storedSpec;
 
           const CT_GUIDE = {
             "Hook": "A contrarian or curiosity-gap line that earns the profile visit. Body pays a little of it off.",
@@ -35217,21 +35293,21 @@ Rules:
         if (!subject.content && offerLines) subject.content = offerLines;
         const exclusions = await hubImageExclusions(env, campaignId);
         // 🧭 Direction (Assets."Image Direction") — Codex Design path only (the care-gap modal); the plain hub-spec path is unchanged
-        const offerDir = body.codexDesign ? rtp(ap, "Image Direction").slice(0, 1500) : "";
+        const offerDir = ""; // Saved guidance is attached once by plateContent.
 
         // The shared, customer-grounded art-direction spec for this hub — the
         // frozen "Image Spec" written by publishHubDesign if there is one,
         // otherwise derived on the fly.
-        const brief = await assembleImageBrief(env, { assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:(kind === 'ig-background' ? 'offer_bg' : 'blog_thumb') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec = brief.storedSpec;
 
         const shape = kind === "ig-background"
           ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
           : "a SQUARE 1:1 blog thumbnail plate (a headline gets laid over it afterward — keep the top ~45% calm and near-empty)";
         spec += approvedPlateBlock(brief);
-        const aspect = kind === "ig-background" ? "3:4" : "1:1";   // defined before the prompt that names it (was declared after → TDZ error)
+        const aspect = brief.aspectRatio || (kind === "ig-background" ? "3:4" : "1:1");   // defined before the prompt that names it (was declared after → TDZ error)
         // SHORT prompt on purpose (2026-10-07): Grok Imagine makes its best images from two or three vivid sentences.
         // Long checklists, hex codes and "never/avoid" lists made worse plates (naming an avoided thing invites it).
         const claudePrompt = `Write ONE prompt for xAI Grok Imagine. Output ONLY the prompt — no preamble, no quotes.
@@ -35246,7 +35322,7 @@ Rules:
 - Last words: "no text".
 
 HUB ART DIRECTION (controls style, motif, palette, light and finish; it supplies generic fallback subjects only when the asset subject is unclear):
-${spec.slice(0, 6000)}
+${spec}
 ${assetSubjectPrompt(subject, exclusions)}${offerDir ? `
 
 ASSET DIRECTION (the operator's direction for THIS asset — follow it over everything above, including the scene choice; still wordless, still keep the text zone calm):
@@ -35257,6 +35333,7 @@ ${offerDir}` : ""}`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
@@ -35264,7 +35341,7 @@ ${offerDir}` : ""}`;
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || aspect, resolution: "2k" }),
         });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
@@ -35328,15 +35405,15 @@ ${offerDir}` : ""}`;
         }
         const thumbText = (thumbOpts.split("|")[0] || "").trim();
         // this call's direction (longform thumbnail modal) + the asset's saved 🧭 Direction (Codex Design path only)
-        const assetDir = body.codexDesign ? rtp("Image Direction").slice(0, 900) : "";
+        const assetDir = ""; // Saved guidance is attached once by plateContent.
         const thumbDir = [String(body.direction || "").trim().slice(0, 600), assetDir].filter(Boolean).join("\n");
         if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, String(body.direction).trim().slice(0, 600)).catch(() => {});
         const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:('youtube_thumb') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec = brief.storedSpec;
         spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 70-120 words, one vivid paragraph.
 
@@ -35360,13 +35437,14 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || "16:9", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -35401,10 +35479,10 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const subject       = await assetImageSubjectContext(hdr, assetId, ap);
         const exclusions    = await hubImageExclusions(env, campaignId);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:('blog_thumb') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec = brief.storedSpec;
 
         spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
@@ -35425,6 +35503,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
@@ -35432,7 +35511,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || "16:9", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -35469,10 +35548,10 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
-        const brief = await assembleImageBrief(env, { campaignId: cid, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { campaignId: cid, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:('social_square') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec = brief.storedSpec;
 
         spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
@@ -35490,6 +35569,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
@@ -35497,7 +35577,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await grokImageFetch(env, { ...body, campaignId: cid }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || "3:4", resolution: "2k" }),
         });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
@@ -35550,7 +35630,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const brief = rawPrompt ? null : await assembleImageBrief(env, { campaignId: cid });
         const researchBlock = brief ? brief.facts.join("\n").slice(0, 20000) : "";
         if (!rawPrompt && spec.length < 80) {
-          if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+          if (brief.hasCommittedSpec) spec = brief.storedSpec;
           else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
         }
         // Staged-but-unsaved design (microsite Design tab) overrides the spec.
@@ -35588,7 +35668,7 @@ ${guidance}` : "";
 WHAT IT IS: a ${aspect} test plate — the single most representative image for this visual direction, so the operator can judge whether the direction looks right. Pick the strongest subject/scene the spec allows. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
 
 Obey this image spec exactly — palette hexes, subjects, light, medium, the "Never" / avoid list:
-${spec.slice(0, 8000)}
+${spec}
 ${researchBlock ? `\nTHE CAMPAIGN'S RESEARCH (keywords first, then campaign + main product research). Use it to choose the subject/scene that best fits what this audience is searching for and feels; the spec above still governs the look:\n${researchBlock}\n` : ""}${body.steer ? `\nOPERATOR STEER for this test (follow it): ${String(body.steer).slice(0, 600)}\n` : ""}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -35664,10 +35744,10 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || null; }
         if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:('social_square') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { /* best-effort — still usable without it */ } }
+        spec = brief.storedSpec;
 
         spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives.
@@ -35690,6 +35770,7 @@ Portrait Instagram post, ready to publish.`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
@@ -35697,7 +35778,7 @@ Portrait Instagram post, ready to publish.`;
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || "3:4", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -35958,10 +36039,10 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const subject = await assetImageSubjectContext(hdr, assetId, ap);
         const exclusions = await hubImageExclusions(env, campaignId);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:(/carousel/i.test(ap['Asset Type']?.select?.name||'')?'carousel_slide':'social_square') });
+        const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec = brief.storedSpec;
 
         // VARIETY RUBRIC (2026-09-25): a bulk run of single posts used to come back as six takes on the
         // same "calm desk + notebook" scene — every call saw the same strict spec and only the title.
@@ -36028,6 +36109,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
+        await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const raw = (aiData.content?.[0]?.text || "").trim();
         const sceneM = raw.match(/^\s*SCENE:\s*(.+)$/mi);
@@ -36039,7 +36121,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: brief.aspectRatio || "3:4", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -36257,7 +36339,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         let spec = "", palette = "", fonts = "", tk = {};
         try {
           const brief = await assembleImageBrief(env, { campaignId: body.campaignId });
-          spec = (brief && brief.storedSpec && brief.storedSpec.length > 200) ? brief.storedSpec : (brief ? await writeImageSpec(env, brief).catch(() => "") : "");
+          spec = brief?.storedSpec || "";
           const oh = (brief && brief.hub) || {};
           tk = oh.tokens || {};
           palette = ["bg", "surface", "ink", "ink-head", "sea", "accent", "deep"].map(k => tk[k] ? `${k} ${tk[k]}` : "").filter(Boolean).join(" · ");
@@ -36272,7 +36354,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const prompt = [
           `Design a single-page social post TEMPLATE named "${name}" for the ${hubSlug} content hub — 1080 x 1440 portrait, Instagram.`,
           ``, `It must match this hub's visual direction:`,
-          spec ? spec.slice(0, 3000) : "(no image spec on file — use the palette + fonts below)",
+          spec || "(no committed image spec on file; review and commit before live generation)",
           ``, palette ? `Palette: ${palette}` : "", fonts ? `Fonts: ${fonts}` : "",
           override ? `\nOperator direction for THIS template: ${override}` : "", ``,
           `Layout: a flat, on-brand background; leave the LEFT HALF + TOP 55% calm for a stacked two-colour headline (2-3 lines primary in the dark ink, 1-2 lines accent in the hub accent colour, same sentence) and one small one-line body sentence beneath it. NO text/letters/numbers/logos/watermarks in the background art — words are added as editable Canva text boxes.`,
@@ -36532,9 +36614,9 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const brief = await assembleImageBrief(env, { campaignId: cid, assetId, override });
         let text = "", stored = false;
         // fresh: "✨ Generate from inputs" — always write a new spec from the research inputs, never echo the saved one.
-        if (!override && !body.fresh && brief.storedSpec && brief.storedSpec.length > 200) { text = brief.storedSpec; stored = true; }
-        else { try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); } }
-        return json({ text, stored, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
+        if (!override && !body.fresh && brief.hasCommittedSpec) { text = brief.storedSpec; stored = true; }
+        else { try { const draft=await stageImageSpecDraft(env,brief);text=draft.text||'';if(draft.error)return json({error:draft.error,held:true,draftStatus:draft.status}); } catch (e) { return json({ error: e.message }, 502); } }
+        return json({ text, stored, staged:!stored,requiresReview:!stored,hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
       }
 
       // -- designFromRankedSites: the visual direction the TOP-RANKED sites for this campaign's keywords already use.
@@ -54563,6 +54645,7 @@ ${opts.demand ? `\nKEYWORD RESEARCH (real Google demand — volumes, bids, inten
 THE CAMPAIGN (research + main products):
 ${String(facts || "").slice(0, 6000)}
 ${opts.note ? `\nTHE OPERATOR'S ASK FOR THIS ROUND (follow it):\n${String(opts.note).slice(0, 1500)}\n` : ""}
+${opts.draft ? '\nDRAFT SPEC AWAITING REVIEW (proposal only; map evidence to the requested fields):\n'+opts.draft+'\n' : ''}
 VISUAL REFERENCE CONTRACT:
 - Uploaded brand-guide, motif-reference and approved-example images are the visual authorities. Use their roles, notes and observed descriptions to preserve palette, medium, texture, light, composition language and recurring motifs.
 - Site images supply scene/content evidence; logos supply brand identity. Respect each role instead of using every reference as a complete redesign.
@@ -54631,6 +54714,11 @@ async function dsResearchRecord(env, cid, campName) {
 async function dsPatch(env, pageId, props) {
   const r = await fetch(`https://api.notion.com/v1/pages/${dsDash(pageId)}`, { method: "PATCH", headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
   if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion write failed " + r.status); }
+  const result=await r.json();if(result.object==='error'||result.name==='APIResponseError')throw new Error(result.message||'Notion write failed');
+  const read=await fetch(`https://api.notion.com/v1/pages/${dsDash(pageId)}`,{headers:{Authorization:`Bearer ${(env.NOTION_TOKEN||'').trim()}`,'Notion-Version':NOTION_VERSION}});
+  const page=await read.json();if(!read.ok||page.object==='error')throw new Error(page.message||'Notion readback failed');
+  const text=p=>(p?.rich_text||[]).map(t=>t.plain_text??t.text?.content??'').join('');
+  for(const [key,value] of Object.entries(props))if(value.rich_text&&text(value)!==text(page.properties?.[key]))throw new Error('Notion readback differs for '+key);
 }
 
 // Refresh evidence in one text-only search call. This never writes the committed spec or Notion.
@@ -54703,6 +54791,12 @@ async function handleDesignSpec(body, env, ctx) {
   const inputs = inputs0 || {};
   const op = body.op || "get";
   const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, structure: [...DS_STRUCTURE], saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, research, ...extra });
+
+  if(op==='stageLegacy') {
+    const brief=await assembleImageBrief(env,{campaignId:cid});
+    if(brief.hasCommittedSpec)return {error:'A committed spec already exists'};
+    try {await stageImageSpecDraft(env,brief,{legacyOnly:true});staged=await kvj(K.stage)||staged;return out();}catch(error){return {error:error.message};}
+  }
 
   if (op === "get") {   // + the campaign's MAIN keywords (Research record Keywords — what the Keywords tool's "+ Main Keywords" writes; else the campaign's own Keywords)
     let mainKeywords = "";
@@ -54865,7 +54959,7 @@ async function handleDesignSpec(body, env, ctx) {
     const renderedSpec=dsSpecText(clean,true);if(renderedSpec.length>169000)return {error:'Spec exceeds Notion text capacity; shorten guidance before committing'};
     const rec = { spec: clean, at: new Date().toISOString(), prev: saved ? { spec: saved.spec, at: saved.at } : null };
     await put(K.saved, rec);
-    if (!scoped) staged = clean; else for (const k of scoped) { if (clean[k]) staged[k] = JSON.parse(JSON.stringify(clean[k])); else delete staged[k]; }
+    if (!scoped) staged = {...clean,...(staged.__draftSpec?{__draftSpec:{...staged.__draftSpec,reviewedAt:rec.at}}:{})}; else for (const k of scoped) { if (clean[k]) staged[k] = JSON.parse(JSON.stringify(clean[k])); else delete staged[k]; }
     await put(K.stage, staged);
     // mirror onto the Research record: every field as text (all image engines read Image Spec) + the legacy fields
     const text = `# Design spec (field → value — why). Saved ${rec.at.slice(0, 10)}.\n\n${renderedSpec}`;
@@ -54901,7 +54995,8 @@ async function handleDesignSpec(body, env, ctx) {
     const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
     const promptSpec = Array.isArray(body.only) && body.only.length ? { ...((saved && saved.spec) || {}) } : staged;
     if (promptSpec !== staged) for (const k of body.only) { if (DS_KEYS.has(k) && Object.prototype.hasOwnProperty.call(staged, k)) promptSpec[k] = staged[k]; }
-    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, promptSpec, facts, { only: body.only, note: body.note, demand }) });
+    const draftNote=staged.__draftSpec?.text?'\nDRAFT SPEC AWAITING REVIEW (proposal only; map relevant evidence to requested fields, never auto-commit):\n'+staged.__draftSpec.text:'';
+    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, promptSpec, facts, { only: body.only, note: body.note, draft:draftNote, demand }) });
   }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "couldn't find any spec fields in that text (looking for lines like \"color.bg\": {\"v\": \"#FBFAF7\"}) — paste ChatGPT's whole reply" };
