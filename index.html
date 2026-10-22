@@ -18513,7 +18513,7 @@ function hubStructureRestore(slug,id) {
 }
 function hubStructurePanel(slug) {
   const K=_hubKw[slug],S=K?.sync;
-  const status=S?.report?.error?'Last error: '+S.report.error:S?.pending?'Card changes waiting to sync':S?.lastSync?'In sync '+new Date(S.lastSync).toLocaleString():S?.migrated?'Snapshot verified — first sync seeds Notion from this card':'Not migrated — first sync snapshots and seeds from this card';
+  const status=S?.report?.error?'Last error: '+S.report.error:S?.report?.placement?.pending?'Placement updates queued: '+S.report.placement.pending:S?.pending?'Card changes waiting to sync':S?.pending?'Card changes waiting to sync':S?.lastSync?'In sync '+new Date(S.lastSync).toLocaleString():S?.migrated?'Snapshot verified — first sync seeds Notion from this card':'Not migrated — first sync snapshots and seeds from this card';
   const conflicts=S?.conflicts||[],history=S?.history||[];
   return `<div style="padding:6px 0;font-size:11px;"><button class="kw-btn" ${K?.structureBusy?'disabled':''} onclick="hubStructureRun('${slug}')">↔ Sync with Notion</button> <span style="color:${S?.report?.error?'#f87171':'var(--text3)'}">${esc(status)}</span>
     ${conflicts.length?`<details><summary>${conflicts.length} open structure conflicts</summary>${conflicts.map(c=>`<div style="margin:5px 0;">${esc(c.key)} — ${esc(c.winner)} was newer. Other value:<pre style="white-space:pre-wrap;max-height:150px;overflow:auto;">${esc(JSON.stringify(c.other,null,2))}</pre><button class="kw-btn" onclick="hubStructureRun('${slug}','resolveHubStructureConflict',{conflictId:'${esc(c.id)}'})">Use this instead</button></div>`).join('')}</details>`:''}

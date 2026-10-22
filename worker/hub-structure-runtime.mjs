@@ -25,7 +25,7 @@ export function structureRuntime(env,deps) {
   return '';
  }
  async function enqueue(cid) {await io.put('sync:queue:'+cid,{at:io.now()});}
- async function sync(cid,options={}) {return lock(cid,()=>syncStructure(io,cid,options));}
+ async function sync(cid,options={}) {return lock(cid,async()=>{const queued=await io.get('sync:queue:'+cid),result=await syncStructure(io,cid,options);if(!options.dryRun&&!result.pending&&!result.placement?.pending&&queued){const latest=await io.get('sync:queue:'+cid);if(latest?.at===queued.at)await io.put('sync:queue:'+cid,{...latest,doneAt:io.now()});}return result;});}
  async function boundary(request,ctx,operation) {
   if(request.method!=='POST'||!request.headers.get('Content-Type')?.includes('json'))return operation(request);
   let body;try{body=await request.clone().json();}catch{return operation(request);}
@@ -71,7 +71,7 @@ export function structureRuntime(env,deps) {
   });
  }
  async function enable() {
-  for(const h of hubs){const doc=await io.get('hub:structure:'+norm(h.campaignId));if(!doc?.originalSnapshot||!doc.verifiedAt||!doc.seededAt)throw Error('Migrate, verify and seed every hub before enabling automatic two-way sync');}
+  for(const h of hubs){const cid=norm(h.campaignId),doc=await io.get('hub:structure:'+cid),progress=await io.get('sync:placement-progress:'+cid);if(!doc?.originalSnapshot||!doc.verifiedAt||!doc.seededAt||progress?.pending)throw Error('Migrate, verify, seed and finish placement for every hub before enabling automatic two-way sync');}
   await io.put('sync:enabled:v1',{at:io.now(),hubs:hubs.length});return {success:true,hubs:hubs.length,modelCalls:0};
  }
  return {io,lock,boundary,action,enable,sync,enqueue};

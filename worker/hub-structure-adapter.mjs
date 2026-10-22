@@ -2,7 +2,8 @@ import {same,viewOf} from './hub-structure-sync.mjs';
 const norm=x=>String(x||'').replace(/-/g,''),text=v=>(v||[]).map(x=>x.plain_text??x.text?.content??'').join('');
 const rt=value=>({rich_text:(String(value||'').match(/[\s\S]{1,1900}/g)||[]).map(content=>({type:'text',text:{content}}))});
 const title=value=>({title:[{type:'text',text:{content:String(value||'Untitled').slice(0,1900)}}]});
-const date=at=>({date:{start:new Date(at).toISOString()}});
+// Notion normalizes these date properties to minute precision; send that precision so readback is exact.
+const date=at=>({date:{start:new Date(Math.floor(at/60000)*60000).toISOString()}});
 const logical=row=>text(row.properties?.['Topic Key']?.rich_text)||norm(row.id);
 const time=row=>Date.parse(row.last_edited_time||'')||0;
 const archived=row=>!!(row.archived||row.in_trash||row.properties?.Archived?.checkbox||row.properties?.Status?.select?.name==='Archived');
@@ -152,23 +153,27 @@ export function makeStructureIO(env,deps) {
     const productIds=new Set(prods.map(p=>norm(p.id))),titles=[...new Map([...ownedTitles,...legacyTitles.filter(t=>(t.properties?.product?.relation||t.properties?.Product?.relation||[]).some(r=>productIds.has(norm(r.id))))].map(t=>[norm(t.id),t])).values()];
     const titleIds=new Set(titles.map(t=>norm(t.id))),assets=[...new Map([...ownedAssets,...legacyAssets.filter(a=>(a.properties?.['Content Strategy']?.relation||[]).some(r=>titleIds.has(norm(r.id))))].map(a=>[norm(a.id),a])).values()];
     const model=hierarchyModel({topics:[...view.staged,...view.committed],tc:view.topicClusters,products:prods.filter(p=>!archived(p)).map(p=>({id:p.id,topicId:text(p.properties?.['Topic ID']?.rich_text)})),mainIds:view.mainIds,titles});
-    let changed=0;const seen=[];
+    const current=[];
     for(const [kind,rows] of [['product',prods],['title',titles],['asset',assets]])for(const row of rows) {
       const placed=!archived(row)&&(kind==='product'?model.productIds.has(norm(row.id)):model[kind](row.properties||{}));
-      // Keep per-hub results so a product shared by hubs does not oscillate when the nightly loop visits each hub.
-      seen.push({id:norm(row.id),kind});const key='sync:placement:'+norm(row.id),all=await io.get(key)||{};all[cid]={hub:h.slug,placed};await io.put(key,all);
-      const entries=Object.values(all),any=entries.some(x=>x.placed),summary=entries.filter(x=>x.placed).map(x=>x.hub).sort().join('; ');
-      if(row.properties?.['Placed In Hub']?.checkbox!==any||text(row.properties?.['Hub Placement']?.rich_text)!==summary){await patch(row.id,{'Placed In Hub':{checkbox:any},'Hub Placement':rt(summary)});changed++;}
+      current.push({id:norm(row.id),kind,row,placed});
     }
-    const previous=await io.get('sync:placement-index:'+cid)||[];
-    for(const old of previous)if(!seen.some(x=>x.id===old.id)) {
-      const key='sync:placement:'+old.id,all=await io.get(key)||{};all[cid]={hub:h.slug,placed:false};await io.put(key,all);
-      let row;try{row=await page(old.id);}catch(error){if(/not find|not_found|404/i.test(error.message))continue;throw error;}
+    const previous=await io.get('sync:placement-index:'+cid)||[],known=new Set(current.map(x=>x.id));
+    const tasks=[...current,...previous.filter(x=>!known.has(x.id)).map(x=>({...x,placed:false}))].sort((a,b)=>(a.kind+':'+a.id).localeCompare(b.kind+':'+b.id));
+    const bytes=new TextEncoder().encode(JSON.stringify(tasks.map(x=>[x.kind,x.id,x.placed]))),signature=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    const progress=await io.get('sync:placement-progress:'+cid),start=progress?.signature===signature?progress.next||0:0,end=Math.min(tasks.length,start+60);
+    let changed=0;
+    for(const task of tasks.slice(start,end)) {
+      const key='sync:placement:'+task.id,all=await io.get(key)||{};all[cid]={hub:h.slug,placed:task.placed};await io.put(key,all);
+      let row=task.row;try{row||=await page(task.id);}catch(error){if(/not find|not_found|404/i.test(error.message))continue;throw error;}
       const entries=Object.values(all),any=entries.some(x=>x.placed),summary=entries.filter(x=>x.placed).map(x=>x.hub).sort().join('; ');
-      if(!archived(row)&&(row.properties?.['Placed In Hub']?.checkbox!==any||text(row.properties?.['Hub Placement']?.rich_text)!==summary)){await patch(row.id,{'Placed In Hub':{checkbox:any},'Hub Placement':rt(summary)});changed++;}
+      if(!row.archived&&!row.in_trash&&(row.properties?.['Placed In Hub']?.checkbox!==any||text(row.properties?.['Hub Placement']?.rich_text)!==summary)){await patch(row.id,{'Placed In Hub':{checkbox:any},'Hub Placement':rt(summary)});changed++;}
     }
-    await io.put('sync:placement-index:'+cid,seen);
-    return {changed};
+    const pending=tasks.length-end;
+    await io.put('sync:placement-progress:'+cid,{signature,next:pending?end:0,at:io.now(),pending});
+    if(pending)await io.put('sync:queue:'+cid,{at:io.now(),source:'placement'});
+    else await io.put('sync:placement-index:'+cid,current.map(({id,kind})=>({id,kind})));
+    return {changed,checked:end-start,pending,total:tasks.length};
   };
   io.page=page;io.patch=patch;io.topicValue=topicValue;return io;
 }
