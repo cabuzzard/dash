@@ -1,5 +1,15 @@
 [
   {
+    "slug": "housed",
+    "title": "Housed",
+    "intro": "Your household stays stable through the gap — before the eviction, before the job loss, not after.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
+    "contentHash": "de17a947b98d682c91f468fc75e7cf5902a3a190e2257ef3070ce45213bd64d3",
+    "contentEditedAt": "2026-10-21T07:42:00.000Z",
+    "refreshedAt": "2026-10-22T03:33:00.813Z"
+  },
+  {
     "slug": "caregiver-circle",
     "title": "Caregiver Circle",
     "intro": "The isolation breaks on day one — and the research burden stops being yours alone to carry.",
@@ -18,12 +28,5 @@
     "contentHash": "b4b0fcfb200988d1e511404ef1d4e5a202a33453652ced3d724d6d38fb706107",
     "contentEditedAt": "2026-10-21T07:42:00.000Z",
     "refreshedAt": "2026-10-22T03:32:41.020Z"
-  },
-  {
-    "slug": "housed",
-    "title": "Housed",
-    "intro": "For Direct care workers and home health aides whose rent is one missed shift from trouble.\n\nYour household stays stable through the gap — before the eviction, before the job loss, not after.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb8162a24bd68d699632eb"
   }
 ]
