@@ -1,5 +1,15 @@
 [
   {
+    "slug": "tank-diagnosis",
+    "title": "Start Your Natural Aquarium",
+    "intro": "You've read the forums. You've watched the videos. And you still aren't sure whether a Walstad tank will actually work in your living room, with your tap water, in the container you already have. That gap between method and your specific setup is exactly what this consultation closes — a written pla",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
+    "contentHash": "5ce38c51a68d3cfa3b2b31a2cd3769c5a622bf17d51d144fa2f0dabe89c8cd29",
+    "contentEditedAt": "2026-10-22T16:35:00.000Z",
+    "refreshedAt": "2026-10-22T16:35:15.907Z"
+  },
+  {
     "slug": "corporate-aquarium-design-installation",
     "title": "Corporate Aquarium Design & Installation",
     "intro": "A living aquarium is one of the few design features that actively improves with time — but only if it was specified correctly from day one. This is a practitioner-led design, installation, and care-planning service for commercial interiors: offices, hotel lobbies, restaurant environments, reception ",
@@ -18,15 +28,5 @@
     "contentHash": "3cff3be3d1129291f559977a606596a5b306ccb424ea6fd2c993c1edb7ab0033",
     "contentEditedAt": "2026-10-22T16:12:00.000Z",
     "refreshedAt": "2026-10-22T16:12:16.709Z"
-  },
-  {
-    "slug": "tank-diagnosis",
-    "title": "Start Your Natural Aquarium",
-    "intro": "You've read the forums. You've watched the videos. And you still aren't sure whether a Walstad tank will actually work in your living room, with your tap water, in the container you already have. That gap between method and your specific setup is exactly what this consultation closes — a written pla",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81b88485dbb4814c1114",
-    "contentHash": "79d5703955ae9fc6072ee007ff2c5b712d4200698f9705bf17df97a762c7e01b",
-    "contentEditedAt": "2026-10-22T16:09:00.000Z",
-    "refreshedAt": "2026-10-22T16:09:24.517Z"
   }
 ]
