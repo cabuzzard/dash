@@ -4296,9 +4296,11 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
   let slug = mine ? mine.slug : base0;
   if (!mine && aid && posts.some(p => p && p.slug === base0 && p.assetId && p.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
   posts = posts.filter(p => p && p.slug !== slug && !(aid && p.assetId === aid));
-  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}), ...(env.__hubPublication?.stamp || {}) });
+  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').replace(/\*\*/g, '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}), ...(env.__hubPublication?.stamp || {}) });
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // body text: escaped, then Markdown **bold** → <strong> (contract-written pages are Markdown; was shown as literal asterisks)
+  const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
   const fontsImport = s.fontQuery
     ? `@import url('https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap');`
@@ -4350,9 +4352,9 @@ ${bodyHtml}
   const postBody = `${thumbnail ? `<img class="hero" src="${esc(thumbnail)}" alt="${esc(displayTitle)}">` : ''}
 <h1>${esc(displayTitle)}</h1>
 <div class="meta">${esc(today)}</div>
-${intro ? `<p>${esc(intro)}</p>` : ''}
-${(sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}`).join('\n')}
-${conclusion ? `<p>${esc(conclusion)}</p>` : ''}
+${intro ? String(intro).split(/\n{2,}/).map(p => `<p>${md(p.trim())}</p>`).join('\n') : ''}
+${(sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${md(p.trim())}</p>`).join('\n')}`).join('\n')}
+${conclusion ? `<p>${md(conclusion)}</p>` : ''}
 ${salesExtras}
 ${(Array.isArray(sources) && sources.filter(s => s && s.url).length) ? `<h2>Sources</h2>\n<ul>\n${sources.filter(s => s && s.url).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label || s.url)}</a></li>`).join('\n')}\n</ul>` : ''}
 ${(cta && cta.href) ? `<p style="margin-top:32px;"><a href="${esc(cta.href)}" style="display:inline-block;background:var(--accent);color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;">${esc(cta.label || 'Get Started')}</a></p>` : ''}`;
