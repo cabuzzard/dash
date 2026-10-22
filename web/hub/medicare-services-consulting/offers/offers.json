@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
+    "slug": "care-command",
+    "name": "Medicare Plan Review & Guidance",
+    "promise": "For adult children and family caregivers managing a parent's care. One accountable person owns the whole board — appointments, referrals, authorizations — so you stop being the unpaid care administrator and go back to being family.",
+    "url": "../blog/care-command/",
+    "contentHash": "e723c083cd96b387bdb5e05d1c837b57d17cc6f23c5809c74fd2678983dc6f97",
+    "contentEditedAt": "2026-10-22T13:28:00.000Z",
+    "refreshedAt": "2026-10-22T13:28:17.902Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
     "slug": "medicare-clarity-consult",
     "name": "Medicare Clarity Consulting",
@@ -8,15 +18,5 @@
     "contentHash": "344d3bcefac08cc0a6c4f2a300194c600a1a210f9c9cc79a992aa5d276492a0c",
     "contentEditedAt": "2026-10-22T13:27:00.000Z",
     "refreshedAt": "2026-10-22T13:27:42.760Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e",
-    "slug": "care-command",
-    "name": "Care Command",
-    "promise": "One person owns the whole board — appointments, referrals, authorizations, provider communication — so you stop being the unpaid care administrator and go back to being family.",
-    "url": "../blog/care-command/",
-    "contentHash": "f215b645ba2b404340dcf8431e01efb2770f4593e74bccefedcbc24301affb26",
-    "contentEditedAt": "2026-10-21T07:39:00.000Z",
-    "refreshedAt": "2026-10-22T03:36:21.759Z"
   }
 ]
