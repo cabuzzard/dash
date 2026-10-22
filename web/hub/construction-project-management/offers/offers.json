@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
+    "slug": "ai-field-deployment",
+    "name": "Construction AI Automation: RFIs, Change Orders & Project Reports",
+    "promise": "For contractors drowning in document overhead — get RFIs processed, change orders filed, and project reports out consistently without touching each one yourself.",
+    "url": "../blog/ai-field-deployment/",
+    "contentHash": "92caffc52aa8429af10f3c43c2ed451566d95f5977bd3e56613703845187f312",
+    "contentEditedAt": "2026-10-22T16:38:00.000Z",
+    "refreshedAt": "2026-10-22T16:38:28.930Z"
+  },
+  {
     "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
     "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
     "name": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
@@ -8,16 +18,6 @@
     "contentHash": "dfde2f875076f39ca5f40469b6f3d643c061faab5f07a771abbe6bad25242cc1",
     "contentEditedAt": "2026-10-22T16:22:00.000Z",
     "refreshedAt": "2026-10-22T16:22:39.006Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
-    "slug": "ai-field-deployment",
-    "name": "Construction AI Automation: RFIs, Change Orders & Project Reports",
-    "promise": "For contractors drowning in document overhead — get RFIs processed, change orders filed, and project reports out consistently without touching each one yourself.",
-    "url": "../blog/ai-field-deployment/",
-    "contentHash": "a218a0d6d08dfe67f59c2faa22e8ac3478ee10b5393c0e9fa9d98c2d99368663",
-    "contentEditedAt": "2026-10-22T16:21:00.000Z",
-    "refreshedAt": "2026-10-22T16:22:00.260Z"
   },
   {
     "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
