@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb814bb551ef2f769bcd52",
+    "slug": "creative-flow-guitar-t-shirts",
+    "name": "Creative Flow Guitar T-Shirts",
+    "promise": "For guitar players and deep listeners who want apparel that reflects how seriously they take the music — designs built from real guitar culture, not clip-art.",
+    "url": "../blog/creative-flow-guitar-t-shirts/",
+    "contentHash": "7a4633bb4056dc9942ab057d9bb5b5aeb9961b2af5db1b6f673ea983569b99f0",
+    "contentEditedAt": "2026-10-22T16:32:00.000Z",
+    "refreshedAt": "2026-10-22T16:32:22.918Z"
+  },
+  {
     "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
     "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
     "name": "The Guitar Letter — Guitar & Music Commentary Newsletter",
@@ -18,16 +28,6 @@
     "contentHash": "cd2b7115e685ba2b9c177f52e72ee180f79b68f692e107b26cedf52f191c3b4c",
     "contentEditedAt": "2026-10-22T15:58:00.000Z",
     "refreshedAt": "2026-10-22T15:58:25.040Z"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb814bb551ef2f769bcd52",
-    "slug": "creative-flow-guitar-t-shirts",
-    "name": "Creative Flow Guitar T-Shirts",
-    "promise": "For guitar players and deep listeners who want apparel that reflects how seriously they take the music — designs built from real guitar culture, not clip-art.",
-    "url": "../blog/creative-flow-guitar-t-shirts/",
-    "contentHash": "e15daca3d822fafd0c780aa4dc7917c1ec6307104741911a734275ac291581b6",
-    "contentEditedAt": "2026-10-22T15:55:00.000Z",
-    "refreshedAt": "2026-10-22T15:55:57.380Z"
   },
   {
     "assetId": "4001f7d3a4bb81d0b997f415c0264a05",
