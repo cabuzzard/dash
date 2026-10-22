@@ -20,8 +20,8 @@ test('non-modal callers use committed format text, preserve full instructions/gu
 test('legacy text is importable only as a staged review note; repeated holds make zero model calls and preserve payload without token',async()=>{
  const x=fixture(false),r=await x.c.assembleImageBrief(x.env,{campaignId:x.cid,runGuidance:'NEVER UPSTREAM'});
  assert.equal(r.storedSpec,'');assert.match(r.legacySpec,/LEGACY SPEC/);
- for(let i=0;i<2;i++){const held=await x.c.holdImageWithoutSpec(x.env,r,{action:'generateOfferImage',token:'private',guidance:'asset-only'});assert.equal(held.error,'no_committed_design_spec');}
- assert.equal(x.calls.filter(y=>y.draft).length,0);const stage=x.kv.get('design:stage:'+x.cid);assert.equal(stage.__draftSpec.source,'legacy');assert.equal(stage.__draftSpec.status,'awaiting_review');assert.equal(x.kv.has('design:spec:'+x.cid),false);assert.equal(x.held.length,2);assert.equal(x.held[0].payload.token,undefined);assert.equal(x.held[0].payload.guidance,'asset-only');
+ for(let i=0;i<2;i++){const held=await x.c.holdImageWithoutSpec(x.env,r,{action:'generateOfferImage',token:'private',governanceUnlock:'private-unlock',guidance:'asset-only'});assert.equal(held.error,'no_committed_design_spec');}
+ assert.equal(x.calls.filter(y=>y.draft).length,0);const stage=x.kv.get('design:stage:'+x.cid);assert.equal(stage.__draftSpec.source,'legacy');assert.equal(stage.__draftSpec.status,'awaiting_review');assert.equal(x.kv.has('design:spec:'+x.cid),false);assert.equal(x.held.length,2);assert.equal(x.held[0].payload.token,undefined);assert.equal(x.held[0].payload.governanceUnlock,undefined);assert.equal(x.held[0].payload.guidance,'asset-only');
 });
 test('spec-less drafting is cached once and excludes downstream guidance; a later commit releases the gate',async()=>{
  const x=fixture(false);x.c.assembleImageBrief=async()=>({campaignId:x.cid,facts:['hub fact']});
