@@ -18232,7 +18232,9 @@ Return ONLY this JSON, no other text, no fences:
       // ── attachProductToTopic {productId, stack, topicId, keyword?} ── (dash Content Hubs → Keywords › ＋ product › Existing)
       // Product Stack = the topic name, the stable "Topic ID" link, and the suggested keyword appended to Keywords. No research.
       if (body.action === "attachProductToTopic") {
-        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32 || (!body.stack && !body.topicId)) return json({ error: "productId and topicId (or stack) required" }, 400);
+        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32 || (!body.stack && !body.topicId && !body.clear)) return json({ error: "productId and topicId (or stack, or clear) required" }, 400);
+        // clear: true → take the product off its topic (blank Topic ID) — a chain break: its titles and assets leave the hub
+        if (body.clear) { try { await kwEnsureProductProps(env); await kwNotionPatch(env, pid, { "Topic ID": { rich_text: [] } }); } catch (e) { return json({ error: e.message }, 500); } return json({ success: true, cleared: true }); }
         // Product Stack / Group are designations other pages still sort by — only written when explicitly given
         const props = body.stack ? { "Product Stack": { rich_text: [{ type: "text", text: { content: String(body.stack).trim().slice(0, 100) } }] } } : {};
         if (body.markOutOfSync) { await kwEnsureProductProps(env); props["Keywords Out of Sync"] = { checkbox: true }; }   // its upstream (topic) changed
