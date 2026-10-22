@@ -1,5 +1,15 @@
 [
   {
+    "slug": "garden-fund",
+    "title": "Sunflower Acres Accessible Garden Fund — Donations & Sponsorships",
+    "intro": "```json\n{\n  \"kicker\": \"Donation & Sponsorship\",\n  \"name\": \"Sunflower Acres Accessible Garden Fund\",\n  \"promise\": \"Your contribution funds a named infrastructure project — scoped, costed, and tracked before you give.\",\n  \"ctaLabel\": \"Explore Ways to Support\",\n  \"ctaUrl\": \"\"\n}\n```\n\nMost accessibility ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
+    "contentHash": "10a12fd84f7f7951dda95e552d1e878734eb04f3c5f55917baedfe30c9d01c01",
+    "contentEditedAt": "2026-10-22T15:29:00.000Z",
+    "refreshedAt": "2026-10-22T15:29:05.427Z"
+  },
+  {
     "slug": "garden-shop",
     "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
     "intro": "```json\n{\n  \"kicker\": \"Garden Shop\",\n  \"name\": \"Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations\",\n  \"promise\": \"Seasonal plants, garden-grown flowers, and handmade botanical gifts from a working farm in Concord — with real stock, real origins, and clear pickup or shippi",
@@ -18,15 +28,5 @@
     "contentHash": "8e584bf7b627f38ab53c732c78be9f45433c49ec6d46d76cb646608206b02b8c",
     "contentEditedAt": "2026-10-22T15:24:00.000Z",
     "refreshedAt": "2026-10-22T15:24:07.107Z"
-  },
-  {
-    "slug": "garden-fund",
-    "title": "Sunflower Acres Accessible Garden Fund — Donations & Sponsorships",
-    "intro": "```json\n{\n  \"kicker\": \"Donation & Sponsorship\",\n  \"name\": \"Sunflower Acres Accessible Garden Fund\",\n  \"promise\": \"Your contribution funds a named infrastructure project — scoped, costed, and tracked before you give.\",\n  \"ctaLabel\": \"Explore Ways to Support\",\n  \"ctaUrl\": \"\"\n}\n```\n\nMost accessibility ",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81d9b1c5f811913c88e1",
-    "contentHash": "e883adf9e7fc6c41537ee17f4082b83a56dae7d9e98feee6fb52f07bebe45858",
-    "contentEditedAt": "2026-10-22T14:03:00.000Z",
-    "refreshedAt": "2026-10-22T15:03:50.661Z"
   }
 ]
