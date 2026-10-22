@@ -6618,7 +6618,7 @@ function openPublishAssetModal(assetId) {
 }
 function pubWriteAssetState(data){
   const wrap=document.getElementById('pubWriteWrap'),button=document.getElementById('pubWriteAsset');
-  wrap.hidden=!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
+  delete button.dataset.unmapped;wrap.hidden=!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
   button.textContent='✍ Write asset';document.getElementById('pubWriteResult').textContent='';
 }
 async function pubWriteAssetNow(button){
@@ -6626,13 +6626,14 @@ async function pubWriteAssetNow(button){
   try{
     const written=await w('writeAsset',{assetId:aid});if(pubAssetId!==aid)return;
     if(written.needsInterview){result.textContent="This asset's interview isn't answered yet";return;}
-    if(written.error)throw new Error(written.error);
+    if(written.error==='unmapped'){button.title=written.reason;button.dataset.unmapped='yes';result.textContent=written.reason;return;}
+    if(written.error)throw new Error(written.reason||written.error);
     const fresh=await w('getAsset',{assetId:aid});if(pubAssetId!==aid)return;
     Object.assign(PUB_ASSET_CACHE[aid]||={},fresh);openPublishAssetModal(aid);
     document.getElementById('pubAssetStatus').textContent=written.skipped?'Already written.':'✓ Asset written · '+fresh.status;
     parent.postMessage({type:'hubAssetListingChanged',assetId:aid},location.origin);
   }catch(error){if(pubAssetId===aid)result.textContent=error.message;}
-  finally{if(pubAssetId===aid)button.disabled=false;}
+  finally{if(pubAssetId===aid)button.disabled=button.dataset.unmapped==='yes';}
 }
 // ── 🧍 Presenters: built-in characters (tools/presenter/characters) + the library (worker lfPresenters, KV) ──
 // The library is the history: every presenter ever added stays there (✕ archives = hidden, 🗂 shows them again).

@@ -449,3 +449,16 @@ The graph in the dash's **Information Flow tab** is the governing document for h
 - AI (Claude, ChatGPT, Grok, Buzz) is a **filter, not a source**: present opinions as options to edit the source; never originate changes to the flow. Flow changes are made by the operator editing the graph in the tab.
 - New modals and save paths must consult the flow (via `getGoverningFlow`) and must not bypass the worker's flow guard or its refusal-and-repair holding (`flow:held:v1`). Enforcement stays advisory until the operator sets `flow:enforce:v1` in KV.
 - The `buzz/*.json` files are frozen audit snapshots. If they and the tab ever disagree, the tab wins.
+
+
+## Governing writing process (Oct 21, 2026)
+
+Current Methods (`infoflow:table:currentmethods`) is the writing registry of record, alongside the governing Information Flow graph. Method instructs; the single `writeAsset {assetId}` process executes. No method record, row, contract, inputs or `mapped: yes` means `error: unmapped`, with a specific reason and no asset changes. Listing is the only mapped pilot; other methods are inventoried by `methodMappingReport`. Old writer functions remain available to existing flows.
+
+The version-1 JSON writing packet contains `assetId`, `method` (id, name, Notes, recursive page content), `contract` (one `Field Name ? rule` per line), `inputs`, `title` (current properties and pillar), `research`, `voice`, `hub` (audience and resolved design), `product` (facts and research), `interview`, `platform` (Platform Name / Platform), and `currentFields`. All content comes from these sources; AI filters, never supplies unsupported facts. Any Claude writing agent given this packet, on any surface, produces **exactly the contract fields as string values and nothing else**, following the recipe. Unsupported facts remain empty.
+
+The shared pipeline resolves ? assembles ? calls the existing model helper once with a contract-derived structured schema ? validates ? saves contract fields and Method ? records `assetId`, method/id, violations, written, timestamp in capped KV `writeasset:log` (200 runs). It never changes status, publishing or hub listings. Missing Notion contract properties are added as rich text; existing rich text, title and select properties retain their types.
+
+Generic validators understand required non-empty text, `? N characters`, `exactly N lines`, `exactly N tags, comma-separated`, `at least N Q&A pairs` formatted `Q: ? A: ?`, and `each: value | value | ?` for non-empty pipe-separated columns. Other prose rules remain instructions to the writer. Enforcement is advisory: violations are strings, fields are saved, `ok: true` describes the save, and only an empty violation list gives `written: true`. Modal/bulk reloads evaluate all contract fields, so partial writes remain unwritten and retryable. Changing status or publishing is a separate operator action. Blocking enforcement requires a later explicit change; it is not enabled here.
+
+The registry migration is additive and one-time (`writeasset:registry:v1`); subsequent operator edits to contracts/inputs/mapped remain authoritative. `methodMappingReport` enumerates every Methods DB record and its Status, row presence, mapped cell, and missing pieces.

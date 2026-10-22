@@ -1624,26 +1624,114 @@ async function saveExistingAssetWriting(page,properties,children) {
   return data;
 }
 
+// Writing governance: Current Methods is the registry; the process supplies no content.
+const LISTING_WRITING_CONTRACT = `Platform Title — the listing's public title; for a Fiverr gig, the "I will…" title, ≤ 120 characters.
+Body — the full listing description, complete prose, not a summary.
+Pricing Tiers — exactly 3 lines, each: tier name | price | delivery days | revisions | what's included.
+Search Tags — exactly 5 tags, comma-separated.
+FAQ — at least 3 Q&A pairs, each "Q: … A: …".
+Gig Category — the marketplace category/subcategory.`;
+async function writingMethodsTable(env) {
+  const key='infoflow:table:currentmethods',table=await env.TRADES.get(key,'json');
+  if(!table || !Array.isArray(table.columns) || !Array.isArray(table.rows))throw new Error('Current Methods table unavailable');
+  if(await env.TRADES.get('writeasset:registry:v1'))return table;
+  // One-time additive migration. Existing rows, cells and column metadata are preserved.
+  const col=(name,id)=>{let c=table.columns.find(c=>ivNorm(c.name)===ivNorm(name));if(!c){c={id,name};table.columns.push(c);}return c.id;};
+  const contract=col('contract','cwcontract01'),inputs=col('inputs','cwinputs01'),mapped=col('mapped','cwmapped01');
+  let row=table.rows.find(r=>ivNorm(r.cells?.cname01)==='listing');
+  if(!row){row={id:'rwritinglisting01',cells:{cname01:'Listing',cmuzq36hb77sq:'Listing',civtier01:'None',cmatch01:'Listing; listing; Gig Description'}};table.rows.push(row);}
+  Object.assign(row.cells,{[contract]:LISTING_WRITING_CONTRACT,[inputs]:'title pillar or product facts; platform (Platform Name)',[mapped]:'yes'});
+  table.at=Date.now();await env.TRADES.put(key,JSON.stringify(table));await env.TRADES.put('writeasset:registry:v1','1');return table;
+}
+function writingRows(table) {
+  const id=name=>table.columns.find(c=>ivNorm(c.name)===ivNorm(name))?.id;
+  return table.rows.map(r=>{const c=r.cells||{};return {name:c.cname01||c.cmuzq36hb77sq||c.c1||'',aliases:String(c.cmatch01||'').split(';').map(ivNorm),
+    contractText:String(c[id('contract')]||''),inputs:String(c[id('inputs')]||''),mapped:String(c[id('mapped')]||'').trim()};});
+}
+function parseWritingContract(text) {
+  return String(text||'').split(/\r?\n/).filter(x=>x.trim()).map(line=>{const m=/^\s*(?:[-*]\s+)?(.+?)\s+—\s+(.+)$/.exec(line);return m?{name:m[1].trim(),rule:m[2].trim()}:{name:'',rule:line};});
+}
+function writingMissing(row) {
+  if(!row)return ['no table row'];
+  const missing=[];if(!row.contractText.trim())missing.push('no contract');if(!row.inputs.trim())missing.push('no inputs');
+  if(row.contractText && parseWritingContract(row.contractText).some(f=>!f.name))missing.push('invalid contract: use Field Name — rule');
+  if(row.contractText && new Set(parseWritingContract(row.contractText).map(f=>f.name)).size!==parseWritingContract(row.contractText).length)missing.push('duplicate contract field');
+  return missing;
+}
+async function writingMethod(env,page) {
+  const rows=writingRows(await writingMethodsTable(env)),p=page.properties||{},type=p['Asset Type']?.select?.name||'';
+  const methodId=ivRid(p,'Method')||await resolveMethodIdByName(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()]||type);
+  const method=methodId?await ivPage(methodId):null,name=method?hubRichText(method.properties?.Name?.title):type;
+  const row=rows.find(r=>ivNorm(r.name)===ivNorm(name))||rows.find(r=>r.aliases.includes(ivNorm(name)));
+  const missing=writingMissing(row);if(!method)missing.unshift('no method record');if(row && row.mapped.toLowerCase()!=='yes')missing.push('mapped is not yes');
+  return {methodId,method,name,row,contract:row?parseWritingContract(row.contractText):[],reason:missing.length?`${name||type||'Asset'}: ${missing.join('; ')}`:''};
+}
+function writingFieldValues(properties) {
+  return Object.fromEntries(Object.entries(properties).map(([k,p])=>[k,hubRichText(p.rich_text||p.title)||(p.select?.name||p.url||p.number?.toString()||'')]));
+}
+function validateWritingContract(contract,fields) {
+  const violations=[];
+  for(const {name,rule} of contract){
+    const value=fields?.[name];if(typeof value!=='string'||!value.trim()){violations.push(`${name}: required non-empty text`);continue;}
+    let m;const lines=value.trim().split(/\r?\n/).filter(x=>x.trim());
+    if((m=/≤\s*(\d+)\s+characters/i.exec(rule))&&Array.from(value).length>+m[1])violations.push(`${name}: exceeds ${m[1]} characters`);
+    if((m=/exactly\s+(\d+)\s+lines/i.exec(rule))&&lines.length!==+m[1])violations.push(`${name}: expected exactly ${m[1]} lines, got ${lines.length}`);
+    if((m=/exactly\s+(\d+)\s+tags.*comma-separated/i.exec(rule))){const tags=value.split(',').map(x=>x.trim());if(tags.length!==+m[1]||tags.some(x=>!x))violations.push(`${name}: expected exactly ${m[1]} comma-separated tags`);}
+    if((m=/at least\s+(\d+)\s+Q&A pairs/i.exec(rule))){const pairs=value.match(/Q:\s*\S[\s\S]*?\s+A:\s*\S[\s\S]*?(?=\s+Q:|$)/g)||[];if(pairs.length<+m[1])violations.push(`${name}: expected at least ${m[1]} Q&A pairs`);}
+    if((m=/each:\s*([^.]*(?:\|[^.]*)+)/i.exec(rule))){const count=m[1].split('|').length;if(lines.some(l=>{const parts=l.split('|');return parts.length!==count||parts.some(x=>!x.trim());}))violations.push(`${name}: each line must have ${count} non-empty pipe-separated values`);}
+  }
+  return violations;
+}
+async function methodMappingReport(env) {
+  const rows=writingRows(await writingMethodsTable(env)),methods=await notionQuery(METHODS_DB,{});
+  return {total:methods.length,methods:methods.map(method=>{const p=method.properties||{},name=hubRichText(p.Name?.title),row=rows.find(r=>ivNorm(r.name)===ivNorm(name))||rows.find(r=>r.aliases.includes(ivNorm(name)));
+    return {id:method.id,name,Status:p.Status?.select?.name||p.Status?.status?.name||'',hasRow:!!row,mapped:row?.mapped||'',missing:writingMissing(row)};})};
+}
+async function writeContractAsset(env,assetId) {
+  if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
+  await governingFlow(env);
+  const page=await ivPage(assetId);if(!page?.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
+  const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason};
+  const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
+  const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
+  const [recipe,pillar,research,voice,audience,product,design,interview]=await Promise.all([
+    extractBlocksTextRecursive(ivHdr(),ivDash(methodId)),titleId?extractPillarContent(ivHdr(),ivDash(titleId)):'',titleId?titleResearchBlock(env,titleId):'',
+    cid?voiceBlock(env,cid):'',cid?hubAudienceBlock(env,cid):'',pid?ivProdResearch(pid):'',
+    cid?assembleImageBrief(env,{campaignId:cid,assetId:page.id,codexDesign:true}):null,
+    titleId?ivBlock(env,titleId,p['Asset Type']?.select?.name||'',hubAssetId(page.id)):null
+  ]);
+  const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method.properties?.Notes?.rich_text),page:recipe},
+    contract:row.contractText,inputs:row.inputs,title:{properties:writingFieldValues(tp),pillar},research,voice,hub:{audience,design},
+    product:{properties:pid?writingFieldValues((await ivPage(pid)).properties||{}):{},research:product},interview:interview?.text||'',
+    platform:writingFieldValues(p)['Platform Name']||writingFieldValues(p).Platform||'',currentFields:writingFieldValues(p)};
+  const instruction='Method instructs; the process executes. AI is a filter, not a source. Use only the packet sources. Produce exactly the contract fields, following the method recipe, as string values. Return no other fields or commentary. Never invent missing facts; leave unsupported fields empty so advisory validation reports them.';
+  const schema={type:'object',properties:Object.fromEntries(contract.map(f=>[f.name,{type:'string',description:f.rule}])),required:contract.map(f=>f.name),additionalProperties:false};
+  const generated=await hcClaude(env,instruction+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
+  const fields=Object.fromEntries(contract.map(f=>[f.name,typeof generated[f.name]==='string'?generated[f.name]:''])),violations=validateWritingContract(contract,fields);
+  // Only contract properties and Method can be saved; operational metadata is never a writing field.
+  const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
+  if(contract.some(f=>protectedFields.has(ivNorm(f.name))))throw new Error('Contract contains protected status, routing or attribution fields');
+  const schemaResp=await hubNotionFetch('https://api.notion.com/v1/databases/'+ASSETS_DB,{headers:ivHdr()}),db=await schemaResp.json();if(!schemaResp.ok)throw new Error(db.message||'Could not read asset schema');
+  const additions={};for(const f of contract){const prop=db.properties?.[f.name];if(!prop)additions[f.name]={rich_text:{}};else if(!['rich_text','title','select'].includes(prop.type))throw new Error(`Unsupported contract property type: ${f.name} (${prop.type})`);}
+  if(Object.keys(additions).length){const r=await hubNotionFetch('https://api.notion.com/v1/databases/'+ASSETS_DB,{method:'PATCH',headers:ivHdr(),body:JSON.stringify({properties:additions})});if(!r.ok)throw new Error((await r.json()).message||'Could not add contract properties');}
+  const properties=await assetMethodProp(methodId,p['Asset Type']?.select?.name);
+  for(const [key,value] of Object.entries(fields)){const type=db.properties?.[key]?.type||'rich_text';if(value.length>190000)throw new Error(`${key}: exceeds Notion text capacity`);properties[key]=type==='select'?{select:value?{name:value}:null}:{[type]:ivRt(value)};}
+  await saveExistingAssetWriting(page,properties,[]);
+  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString()};
+  const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
+  return {ok:true,fields:Object.keys(fields),violations,written:run.written};
+}
+
 async function assetWriterInfo(env,page) {
-  const p=page.properties||{},methodId=ivRid(p,'Method');
-  const method=methodId?await ivPage(methodId):null;
-  const name=method?hubRichText(method.properties?.Name?.title):'',type=p['Asset Type']?.select?.name||'';
-  const value=(name||type).replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();
-  let writer='';
-  if(p['Asset Class']?.select?.name==='Pillar')writer='parent';
-  else if(/^Topical\s*-\s*SEO Post$/i.test(value)||/^Topical Post$/i.test(value))writer='topical';
-  else if(/^Topical\s*-\s*YouTube$/i.test(value))writer='youtube';
-  else if(/^Blog\s*-\s*SEO\s*-\s*News$/i.test(value))writer='news';
-  else if(/Newsletter.*Issue|Issue.*Newsletter/i.test(value))writer='newsletter';
-  else if(/^Off[ -]?site Article/i.test(value))writer='offsite';
-  else if(/^Offer\s*-\s*Content Hub$/i.test(value))writer='offer';
-  else if(/^SEO Post$|^Blog (Post|Article)$/i.test(value))writer='seo';
-  else if(/^(Generic|Written Content|Body Text|Text Content)$/i.test(value))writer='content';
-  return {writer,methodId,methodName:name,type,writerAvailable:!!writer,writerError:writer?'':'No writer for this asset type yet'};
+  const mapping=await writingMethod(env,page);
+  return {writer:mapping.reason?'':'contract',methodId:mapping.methodId,methodName:mapping.name,type:page.properties?.['Asset Type']?.select?.name||'',
+    writerAvailable:!mapping.reason,writerError:mapping.reason||'',mapping};
 }
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   const [writing,info]=await Promise.all([assetWritingState(page),assetWriterInfo(env,page)]),p=page.properties;
+  if(info.mapping?.contract.length){writing.violations=validateWritingContract(info.mapping.contract,writingFieldValues(p));writing.hasWriting=writing.violations.length===0;}
+  delete info.mapping;
   return {page,writing,info,public:{id:hubAssetId(page.id),assetTitle:hubRichText(p['Asset Title']?.title),type:info.type,
     status:p['Asset Status']?.select?.name||'',body:writing.body,text:writing.text,hasWriting:writing.hasWriting,
     platformTitle:hubRichText(p['Platform Title']?.rich_text),postCaption:hubRichText(p['Post Caption']?.rich_text),hashtags:hubRichText(p.Hashtags?.rich_text),
@@ -1652,32 +1740,6 @@ async function getWritableAsset(env,assetId) {
     contentUrl:p['Content URL']?.url||'',siteUrl:p['Site URL']?.url||'',deploymentStatus:p['Deployment Status']?.select?.name||'',
     contentHub:p['Content Hub']?.select?.name||'',publishingDate:p['Publishing Date']?.date?.start||'',...info}};
 }
-async function writeExistingGeneratedAsset(env,page,info) {
-  const p=page.properties,titleId=ivRid(p,'Content Strategy');if(!titleId)return {error:'This asset has no title'};
-  const title=await ivPage(titleId),tp=title.properties||{};
-  const result=await selfAction(env,'generateTitleAssets',{titleId,title:hubRichText(tp.Title?.title),campaignId:ivRid(p,'Campaign'),
-    productId:ivRid(p,'Product')||ivRid(tp,'product'),methodId:info.methodId||undefined,assetType:info.type,count:1,replaceAssetId:hubAssetId(page.id),writeOnly:true});
-  if(result.error||result.needsInterview)return result;
-  return {ok:true,assetId:hubAssetId(page.id),...result};
-}
-async function writeAssetFromMethod(env,assetId) {
-  await governingFlow(env);
-  const {page,writing,info}=await getWritableAsset(env,assetId),p=page.properties;
-  if(writing.hasWriting)return {skipped:true,reason:'already written',assetId:hubAssetId(page.id)};
-  if(!info.writer)return {skipped:true,reason:info.writerError,error:info.writerError};
-  const cid=ivRid(p,'Campaign'),titleId=ivRid(p,'Content Strategy');
-  switch(info.writer){
-    case 'topical':return writeTopicalPost(env,assetId);
-    case 'youtube':return writeTopicalYouTube(env,assetId);
-    case 'parent':return writeParentAsset(env,assetId);
-    case 'news':return writeHubNewsPost(env,cid,{assetId,writeOnly:true});
-    case 'newsletter':return writeHubNewsletterIssue(env,{cid,titleId,headline:hubRichText(p['Asset Title']?.title),assetId,writeOnly:true});
-    case 'offsite':{const source=ivRid(p,'Parent Asset');if(!source)return {error:'Attach the written SEO source as Parent Asset first'};return writeOffsiteArticle(env,source,p['Platform Name']?.select?.name,{assetId});}
-    case 'offer':case 'seo':return writeExistingGeneratedAsset(env,page,info);
-    case 'content':return selfAction(env,'writeContent',{titleId,assetId,methodId:info.methodId});
-  }
-}
-
 async function topicalSaveWriting(env, input, text, extraProps = {}) {
   if (input.state.kind === 'blog') validateBlogArticle(text);
   const { state, skipInterview } = input, hdr = ivHdr(), aid = state.assetId;
@@ -3869,6 +3931,7 @@ async function spCarouselSlides(carouselId) {
   })).sort((a, b) => a.slide - b.slide);
 }
 const ASSET_TYPE_METHOD_ALIAS = {
+  "gig description": "Listing",
   "single post carousel": "single post carousel",
   "single post": "single post",
   "avatar video": "Avatar Video — Growth",
@@ -21750,7 +21813,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         // body.name picks a separate table (e.g. "newflow"); no name = the original Flow table
         const fkey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
-        let t = null; try { t = await env.TRADES.get(fkey, "json"); } catch (e) {}
+        let t = null; try { t = body.name === "currentmethods" ? await writingMethodsTable(env) : await env.TRADES.get(fkey, "json"); } catch (e) { if(body.name === "currentmethods")throw e; }
         return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
       }
       if (body.action === "saveInfoFlowTable") {
@@ -50526,9 +50589,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if(!body.assetId)return json({error:'assetId required'},400);
         return json((await getWritableAsset(env,body.assetId)).public);
       }
+      if (body.action === "methodMappingReport") {
+        return json(await methodMappingReport(env));
+      }
       if (body.action === "writeAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);
-        const result=await writeAssetFromMethod(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
+        const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
       }
       if (body.action === "getAssetFullText") {
         const { assetId } = body;
