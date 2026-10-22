@@ -13,3 +13,5 @@ The card shows the last successful sync, errors, conflicts (with **Use this inst
 `Hub Placement` and `Placed In Hub` are derived from the existing hierarchy model and written only when changed. These metadata writes do not change statuses or regenerate/publish content. The Information Flow graph and Current Methods worksheet are not changed by this feature.
 
 Placement updates checkpoint every 60 records to stay within Worker request limits. Pending batches stay queued and are visible on the card. Automatic sync cannot be enabled until the initial placement batches finish. Notion sync date fields use minute precision so their readbacks match the platform's stored representation exactly; KV timestamps retain milliseconds.
+
+Retries back off per hub so a failing hub cannot starve other queued hubs. The sync refuses to project over legacy card keys changed during a run, and checks fresh Notion topic/product values before overwriting them. Refused card saves are held with their content and reason; credentials are stripped recursively.

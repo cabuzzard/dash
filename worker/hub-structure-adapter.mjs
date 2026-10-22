@@ -87,6 +87,9 @@ export function makeStructureIO(env,deps) {
     const expectedView={staged,committed,archived:[],topicClusters:{clusters:tc.clusters||[],assign:tc.assign||{},...(Object.hasOwn(tc,'mainCluster')?{mainCluster:tc.mainCluster||''}:{})},mainIds,stackgroups:groups,stackorder:get('stackorder:',{}),products:Object.entries(items).filter(([k])=>k.startsWith('product:')).map(([,v])=>v)};
     return {rawKv,items,...(!doc?{expectedView}:{}),productTopicIds:Object.fromEntries(prods.map(r=>[norm(r.id),text(r.properties?.['Topic ID']?.rich_text)])),capturedAt:now};
   };
+  io.assertCaptureUnchanged=async capture=>{
+    for(const [key,value] of Object.entries(capture.rawKv||{}))if(await env.TRADES.get(key)!==value)throw Error('Card structure changed during sync; retained for retry: '+key);
+  };
   async function ensure(db,definitions) {
     const schema=await api('databases/'+db),add={};
     for(const [name,definition] of Object.entries(definitions)) {
@@ -129,9 +132,10 @@ export function makeStructureIO(env,deps) {
   };
   io.writeRemote=async(cid,key,value,remote,doc)=>{
     const at=io.now();
-    if(key==='structure'){await patch(cid,{'Hub Keyword Structure':rt(JSON.stringify(value)),'Structure Synced At':date(at)});return cid;}
+    if(key==='structure'){const current=parse(text((await page(cid)).properties?.['Hub Keyword Structure']?.rich_text));if(!same(current,remote?.value||null))throw Error('Cluster structure changed in Notion during sync; retained for retry');await patch(cid,{'Hub Keyword Structure':rt(JSON.stringify(value)),'Structure Synced At':date(at)});return cid;}
     if(key.startsWith('product:')) {
       const row=await page(value.id),other=(row.properties?.['Hub Main Offerings']?.multi_select||[]).map(x=>x.name).filter(x=>x!==hub(cid).slug);
+      if(remote&&!same(productValue(row,cid,doc.items[key]),remote.value))throw Error('Product changed in Notion during sync; retained for retry: '+value.id);
       const names=value.mainOffering?[...other,hub(cid).slug]:other;
       await patch(value.id,{'Topic ID':rt(value.topicId),'Hub Main Offerings':{multi_select:names.map(name=>({name}))},'Synced At':date(at)});return value.id;
     }
@@ -139,7 +143,7 @@ export function makeStructureIO(env,deps) {
     const props={Name:title(raw.name),'Topic Key':rt(raw.id),'Cluster Keywords':rt(raw.keywords),Rationale:rt(raw.rationale),'Hub Cluster':rt(value.cluster),Main:{checkbox:!!value.main},'Card Data':rt(JSON.stringify(metadata)),'Synced At':date(at),Status:{select:{name:value.archived?'Archived':value.stage==='staged'?'Staged':'Active'}}};
     const label=deps.intentLabels?.[raw.searchIntent];props['Search Intent']=label?{select:{name:label}}:{select:null};
     let id=remote?.id||doc.notionIds[key];
-    if(id){const current=await page(id);if(current.archived||current.in_trash)await api('pages/'+id,'PATCH',{archived:false});if(!(current.properties?.Campaign?.relation||[]).some(r=>norm(r.id)===cid))props.Campaign={relation:[...(current.properties?.Campaign?.relation||[]).map(r=>({id:r.id})),{id:cid}]};await patch(id,props);}
+    if(id){const current=await page(id);if(remote&&!same(topicValue(current,doc.items[key],remote.value.order),remote.value))throw Error('Topic changed in Notion during sync; retained for retry: '+raw.id);if((current.archived||current.in_trash)&&!value.archived)await api('pages/'+id,'PATCH',{archived:false});if(!(current.properties?.Campaign?.relation||[]).some(r=>norm(r.id)===cid))props.Campaign={relation:[...(current.properties?.Campaign?.relation||[]).map(r=>({id:r.id})),{id:cid}]};await patch(id,props);}
     else {const created=await api('pages','POST',{parent:{database_id:dbs.topics},properties:{...props,Campaign:{relation:[{id:cid}]}}});id=created.id;if(!id)throw Error('Notion topic creation returned no ID');const read=await page(id);if(logical(read)!==raw.id)throw Error('Created Topic Key readback differs');}
     return id;
   };

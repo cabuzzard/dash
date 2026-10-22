@@ -55732,9 +55732,9 @@ async function hubStructureNightly(env) {
 async function hubStructureDrain(env,limit=2) {
   if(!await env.TRADES.get('sync:enabled:v1'))return {enabled:false};
   await hubSitesMerge(env);const results=[];
-  for(const h of HUB_SITES){const cid=hierarchyId(h.campaignId),q=await env.TRADES.get('sync:queue:'+cid,'json');if(!q||q.doneAt>=q.at)continue;
+  for(const h of HUB_SITES){const cid=hierarchyId(h.campaignId),q=await env.TRADES.get('sync:queue:'+cid,'json');if(!q||q.doneAt>=q.at||q.nextAt>Date.now())continue;
     try{results.push(await hubStructureInvoke(env,{action:'syncHubStructure',campaignId:cid}));const latest=await env.TRADES.get('sync:queue:'+cid,'json');if(!results[results.length-1].pending&&!results[results.length-1].placement?.pending&&latest?.at===q.at)await env.TRADES.put('sync:queue:'+cid,JSON.stringify({...q,doneAt:Date.now()}));}
-    catch(error){results.push({campaignId:cid,error:error.message});}
+    catch(error){results.push({campaignId:cid,error:error.message});const latest=await env.TRADES.get('sync:queue:'+cid,'json');if(latest?.at===q.at){const attempts=(q.attempts||0)+1;await env.TRADES.put('sync:queue:'+cid,JSON.stringify({...q,attempts,nextAt:Date.now()+Math.min(3600000,attempts*300000),error:error.message}));}}
     if(results.length>=limit)break;
   }return {results,modelCalls:0};
 }

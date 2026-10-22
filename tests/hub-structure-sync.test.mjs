@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {reconcile,same,viewOf,syncStructure,restoreStructure,captureCardSave,resolveStructureConflict,migrateStructure} from '../worker/hub-structure-sync.mjs';
+import {structureHeldPayload} from '../worker/hub-structure-runtime.mjs';
 const topic=(id,name,extra={})=>({raw:{id,name,keywords:'keywords',products:[],...extra},stage:'staged',cluster:'Cluster',main:true,archived:false,order:0});
 const value={structure:{clusters:['Cluster','Empty cluster'],mainCluster:'Cluster',stackgroups:{order:['Group'],map:{Stack:'Group'}}},'topic:smv1':topic('smv1','One'),'topic:smv2':topic('smv2','Two'),'product:p1':{id:'p1',topicId:'smv1',mainOffering:true,mainOrder:0,archived:false}};
 const clone=x=>structuredClone(x);
@@ -16,3 +17,4 @@ test('use-this-instead restores the losing conflict value as a new local edit',a
 test('seed never imports a Notion-only topic into the active card and archives it without losing payload',()=>{const r=reconcile({'topic:smv1':topic('smv1','Card')},{'topic:extra':{value:topic('extra','Notion-only'),at:500}}, {},{},1000,true);assert.equal(r.items['topic:extra'].archived,true);assert.equal(r.items['topic:extra'].raw.name,'Notion-only');assert.equal(viewOf({items:r.items}).staged.length,1);});
 test('an independently captured visual mismatch prevents verification and seeding',async()=>{const x=fixture();x.io.capture=async()=>({items:clone(value),expectedView:{staged:[]},rawKv:{},productTopicIds:{}});await assert.rejects(migrateStructure(x.io,'cid'),/Visual structure projection differs/);assert.ok(x.kv.get('sync:original:cid'));assert.equal(x.kv.get('hub:structure:cid'),undefined);assert.equal(x.writes.length,0);});
 test('legacy background card changes are captured before the nightly merge',async()=>{const x=fixture();await syncStructure(x.io,'cid');const legacy=clone(value);legacy['topic:smv1'].raw.name='Background card edit';x.io.capture=async()=>({items:legacy,rawKv:{},productTopicIds:{}});await syncStructure(x.io,'cid');assert.equal(x.remote['topic:smv1'].value.raw.name,'Background card edit');});
+test('held card-save payload retains content and strips credentials recursively',()=>{assert.deepEqual(structureHeldPayload({action:'saveTopicClusters',token:'private',code:'private',clusters:['A'],nested:{governanceUnlockToken:'private',password:'private',content:'keep'}}),{action:'saveTopicClusters',clusters:['A'],nested:{content:'keep'}});});

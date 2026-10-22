@@ -101,6 +101,7 @@ export async function syncStructure(io,cid,{dryRun=false}={}) {
     // Verify every mirror before advancing a baseline. Partial failures remain held and retryable.
     const verified=await io.readRemote(cid,next);
     for(const [key,value] of Object.entries(next.items))if(!same(value,verified[key]?.value))throw Error('Notion sync readback differs for '+key);
+    if(io.assertCaptureUnchanged)await io.assertCaptureUnchanged(capture);
     await io.project(cid,next);
     next.baseline=Object.fromEntries(Object.entries(next.items).map(([k,value])=>[k,{value,notionAt:verified[k]?.at||io.now(),kvAt:changedAt[k]}]));
     next.seededAt=doc.seededAt||io.now();next.lastSync=io.now();next.error=null;

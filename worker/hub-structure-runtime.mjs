@@ -1,6 +1,11 @@
 import {makeStructureIO} from './hub-structure-adapter.mjs';
 import {migrateStructure,captureCardSave,syncStructure,restoreStructure,resolveStructureConflict,viewOf} from './hub-structure-sync.mjs';
 const norm=x=>String(x||'').replace(/-/g,'');
+export function structureHeldPayload(value) {
+ if(Array.isArray(value))return value.map(structureHeldPayload);
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!/(token|secret|password|^code$)/i.test(k)).map(([k,v])=>[k,structureHeldPayload(v)]));
+ return value;
+}
 const CARD_ACTIONS=new Set(['saveTopicClusters','generateTopicClusters','updateStagedKeywordCluster','removeStagedKeywordCluster','commitKeywordCluster','archiveKeywordCluster','setClusterSearchIntent','regenerateKeywordCluster','generateKeywordClusters','generateSingleKeywordCluster','attachProductToTopic','createProduct','archiveProduct','setHubMainOffering','setProductStack','renameProductStack','updateAllOutputField','saveStackOrder','generateClusterProductStacks','removeClusterProductStack','kwHubClearTopics','kwHubApply','kwHubUndo','categorizeUntopicedProducts','moveProductToCampaign']);
 export function structureRuntime(env,deps) {
  const io=makeStructureIO(env,deps),hubs=deps.hubs;
@@ -51,7 +56,7 @@ export function structureRuntime(env,deps) {
    }
    if(response.ok)await enqueue(cid);
    return response;
-  });
+  }).catch(async error=>{await io.hold({action:body.action,reason:error.message,payload:structureHeldPayload(body)});throw error;});
   if(response.ok&&await io.get('sync:enabled:v1'))ctx.waitUntil(deps.kick(cid).catch(async error=>{await io.put('sync:report:'+cid,{success:false,queued:true,error:error.message,at:io.now()});}));
   return response;
  }
