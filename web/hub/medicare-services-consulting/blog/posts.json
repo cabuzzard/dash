@@ -1,5 +1,15 @@
 [
   {
+    "slug": "medicare-clarity-consult",
+    "title": "Medicare Clarity Consult",
+    "intro": "One hour. One advisor with no carrier contracts. You leave knowing exactly how Medicare works for your situation — and what to do next.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc",
+    "contentHash": "1b0da6b9b7fb7d9ce2bd7e107ed2a305a17df0d4f5d557196e71bd384c558b2e",
+    "contentEditedAt": "2026-10-21T07:39:00.000Z",
+    "refreshedAt": "2026-10-22T03:36:28.063Z"
+  },
+  {
     "slug": "care-command",
     "title": "Care Command",
     "intro": "One person owns the whole board — appointments, referrals, authorizations, provider communication — so you stop being the unpaid care administrator and go back to being family.",
@@ -8,12 +18,5 @@
     "contentHash": "f215b645ba2b404340dcf8431e01efb2770f4593e74bccefedcbc24301affb26",
     "contentEditedAt": "2026-10-21T07:39:00.000Z",
     "refreshedAt": "2026-10-22T03:36:21.759Z"
-  },
-  {
-    "slug": "medicare-clarity-consult",
-    "title": "Medicare Clarity Consult",
-    "intro": "For Adults 62–67 who've done the research and ended up more confused, not less.\n\nOne hour. One advisor with no carrier contracts. You leave knowing exactly how Medicare works for your situation — and what to do next.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81a9af4bd46eaff8d7bc"
   }
 ]
