@@ -1,5 +1,15 @@
 [
   {
+    "slug": "weekly-sessions",
+    "title": "Real Guitar Sessions — Listen, Study & Download",
+    "intro": "If the song doesn't do anything for you when you listen to it, it won't do anything for you when you play it. That's the first filter — and it's the one most guitar content skips entirely. You already know the difference between music that earns the next track and music that fills time. You've been ",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
+    "contentHash": "fdc0bec117a8ad925ecf93a28ae113f48e74a5b86991221632d184cc63da791f",
+    "contentEditedAt": "2026-10-22T16:32:00.000Z",
+    "refreshedAt": "2026-10-22T16:35:55.267Z"
+  },
+  {
     "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
     "title": "The Guitar Letter — Guitar & Music Commentary Newsletter",
     "intro": "You notice the room mic on a 1973 recording. You can feel when a tone is right before you can explain it technically. You've mostly stopped reading music media because it doesn't speak to you — algorithms reward takes, not craft, and most commentary treats its audience like they just discovered the ",
@@ -18,16 +28,6 @@
     "contentHash": "7a4633bb4056dc9942ab057d9bb5b5aeb9961b2af5db1b6f673ea983569b99f0",
     "contentEditedAt": "2026-10-22T16:32:00.000Z",
     "refreshedAt": "2026-10-22T16:32:22.918Z"
-  },
-  {
-    "slug": "weekly-sessions",
-    "title": "Real Guitar Sessions — Listen, Study & Download",
-    "intro": "If the song doesn't do anything for you when you listen to it, it won't do anything for you when you play it. That's the first filter — and it's the one most guitar lesson content skips entirely. The Sessions are original instrumental guitar recordings built from feel first: acoustic, electric, surf",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
-    "contentHash": "cd2b7115e685ba2b9c177f52e72ee180f79b68f692e107b26cedf52f191c3b4c",
-    "contentEditedAt": "2026-10-22T15:58:00.000Z",
-    "refreshedAt": "2026-10-22T15:58:25.040Z"
   },
   {
     "slug": "the-tracks",
