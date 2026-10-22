@@ -13,6 +13,6 @@ test('assemble reads the correct committed format rules with and without codexDe
  const preview=await c.assembleImageBrief(env,{campaignId:cid,thumbnailFormat:'blog_thumb'});assert.equal(preview.thumbnailRules,'BLOG RULE');
 });
 test('Offer thumbnails, blog, YouTube and panel test route rules to the prompt writer; image references stay disabled',()=>{
- for(const [action,format] of [['generateBlogPostThumbnail','blog_thumb'],['generateYouTubeThumbnail','youtube_thumb'],['generateOfferImage','blog_thumb']]){const a=src.indexOf('if (body.action === "'+action+'"'),b=src.indexOf('\n      if (body.action === ',a+1),part=src.slice(a,b);assert.ok(part.includes(format),action);assert.match(part,/plateContent\(claudePrompt, brief\)/);}
+ for(const [action,format] of [['generateBlogPostThumbnail','blog_thumb'],['generateYouTubeThumbnail','youtube_thumb'],['generateOfferImage','blog_thumb']]){const a=src.indexOf('if (body.action === "'+action+'"'),b=src.indexOf('\n      if (body.action === ',a+1),part=src.slice(a,b);assert.ok(part.includes(format),action);assert.match(part,/(?:plateContent\(claudePrompt, brief\)|thumbnailPromptMessages\(claudePrompt,brief\))/);}
  const a=src.indexOf('if (body.action === "renderSpecTest")'),b=src.indexOf('\n      if (body.action === ',a+1),part=src.slice(a,b);assert.match(part,/thumbnailFormat/);assert.match(part,/plateContent\(claudePrompt \+ lfGuide, brief\)/);assert.match(panel,/thumbnailFormat: S.thumbFormat/);assert.match(panel,/Test thumbnail format/);assert.match(src,/const SEND_IMAGES_TO_MODELS = false/);
 });
