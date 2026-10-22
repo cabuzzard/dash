@@ -1,5 +1,15 @@
 [
   {
+    "slug": "biogenerative-installation-feasibility-design",
+    "title": "Know If Your Living Water System Is Buildable Before You Break Ground",
+    "intro": "You can picture the system. A constructed wetland on the back of the property. A living filtration installation integrated with building drainage. An ecological water landscape that runs on biology rather than machinery. The concept is solid — you understand biological cycles, substrate chemistry, a",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
+    "contentHash": "38a2d59a2187a133799afa0f87468faf43ca2318406f903cc79d61ca25d025a3",
+    "contentEditedAt": "2026-10-22T16:35:00.000Z",
+    "refreshedAt": "2026-10-22T16:35:38.699Z"
+  },
+  {
     "slug": "tank-diagnosis",
     "title": "Start Your Natural Aquarium",
     "intro": "You've read the forums. You've watched the videos. And you still aren't sure whether a Walstad tank will actually work in your living room, with your tap water, in the container you already have. That gap between method and your specific setup is exactly what this consultation closes — a written pla",
@@ -18,15 +28,5 @@
     "contentHash": "0bd10ad7633f220aed68881607494ee1f35b1cdacbc964d63a4ca573fa5fb3eb",
     "contentEditedAt": "2026-10-22T16:15:00.000Z",
     "refreshedAt": "2026-10-22T16:15:07.578Z"
-  },
-  {
-    "slug": "biogenerative-installation-feasibility-design",
-    "title": "Biogenerative Installation Feasibility & Design",
-    "intro": "You can picture the system. A constructed wetland, a living filtration installation, an ecological water landscape that runs on biology rather than machinery. The concept is solid. What you do not have is a clear line from that concept to a permit, a contractor brief, and a build that performs as de",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
-    "contentHash": "3cff3be3d1129291f559977a606596a5b306ccb424ea6fd2c993c1edb7ab0033",
-    "contentEditedAt": "2026-10-22T16:12:00.000Z",
-    "refreshedAt": "2026-10-22T16:12:16.709Z"
   }
 ]
