@@ -34,7 +34,7 @@ export function viewOf(doc) {
   const products=Object.entries(items).filter(([k])=>k.startsWith('product:')).map(([,v])=>v);
   return {staged:topics.filter(t=>t.stage==='staged').map(t=>t.raw),committed:topics.filter(t=>t.stage!=='staged').map(t=>t.raw),
     archived:Object.entries(items).filter(([k,v])=>k.startsWith('topic:')&&v.archived).map(([key,v])=>({key,...v.raw})),
-    topicClusters:{clusters,assign:{...meta.orphanAssign,...Object.fromEntries(topics.filter(t=>t.cluster).map(t=>[t.raw.id,t.cluster]))},...(mainCluster?{mainCluster}:{})},
+    topicClusters:{clusters,assign:{...meta.orphanAssign,...Object.fromEntries(topics.filter(t=>t.cluster).map(t=>[t.raw.id,t.cluster]))},...(mainCluster||(meta.mainClusterPresent??true)?{mainCluster}:{})},
     mainIds:products.filter(p=>p.mainOffering&&!p.archived).sort((a,b)=>(a.mainOrder||0)-(b.mainOrder||0)).map(p=>p.id),stackgroups:meta.stackgroups||{order:[],map:{}},stackorder:meta.stackorder||{},products};
 }
 

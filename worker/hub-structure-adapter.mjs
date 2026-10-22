@@ -82,8 +82,8 @@ export function makeStructureIO(env,deps) {
     const changedProducts=new Set((touched.productIds||[]).map(norm));
     for(const row of prods){const id=norm(row.id),key='product:'+id,old=doc?.items[key],from=productValue(row,cid,old);items[key]={...(old||from),...(changedProducts.has(id)?{topicId:from.topicId,archived:from.archived}:{}),mainOffering:mainIds.includes(id),mainOrder:Math.max(0,mainIds.indexOf(id))};}
     if(doc)for(const [key,value] of Object.entries(doc.items))if(key.startsWith('product:')&&!items[key])items[key]=value;
-    items.structure={clusters:tc.clusters||[],mainCluster:tc.mainCluster||'',stackgroups:groups,stackorder:get('stackorder:',{}),commProducts:{...commProducts,...Object.fromEntries(committed.map(t=>[t.id,commProducts[t.id]||t.products||[]]))},orphanAssign:Object.fromEntries(Object.entries(tc.assign||{}).filter(([id])=>!items['topic:'+id])),topicClusterExtras:Object.fromEntries(Object.entries(tc).filter(([k])=>!['clusters','assign','mainCluster'].includes(k)))};
-    const expectedView={staged,committed,archived:[],topicClusters:{clusters:tc.clusters||[],assign:tc.assign||{},...(tc.mainCluster?{mainCluster:tc.mainCluster}:{})},mainIds,stackgroups:groups,stackorder:get('stackorder:',{}),products:Object.entries(items).filter(([k])=>k.startsWith('product:')).map(([,v])=>v)};
+    items.structure={clusters:tc.clusters||[],mainCluster:tc.mainCluster||'',mainClusterPresent:Object.hasOwn(tc,'mainCluster'),stackgroups:groups,stackorder:get('stackorder:',{}),commProducts:{...commProducts,...Object.fromEntries(committed.map(t=>[t.id,commProducts[t.id]||t.products||[]]))},orphanAssign:Object.fromEntries(Object.entries(tc.assign||{}).filter(([id])=>!items['topic:'+id])),topicClusterExtras:Object.fromEntries(Object.entries(tc).filter(([k])=>!['clusters','assign','mainCluster'].includes(k)))};
+    const expectedView={staged,committed,archived:[],topicClusters:{clusters:tc.clusters||[],assign:tc.assign||{},...(Object.hasOwn(tc,'mainCluster')?{mainCluster:tc.mainCluster||''}:{})},mainIds,stackgroups:groups,stackorder:get('stackorder:',{}),products:Object.entries(items).filter(([k])=>k.startsWith('product:')).map(([,v])=>v)};
     return {rawKv,items,...(!doc?{expectedView}:{}),productTopicIds:Object.fromEntries(prods.map(r=>[norm(r.id),text(r.properties?.['Topic ID']?.rich_text)])),capturedAt:now};
   };
   async function ensure(db,definitions) {
@@ -144,7 +144,7 @@ export function makeStructureIO(env,deps) {
   };
   io.project=async(cid,doc)=>{
     const view=viewOf(doc),old=await io.get('seotopicclusters:'+cid)||{};
-    const entries={'seoclusters:staged:':view.staged,'seoclusters:committed:':view.committed,'seotopicclusters:':{...old,...doc.items.structure.topicClusterExtras,...view.topicClusters,mainCluster:view.topicClusters.mainCluster||''},'hub:mainproduct:':view.mainIds,'stackgroups:':view.stackgroups,'stackorder:':view.stackorder,'seoclusters:commproducts:':{...doc.items.structure.commProducts,...Object.fromEntries(view.committed.map(t=>[t.id,t.products||[]]))}};
+    const entries={'seoclusters:staged:':view.staged,'seoclusters:committed:':view.committed,'seotopicclusters:':{...Object.fromEntries(Object.entries(old).filter(([k])=>!['clusters','assign','mainCluster'].includes(k))),...doc.items.structure.topicClusterExtras,...view.topicClusters},'hub:mainproduct:':view.mainIds,'stackgroups:':view.stackgroups,'stackorder:':view.stackorder,'seoclusters:commproducts:':{...doc.items.structure.commProducts,...Object.fromEntries(view.committed.map(t=>[t.id,t.products||[]]))}};
     for(const [prefix,value] of Object.entries(entries)){await io.put(prefix+cid,value);if(!same(await io.get(prefix+cid),value))throw Error('KV projection readback differs for '+prefix);}
   };
   io.placement=async(cid,doc)=>{

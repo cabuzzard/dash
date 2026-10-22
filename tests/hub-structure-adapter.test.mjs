@@ -40,3 +40,6 @@ test('Notion edits on different topics merge with a card edit and a soft archive
  x.pages.get(topicId).properties.Name=tit('Notion edit');await syncStructure(x.io,cid);let next=JSON.parse(x.kv.get('hub:structure:'+cid));assert.equal(next.items['topic:smv-stable'].raw.name,'Card edit');assert.equal(next.items['topic:'+topicId].raw.name,'Notion edit');
  x.pages.get(topicId).properties.Status={select:{name:'Archived'}};await syncStructure(x.io,cid);next=JSON.parse(x.kv.get('hub:structure:'+cid));assert.equal(next.items['topic:'+topicId].archived,true);assert.equal(next.items['topic:'+topicId].raw.name,'Notion edit');assert.ok(x.pages.has(topicId));
 });
+test('empty and absent mainCluster retain their original serialization through migration and projection',async()=>{
+ for(const present of [false,true]){const x=fixture(),tc=JSON.parse(x.kv.get('seotopicclusters:'+cid));if(present)tc.mainCluster='';else delete tc.mainCluster;x.kv.set('seotopicclusters:'+cid,JSON.stringify(tc));const doc=await migrateStructure(x.io,cid);assert.equal(Object.hasOwn(viewOf(doc).topicClusters,'mainCluster'),present);await x.io.project(cid,doc);const after=JSON.parse(x.kv.get('seotopicclusters:'+cid));assert.deepEqual(after,tc);}
+});
