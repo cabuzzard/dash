@@ -534,7 +534,8 @@ async function grokImageFetch(env, context, options) {
   add(context.previousImageUrl, "Previous test image: revise this composition according to the operator direction");
   (inputs.mediaLibrary || []).filter(x => x && /^https:\/\//i.test(x.url || "")).slice().sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9)).forEach(x => add(x.url, `${x.role || "reference"}: ${String(x.name || "Untitled").slice(0, 60)}${x.notes ? "; " + String(x.notes).slice(0, 500) : ""}`));
   add(inputs.photo?.url, "Seed photo: style reference");
-  const selected = references.slice(0, 5), payload = JSON.parse(options.body);
+  // SEND_IMAGES_TO_MODELS off (operator 2026-10-22): renders come from the spec's text prompt only — no reference images
+  const selected = SEND_IMAGES_TO_MODELS ? references.slice(0, 5) : [], payload = JSON.parse(options.body);
   let endpoint = "https://api.x.ai/v1/images/generations";
   if (selected.length) {
     endpoint = "https://api.x.ai/v1/images/edits";
@@ -546,7 +547,12 @@ async function grokImageFetch(env, context, options) {
   GROK_IMAGE_REFERENCES.set(response, { attached: selected.length, available: references.length, images: selected });
   return response;
 }
+// Operator 2026-10-22: no image is ever sent to a model. Hub images inform the design SPEC (text); the spec informs
+// renders. Prompt-writing calls get the spec text only — the old multimodal attachments (approved plate + 5 library
+// references on every image-prompt call) are off.
+const SEND_IMAGES_TO_MODELS = false;
 function plateContent(text, brief) {
+  if (!SEND_IMAGES_TO_MODELS) return text;
   const p = brief && brief.approvedPlate;
   const refs = ((brief && brief.mediaLibrary) || []).filter(x => x && /^https:\/\//.test(x.url || ""));
   const images = [];
@@ -1706,16 +1712,23 @@ async function writeContractAsset(env,assetId) {
   const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason};
   const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
   const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
+  // The packet carries only what a text writer needs (operator 2026-10-22: "it's supposed to read spec"). The hub's
+  // image-design brief is sent only when the row's inputs ask for design; title/product send their facts, not every
+  // property; currentFields is just this contract's fields.
+  const wantsDesign=/\b(design|image spec|visual)\b/i.test(row.inputs||'');
   const [recipe,pillar,research,voice,audience,product,design,interview]=await Promise.all([
     extractBlocksTextRecursive(ivHdr(),ivDash(methodId)),titleId?extractPillarContent(ivHdr(),ivDash(titleId)):'',titleId?titleResearchBlock(env,titleId):'',
     cid?voiceBlock(env,cid):'',cid?hubAudienceBlock(env,cid):'',pid?ivProdResearch(pid):'',
-    cid?assembleImageBrief(env,{campaignId:cid,assetId:page.id,codexDesign:true}):null,
+    cid&&wantsDesign?assembleImageBrief(env,{campaignId:cid,assetId:page.id,codexDesign:true}):null,
     titleId?ivBlock(env,titleId,p['Asset Type']?.select?.name||'',hubAssetId(page.id)):null
   ]);
+  const pick=(props,keys)=>{const v=writingFieldValues(props||{});return Object.fromEntries(keys.filter(k=>String(v[k]||'').trim()).map(k=>[k,v[k]]));};
+  const PRODUCT_FACTS=['Name','Description','Price','Offer Structure','Transformation','Unique Angle','Product Tier','Type','Keywords'];
+  const cur=writingFieldValues(p),currentFields=Object.fromEntries(contract.map(f=>[f.name,cur[f.name]||'']));
   const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method.properties?.Notes?.rich_text),page:recipe},
-    contract:row.contractText,inputs:row.inputs,title:{properties:writingFieldValues(tp),pillar},research,voice,hub:{audience,design},
-    product:{properties:pid?writingFieldValues((await ivPage(pid)).properties||{}):{},research:product},interview:interview?.text||'',
-    platform:writingFieldValues(p)['Platform Name']||writingFieldValues(p).Platform||'',currentFields:writingFieldValues(p)};
+    contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
+    product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
+    platform:cur['Platform Name']||cur.Platform||'',currentFields};
   const instruction='Method instructs; the process executes. AI is a filter, not a source. Use only the packet sources. Produce exactly the contract fields, following the method recipe, as string values. Return no other fields or commentary. Never invent missing facts; leave unsupported fields empty so advisory validation reports them.';
   // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
