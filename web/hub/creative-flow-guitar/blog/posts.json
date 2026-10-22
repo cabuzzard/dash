@@ -1,5 +1,15 @@
 [
   {
+    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
+    "title": "The Guitar Letter — Guitar & Music Commentary Newsletter",
+    "intro": "You notice the room mic on a 1973 recording. You can feel when a tone is right before you can explain it technically. You've mostly stopped reading music media because it doesn't speak to you — algorithms reward takes, not craft, and most commentary treats its audience like they just discovered the ",
+    "date": "2026-10-22",
+    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
+    "contentHash": "e36afef5dcb6070b71615854ebf4f10dca09811e39c248659ea13b54ad679f12",
+    "contentEditedAt": "2026-10-22T23:10:00.000Z",
+    "refreshedAt": "2026-10-22T23:31:19.185Z"
+  },
+  {
     "slug": "weekly-sessions",
     "title": "Real Guitar Sessions — Listen, Study & Download",
     "intro": "If the song doesn't do anything for you when you listen to it, it won't do anything for you when you play it. That's the first filter — and it's the one most guitar content skips entirely. You already know the difference between music that earns the next track and music that fills time. You've been ",
@@ -18,15 +28,5 @@
     "contentHash": "79f0f708cc93a4adb425f161d49b0caa3af4e0f45cf4a0e8b3e2b5f96716640a",
     "contentEditedAt": "2026-10-22T23:06:00.000Z",
     "refreshedAt": "2026-10-22T23:06:10.937Z"
-  },
-  {
-    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
-    "title": "The Guitar Letter — Guitar & Music Commentary Newsletter",
-    "intro": "You notice the room mic on a 1973 recording. You can feel when a tone is right before you can explain it technically. You've mostly stopped reading music media because it doesn't speak to you — algorithms reward takes, not craft, and most commentary treats its audience like they just discovered the ",
-    "date": "2026-10-22",
-    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
-    "contentHash": "9882838c31b0298e971c16989f893b798db182fec30b0eef9681edb716d62cd7",
-    "contentEditedAt": "2026-10-22T16:33:00.000Z",
-    "refreshedAt": "2026-10-22T16:33:17.339Z"
   }
 ]

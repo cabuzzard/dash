@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
+    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
+    "name": "The Guitar Letter — Guitar & Music Commentary Newsletter",
+    "promise": "For guitarists and serious music listeners who've outgrown shallow coverage. One short read per issue: a personal observation, a recording insight, a recommendation, and a link to the latest video or session.",
+    "url": "../blog/the-guitar-letter-guitar-music-commentary-newsletter/",
+    "contentHash": "e36afef5dcb6070b71615854ebf4f10dca09811e39c248659ea13b54ad679f12",
+    "contentEditedAt": "2026-10-22T23:10:00.000Z",
+    "refreshedAt": "2026-10-22T23:31:19.185Z"
+  },
+  {
     "assetId": "4001f7d3a4bb817f9a25ff2f9eb93c66",
     "slug": "weekly-sessions",
     "name": "Real Guitar Sessions — Listen, Study & Download",
@@ -18,15 +28,5 @@
     "contentHash": "79f0f708cc93a4adb425f161d49b0caa3af4e0f45cf4a0e8b3e2b5f96716640a",
     "contentEditedAt": "2026-10-22T23:06:00.000Z",
     "refreshedAt": "2026-10-22T23:06:10.937Z"
-  },
-  {
-    "assetId": "3d01f7d3a4bb818d927ac816fefaf218",
-    "slug": "the-guitar-letter-guitar-music-commentary-newsletter",
-    "name": "The Guitar Letter — Guitar & Music Commentary Newsletter",
-    "promise": "For guitarists and serious music listeners who've outgrown shallow coverage. One short read per issue: a personal observation, a recording insight, a recommendation, and a link to the latest video or session.",
-    "url": "../blog/the-guitar-letter-guitar-music-commentary-newsletter/",
-    "contentHash": "9882838c31b0298e971c16989f893b798db182fec30b0eef9681edb716d62cd7",
-    "contentEditedAt": "2026-10-22T16:33:00.000Z",
-    "refreshedAt": "2026-10-22T16:33:17.339Z"
   }
 ]
