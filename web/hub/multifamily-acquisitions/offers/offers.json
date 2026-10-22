@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
+    "slug": "deal-intelligence",
+    "name": "Multifamily Acquisition Analysis — Underwriting & Due Diligence Support for Investors",
+    "promise": "For capital-disciplined multifamily buyers who can't afford to move on unverified numbers. Get a finished work product — screened, underwritten, and stress-tested — so your decision is grounded before due diligence starts.",
+    "url": "../blog/deal-intelligence/",
+    "contentHash": "bb3c27309e9c2b67b0999000810805ef8e3dd3a5e7204e53ed37986f450fa347",
+    "contentEditedAt": "2026-10-22T13:25:00.000Z",
+    "refreshedAt": "2026-10-22T13:25:24.484Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
     "slug": "commercial-deal-finder",
     "name": "Multifamily Investment Opportunities — Analyzed, Packaged Deals for Qualified Buyers",
@@ -8,15 +18,5 @@
     "contentHash": "822ce8567c93ff6c44aa407f66018d933a35543dde58de17ecf38e7437193c12",
     "contentEditedAt": "2026-10-22T13:24:00.000Z",
     "refreshedAt": "2026-10-22T13:24:49.301Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
-    "slug": "deal-intelligence",
-    "name": "Deal Intelligence",
-    "promise": "Find off-market multifamily deals before anyone else is looking — no broker network, no acquisitions team, no listed inventory.",
-    "url": "../blog/deal-intelligence/",
-    "contentHash": "85e056d2a29a3823e6bed8eeac7d8169cda0626e64eb41e45cff893750221575",
-    "contentEditedAt": "2026-10-21T07:40:00.000Z",
-    "refreshedAt": "2026-10-22T03:35:44.849Z"
   }
 ]
