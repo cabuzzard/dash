@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
+    "slug": "project-coordination-retainer",
+    "name": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
+    "promise": "For GCs and specialty contractors running 3–15 active jobs with no in-house PM. Every job gets current schedules, processed paperwork, and a coordinator watching the gaps — so you stop being the bottleneck.",
+    "url": "../blog/project-coordination-retainer/",
+    "contentHash": "4d968bdac90f477210b4aef04c89835b1aac961d3db0747848342a1f7202612f",
+    "contentEditedAt": "2026-10-22T14:01:00.000Z",
+    "refreshedAt": "2026-10-22T16:07:12.650Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81ea8bb7ffbd01873a02",
     "slug": "ai-field-deployment",
     "name": "Construction AI Automation: RFIs, Change Orders & Project Reports",
@@ -18,15 +28,5 @@
     "contentHash": "5b81a9384ac5c8386d2f30523b2f4c85aa31c98dfa034c74e65193726e499413",
     "contentEditedAt": "2026-10-22T14:01:00.000Z",
     "refreshedAt": "2026-10-22T16:06:47.797Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81c49ad0f2dc5291bcf3",
-    "slug": "project-coordination-retainer",
-    "name": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
-    "promise": "For GCs and specialty contractors running 3–15 active jobs with no in-house PM. Every job gets current schedules, processed paperwork, and a coordinator watching the gaps — so you stop being the bottleneck.",
-    "url": "../blog/project-coordination-retainer/",
-    "contentHash": "a53145b571ba95cbe13e3909f25c75bcac1eacc90defe9e4fe97d09eefaf4f7d",
-    "contentEditedAt": "2026-10-22T13:54:00.000Z",
-    "refreshedAt": "2026-10-22T14:01:32.753Z"
   }
 ]
