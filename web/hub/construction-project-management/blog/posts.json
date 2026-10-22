@@ -1,5 +1,15 @@
 [
   {
+    "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
+    "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
+    "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
+    "contentHash": "5b81a9384ac5c8386d2f30523b2f4c85aa31c98dfa034c74e65193726e499413",
+    "contentEditedAt": "2026-10-22T14:01:00.000Z",
+    "refreshedAt": "2026-10-22T16:06:47.797Z"
+  },
+  {
     "slug": "project-coordination-retainer",
     "title": "Fractional Construction PM + AI Tools — Without a Full-Time Hire",
     "intro": "You're the PM on every job right now. You know it, and you know it's not sustainable. Schedules live in your head, submittals stack up until they're emergencies, change orders go out late and get argued over, and cost bleed shows up at closeout instead of while you can still recover it. Hiring a ful",
@@ -8,16 +18,6 @@
     "contentHash": "a53145b571ba95cbe13e3909f25c75bcac1eacc90defe9e4fe97d09eefaf4f7d",
     "contentEditedAt": "2026-10-22T13:54:00.000Z",
     "refreshedAt": "2026-10-22T14:01:32.753Z"
-  },
-  {
-    "slug": "construction-project-intelligence-spot-budget-schedule-and-risk-proble",
-    "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Early",
-    "intro": "You already have the data. Job cost reports, schedule updates, committed costs, change order logs — it's all sitting somewhere. The problem isn't access. It's that nobody is reading it on a cadence that matches how construction actually moves, and by the time the numbers tell you something is wrong,",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb8164bd06cffa7ad17442",
-    "contentHash": "60d90eeb05ccb4e2c4202c932474769266915e306e512dad997224559a5268a0",
-    "contentEditedAt": "2026-10-22T13:54:00.000Z",
-    "refreshedAt": "2026-10-22T14:01:25.019Z"
   },
   {
     "slug": "ai-field-deployment",
