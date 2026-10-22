@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
+    "slug": "charter-match",
+    "name": "Charter Match",
+    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
+    "url": "../blog/charter-match/",
+    "contentHash": "411c0ec3e594f0008b9dcf30a49e3df2cbac27c69f019d2a5f15ca8ae9c47503",
+    "contentEditedAt": "2026-10-22T13:56:00.000Z",
+    "refreshedAt": "2026-10-22T14:03:37.227Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
     "slug": "surf-resort-finder",
     "name": "Surf Resort Finder & Booking",
@@ -8,16 +18,6 @@
     "contentHash": "e8bd14a3c688443c5c0daa2bd05eb4280d8e4f65ad61e46887d17d1b6c83b0c7",
     "contentEditedAt": "2026-10-22T13:10:00.000Z",
     "refreshedAt": "2026-10-22T13:10:49.740Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
-    "slug": "charter-match",
-    "name": "Charter Match",
-    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
-    "url": "../blog/charter-match/",
-    "contentHash": "411c0ec3e594f0008b9dcf30a49e3df2cbac27c69f019d2a5f15ca8ae9c47503",
-    "contentEditedAt": "2026-10-22T13:10:00.000Z",
-    "refreshedAt": "2026-10-22T13:10:13.058Z"
   },
   {
     "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
