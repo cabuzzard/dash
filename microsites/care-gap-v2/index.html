@@ -6630,7 +6630,7 @@ async function pubWriteAssetNow(button){
     if(written.error)throw new Error(written.reason||written.error);
     const fresh=await w('getAsset',{assetId:aid});if(pubAssetId!==aid)return;
     Object.assign(PUB_ASSET_CACHE[aid]||={},fresh);openPublishAssetModal(aid);
-    document.getElementById('pubAssetStatus').textContent=written.skipped?'Already written.':'✓ Asset written · '+fresh.status;
+    document.getElementById('pubAssetStatus').textContent=written.violations?.length?'Saved with violations: '+written.violations.join('; '):written.skipped?'Already written.':'✓ Asset written · '+fresh.status;
     parent.postMessage({type:'hubAssetListingChanged',assetId:aid},location.origin);
   }catch(error){if(pubAssetId===aid)result.textContent=error.message;}
   finally{if(pubAssetId===aid)button.disabled=button.dataset.unmapped==='yes';}
