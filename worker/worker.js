@@ -1713,9 +1713,11 @@ async function writeContractAsset(env,assetId) {
     product:{properties:pid?writingFieldValues((await ivPage(pid)).properties||{}):{},research:product},interview:interview?.text||'',
     platform:writingFieldValues(p)['Platform Name']||writingFieldValues(p).Platform||'',currentFields:writingFieldValues(p)};
   const instruction='Method instructs; the process executes. AI is a filter, not a source. Use only the packet sources. Produce exactly the contract fields, following the method recipe, as string values. Return no other fields or commentary. Never invent missing facts; leave unsupported fields empty so advisory validation reports them.';
-  const schema={type:'object',properties:Object.fromEntries(contract.map(f=>[f.name,{type:'string',description:f.rule}])),required:contract.map(f=>f.name),additionalProperties:false};
+  // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
+  const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
+  const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const generated=await hcClaude(env,instruction+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
-  const fields=Object.fromEntries(contract.map(f=>[f.name,typeof generated[f.name]==='string'?generated[f.name]:''])),violations=validateWritingContract(contract,fields);
+  const fields=Object.fromEntries(contract.map((f,i)=>{const v=generated[keyOf[i]]??generated[f.name];return [f.name,typeof v==='string'?v:''];})),violations=validateWritingContract(contract,fields);
   // Only contract properties and Method can be saved; operational metadata is never a writing field.
   const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
   if(contract.some(f=>protectedFields.has(ivNorm(f.name))))throw new Error('Contract contains protected status, routing or attribution fields');
