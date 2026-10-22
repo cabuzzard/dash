@@ -122,6 +122,7 @@ export async function restoreStructure(io,cid,id) {
   const snapshot=await io.get('sync:history:'+cid+':'+id);if(!snapshot||snapshot.campaignId!==cid)throw Error('Snapshot not found for this hub');
   const current=await migrateStructure(io,cid);await snapshotStructure(io,cid,current,await io.capture(cid,current));
   const target=snapshot.capture?.items||snapshot.doc.items,items={...target},changedAt={...current.changedAt};
+  for(const [id,topicId] of Object.entries(snapshot.capture?.productTopicIds||{}))if(items['product:'+id])items['product:'+id]={...items['product:'+id],topicId};
   for(const [key,value] of Object.entries(current.items))if(!items[key])items[key]=key.startsWith('product:')?{...value,topicId:'',mainOffering:false}:tombstone(value);
   for(const key of Object.keys(items))changedAt[key]=io.now();
   const next={...current,items,changedAt};await io.put('hub:structure:'+cid,next);await io.project(cid,next);
