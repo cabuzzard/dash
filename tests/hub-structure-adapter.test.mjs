@@ -1,0 +1,42 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {makeStructureIO} from '../worker/hub-structure-adapter.mjs';
+import {syncStructure,migrateStructure,viewOf} from '../worker/hub-structure-sync.mjs';
+const cid='a'.repeat(32),topicId='b'.repeat(32),productId='c'.repeat(32);
+const rich=s=>({rich_text:[{plain_text:s,text:{content:s}}]}),tit=s=>({title:[{plain_text:s,text:{content:s}}]});
+function fixture(){
+ const kv=new Map(),pages=new Map(),dbs={topics:'topics',products:'products',titles:'titles',assets:'assets'},schemas=new Map(Object.values(dbs).concat('campaigns').map(id=>[id,{properties:{}}])),calls=[];let seq=0;
+ pages.set(cid,{id:cid,parent:{database_id:'campaigns'},last_edited_time:'2026-10-22T10:00:00Z',properties:{}});
+ pages.set(topicId,{id:topicId,parent:{database_id:'topics'},url:'https://notion.so/topic',last_edited_time:'2026-10-22T10:00:00Z',properties:{Name:tit('Existing topic'),'Cluster Keywords':rich('existing keywords'),Rationale:rich('Facts'),Campaign:{relation:[{id:cid}]},Status:{select:{name:'Active'}}}});
+ pages.set(productId,{id:productId,parent:{database_id:'products'},last_edited_time:'2026-10-22T10:00:00Z',properties:{Campaigns:{relation:[{id:cid}]},'Topic ID':rich('smv-stable'),Archived:{checkbox:false}}});
+ kv.set('seoclusters:staged:'+cid,JSON.stringify([{id:'smv-stable',name:'Staged topic',keywords:'staged keywords',products:[{name:'Keep this proposal',price:'$20'}],custom:{retained:true}}]));
+ kv.set('seotopicclusters:'+cid,JSON.stringify({clusters:['Main cluster','Empty cluster'],assign:{[topicId]:'Main cluster','smv-stable':'Main cluster'},mainCluster:'Main cluster',customCard:'retained'}));
+ kv.set('hub:mainproduct:'+cid,JSON.stringify([productId]));kv.set('stackgroups:'+cid,JSON.stringify({order:['A'],map:{Stack:'A'}}));kv.set('stackorder:'+cid,JSON.stringify(['Stack','Empty stack']));
+ const env={NOTION_TOKEN:'test-only',TRADES:{get:async(k,type)=>{const x=kv.get(k);return x==null?null:type==='json'?JSON.parse(x):x;},put:async(k,v)=>kv.set(k,v)}};
+ const fetch=async(url,opt={})=>{
+  const path=new URL(url).pathname.replace('/v1/',''),method=opt.method||'GET',body=opt.body?JSON.parse(opt.body):null;calls.push({path,method,body});let value;
+  if(path.startsWith('databases/')){const [,id,action]=path.split('/');if(action==='query')value={results:[...pages.values()].filter(p=>p.parent.database_id===id),has_more:false};
+   else if(method==='PATCH'){const schema=schemas.get(id);for(const [k,v]of Object.entries(body.properties))schema.properties[k]={type:Object.keys(v)[0],...v};value=schema;}else value=schemas.get(id);
+  }else if(path==='pages'&&method==='POST'){const id='d'.repeat(24)+String(++seq).padStart(8,'0');value={...body,id,last_edited_time:'2026-10-22T11:00:00Z'};pages.set(id,value);}
+  else if(path.startsWith('pages/')){const id=path.slice(6);value=pages.get(id);if(method==='PATCH'){value.properties={...value.properties,...body.properties};if('archived'in body)value.archived=body.archived;value.last_edited_time='2026-10-22T11:00:00Z';}}
+  if(!value)return new Response(JSON.stringify({object:'error',message:'404 not_found'}),{status:404});return new Response(JSON.stringify(value),{status:200});
+ };
+ const io=makeStructureIO(env,{fetch,dbs,hubs:[{campaignId:cid,slug:'test-hub'}],hierarchyModel:()=>({productIds:new Set([productId]),title:()=>false,asset:()=>false}),hold:async()=>{},intentLabels:{buyer:'Buyer'},intentFromLabel:{Buyer:'buyer'}});
+ return {io,kv,pages,calls,env};
+}
+test('real adapter migration verifies the existing visual view, snapshots raw keys and preserves stack order and card extras',async()=>{
+ const x=fixture(),before=new Map(x.kv),doc=await migrateStructure(x.io,cid),v=viewOf(doc);assert.ok(doc.verifiedAt);assert.equal(v.staged[0].id,'smv-stable');assert.equal(v.staged[0].products[0].price,'$20');assert.deepEqual(v.stackorder,['Stack','Empty stack']);
+ assert.equal(x.calls.filter(c=>c.method!=='GET'&&!c.path.endsWith('/query')).length,0);for(const[k,v]of before)assert.equal(x.kv.get(k),v);
+ const original=JSON.parse(x.kv.get('sync:original:'+cid)),snapshot=JSON.parse(x.kv.get(original.key));assert.equal(snapshot.capture.rawKv['stackorder:'+cid],before.get('stackorder:'+cid));
+});
+test('real adapter seeds one stable staged ID, reads back every field, preserves proposals and is idempotent on the next sync',async()=>{
+ const x=fixture();const result=await syncStructure(x.io,cid);assert.equal(result.mode,'seed');assert.equal(x.pages.size,4);const mirror=[...x.pages.values()].find(p=>p.properties?.['Topic Key']?.rich_text?.[0]?.text?.content==='smv-stable');assert.ok(mirror);assert.equal(mirror.properties.Status.select.name,'Staged');assert.equal(mirror.properties.Main.checkbox,true);
+ const doc=JSON.parse(x.kv.get('hub:structure:'+cid));assert.equal(doc.notionIds['topic:smv-stable'],mirror.id);assert.equal(doc.items['topic:smv-stable'].raw.custom.retained,true);
+ assert.deepEqual(JSON.parse(x.kv.get('stackorder:'+cid)),['Stack','Empty stack']);assert.equal(JSON.parse(x.kv.get('seotopicclusters:'+cid)).customCard,'retained');
+ const first=x.calls.filter(c=>c.method==='PATCH'&&c.path.startsWith('pages/')).length;await syncStructure(x.io,cid);assert.equal(x.pages.size,4);assert.equal(x.calls.filter(c=>c.method==='PATCH'&&c.path.startsWith('pages/')).length,first);
+});
+test('Notion edits on different topics merge with a card edit and a soft archive retains the complete topic',async()=>{
+ const x=fixture();await syncStructure(x.io,cid);const doc=JSON.parse(x.kv.get('hub:structure:'+cid));doc.items['topic:smv-stable'].raw.name='Card edit';doc.changedAt['topic:smv-stable']=Date.now();await x.io.put('hub:structure:'+cid,doc);await x.io.project(cid,doc);
+ x.pages.get(topicId).properties.Name=tit('Notion edit');await syncStructure(x.io,cid);let next=JSON.parse(x.kv.get('hub:structure:'+cid));assert.equal(next.items['topic:smv-stable'].raw.name,'Card edit');assert.equal(next.items['topic:'+topicId].raw.name,'Notion edit');
+ x.pages.get(topicId).properties.Status={select:{name:'Archived'}};await syncStructure(x.io,cid);next=JSON.parse(x.kv.get('hub:structure:'+cid));assert.equal(next.items['topic:'+topicId].archived,true);assert.equal(next.items['topic:'+topicId].raw.name,'Notion edit');assert.ok(x.pages.has(topicId));
+});
