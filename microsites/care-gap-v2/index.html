@@ -1312,6 +1312,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <button class="btn" onclick="closeImgDirModal()">Cancel</button>
         <button class="btn" onclick="saveImgDir(false, true)" title="Remove the direction; backgrounds follow the hub design again">Clear</button>
         <button class="btn" onclick="saveImgDir(false)">💾 Save</button>
+        <button class="btn" onclick="regenImgDirOnce()">Regenerate once (do not save guidance)</button>
+        <button class="btn" onclick="adoptImgDirToHub()">Propose saved guidance to hub</button>
         <button class="btn primary" onclick="saveImgDir(true)">💾 Save &amp; regenerate</button>
       </div>
     </div>
@@ -8292,7 +8294,7 @@ async function copyImagePrompt(kind, btn) {
   } catch (e) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Could not write the prompt: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
 }
-async function genOfferImage(kind, codexDesign = true) {
+async function genOfferImage(kind, codexDesign = true, runGuidance = '') {
   if (!pubAssetId) return;
   const c = OFFER_IMG[kind];
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
@@ -8301,7 +8303,7 @@ async function genOfferImage(kind, codexDesign = true) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateOfferImage', { assetId: myAsset, kind, codexDesign: !!codexDesign, save: true });
+    const r = await w('generateOfferImage', { assetId: myAsset, kind, codexDesign: !!codexDesign, runGuidance, save: true });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow(kind, null, r.prompt);
     await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl, r.saved ? r.url : '');
@@ -8328,9 +8330,9 @@ let PUB_BLOG_THUMB_LABEL = null;
 const isYtAsset = id => /\byoutube\b/i.test((PUB_ASSET_CACHE[id] || {}).type || '');
 // YouTube thumbnail text for the editor/compositor: the outline's first thumbnail-text option.
 function ytThumbText(data) { return String((data && data.thumbnailText) || '').split('|')[0].trim(); }
-function genThumbnail(codexDesign = true) {
+function genThumbnail(codexDesign = true, runGuidance = '') {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
-  return isOffer ? genOfferImage('blog-thumbnail', codexDesign) : genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', codexDesign);
+  return isOffer ? genOfferImage('blog-thumbnail', codexDesign, runGuidance) : genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', codexDesign, runGuidance);
 }
 async function regenThumbnail() {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
@@ -8341,7 +8343,7 @@ async function regenThumbnail() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
   genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail');
 }
-async function genBlogThumbnail(action, codexDesign = true) {
+async function genBlogThumbnail(action, codexDesign = true, runGuidance = '') {
   if (!pubAssetId) return;
   const c = OFFER_IMG['blog-thumbnail'];
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
@@ -8357,7 +8359,7 @@ async function genBlogThumbnail(action, codexDesign = true) {
     // every other image kind here uses. Skipping this step is the bug to
     // watch for: the field would show a url that 404s once xAI's temp CDN
     // link expires, and nothing would actually be saved to Notion.
-    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset, codexDesign: !!codexDesign, save: true });
+    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset, codexDesign: !!codexDesign, runGuidance, save: true });
     if (r.thumbText && PUB_ASSET_CACHE[myAsset] && !PUB_ASSET_CACHE[myAsset].thumbnailText) PUB_ASSET_CACHE[myAsset].thumbnailText = r.thumbText;
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow('blog-thumbnail', null, r.prompt);
@@ -8597,6 +8599,22 @@ async function imgDirUpload(inp) {
     setTimeout(() => { if (st.textContent.startsWith('✓ Your image')) closeImgDirModal(); }, 1400);
   } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Upload failed: ' + e.message; }
 }
+function regenImgDirOnce() {
+  const text=document.getElementById('imgDirText').value.trim();
+  closeImgDirModal();
+  if(IMG_DIR.kind==='ig')return genOfferImage('ig-background',true,text);
+  if(IMG_DIR.kind==='thumb')return genThumbnail(true,text);
+  return genSinglePostImage(true,text);
+}
+async function adoptImgDirToHub() {
+  const status=document.getElementById('imgDirStatus');
+  try{
+    const format=IMG_DIR.kind==='ig'?'offer_bg':IMG_DIR.kind==='thumb'?(isYtAsset(pubAssetId)?'youtube_thumb':'blog_thumb'):'social_square';
+    const r=await w('designSpec',{campaignId:CAMPAIGN_ID,op:'adoptAssetGuidance',assetId:pubAssetId,key:'asset.'+format+'.instructions'});
+    if(r.error)throw Error(r.error);
+    status.textContent='Saved asset guidance proposed in the hub staged spec. Review and commit in Codex Design; the live hub spec is unchanged.';
+  }catch(error){status.textContent=error.message;}
+}
 async function saveImgDir(regen, clear) {
   const st = document.getElementById('imgDirStatus');
   const text = clear ? '' : document.getElementById('imgDirText').value.trim();
@@ -8615,7 +8633,7 @@ async function saveImgDir(regen, clear) {
     }
   } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Not saved: ' + e.message; }
 }
-async function genSinglePostImage(codexDesign = true) {
+async function genSinglePostImage(codexDesign = true, runGuidance = '') {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageGenBtn');
   const statusEl = document.getElementById('pubPostImageStatus');
@@ -8623,7 +8641,7 @@ async function genSinglePostImage(codexDesign = true) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset, codexDesign: !!codexDesign, save: true });
+    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset, codexDesign: !!codexDesign, runGuidance, save: true });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     statusEl.textContent = 'Saving to Notion…';
     const s = r.saved && r.url ? { url: r.url } : await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl, background: true });

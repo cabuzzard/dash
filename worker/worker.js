@@ -552,6 +552,9 @@ async function grokImageFetch(env, context, options) {
 // references on every image-prompt call) are off.
 const SEND_IMAGES_TO_MODELS = false;
 function plateContent(text, brief) {
+  text += "\nThe spec's INSTRUCTIONS FOR THIS FORMAT block is binding - follow it over any conflicting derived choice. Explicit asset guidance overrides hub defaults for this asset; regeneration guidance applies only to this run.";
+  if(brief?.assetGuidance)text+='\nSAVED ASSET GUIDANCE (this asset only):\n'+brief.assetGuidance;
+  if(brief?.runGuidance)text+='\nREGENERATION GUIDANCE (this run only; do not save as spec):\n'+brief.runGuidance;
   if (!SEND_IMAGES_TO_MODELS) return text;
   const p = brief && brief.approvedPlate;
   const refs = ((brief && brief.mediaLibrary) || []).filter(x => x && /^https:\/\//.test(x.url || ""));
@@ -567,7 +570,7 @@ function plateContent(text, brief) {
   return [...images.map(i => ({ type: "image", source: { type: "url", url: i.url } })), { type: "text", text: text + `\n\nATTACHED VISUAL AUTHORITIES (in attachment order): ${images.map(i => i.label).join("; ")}. Use them to reproduce the campaign's palette, light, medium, motif and finish. Never copy an example's exact scene, embedded text or layout unless the asset specification explicitly calls for it.` }];
 }
 
-async function assembleImageBrief(env, { campaignId, assetId, override, codexDesign }) {
+async function assembleImageBrief(env, { campaignId, assetId, override, codexDesign, runGuidance }) {
   // `override` = a STAGED (unsaved) brief from the Content Hubs card:
   // { register, photography, avoid, notes, palette, fonts }. When present its
   // values replace what's read from the Research record, so the operator can
@@ -577,13 +580,14 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
   const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const norm = s => String(s || "").replace(/-/g, "");
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null, mediaLibrary: [] };
+  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null, mediaLibrary: [], assetGuidance: "", runGuidance: String(runGuidance || "").slice(0, 3000) };
 
   let cid = norm(campaignId || "");
   let contentHubSel = "", titleId = "", assetProductId = "";
   if (assetId) {
     const ap = (await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()).catch(() => ({})))?.properties || {};
     if (!cid) cid = norm(ap["Campaign"]?.relation?.[0]?.id || "");
+    out.assetGuidance = rtp(ap, "Image Direction").slice(0, 3000);
     contentHubSel = ap["Content Hub"]?.select?.name || "";
     titleId = norm(ap["Content Strategy"]?.relation?.[0]?.id || "");
     assetProductId = norm(ap["Product"]?.relation?.[0]?.id || "");
@@ -22253,6 +22257,12 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         let t = null; try { t = body.name === "currentmethods" ? await writingMethodsTable(env) : await env.TRADES.get(fkey, "json"); } catch (e) { if(body.name === "currentmethods")throw e; }
         return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
       }
+      if(body.action==='designModelAudit') {
+        const brief=await assembleImageBrief(env,{campaignId:body.campaignId,assetId:body.assetId,codexDesign:true});
+        const parts={committedSpec:brief.storedSpec||'',facts:(brief.facts||[]).join('\n'),savedAssetGuidance:brief.assetGuidance||'',guidance:brief.guidance||''};
+        const characters=Object.fromEntries(Object.entries(parts).map(([k,v])=>[k,v.length]));
+        return json({success:true,characters,totalCharacters:Object.values(characters).reduce((a,b)=>a+b,0),approxTokens:Math.ceil(Object.values(characters).reduce((a,b)=>a+b,0)/4),tokenEstimateMethod:'characters / 4; not provider tokenization',modelCalls:0,renderImageAttachments:0});
+      }
       if (body.action === 'getGovernanceReport') {
         if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
         const [report,baseline]=await Promise.all(['governance:report','governance:baseline'].map(k=>env.TRADES.get(k,'json')));
@@ -35211,7 +35221,7 @@ Rules:
         // The shared, customer-grounded art-direction spec for this hub — the
         // frozen "Image Spec" written by publishHubDesign if there is one,
         // otherwise derived on the fly.
-        const brief = await assembleImageBrief(env, { assetId, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -35322,7 +35332,7 @@ ${offerDir}` : ""}`;
         if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, String(body.direction).trim().slice(0, 600)).catch(() => {});
         const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -35390,7 +35400,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const subject       = await assetImageSubjectContext(hdr, assetId, ap);
         const exclusions    = await hubImageExclusions(env, campaignId);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -35458,7 +35468,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
-        const brief = await assembleImageBrief(env, { campaignId: cid, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { campaignId: cid, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -35653,7 +35663,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || null; }
         if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { /* best-effort — still usable without it */ } }
@@ -35846,15 +35856,22 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const ids = (Array.isArray(body.assetIds) && body.assetIds.length ? body.assetIds : [body.assetId]).map(x => String(x || "").replace(/-/g, "")).filter(Boolean).slice(0, 20);
         if (!ids.length) return json({ error: "assetId required" }, 400);
         const text = String(body.text || "").slice(0, 1990);
-        try {
-          const db = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
-          if (!db.properties?.["Image Direction"]) await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Image Direction": { rich_text: {} } } }) });
-        } catch (e) {}
+        const schemaResponse=await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`,{headers:hdr});
+        const db=await schemaResponse.json();if(!schemaResponse.ok)return json({error:db.message||'Cannot read Assets schema'},502);
+        if(!db.properties?.['Image Direction']){
+          const patched=await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`,{method:'PATCH',headers:hdr,body:JSON.stringify({properties:{'Image Direction':{rich_text:{}}}})});
+          const result=await patched.json();if(!patched.ok)return json({error:result.message||'Cannot add Image Direction'},502);
+          const verify=await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`,{headers:hdr});const schema=await verify.json();
+          if(!verify.ok||schema.properties?.['Image Direction']?.type!=='rich_text')return json({error:'Image Direction schema readback failed'},502);
+        }
         let saved = 0;
         for (const id of ids) {
           const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { method: "PATCH", headers: hdr,
             body: JSON.stringify({ properties: { "Image Direction": { rich_text: text ? [{ text: { content: text } }] : [] } } }) });
-          if (r.ok) saved++;
+          if (r.ok) {
+            const check=await fetch(`https://api.notion.com/v1/pages/${id}`,{headers:hdr});const page=await check.json();
+            if(check.ok&&hubRichText(page.properties?.['Image Direction']?.rich_text)===text)saved++;
+          }
         }
         return json({ ok: saved === ids.length, saved });
       }
@@ -35940,7 +35957,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const subject = await assetImageSubjectContext(hdr, assetId, ap);
         const exclusions = await hubImageExclusions(env, campaignId);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -54321,6 +54338,7 @@ const DS_ASSETS = [
   ["offer_bg", "Offer background (3:4)", "product / offer posts"],
 ];
 const DS_ASSET_FIELDS = [
+  ["instructions", "Instructions", "Standing instructions for this format - optional; when filled, every generation for this format follows them. Research keeps these current with market practice."],
   ["aspect", "Aspect + pixel size", "e.g. 3:4 · 1080×1440"],
   ["subject", "Subject", "who / what is shown"],
   ["composition", "Composition", "where the subject sits, in % of the frame"],
@@ -54331,7 +54349,7 @@ const DS_ASSET_FIELDS = [
   ["variation", "How images in this slot vary", "what changes vs stays fixed across a series"],
 ];
 DS_SCHEMA.push(...DS_ASSETS.map(([id, label, use]) => ({ id: "asset." + id, tier: "asset", label: label + " — " + use,
-  fields: DS_ASSET_FIELDS.map(([f, l, h]) => [`asset.${id}.${f}`, l, h]) })));
+  fields: [...DS_ASSET_FIELDS.map(([f, l, h]) => [`asset.${id}.${f}`, f === "instructions" && /_thumb$/.test(id) ? "Thumbnail Instructions" : l, h]), ...(/_thumb$/.test(id) ? [["focal_point","Focal point","what must read first"],["people","Faces / people","presence, expression and treatment"],["contrast","Contrast","subject separation and tonal hierarchy"],["curiosity","Curiosity device","grounded visual question; no invented claims"],["avoid","Thumbnail avoidances","market-specific visual pitfalls"]].map(([f,l,h])=>[`asset.${id}.${f}`,l,h]) : [])] })));
 const DS_TIERS = [["web", "1 · Web & content layout"], ["image", "2 · Image specifications (every image)"], ["asset", "3 · Asset image specifications (per format)"]];
 const DS_FIELDS = DS_SCHEMA.flatMap(s => s.fields);
 const DS_KEYS = new Set(DS_FIELDS.map(f => f[0]));
@@ -54353,10 +54371,14 @@ function dsRepaintSanitize(css) {
     .slice(0, 40000);
 }
 function dsSpecText(spec, onlyFilled) {
-  spec = spec || {};
-  return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.filter(([k]) => !onlyFilled || (spec[k] && spec[k].v)).map(([k]) => {
-    const f = spec[k] || {}; return `${k}: ${f.v || "(empty)"}${f.why ? " — " + f.why : ""}`; }).join("\n")).join("\n")).join("\n\n");
+  spec ||= {};
+  return DS_TIERS.map(([t,tl])=>'# '+tl+'\n'+DS_SCHEMA.filter(s=>s.tier===t).map(section=>'## '+section.label+'\n'+section.fields.filter(([k])=>!onlyFilled||spec[k]?.v||spec[k]?.g).map(([k])=>{
+    const f=spec[k]||{};
+    const value=k.endsWith('.instructions')&&f.v?'INSTRUCTIONS FOR THIS FORMAT (follow exactly):\n'+f.v:k+': '+(f.v||'(empty)')+(f.why?' - '+f.why:'');
+    return value+(f.g?'\nOperator guidance for '+k+': '+f.g:'');
+  }).join('\n')).join('\n')).join('\n\n');
 }
+function dsFieldLimit(k) { return k.endsWith('.instructions') ? 6000 : 400; }
 // 🪪 Site spec card (2026-10-09): ONE tall design-board image of the whole system — header, hero, sections, a social
 // post + thumbnail example, the palette swatches with hexes, the type specimens — prompted from the STAGED fields + hub copy.
 function dsCardPrompt(name, spec, copy) {
@@ -54409,7 +54431,7 @@ function dsClean(fields, defaultSrc, allowSrc) {
   for (const [k, raw] of Object.entries(fields || {})) {
     if (!DS_KEYS.has(k) || raw == null) continue;
     const o = typeof raw === "object" ? raw : { v: raw };
-    const v = String(Array.isArray(o.v) ? o.v.join("; ") : (o.v != null ? o.v : o.value != null ? o.value : "")).trim().slice(0, 400);
+    const v = String(Array.isArray(o.v) ? o.v.join("; ") : (o.v != null ? o.v : o.value != null ? o.value : "")).trim().slice(0, dsFieldLimit(k));
     if (!v) continue;
     const src = allowSrc && allowSrc.includes(o.src) ? o.src : defaultSrc;
     out[k] = { v, why: String(o.why || "").trim().slice(0, 200), src };
@@ -54440,18 +54462,17 @@ async function dsSaveReferenceSites(env, cid, ranked) {
       await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: h, body: JSON.stringify({ parent: { database_id: REFERENCE_SITES_DB }, properties: props }) }); }
   }
 }
-function dsMerge(spec, incoming, force) {
-  spec = JSON.parse(JSON.stringify(spec || {}));
-  const applied = [], suggested = [];
-  for (const [k, n] of Object.entries(incoming)) {
-    const cur = spec[k];
-    if (force) { if (!cur || cur.v !== n.v) { spec[k] = n; applied.push(k); } else if (!cur.why && n.why) cur.why = n.why; continue; }
-    if (!cur || !cur.v) { spec[k] = n; applied.push(k); continue; }
-    if (cur.v === n.v) { if (!cur.why && n.why) cur.why = n.why; continue; }
-    if (!DS_ADDITIVE.has(n.src) && (DS_PRI[n.src] || 0) >= (DS_PRI[cur.src] || 0)) { spec[k] = n; applied.push(k); }
-    else { cur.alt = n; suggested.push(k); }
+function dsMerge(spec,incoming,force,proposalsOnly=false) {
+  spec=JSON.parse(JSON.stringify(spec||{}));const applied=[],suggested=[];
+  for(const [k,raw] of Object.entries(incoming)){
+    const {g:ignored,...n}=raw,cur=spec[k];
+    const replace=()=>{spec[k]={...n,...(cur&&Object.hasOwn(cur,'g')?{g:cur.g}:{})};applied.push(k);};
+    if(!cur||!cur.v){replace();continue;}
+    if(cur.v===n.v){if(!cur.why&&n.why)cur.why=n.why;continue;}
+    if(!proposalsOnly&&(force||(!DS_ADDITIVE.has(n.src)&&(DS_PRI[n.src]||0)>=(DS_PRI[cur.src]||0))))replace();
+    else{cur.alt=n;suggested.push(k);}
   }
-  return { spec, applied, suggested };
+  return {spec,applied,suggested};
 }
 function dsFieldsOf(j) {
   const raw = j && (j.fields || j.spec || j);
@@ -54548,7 +54569,7 @@ VISUAL REFERENCE CONTRACT:
 - Current generated tests and competitor websites are context; they must not override uploaded visual authorities.
 Research ranking sites for audience context, not to replace the uploaded reference style.
 Rules:
-- "v" is DATA: hex codes, px, font names (Google Fonts only), ratios, aspect ratios, short lists. Max ~15 words. No prose paragraphs.
+- Fields ending .instructions use complete binding prose. Never create or edit operator guidance g. Other "v" is DATA: hex codes, px, font names (Google Fonts only), ratios, aspect ratios, short lists. Max ~15 words. No prose paragraphs.
 - "why" is one plain sentence a non-designer understands (max 14 words).
 - Never contradict the seed photo or the text override.
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
@@ -54733,34 +54754,49 @@ async function handleDesignSpec(body, env, ctx) {
     inputs.mediaLibrary = [item, ...inputs.mediaLibrary].slice(0, 60);
     await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });
   }
+  if(op==='guidance') {
+    const k=String(body.key||'');if(!DS_KEYS.has(k))return {error:'Unknown spec field'};
+    staged[k]={...(staged[k]||{v:'',why:'',src:'manual'}),g:String(body.g||'').trim().slice(0,3000)};
+    await put(K.stage,staged);return out();
+  }
+  if(op==='adoptAssetGuidance') {
+    const k=String(body.key||'');if(!DS_KEYS.has(k)||!k.endsWith('.instructions'))return {error:'Choose a format instruction field'};
+    const page=await ivPage(body.assetId),assetCid=ivRid(page.properties||{},'Campaign');
+    if(hubAssetId(assetCid)!==cid)return {error:'Asset belongs to another campaign'};
+    const text=hubRichText(page.properties?.['Image Direction']?.rich_text);if(!text.trim())return {error:'No saved asset guidance to adopt'};
+    const merged=dsMerge(staged,{[k]:{v:text,why:'Explicit operator proposal from asset guidance',src:'manual'}},false,true);
+    staged=merged.spec;await put(K.stage,staged);return out({applied:merged.applied,suggested:merged.suggested});
+  }
   if (op === "edit") {     // a manual edit — the highest-ranked source
     const k = String(body.key || ""); if (!DS_KEYS.has(k)) return { error: "unknown field " + k };
-    const v = String(body.v || "").trim().slice(0, 400);
-    if (!v) delete staged[k]; else staged[k] = { v, why: String(body.why != null ? body.why : (staged[k] && staged[k].why) || "").slice(0, 200), src: "manual" };
+    const v = String(body.v || "").trim().slice(0, dsFieldLimit(k));
+    const previousGuidance = Object.hasOwn(body,'g') ? String(body.g || '').trim().slice(0,3000) : staged[k]?.g;
+    if (!v && !previousGuidance) delete staged[k]; else staged[k] = { v, ...(previousGuidance ? {g:previousGuidance} : {}), why: String(body.why != null ? body.why : (staged[k] && staged[k].why) || "").slice(0, 200), src: "manual" };
     await put(K.stage, staged); return out();
   }
   if (op === "accept" || op === "dismiss") {
     const k = String(body.key || ""), f = staged[k]; if (!f || !f.alt) return { error: "no suggestion on " + k };
-    if (op === "accept") staged[k] = f.alt; else delete f.alt;
+    if (op === "accept") staged[k] = {...f.alt,...(Object.hasOwn(f,'g')?{g:f.g}:{})}; else delete f.alt;
     await put(K.stage, staged); return out();
   }
   if (op === "revert") { staged = saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {}; await put(K.stage, staged); return out(); }
   if (op === "save") {
     // scoped save = the saved spec with ONLY these fields replaced by their staged values; the rest stay staged, unsaved
     const src = scoped ? Object.assign(JSON.parse(JSON.stringify((saved && saved.spec) || {})), Object.fromEntries([...scoped].map(k => [k, staged[k] || null]))) : staged;
-    const clean = {}; for (const [k, f] of Object.entries(src)) if (DS_KEYS.has(k) && f && f.v) clean[k] = { v: f.v, why: f.why || "", src: f.src || "manual" };
+    const clean = {}; for (const [k, f] of Object.entries(src)) if (DS_KEYS.has(k) && f && (f.v || f.g)) clean[k] = { v: f.v || '', why: f.why || '', src: f.src || 'manual', ...(f.g ? {g:f.g} : {}) };
+    const renderedSpec=dsSpecText(clean,true);if(renderedSpec.length>169000)return {error:'Spec exceeds Notion text capacity; shorten guidance before committing'};
     const rec = { spec: clean, at: new Date().toISOString(), prev: saved ? { spec: saved.spec, at: saved.at } : null };
     await put(K.saved, rec);
     if (!scoped) staged = clean; else for (const k of scoped) { if (clean[k]) staged[k] = JSON.parse(JSON.stringify(clean[k])); else delete staged[k]; }
     await put(K.stage, staged);
     // mirror onto the Research record: every field as text (all image engines read Image Spec) + the legacy fields
-    const text = `# Design spec (field → value — why). Saved ${rec.at.slice(0, 10)}.\n\n${dsSpecText(clean, true)}`;
+    const text = `# Design spec (field → value — why). Saved ${rec.at.slice(0, 10)}.\n\n${renderedSpec}`;
     const palette = dsPalette(clean), fonts = dsFonts(clean), dir = dsDirection(clean), wrote = [];
     let notionError = null;
     try {
       const rid = await dsResearchRecord(env, cid, "");
       if (!rid) throw new Error("no Research record");
-      const props = { "Image Spec": dsRt(text.slice(0, 30000)), "Visual Register": dsRt(dir.register), "Photography Direction": dsRt(dir.photography), "Visual Avoid": dsRt(dir.avoid), "Design Notes": dsRt(dir.notes) };
+      const props = { "Image Spec": dsRt(text), "Visual Register": dsRt(dir.register), "Photography Direction": dsRt(dir.photography), "Visual Avoid": dsRt(dir.avoid), "Design Notes": dsRt(dir.notes) };
       if (palette) props.Palette = dsRt(`Design spec palette — saved ${rec.at.slice(0, 10)}.\n\n${JSON.stringify(palette)}`);
       if (fonts) props.Fonts = dsRt(`Design spec fonts — saved ${rec.at.slice(0, 10)}.\n\n${JSON.stringify(fonts)}`);
       await dsPatch(env, rid, props); wrote.push(...Object.keys(props));
@@ -54830,7 +54866,7 @@ async function handleDesignSpec(body, env, ctx) {
     if (stop === "max_tokens") throw new Error("the design pass ran out of room — try again");
     return raw;
   };
-  const RULES = `Every "v" is DATA — hex codes, px, Google Font names, ratios, aspect ratios, short lists; max ~15 words, no prose. Every "why" is one plain sentence a non-designer understands (max 14 words). Body text on the background and white text on the accent must pass WCAG AA (4.5:1).`;
+  const RULES = `Instruction fields ending .instructions are complete binding prose; never shorten them to terse scalar data. Never create or edit operator guidance g. Every other "v" is DATA — hex codes, px, Google Font names, ratios, aspect ratios, short lists; max ~15 words, no prose. Every "why" is one plain sentence a non-designer understands (max 14 words). Body text on the background and white text on the accent must pass WCAG AA (4.5:1).`;
 
   if (op === "research") { // the campaign's core research, rebuilt from the keywords (+ Google demand data + a live search)
     const kw = String(body.keywords || inputs.keywords || kwFallback || "").trim(); if (!kw) return { error: "keywords required" };
