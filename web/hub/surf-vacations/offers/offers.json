@@ -1,5 +1,12 @@
 [
   {
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "slug": "surf-camp-finder",
+    "name": "Surf Camp Finder",
+    "promise": "Find a verified surf camp matched to your level, book it in one session, and get on the plane knowing the trip is real.",
+    "url": "../blog/surf-camp-finder/"
+  },
+  {
     "assetId": "4011f7d3a4bb81f1baddfd7364745c1a",
     "slug": "surf-resort-finder",
     "name": "Surf Resort Finder",
