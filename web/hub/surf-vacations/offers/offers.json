@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
+    "slug": "charter-match",
+    "name": "Charter Match",
+    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
+    "url": "../blog/charter-match/",
+    "contentHash": "411c0ec3e594f0008b9dcf30a49e3df2cbac27c69f019d2a5f15ca8ae9c47503",
+    "contentEditedAt": "2026-10-22T13:10:00.000Z",
+    "refreshedAt": "2026-10-22T13:10:13.058Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
     "slug": "surf-camp-finder",
     "name": "Surf Camp Finder",
@@ -18,15 +28,5 @@
     "contentHash": "97bcad1b9c4647380455a3bf4e9121a21bbf5987ba8ec06c50c11081088d0ba0",
     "contentEditedAt": "2026-10-22T01:58:00.000Z",
     "refreshedAt": "2026-10-22T03:30:33.793Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81a891e1db5bd17d5698",
-    "slug": "charter-match",
-    "name": "Charter Match",
-    "promise": "Comparable quotes from vetted liveaboard operators — matched to your skill level, travel window, and budget — without the three-month forum spiral.",
-    "url": "../blog/charter-match/",
-    "contentHash": "139fe0ca97c98d0df5139b2801ac3481fcc778bb12dd022d0f5d7fcf8f72bca9",
-    "contentEditedAt": "2026-10-22T01:59:00.000Z",
-    "refreshedAt": "2026-10-22T03:30:22.695Z"
   }
 ]
