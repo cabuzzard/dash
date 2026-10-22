@@ -1,5 +1,15 @@
 [
   {
+    "slug": "property-caretaking",
+    "title": "Resident Caretaker & Home Watch — Private Property Care",
+    "intro": "You own a second home — a Sierra cabin, a wine-country estate, a coastal property used three months a year. And the honest answer is that nobody reliable is watching it right now. Not a person who already knows the place, not someone who will notice the slow leak before it becomes a ceiling, not any",
+    "date": "2026-10-22",
+    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
+    "contentHash": "285165ba160003060bd8f21599d83e9e7ffbb51d034c3361bbae793b6d19ab9c",
+    "contentEditedAt": "2026-10-22T16:26:00.000Z",
+    "refreshedAt": "2026-10-22T16:26:26.559Z"
+  },
+  {
     "slug": "live-in-property-caretaker-work-trade-resident-care",
     "title": "Live-In Property Caretaker — Work-Trade & Resident Care",
     "intro": "A property that runs itself while you're away isn't a fantasy — it's what happens when the right person is already there. This is a selective, individually scoped live-in caretaking arrangement for Northern California property owners who need more than a house-sitter and less than a property managem",
@@ -18,15 +28,5 @@
     "contentHash": "cd5ee8c9c541c86c64e74aa299a1eab0170df96924a718a8f877672b9c49bb1e",
     "contentEditedAt": "2026-10-22T15:43:00.000Z",
     "refreshedAt": "2026-10-22T15:43:09.468Z"
-  },
-  {
-    "slug": "property-caretaking",
-    "title": "Resident Caretaker & Home Watch — Private Property Care",
-    "intro": "You own a second home — a Sierra cabin, a wine-country estate, a coastal property used three months a year. And the honest answer is that nobody reliable is watching it right now. Not a person who already knows the place, not someone who will notice the slow leak before it becomes a ceiling, not any",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb819a8c39ef9c2aa81fe4",
-    "contentHash": "59b383c36101bee8e2407fdb22008d8e8e7c14cb67b3aeb91aaa1b754fc35241",
-    "contentEditedAt": "2026-10-22T15:40:00.000Z",
-    "refreshedAt": "2026-10-22T15:40:16.904Z"
   }
 ]
