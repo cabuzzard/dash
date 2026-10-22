@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
+    "slug": "commercial-deal-finder",
+    "name": "Commercial Deal Finder",
+    "promise": "Stop refreshing LoopNet. Start finding off-market multifamily deals before the crowd prices you out.",
+    "url": "../blog/commercial-deal-finder/",
+    "contentHash": "e3eadc0ebcb16d7aa0948a3c46cfa9532dc687d85418817ae34bf1d78cf3370e",
+    "contentEditedAt": "2026-10-21T07:40:00.000Z",
+    "refreshedAt": "2026-10-22T03:35:52.141Z"
+  },
+  {
     "assetId": "4001f7d3a4bb819b8278e27ba005cdd6",
     "slug": "deal-intelligence",
     "name": "Deal Intelligence",
@@ -8,13 +18,5 @@
     "contentHash": "85e056d2a29a3823e6bed8eeac7d8169cda0626e64eb41e45cff893750221575",
     "contentEditedAt": "2026-10-21T07:40:00.000Z",
     "refreshedAt": "2026-10-22T03:35:44.849Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb8196b0b4c84b33c8cbf9",
-    "slug": "commercial-deal-finder",
-    "name": "Commercial Deal Finder",
-    "promise": "Stop refreshing LoopNet. Start finding off-market multifamily deals before the crowd prices you out.",
-    "url": "../blog/commercial-deal-finder/",
-    "image": ""
   }
 ]
