@@ -1,5 +1,15 @@
 [
   {
+    "slug": "strategy-intensive",
+    "title": "Business Coaching for Owners: Overcoming Blind Spots and Better Decisions",
+    "intro": "You are not stuck because you lack information. You are stuck because you are making decisions from inside a blind spot you cannot see — and every framework, book, or strategic recommendation you add to the pile does not fix that. It cannot. The problem is not outside you.\n\nThe Business Strategy & A",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae",
+    "contentHash": "3b27bfab50fa3a540de83e9189a50eee83b84e081644e4c5bc4588219277e161",
+    "contentEditedAt": "2026-10-22T23:02:00.000Z",
+    "refreshedAt": "2026-10-22T23:02:54.548Z"
+  },
+  {
     "slug": "field-sessions",
     "title": "Break the Decision Loop — One Session, One Working Answer",
     "intro": "You've made harder calls than this. You've been in harder rooms, under real pressure, with real money on the line. So why is this particular decision — the one you keep re-approaching from the same angle — not moving?\n\nThe honest answer isn't that you lack information. You have more than enough info",
@@ -18,15 +28,5 @@
     "contentHash": "4ed7dcf875dbf4e039a2a56f8b9175b8d12d1391f0d1a657ce246e4024fd9c74",
     "contentEditedAt": "2026-10-22T22:54:00.000Z",
     "refreshedAt": "2026-10-22T22:54:27.992Z"
-  },
-  {
-    "slug": "strategy-intensive",
-    "title": "Business Coaching for Owners: Overcoming Blind Spots and Better Decisions",
-    "intro": "You are not stuck because you lack information. You are stuck because you are making decisions from inside a blind spot you cannot see — and every framework, book, or strategic recommendation you add to the pile does not fix that. It cannot. The problem is not outside you.\n\nThe Business Strategy & A",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae",
-    "contentHash": "15ad475192d018895ef9b6847f3d1f39cf63c4d2d291c5fa580a7ebec633765d",
-    "contentEditedAt": "2026-10-22T16:34:00.000Z",
-    "refreshedAt": "2026-10-22T16:34:31.769Z"
   }
 ]
