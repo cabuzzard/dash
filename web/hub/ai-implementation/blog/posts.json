@@ -1,5 +1,15 @@
 [
   {
+    "slug": "ai-operations-partner",
+    "title": "AI Operations Partner",
+    "intro": "Your full business pipeline — lead gen, follow-up, customer service, internal handoffs — runs automatically, under one integrated system, without you managing the machinery.",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
+    "contentHash": "229bf08195e10573c7d910dad6d0b0cabfb4fcd0b20ab1528abf75646b80c2fc",
+    "contentEditedAt": "2026-10-21T07:42:00.000Z",
+    "refreshedAt": "2026-10-22T03:33:23.099Z"
+  },
+  {
     "slug": "done-for-you-lead-gen",
     "title": "Done-For-You Lead Gen",
     "intro": "For Startup founders and mid-market operators without an in-house sales development function.\n\nQualified, ICP-matched meetings land on your calendar — you sell, we prospect.",
@@ -12,12 +22,5 @@
     "intro": "For Small business owners and lean teams who need content running without becoming the person who runs it.\n\nA senior strategist and a production system run your content — so it goes out consistently, stays on-brand, and connects to pipeline.",
     "date": "2026-10-21",
     "assetId": "4001f7d3a4bb8145bb6afa30c7bc35b6"
-  },
-  {
-    "slug": "ai-operations-partner",
-    "title": "AI Operations Partner",
-    "intro": "For Small and mid-size business owners paying multiple vendors who don't talk to each other.\n\nYour full business pipeline — lead gen, follow-up, customer service, internal handoffs — runs automatically, under one integrated system, without you managing the machinery.",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05"
   }
 ]
