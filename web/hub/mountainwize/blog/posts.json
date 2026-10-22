@@ -1,5 +1,15 @@
 [
   {
+    "slug": "field-sessions",
+    "title": "Founder Clarity & Direction Session",
+    "intro": "You've made harder calls than this. So why does this particular decision — the one you keep re-approaching from the same angle — refuse to move? The Founder Clarity & Direction Session exists for exactly that situation: one focused session that works as a diagnostic and a reset simultaneously, condu",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
+    "contentHash": "4ce31d97c2ee0df30a3fe8ecd88116353349586ed5216d93ce7b89fcdde05dad",
+    "contentEditedAt": "2026-10-22T13:55:00.000Z",
+    "refreshedAt": "2026-10-22T14:02:12.718Z"
+  },
+  {
     "slug": "strategy-intensive",
     "title": "Business Coaching for Owners: Overcoming Blind Spots and Making Better Decisions",
     "intro": "You are not stuck because you lack information. You are stuck because you are making decisions from inside a blind spot you cannot see — and adding more data, more frameworks, or more strategic advice does not fix that. The Business Strategy & Awareness Intensive is a single focused consultation bui",
@@ -8,16 +18,6 @@
     "contentHash": "423877ae57ec7e6bbf465d2117b5738e5e0238d8a7217ab681df5b36197bad04",
     "contentEditedAt": "2026-10-22T13:22:00.000Z",
     "refreshedAt": "2026-10-22T13:22:28.654Z"
-  },
-  {
-    "slug": "field-sessions",
-    "title": "Founder Clarity & Direction Session",
-    "intro": "You've made harder calls than this. So why does this particular decision — the one you keep re-approaching from the same angle — refuse to move? The Founder Clarity & Direction Session exists for exactly that situation: one focused session that works as a diagnostic and a reset simultaneously, condu",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
-    "contentHash": "4ce31d97c2ee0df30a3fe8ecd88116353349586ed5216d93ce7b89fcdde05dad",
-    "contentEditedAt": "2026-10-22T13:22:00.000Z",
-    "refreshedAt": "2026-10-22T13:22:13.518Z"
   },
   {
     "slug": "inner-edge",
