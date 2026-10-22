@@ -1,5 +1,15 @@
 [
   {
+    "slug": "surf-camp-finder",
+    "title": "Surf Camp Finder",
+    "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Camp Finder\",\n  \"promise\": \"Find a verified surf camp matched to your level and book it in one session.\",\n  \"ctaLabel\": \"Find Your Surf Camp\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou already know you want to go. The destination is somewhere in the back of ",
+    "date": "2026-10-22",
+    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
+    "contentHash": "bcc3016bf34ab7c7aa2e8ad9b795fdba657caec9af77e97ab3d4cb77be275bcf",
+    "contentEditedAt": "2026-10-22T14:03:00.000Z",
+    "refreshedAt": "2026-10-22T15:02:19.609Z"
+  },
+  {
     "slug": "surf-resort-finder",
     "title": "Surf Resort Finder & Booking",
     "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Resort Finder & Booking\",\n  \"promise\": \"Find the right resort or charter for your level and group — and book it in one flow, with every inclusion visible before you pay.\",\n  \"ctaLabel\": \"Find Your Resort\",\n  \"ctaUrl\": \"\"\n}\n```\n\nThe surf trip ",
@@ -18,15 +28,5 @@
     "contentHash": "7fd99ead453aa779d3db71adbb4d7b176325b92878d6e26dab5bb92a74770b60",
     "contentEditedAt": "2026-10-22T14:03:00.000Z",
     "refreshedAt": "2026-10-22T15:01:34.600Z"
-  },
-  {
-    "slug": "surf-camp-finder",
-    "title": "Surf Camp Finder",
-    "intro": "```json\n{\n  \"kicker\": \"Booking Platform\",\n  \"name\": \"Surf Camp Finder\",\n  \"promise\": \"Find a verified surf camp matched to your level and book it in one session.\",\n  \"ctaLabel\": \"Find Your Surf Camp\",\n  \"ctaUrl\": \"\"\n}\n```\n\nYou already know you want to go. The destination is somewhere in the back of ",
-    "date": "2026-10-22",
-    "assetId": "4011f7d3a4bb81dca96ed3f9ae1b1338",
-    "contentHash": "594008f93d18285b4718b3603fe3b64f9c2e2e4c3360e765e11b9a5a67a17d6c",
-    "contentEditedAt": "2026-10-22T13:57:00.000Z",
-    "refreshedAt": "2026-10-22T14:03:45.058Z"
   }
 ]
