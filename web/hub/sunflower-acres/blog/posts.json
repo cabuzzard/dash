@@ -1,5 +1,15 @@
 [
   {
+    "slug": "garden-shop",
+    "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
+    "intro": "```json\n{\n  \"kicker\": \"Garden Shop\",\n  \"name\": \"Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations\",\n  \"promise\": \"Seasonal plants, garden-grown flowers, and handmade botanical gifts from a working farm in Concord — with real stock, real origins, and clear pickup or shippi",
+    "date": "2026-10-22",
+    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
+    "contentHash": "bc93ae56050809b9b903f70cac358ffc937d1c5f9539025f0aefed6111702d7b",
+    "contentEditedAt": "2026-10-22T14:03:00.000Z",
+    "refreshedAt": "2026-10-22T15:04:08.494Z"
+  },
+  {
     "slug": "garden-fund",
     "title": "Sunflower Acres Accessible Garden Fund — Donations & Sponsorships",
     "intro": "```json\n{\n  \"kicker\": \"Donation & Sponsorship\",\n  \"name\": \"Sunflower Acres Accessible Garden Fund\",\n  \"promise\": \"Your contribution funds a named infrastructure project — scoped, costed, and tracked before you give.\",\n  \"ctaLabel\": \"Explore Ways to Support\",\n  \"ctaUrl\": \"\"\n}\n```\n\nMost accessibility ",
@@ -18,15 +28,5 @@
     "contentHash": "3fffea1ed7cccdd537d43f6ae65c4925a952a95155887ff79ec20e403ed809f6",
     "contentEditedAt": "2026-10-22T13:56:00.000Z",
     "refreshedAt": "2026-10-22T14:03:30.317Z"
-  },
-  {
-    "slug": "garden-shop",
-    "title": "Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations",
-    "intro": "```json\n{\n  \"kicker\": \"Garden Shop\",\n  \"name\": \"Bring a Little Sunflower Acres Home — Shop Plants, Flowers & Garden Creations\",\n  \"promise\": \"Seasonal plants, garden-grown flowers, and handmade botanical gifts from a working farm in Concord — with real stock, real origins, and clear pickup or shippi",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb810ba809d83bc257d92f",
-    "contentHash": "851c5ec8a5e7fd8962d4ae059862cbaf144eed1b254fd9078433d74b1243e687",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:03:23.527Z"
   }
 ]
