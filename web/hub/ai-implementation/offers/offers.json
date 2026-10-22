@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
+    "slug": "ai-operations-partner",
+    "name": "AI Automation Services for Small Businesses",
+    "promise": "For small business owners whose manual workflows are eating owner time — a done-for-you build that implements, integrates, and hands over working AI automation your team can operate from day one.",
+    "url": "../blog/ai-operations-partner/",
+    "contentHash": "424f9fd079cd0216e160b0c500f12d4704ca24cc371ccbb1774fdb31723000e8",
+    "contentEditedAt": "2026-10-22T16:30:00.000Z",
+    "refreshedAt": "2026-10-22T16:30:34.755Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8145bb6afa30c7bc35b6",
     "slug": "ai-content-partner",
     "name": "Fractional AI Operations: Your AI Systems Partner Without the Full-Time Hire",
@@ -18,16 +28,6 @@
     "contentHash": "7ad9d250136dce939bc0e17c059f0dc825eae8ef43acbe1ad41853d6bd34b2a5",
     "contentEditedAt": "2026-10-22T16:29:00.000Z",
     "refreshedAt": "2026-10-22T16:29:28.358Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
-    "slug": "ai-operations-partner",
-    "name": "AI Automation Services for Small Businesses",
-    "promise": "For small business owners whose manual workflows are eating owner time — a done-for-you build that implements, integrates, and hands over working AI automation your team can operate from day one.",
-    "url": "../blog/ai-operations-partner/",
-    "contentHash": "305618d30843190ad4d7affb5fabb2c534c9645184e5ad0d0e6ad4d6d0f6e4c7",
-    "contentEditedAt": "2026-10-22T13:48:00.000Z",
-    "refreshedAt": "2026-10-22T16:02:44.203Z"
   },
   {
     "assetId": "4011f7d3a4bb81ce82a7ee09363f09b6",
