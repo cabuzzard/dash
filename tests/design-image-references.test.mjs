@@ -37,7 +37,7 @@ const describe=worker.slice(worker.indexOf('async function dsDescribeLibrary('),
 test('visual descriptions use actual image inputs, skip cached images and preserve identity',async()=>{
  const requests=[],ctx=vm.createContext({Map,JSON,console,dsParseJson:JSON.parse,fetch:async(url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({content:[{type:'text',text:JSON.stringify({images:[{index:0,description:'Warm watercolor; soft outlines; empty left text area.'}]})}]})};}});
  vm.runInContext(describe,ctx);
- const result=await ctx.dsDescribeLibrary({ANTHROPIC_API_KEY:'not-real'},[{id:'new',url:'https://example.test/new.png'},{id:'cached',url:'https://example.test/old.png',visualRead:'Cached description'}]);
+ const result=await ctx.dsDescribeLibrary({ANTHROPIC_API_KEY:'not-real'},[{id:'new',url:'https://example.test/new.png'},{id:'cached',url:'https://example.test/old.png',visualRead:'Cached description',tierEvidence:{image:'Cached medium'}}]);
  assert.equal(requests[0].messages[0].content.filter(x=>x.type==='image').length,1);assert.match(result.get('new').text,/Warm watercolor/);assert.equal(result.has('cached'),false);
 });
 test('copied prompt includes every image and visual summary with no false attachment claim',()=>{
@@ -69,4 +69,10 @@ test('metadata validation rejects missing images and invalid fields without writ
   const result=await editLibrary({update},structuredClone(inputs),async()=>writes++,extra=>extra,{},'hub',{inputs:'inputs'},'library');assert.ok(result.error);
  }
  assert.equal(writes,0);
+});
+
+test('cached image observations are classified into spec tiers without resending an image',async()=>{
+ const requests=[],ctx=vm.createContext({Map,JSON,console,dsParseJson:JSON.parse,fetch:async(url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({content:[{type:'text',text:JSON.stringify({images:[{index:0,description:'Visible ink texture',tiers:{image:'Ink texture'},fields:{'img.medium':{v:'ink'}}}]})}]})};}});
+ vm.runInContext(describe,ctx);const result=await ctx.dsDescribeLibrary({ANTHROPIC_API_KEY:'not-real'},[{id:'old',url:'https://example.test/old.png',visualRead:'Previously observed ink texture'}]);
+ assert.equal(requests.length,1);assert.equal(requests[0].messages[0].content.filter(x=>x.type==='image').length,0);assert.equal(result.get('old').tiers.image,'Ink texture');assert.equal(result.get('old').fields['img.medium'].v,'ink');
 });
