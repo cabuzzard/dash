@@ -50,12 +50,12 @@ export function makeStructureIO(env,deps) {
   async function topics(cid){return query(dbs.topics,{filter:campaignFilter(cid)});}
   async function products(cid){return query(dbs.products,{filter:productFilter(cid)});}
   const intent=row=>deps.intentFromLabel?.[row.properties?.['Search Intent']?.select?.name]||'';
-  function topicValue(row,old,order=0) {
+  function topicValue(row,old,order=0,cid) {
     const p=row.properties||{},data=parse(text(p['Card Data']?.rich_text))||{},key=logical(row),savedOrder=data.__order,savedStage=data.__stage;
     delete data.__order;delete data.__stage;
     const raw={...(old?.raw||{}),...data,id:key};
     for(const [k,v] of Object.entries({name:text(p.Name?.title),keywords:text(p['Cluster Keywords']?.rich_text),rationale:text(p.Rationale?.rich_text),searchIntent:intent(row)}))if(v!==''||Object.hasOwn(raw,k))raw[k]=v;
-    return {raw,stage:p.Status?.select?.name==='Staged'?'staged':p.Status?.select?.name==='Archived'?(savedStage||old?.stage||'committed'):'committed',cluster:text(p['Hub Cluster']?.rich_text),main:!!p.Main?.checkbox,archived:archived(row),order:savedOrder??old?.order??order};
+    return {raw,stage:p.Status?.select?.name==='Staged'?'staged':p.Status?.select?.name==='Archived'?(savedStage||old?.stage||'committed'):'committed',cluster:text(p['Hub Cluster']?.rich_text),main:!!p.Main?.checkbox,archived:archived(row)||!!cid&&!(p.Campaign?.relation||[]).some(r=>norm(r.id)===cid),order:savedOrder??old?.order??order};
   }
   function productValue(row,cid,old) {
     return {id:norm(row.id),topicId:text(row.properties?.['Topic ID']?.rich_text),mainOffering:(row.properties?.['Hub Main Offerings']?.multi_select||[]).some(x=>x.name===hub(cid).slug),mainOrder:old?.mainOrder||0,archived:archived(row)||!(row.properties?.Campaigns?.relation||[]).some(x=>norm(x.id)===cid)};
@@ -115,13 +115,13 @@ export function makeStructureIO(env,deps) {
     const [rows,prods,campaign]=await Promise.all([topics(cid),products(cid),page(cid)]),remote={};
     const structure=parse(text(campaign.properties?.['Hub Keyword Structure']?.rich_text));
     if(structure)remote.structure={id:cid,value:structure,at:time(campaign)};
-    for(const [i,row] of rows.entries()) {const key='topic:'+logical(row);if(remote[key])throw Error('Duplicate Topic Key '+logical(row)+'; nothing was merged');remote[key]={id:row.id,value:topicValue(row,doc.items[key],i),at:time(row)};}
+    for(const [i,row] of rows.entries()) {const key='topic:'+logical(row),known=Object.keys(doc.notionIds||{}).find(k=>k.startsWith('topic:')&&norm(doc.notionIds[k])===norm(row.id));if(known&&known!==key)throw Error('Stable Topic Key changed in Notion; restore its original value before syncing');if(remote[key])throw Error('Duplicate Topic Key '+logical(row)+'; nothing was merged');remote[key]={id:row.id,value:topicValue(row,doc.items[key],i,cid),at:time(row)};}
     for(const row of prods){const key='product:'+norm(row.id);remote[key]={id:row.id,value:productValue(row,cid,doc.items[key]),at:time(row)};}
     for(const [key,baseline] of Object.entries(doc.baseline||{}))if(key.startsWith('topic:')&&!remote[key]) {
       const id=doc.notionIds[key];if(!id)throw Error('Missing Notion identity for '+key);
       let row;try{row=await page(id);}catch(error){if(!/not find|not_found|404/i.test(error.message))throw error;}
       if(row&&!archived(row)&&(row.properties?.Campaign?.relation||[]).some(x=>norm(x.id)===cid))throw Error('Topic query omitted an active row; refusing an apparent delete');
-      remote[key]={id,value:{...baseline.value,archived:true},at:row?time(row):io.now()};
+      remote[key]={id,value:row?topicValue(row,baseline.value,baseline.value.order,cid):{...baseline.value,archived:true},at:row?time(row):io.now()};
     }
     for(const [key,baseline] of Object.entries(doc.baseline||{}))if(key.startsWith('product:')&&!remote[key]) {
       let row;try{row=await page(baseline.value.id);}catch(error){if(!/not find|not_found|404/i.test(error.message))throw error;}
@@ -143,7 +143,7 @@ export function makeStructureIO(env,deps) {
     const props={Name:title(raw.name),'Topic Key':rt(raw.id),'Cluster Keywords':rt(raw.keywords),Rationale:rt(raw.rationale),'Hub Cluster':rt(value.cluster),Main:{checkbox:!!value.main},'Card Data':rt(JSON.stringify(metadata)),'Synced At':date(at),Status:{select:{name:value.archived?'Archived':value.stage==='staged'?'Staged':'Active'}}};
     const label=deps.intentLabels?.[raw.searchIntent];props['Search Intent']=label?{select:{name:label}}:{select:null};
     let id=remote?.id||doc.notionIds[key];
-    if(id){const current=await page(id);if(remote&&!same(topicValue(current,doc.items[key],remote.value.order),remote.value))throw Error('Topic changed in Notion during sync; retained for retry: '+raw.id);if((current.archived||current.in_trash)&&!value.archived)await api('pages/'+id,'PATCH',{archived:false});if(!(current.properties?.Campaign?.relation||[]).some(r=>norm(r.id)===cid))props.Campaign={relation:[...(current.properties?.Campaign?.relation||[]).map(r=>({id:r.id})),{id:cid}]};await patch(id,props);}
+    if(id){const current=await page(id);if(remote&&!same(topicValue(current,doc.items[key],remote.value.order,cid),remote.value))throw Error('Topic changed in Notion during sync; retained for retry: '+raw.id);if((current.archived||current.in_trash)&&!value.archived)await api('pages/'+id,'PATCH',{archived:false});if(!(current.properties?.Campaign?.relation||[]).some(r=>norm(r.id)===cid))props.Campaign={relation:[...(current.properties?.Campaign?.relation||[]).map(r=>({id:r.id})),{id:cid}]};await patch(id,props);}
     else {const created=await api('pages','POST',{parent:{database_id:dbs.topics},properties:{...props,Campaign:{relation:[{id:cid}]}}});id=created.id;if(!id)throw Error('Notion topic creation returned no ID');const read=await page(id);if(logical(read)!==raw.id)throw Error('Created Topic Key readback differs');}
     return id;
   };
