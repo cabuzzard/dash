@@ -12463,6 +12463,30 @@ async function hrIdeas(env, seeds, market, limit) {
     + "WHERE r.request_id = ?1 GROUP BY k.id ORDER BY v DESC LIMIT ?5").bind(out.requestId, market.languageId, kwGeoKey(market.geoIds), market.network, limit || 300).all()).results;
   return rows.map(r => ({ t: r.t, v: Number(r.v) || 0 })).filter(r => r.v > 0);
 }
+// 🔬 Seed research for the ＋ Topic / ＋ Cluster modals (operator 2026-10-21: seeds in the modal → a researched return to
+// its field, no trip to the Keywords tab). One Google ideas call (cache-first, budgeted) → Claude's best-guess pick of the
+// ideas that belong with the seeds → { name, keywords: [{ t, v }] } by volume. No Google (budget / access) → Claude's guess, flagged.
+async function kwSeedResearch(env, body) {
+  const seeds = hcUniq((Array.isArray(body.seeds) ? body.seeds : String(body.seeds || "").split(/[,\n]/)).map(kwNorm)).slice(0, 20);
+  if (!seeds.length) throw new Error("Type a few seed keywords first");
+  const kind = body.kind === "cluster" ? "cluster" : "topic", hub = String(body.hub || "").slice(0, 100), name = String(body.name || "").trim().slice(0, 100);
+  const market = await kwMarket(env, {});
+  let ideas = [], warn = "";
+  try { ideas = await hrIdeas(env, seeds, market, 300); } catch (e) { warn = "Google ideas not fetched (" + (e.message || e) + ") — best guess only, no volumes"; }
+  const what = kind === "cluster"
+    ? "a CLUSTER: a broad keyword that groups several topics. Pick the 8-15 broadest head terms that could name or anchor it"
+    : "a TOPIC: one narrow subject a single pillar article could rank for. Pick the 8-20 keywords with the SAME searcher intent as the seeds (not a neighbouring subject)";
+  const out = await hcClaude(env, `A content hub${hub ? ' ("' + hub + '")' : ""} is adding ${what}.
+SEEDS: ${seeds.join(", ")}${name ? "\nWORKING NAME: " + name : ""}
+${ideas.length ? "REAL GOOGLE SEARCHES (keyword | monthly US searches):\n" + ideas.map(r => r.t + " | " + r.v).join("\n") + "\n\nUse keywords exactly as written in that list; prefer ones with volume. Keep a seed only if it appears there."
+  : "No search data is available — write the most likely real search phrases (lowercase, how people actually type them)."}
+name = the single best keyword to name it (from the list when there is one). Call submit_keywords.`, "submit_keywords",
+    { type: "object", required: ["name", "keywords"], properties: { name: { type: "string" }, keywords: { type: "array", items: { type: "string" } } } }, 3000);
+  const vol = new Map(ideas.map(r => [r.t, r.v]));
+  const keywords = hcUniq((out.keywords || []).map(kwNorm)).slice(0, 25).map(t => ({ t, v: vol.has(t) ? vol.get(t) : null }))
+    .sort((a, b) => (b.v || 0) - (a.v || 0));
+  return { ok: true, name: kwNorm(out.name || "") || (keywords[0] || {}).t || seeds[0], keywords, ideas: ideas.length, warn };
+}
 // one "🏗 Cluster research" run per hub (rebuilt in place) holding every keyword the restructure researched
 async function hrResearchRun(env, cid, name, keywords, market) {
   const db = env.KWDB, label = "🏗 Cluster research · " + name;
@@ -52966,6 +52990,7 @@ async function handleKeywordAction(body, env) {
   }
 
   // 🌐 hub keywords: load into the tool / apply a reorganize / undo the last apply
+  if (a === "kwSeedResearch") { try { return json(await kwSeedResearch(env, body)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name, body.extra)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubProposalGet") { const cid = String(body.campaignId || "").replace(/-/g, ""); const p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
     const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; const at = q.findIndex(x => String(x.cid).replace(/-/g, "") === cid);

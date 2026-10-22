@@ -17741,26 +17741,64 @@ async function hubKwSaveClusters(slug, clusters, assign, msg) {
   catch (e) { K.tc = before; K.msg = '✗ Not saved: ' + e.message; }
   hubKwRefresh(slug); if (typeof hubTitlesRefresh === 'function') hubTitlesRefresh(slug);
 }
+// ＋ Cluster — name + optional seeds; 🔬 Research (kwSeedResearch) returns real keywords right here — click one to name it
 function hubKwAddCluster(slug) {
   const K = _hubKw[slug]; if (!K) return;
-  const n = (prompt('New cluster name (usually the keyword that groups its topics):') || '').trim(); if (!n) return;
-  if ((K.tc.clusters || []).some(c => c.toLowerCase() === n.toLowerCase())) return alert('There is already a cluster called "' + n + '".');
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
+  hcModal(`<h3 style="margin:0 0 10px;">＋ Cluster</h3>
+    <label style="font-size:11px;color:var(--text3);">Cluster name (usually the keyword that groups its topics)</label><input id="hkwNcName" style="${IN}">
+    <label style="font-size:11px;color:var(--text3);">Seed keywords (comma or one per line) — 🔬 Research suggests a real keyword to name it</label><textarea id="hkwNcSeed" rows="3" style="${IN}"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin:-6px 0 8px;"><button class="kw-btn" onclick="hubKwSeedResearch('${slug}','cluster','hkwNcSeed','hkwNcName','hkwNcOut')">🔬 Research</button></div>
+    <div id="hkwNcOut" style="font-size:11.5px;color:var(--text3);margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwAddClusterGo('${slug}'))">Add cluster</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const el = document.getElementById('hkwNcName'); if (el) el.focus(); }, 50);
+}
+function hubKwAddClusterGo(slug) {
+  const K = _hubKw[slug]; if (!K) return 'Hub not loaded';
+  const n = document.getElementById('hkwNcName').value.trim(); if (!n) return 'Type a cluster name (or 🔬 Research and pick one)';
+  if ((K.tc.clusters || []).some(c => c.toLowerCase() === n.toLowerCase())) return 'There is already a cluster called "' + n + '"';
+  document.getElementById('hcModal').classList.remove('open');
   hubKwSaveClusters(slug, [...(K.tc.clusters || []), n], { ...(K.tc.assign || {}) }, 'Cluster "' + n + '" added');
+  return true;
+}
+// 🔬 in the ＋ Topic / ＋ Cluster modals: seeds → kwSeedResearch (Google ideas + Claude best-guess pick) → back into the modal.
+// Topic: the keywords replace the seed box (one per line) and fill a blank name. Cluster: the keywords are chips that set the name.
+async function hubKwSeedResearch(slug, kind, seedId, nameId, outId) {
+  const h = HUB_SITES.find(x => x.slug === slug), seedEl = document.getElementById(seedId), nameEl = document.getElementById(nameId), out = document.getElementById(outId);
+  if (!h || !seedEl || !out) return;
+  const seeds = seedEl.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean); if (!seeds.length && nameEl.value.trim()) seeds.push(nameEl.value.trim());
+  if (!seeds.length) { out.textContent = 'Type a few seed keywords first.'; return; }
+  out.textContent = '⏳ Researching ' + seeds.length + ' seed' + (seeds.length === 1 ? '' : 's') + '…';
+  const r = await call('kwSeedResearch', { seeds, kind, hub: h.name, name: nameEl.value.trim() }).catch(e => ({ error: e.message }));
+  if (!document.getElementById(outId)) return;   // modal closed meanwhile
+  if (!r || r.error) { out.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
+  const kws = r.keywords || [], vol = k => k.v == null ? '' : ' · ' + Number(k.v).toLocaleString();
+  if (!kws.length) { out.textContent = 'Nothing came back — try broader seeds.'; return; }
+  if (!nameEl.value.trim() && r.name) nameEl.value = r.name;
+  const note = (r.warn ? '⚠ ' + esc(r.warn) + '<br>' : r.ideas ? 'From ' + r.ideas + ' Google ideas (monthly US searches) — a best-guess pick, edit freely.<br>' : '');
+  if (kind === 'topic') {
+    seedEl.value = kws.map(k => k.t).join('\n');
+    out.innerHTML = note + kws.map(k => `<span style="display:inline-block;margin:2px 4px 2px 0;">${esc(k.t)}<span style="color:var(--text3);">${vol(k)}</span></span>`).join(' ');
+  } else {
+    out.innerHTML = note + kws.map(k => `<button class="kw-btn" style="margin:2px 4px 2px 0;" onclick="document.getElementById('${nameId}').value=this.dataset.k" data-k="${esc(k.t)}">${esc(k.t)}${vol(k)}</button>`).join('');
+  }
 }
 // ✎ rename a topic / cluster — kwHubApply (same save + backup + ↶ undo as the Keywords tab's hub view). A topic keeps
 // its id, so its products and titles stay attached; renaming a cluster onto an existing cluster merges them.
 function hubKwOpenClusterInTool(slug, ci) { const h = HUB_SITES.find(x => x.slug === slug), c = ((_hubKw[slug] || {}).tc || {}).clusters?.[ci]; if (h && c) kwOpenTopic(h.campaignId, h.campaign || h.name, 'c:' + c); }
 function hubKwOpenInTool(slug, tid) { const h = HUB_SITES.find(x => x.slug === slug); if (h) kwOpenTopic(h.campaignId, h.campaign || h.name, tid); }
-// ＋ Topic — a new proposed topic (no AI): name + starting keywords (the name alone if none), optional cluster.
-// kwHubApply newTopics (same save + backup + ↶ undo as the Keywords tab). Then 🔬 it to research in the Keywords tab.
+// ＋ Topic — a new proposed topic: name + seed keywords (the name alone if none), optional cluster. 🔬 Research in the
+// modal swaps the seeds for researched keywords (kwSeedResearch). kwHubApply newTopics (same save + backup + ↶ undo as the Keywords tab).
 function hubKwAddTopic(slug) {
   const K = _hubKw[slug]; if (!K) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
   hcModal(`<h3 style="margin:0 0 10px;">＋ Topic</h3>
     <label style="font-size:11px;color:var(--text3);">Topic name</label><input id="hkwNtName" style="${IN}" placeholder="usually its main keyword">
-    <label style="font-size:11px;color:var(--text3);">Starting keywords (comma or one per line — blank = the name)</label><textarea id="hkwNtKw" rows="4" style="${IN}"></textarea>
+    <label style="font-size:11px;color:var(--text3);">Seed keywords (comma or one per line — blank = the name) — 🔬 Research swaps them for researched keywords</label><textarea id="hkwNtKw" rows="6" style="${IN}"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin:-6px 0 8px;"><button class="kw-btn" onclick="hubKwSeedResearch('${slug}','topic','hkwNtKw','hkwNtName','hkwNtOut')">🔬 Research</button></div>
+    <div id="hkwNtOut" style="font-size:11.5px;color:var(--text3);margin-bottom:12px;max-height:20vh;overflow:auto;"></div>
     <label style="font-size:11px;color:var(--text3);">Cluster</label><select id="hkwNtCl" style="${IN}"><option value="">— no cluster —</option>${(K.tc.clusters || []).map(c => `<option>${esc(c)}</option>`).join('')}</select>
-    <label style="display:flex;gap:7px;align-items:center;font-size:12px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="hkwNtOpen" checked>Open it in the Keywords tab afterwards</label>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="hkwNtOpen">Open it in the Keywords tab afterwards</label>
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwAddTopicGo('${slug}'))">Add topic</button>${HC_CANCEL}</div>`);
   setTimeout(() => { const el = document.getElementById('hkwNtName'); if (el) el.focus(); }, 50);
 }
