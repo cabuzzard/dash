@@ -2494,6 +2494,52 @@ async function governanceHold(env, tableKey, payload, reason='governance_locked'
   const pending=governanceLogQueue.then(append,append);governanceLogQueue=pending.catch(()=>{});await pending;
 }
 
+// Daily governance detection uses zero model calls and never mutates the observed stores.
+async function governanceSnapshot(env) {
+  const keys=['infoflow:table:informationflowgraph','infoflow:table:currentmethods'];
+  const raw=await Promise.all(keys.map(k=>env.TRADES.get(k)));
+  if(raw.some(x=>!x))throw new Error('Governance table unavailable');
+  const graph=unpackInfoFlow(JSON.parse(raw[0])),table=JSON.parse(raw[1]);
+  if(!graph||!Array.isArray(table.rows))throw new Error('Governance table malformed');
+  const hdr={Authorization:'Bearer '+String(env.NOTION_TOKEN||'').trim(),'Notion-Version':NOTION_VERSION};
+  const urls=['https://api.notion.com/v1/pages/3c21f7d3-a4bb-8111-9dff-ef23153e97d7','https://api.notion.com/v1/databases/'+METHODS_DB];
+  const records=await Promise.all(urls.map(async url=>{const r=await fetch(url,{headers:hdr});const d=await r.json();if(!r.ok||!d.last_edited_time)throw new Error(d.message||'Governance Notion metadata unavailable');return d;}));
+  return {at:new Date().toISOString(),graph:{hash:await governanceHash(raw[0]),nodes:graph.nodes.length,edges:graph.edges.length},
+    currentMethods:{hash:await governanceHash(raw[1]),rows:table.rows.length,methods:Object.fromEntries(writingRows(table).map(r=>[r.name,{hasContract:!!r.contractText.trim(),hasInputs:!!r.inputs.trim(),mapped:r.mapped}]))},
+    contractPageEditedAt:records[0].last_edited_time,methodsDataSourceEditedAt:records[1].last_edited_time};
+}
+function governanceDiff(baseline,snapshot) {
+  const changes=[];
+  for(const [key,label] of [['nodes','nodes'],['edges','edges']])if(baseline.graph[key]!==snapshot.graph[key])changes.push('Graph: '+baseline.graph[key]+' -> '+snapshot.graph[key]+' '+label);
+  if(baseline.graph.hash!==snapshot.graph.hash&&!changes.length)changes.push('Graph content changed (node and edge counts unchanged)');
+  const b=baseline.currentMethods,n=snapshot.currentMethods,start=changes.length;
+  if(b.rows!==n.rows)changes.push('Current Methods: '+b.rows+' -> '+n.rows+' rows');
+  for(const name of new Set([...Object.keys(b.methods),...Object.keys(n.methods)])){
+    const old=b.methods[name],now=n.methods[name];
+    if(!old||!now){changes.push('Current Methods: '+name+(!old?' added':' removed'));continue;}
+    for(const k of ['hasContract','hasInputs','mapped'])if(old[k]!==now[k])changes.push('Current Methods: '+name+' '+k+' '+String(old[k]||'(empty)')+' -> '+String(now[k]||'(empty)'));
+  }
+  if(b.hash!==n.hash&&changes.length===start)changes.push('Current Methods content changed (row count and mapping summary unchanged)');
+  for(const [key,label] of [['contractPageEditedAt','Contract page edited'],['methodsDataSourceEditedAt','Methods data source edited']])if(baseline[key]!==snapshot[key])changes.push(label+' '+baseline[key]+' -> '+snapshot[key]);
+  return {status:changes.length?'changed':'match',changes,at:snapshot.at};
+}
+async function runGovernanceWatcher(env,seedIfMissing=false) {
+  try {
+    const snapshot=await governanceSnapshot(env);
+    await env.TRADES.put('governance:snapshots:'+snapshot.at.slice(0,10),JSON.stringify(snapshot),{expirationTtl:30*86400});
+    let baseline=await env.TRADES.get('governance:baseline','json');
+    if(!baseline&&seedIfMissing){baseline={...snapshot,approvedAt:null,seeded:true};await env.TRADES.put('governance:baseline',JSON.stringify(baseline));}
+    const report=baseline?governanceDiff(baseline,snapshot):{status:'changed',changes:['Governance baseline has not been seeded'],at:snapshot.at};
+    await env.TRADES.put('governance:report',JSON.stringify(report));return {success:true,snapshot,report,seeded:!!baseline?.seeded};
+  }catch(error){const report={status:'changed',changes:['Governance snapshot failed: '+error.message],at:new Date().toISOString(),error:true};await env.TRADES.put('governance:report',JSON.stringify(report));throw error;}
+}
+async function approveGovernanceBaseline(env) {
+  const snapshot=await governanceSnapshot(env),baseline={...snapshot,approvedAt:new Date().toISOString(),seeded:false};
+  await env.TRADES.put('governance:snapshots:'+snapshot.at.slice(0,10),JSON.stringify(snapshot),{expirationTtl:30*86400});
+  await env.TRADES.put('governance:baseline',JSON.stringify(baseline));
+  const report=governanceDiff(baseline,snapshot);await env.TRADES.put('governance:report',JSON.stringify(report));return {success:true,report,approvedAt:baseline.approvedAt};
+}
+
 let GOVERNING_FLOW_CACHE = null; // { at, data } — isolate-lifetime, 60s TTL
 async function governingFlow(env) {
   const now = Date.now();
@@ -22206,6 +22252,23 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const fkey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
         let t = null; try { t = body.name === "currentmethods" ? await writingMethodsTable(env) : await env.TRADES.get(fkey, "json"); } catch (e) { if(body.name === "currentmethods")throw e; }
         return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
+      }
+      if (body.action === 'getGovernanceReport') {
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        const [report,baseline]=await Promise.all(['governance:report','governance:baseline'].map(k=>env.TRADES.get(k,'json')));
+        return json({success:true,report:report||{status:'changed',changes:['Governance watcher not initialized']},seeded:!!baseline?.seeded,approvedAt:baseline?.approvedAt||null});
+      }
+      if(body.action==='runGovernanceWatcher') {
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        return json(await runGovernanceWatcher(env,body.seedIfMissing===true));
+      }
+      if(body.action==='approveGovernanceBaseline') {
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        if(!await governanceValid(env,body.governanceUnlock)){
+          await governanceHold(env,'governance:baseline',{approve:true});
+          return json({error:'Unlock the Graph controls before approving a governance baseline.',reason:'governance_locked'},403);
+        }
+        return json(await approveGovernanceBaseline(env));
       }
       if (body.action === 'unlockGovernance') {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({error:'Unauthorized'},401);
@@ -51942,6 +52005,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       const K = "cron:log:" + event.cron.replace(/[^0-9A-Za-z*-]+/g, "_");
       try { const prev = (await env.TRADES.get(K, "json")) || []; prev.push(run); await env.TRADES.put(K, JSON.stringify(prev.slice(-60))); } catch (e) { oErr("cron log write failed:", e.message); }
     })());
+    if(event.cron==='30 0 * * *'){cw('governanceWatcher',runGovernanceWatcher(env));return;}
     await hubSitesMerge(env);
     if (event.cron === "*/5 12-16 * * MON-FRI") {
       // MON-FRI, not 1-5: Cloudflare numbers weekdays 1=Sunday, so "1-5" ran
