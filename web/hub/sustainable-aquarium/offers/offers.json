@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4011f7d3a4bb81ebba25f509074e6a3b",
+    "slug": "corporate-aquarium-design-installation",
+    "name": "Corporate Aquarium Design & Installation",
+    "promise": "For facilities managers, designers, and hospitality directors who want a living installation that holds its quality long-term — not a maintenance liability. Specified for your site before any money moves.",
+    "url": "../blog/corporate-aquarium-design-installation/",
+    "contentHash": "0122bcbf12c9c8a90d431164df929d39918c090984b573a5adf4780ae6ffd88f",
+    "contentEditedAt": "2026-10-22T14:04:00.000Z",
+    "refreshedAt": "2026-10-22T16:05:22.895Z"
+  },
+  {
     "assetId": "4011f7d3a4bb81cd8315d42d42e1d4db",
     "slug": "biogenerative-installation-feasibility-design",
     "name": "Biogenerative Installation Feasibility & Design",
@@ -18,15 +28,5 @@
     "contentHash": "701562c944699cd2031e36882aea9dd5d4ea3936d3b3da13e4e5919fbff9a3c5",
     "contentEditedAt": "2026-10-22T13:56:00.000Z",
     "refreshedAt": "2026-10-22T14:04:18.115Z"
-  },
-  {
-    "assetId": "4011f7d3a4bb81ebba25f509074e6a3b",
-    "slug": "corporate-aquarium-design-installation",
-    "name": "Corporate Aquarium Design & Installation",
-    "promise": "For facilities managers, designers, and hospitality directors who want a living installation that holds its quality long-term — not a maintenance liability. Specified for your site before any money moves.",
-    "url": "../blog/corporate-aquarium-design-installation/",
-    "contentHash": "6e1a9a8be230d030a9d455da2c8c719746fff4b37bc017d3b7e8a9a0c30b81ef",
-    "contentEditedAt": "2026-10-22T13:56:00.000Z",
-    "refreshedAt": "2026-10-22T14:04:10.082Z"
   }
 ]
