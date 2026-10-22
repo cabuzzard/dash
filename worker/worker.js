@@ -471,6 +471,40 @@ async function hubImageExclusions(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, ""); if (!cid) return "";
   try { return String(await env.TRADES.get("image:exclusions:" + cid) || "").trim().slice(0, 4000); } catch (e) { return ""; }
 }
+// Universal thumbnail floor. Hub specs remain data and are never edited here.
+const THUMBNAIL_SUBJECT_RULE = "SUBJECT FIRST. This image must depict the specific subject matter of the asset it belongs to — the actual topic named in its title and written content — shown concretely, as a real scene or object a reader would recognize as that subject. Not a symbol for it, not a generic on-brand scene. STYLE SECOND. Render that subject in the hub's established image style — its palette, register, composition, and motif. If the style and the subject ever pull against each other, the subject wins: relevance to what the asset says outranks a prettier generic image.";
+const THUMBNAIL_WRITER_RULE = "Depict the asset's actual subject matter, drawn from its written content, rendered in the spec's overall image style. Subject relevance is binding; style governs treatment, never substitution — do not replace the asset's concrete subject with a generic on-brand scene, motif, or symbol.";
+const THUMBNAIL_VARIETY_RULE = "VARIETY RULE (all hubs, standing): Do not be repetitive. Each asset gets a depiction of its own subject — never reuse the same scene, subject treatment, or composition across a hub's thumbnails, and never fall back on a stock scene the hub has used before. When two assets' subjects are close, differentiate the scene — setting, angle, moment, or framing — while keeping the style. Repetition across the hub's thumbnail grid is a defect, even when each image is individually on-style.";
+async function thumbnailAssetSubject(hdr,assetId,ap) {
+  const subject=await assetImageSubjectContext(hdr,assetId,ap);
+  const page=(ap?.['Offer Page']?.rich_text||[]).map(x=>x.plain_text??x.text?.content??'').join('');
+  if(page)subject.content=page.slice(0,3500)+'\n'+subject.content.slice(0,1000);
+  if(!subject.content){const titleId=ap?.['Content Strategy']?.relation?.[0]?.id;if(titleId)subject.content=String(await extractPillarContent(hdr,titleId).catch(()=>''));}
+  subject.content=subject.content.slice(0,4500);return subject;
+}
+async function thumbnailSubjectBrief(env,campaignId,subject,exclusions) {
+  let recent=[];try{recent=await env.TRADES.get('bgscenes:'+String(campaignId||'').replace(/-/g,''),'json')||[];}catch{}
+  const scenes=(Array.isArray(recent)?recent:[]).slice(-5).map(x=>String(x.scene||'').slice(0,180)).filter(Boolean);
+  return '\n\nSUBJECT SOURCE — this asset’s title plus written body/pillar (facts, not a style reference):\nTitle: '+String(subject?.title||'').slice(0,400)+'\nWritten content: '+String(subject?.content||'').slice(0,4500)+
+    '\nSTYLE SOURCE — the committed design spec above governs treatment. Per-hub instructions and Thumbnail Rules remain binding additions.\n'+THUMBNAIL_WRITER_RULE+'\n'+THUMBNAIL_VARIETY_RULE+
+    '\nWrite a distinct per-asset depiction. The requested word count applies to the scene description; the program adds this mandatory instruction verbatim to the image prompt:\n'+THUMBNAIL_SUBJECT_RULE+
+    (scenes.length?'\nRecent subjects/scenes on this hub — do not repeat:\n'+scenes.map(x=>'- '+x).join('\n'):'')+
+    (exclusions?'\nExisting hub subject exclusions (choose a relevant alternative treatment): '+String(exclusions).slice(0,1200):'');
+}
+function thumbnailFinalPrompt(raw) {
+  const text=String(raw||'').trim();if(!text)return '';
+  return text.includes(THUMBNAIL_SUBJECT_RULE)?text:THUMBNAIL_SUBJECT_RULE+'\n\n'+text;
+}
+function thumbnailPromptProperty(prompt) {
+  return {rich_text:(String(prompt).match(/[\s\S]{1,1900}/g)||[]).map(content=>({text:{content}}))};
+}
+async function rememberThumbnailScene(env,campaignId,assetId,prompt) {
+  if(!campaignId)return;
+  try{const key='bgscenes:'+String(campaignId).replace(/-/g,''),recent=await env.TRADES.get(key,'json')||[];
+    const scene=String(prompt).replace(THUMBNAIL_SUBJECT_RULE,'').trim().slice(0,400);
+    await env.TRADES.put(key,JSON.stringify([...(Array.isArray(recent)?recent:[]),{scene,at:new Date().toISOString(),assetId}].slice(-12)));
+  }catch{} // Existing best-effort recent-scene store; no new memory namespace.
+}
 function assetSubjectPrompt(subject, exclusions) {
   const has = subject && (subject.title || subject.content);
   return `\n\nASSET SUBJECT SOURCE — this controls the concrete subject matter ONLY, never the design, motif, palette, light or finish:
@@ -13430,6 +13464,41 @@ async function seriesIdeas(env, titleId, force) {
   await env.TRADES.put(ck, JSON.stringify(out), { expirationTtl: 86400 });
   return out;
 }
+// Thumbnail batches reuse the existing durable title-job queue and four-minute cron.
+function thumbnailJobKinds(type, includeOtherImages=false) {
+  if (/\boffer\b/i.test(type)) return includeOtherImages?['blog-thumbnail','ig-background']:['blog-thumbnail'];
+  if (/youtube/i.test(type)) return ['youtube-thumbnail'];
+  if (/\bseo post\b|^blog (post|article)$|blog.*(?:seo|news)|^QA\s*[–-]\s*Story$/i.test(type)) return ['blog-thumbnail'];
+  if (includeOtherImages&&/single post/i.test(type)) return ['post-image'];
+  return [];
+}
+async function runThumbnailJobStep(env, invoke, step, checkpoint) {
+  if (!step.kinds) {
+    const hdr={Authorization:'Bearer '+(env.NOTION_TOKEN||'').trim(),'Notion-Version':NOTION_VERSION};
+    const response=await fetch('https://api.notion.com/v1/pages/'+step.assetId,{headers:hdr}),page=await response.json();
+    if(!response.ok||page.object==='error')throw new Error(page.message||'Could not load asset');
+    step.assetType=page.properties?.['Asset Type']?.select?.name||'';
+    step.kinds=thumbnailJobKinds(step.assetType,step.includeOtherImages);
+    if(!step.kinds.length){step.outcome='unsupported';step.reason='No thumbnail slot for '+(step.assetType||'untyped asset');return;}
+    await checkpoint();
+  }
+  for(const kind of step.kinds){
+    const result=(step.results||(step.results={}))[kind]||(step.results[kind]={});
+    if(result.saved)continue;
+    if(!result.imageUrl){
+      const offer=/\boffer\b/i.test(step.assetType);
+      const action=kind==='youtube-thumbnail'?'generateYouTubeThumbnail':kind==='post-image'?'generateSocialBackgroundForAsset':offer?'generateOfferImage':'generateBlogPostThumbnail';
+      const generated=await invoke({action,assetId:step.assetId,kind,save:false,codexDesign:true});
+      if(!generated||generated.error||!generated.imageUrl){step.outcome=generated?.held?'held':'failed';throw new Error(generated?.reason||generated?.error||'No image returned');}
+      result.imageUrl=generated.imageUrl;result.prompt=generated.prompt||'';
+      await checkpoint(); // Resume saving this exact render, never regenerate because a save failed.
+    }
+    const saved=await invoke({action:'saveOfferImage',assetId:step.assetId,kind:kind==='youtube-thumbnail'?'blog-thumbnail':kind,imageUrl:result.imageUrl,prompt:result.prompt,background:true});
+    if(!saved||saved.error||saved.success===false)throw new Error(saved?.error||'Image save failed');
+    result.saved=true;await checkpoint();
+  }
+  step.outcome='generated';delete step.error;
+}
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
   await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 480 });   // > the 210 s budget + one long step
@@ -13447,7 +13516,9 @@ async function titleJobsRun(env, invoke) {
       if (step) {
         S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
         try {
-          if (step.action === "dnews") {   // 📰 a News SEO post on this one digest item (existing news writer), left unpublished
+          if(step.action==='thumbnail'){
+            await runThumbnailJobStep(env,invoke,step,()=>env.TRADES.put(key,JSON.stringify(S),{expirationTtl:7*86400}));
+          } else if (step.action === "dnews") {   // 📰 a News SEO post on this one digest item (existing news writer), left unpublished
             const mains = await hubMainList(env, S.cid);
             const t = await invoke({ action: "createNewsBlogTitle", campaignId: S.cid, productId: mains[0] || undefined, newsTitle: S.item.claim.slice(0, 180), newsBody: S.item.claim,
               newsSource: [S.item.publisher, S.item.url].filter(Boolean).join(" "), newsDate: S.item.date || "", allowDuplicate: true });
@@ -18734,6 +18805,23 @@ ${JSON.stringify(products)}`;
         }
         if (ids.length) await env.TRADES.put("titlejob:queue", JSON.stringify([...queue, ...ids]));
         return json({ ok: true, ...report, queued: ids.length, alreadyQueued: candidates.length - ids.length });
+      }
+      if(body.action==='queueThumbnailJob'){
+        const ids=[...new Set((Array.isArray(body.assetIds)?body.assetIds:[]).map(x=>String(x).replace(/-/g,'')))];
+        if(!ids.length||ids.length>200||ids.some(x=>!/^([a-f0-9]{32})$/i.test(x)))return json({error:'Select 1–200 valid asset IDs'},400);
+        const id='thumb'+String(body.requestId||crypto.randomUUID()).replace(/[^a-zA-Z0-9-]/g,'').slice(0,80);
+        const key='titlejob:state:'+id,existing=await env.TRADES.get(key,'json');
+        if(existing)return json({ok:true,id,total:existing.steps.length,reused:true});
+        const state={kind:'thumbnails',name:'Thumbnails · '+ids.length+' assets',slug:String(body.slug||'').slice(0,100),steps:ids.map(assetId=>({action:'thumbnail',assetId,label:'Thumbnail '+assetId,includeOtherImages:body.includeOtherImages===true})),i:0,at:Date.now()};
+        await env.TRADES.put(key,JSON.stringify(state),{expirationTtl:7*86400});
+        await env.TRADES.put('titlejob:queue',JSON.stringify([...((await env.TRADES.get('titlejob:queue','json'))||[]),id]));
+        return json({ok:true,id,total:ids.length,background:true});
+      }
+      if(body.action==='getThumbnailJob'){
+        const id=String(body.id||'');if(!/^thumb[a-zA-Z0-9-]{1,80}$/.test(id))return json({error:'Invalid job ID'},400);
+        const state=await env.TRADES.get('titlejob:state:'+id,'json');
+        if(!state)return json({error:'Job not found'},404);
+        return json({ok:true,id,done:!!state.done,total:state.steps.length,completed:state.i||0,running:state.running||'',outcomes:state.steps.map(step=>({assetId:step.assetId,outcome:step.outcome||(step.error?'failed':step.ok?'generated':'pending'),reason:step.reason||step.error||''}))});
       }
       if (body.action === "queueTitleJob") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
@@ -35306,7 +35394,7 @@ Rules:
         const promise   = String(cardObj.promise || bodyPromise || "").trim();
         const kicker    = String(cardObj.kicker || "").trim();
         const offerLines = `${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}`;
-        const subject = await assetImageSubjectContext(hdr, assetId, ap);
+        const subject = await (kind==='blog-thumbnail'?thumbnailAssetSubject:assetImageSubjectContext)(hdr, assetId, ap);
         if (!subject.content && offerLines) subject.content = offerLines;
         const exclusions = await hubImageExclusions(env, campaignId);
         // 🧭 Direction (Assets."Image Direction") — Codex Design path only (the care-gap modal); the plain hub-spec path is unchanged
@@ -35338,9 +35426,9 @@ Rules:
 - Pick the single strongest, most beautiful scene the art direction allows.
 - Last words: "no text".
 
-HUB ART DIRECTION (controls style, motif, palette, light and finish; it supplies generic fallback subjects only when the asset subject is unclear):
+${kind==='blog-thumbnail'?'COMMITTED DESIGN SPEC — STYLE SOURCE (treatment only; the asset supplies the subject):':'HUB ART DIRECTION (controls style, motif, palette, light and finish; it supplies generic fallback subjects only when the asset subject is unclear):'}
 ${spec}
-${assetSubjectPrompt(subject, exclusions)}${offerDir ? `
+${kind==='blog-thumbnail'?await thumbnailSubjectBrief(env,campaignId,subject,exclusions):assetSubjectPrompt(subject, exclusions)}${offerDir ? `
 
 ASSET DIRECTION (the operator's direction for THIS asset — follow it over everything above, including the scene choice; still wordless, still keep the text zone calm):
 ${offerDir}` : ""}`;
@@ -35352,7 +35440,7 @@ ${offerDir}` : ""}`;
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const prompt = (aiData.content?.[0]?.text || "").trim();
+        const prompt = kind==='blog-thumbnail'?thumbnailFinalPrompt(aiData.content?.[0]?.text):(aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
@@ -35369,10 +35457,11 @@ ${offerDir}` : ""}`;
           await ensureAssetsDbProperties(hdr, { [PROMPT_PROP]: { type: "rich_text" } });
           await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { [PROMPT_PROP]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+            body: JSON.stringify({ properties: { [PROMPT_PROP]: kind==='blog-thumbnail'?thumbnailPromptProperty(prompt):{ rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
           });
         } catch (e) { /* best-effort */ }
 
+        if(kind==='blog-thumbnail')await rememberThumbnailScene(env,campaignId,assetId,prompt);
         return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
@@ -35412,7 +35501,7 @@ ${offerDir}` : ""}`;
         const videoTitle = rtp("Platform Title") || (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
         const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
-        const subject = await assetImageSubjectContext(hdr, assetId, ap);
+        const subject = await thumbnailAssetSubject(hdr, assetId, ap);
         const exclusions = await hubImageExclusions(env, campaignId);
         // thumbnail text options: the property, else the outline's "Thumbnail text:" line
         let thumbOpts = rtp("Thumbnail Text");
@@ -35445,7 +35534,7 @@ Title: ${videoTitle}
 Thumbnail words that will go on the left: ${thumbText || "(short, punchy)"}
 Outline opening:
 ${outline}
-${assetSubjectPrompt({ title: videoTitle || subject.title, content: subject.content || outline }, exclusions)}
+${await thumbnailSubjectBrief(env,campaignId,{ title: videoTitle || subject.title, content: subject.content || outline },exclusions)}
 ${thumbDir ? `\nOPERATOR'S DIRECTION FOR THIS THUMBNAIL (follow it; where it conflicts with the spec or the video, the operator wins — still wordless, still leave the left side for the words):\n${thumbDir}\n` : ""}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -35456,7 +35545,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const prompt = (aiData.content?.[0]?.text || "").trim();
+        const prompt = thumbnailFinalPrompt(aiData.content?.[0]?.text);
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
           method: "POST",
@@ -35470,10 +35559,11 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
         try {
           await ensureAssetsDbProperties(hdr, { "Image Prompt (Blog Thumbnail)": { type: "rich_text" }, "Thumbnail Text": { type: "rich_text" } });
-          const props = { "Image Prompt (Blog Thumbnail)": { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } };
+          const props = { "Image Prompt (Blog Thumbnail)": thumbnailPromptProperty(prompt) };
           if (thumbOpts && !rtp("Thumbnail Text")) props["Thumbnail Text"] = { rich_text: [{ text: { content: thumbOpts.slice(0, 500) } }] };
           await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
         } catch (e) { /* best-effort */ }
+        await rememberThumbnailScene(env,campaignId,assetId,prompt);
         return json({ imageUrl, prompt, kind: "blog-thumbnail", thumbText, model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
@@ -35493,7 +35583,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const platformTitle = rtp(ap, "Platform Title") || assetTitle;
         const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
-        const subject       = await assetImageSubjectContext(hdr, assetId, ap);
+        const subject       = await thumbnailAssetSubject(hdr, assetId, ap);
         const exclusions    = await hubImageExclusions(env, campaignId);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:('blog_thumb') });
@@ -35510,7 +35600,7 @@ Obey this hub's image spec exactly — palette hexes, subjects, light, the "Neve
 ${spec}
 
 THE ARTICLE THIS THUMBNAIL IS FOR:
-${assetSubjectPrompt({ title: platformTitle || subject.title, content: subject.content }, exclusions)}
+${await thumbnailSubjectBrief(env,campaignId,{ title: platformTitle || subject.title, content: subject.content },exclusions)}
 ${await bgLayersBlock(hdr, ap, "wide 16:9 blog header; headline goes over the top ~45%")}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
@@ -35522,7 +35612,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         await recordDesignPromptUsage(env,brief,body.action,aiData,claudePrompt);
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const prompt = (aiData.content?.[0]?.text || "").trim();
+        const prompt = thumbnailFinalPrompt(aiData.content?.[0]?.text);
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await grokImageFetch(env, { ...body, campaignId }, {
@@ -35540,10 +35630,11 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           await ensureAssetsDbProperties(hdr, { "Image Prompt (Blog Thumbnail)": { type: "rich_text" } });
           await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Image Prompt (Blog Thumbnail)": { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+            body: JSON.stringify({ properties: { "Image Prompt (Blog Thumbnail)": thumbnailPromptProperty(prompt) } }),
           });
         } catch (e) { /* best-effort */ }
 
+        await rememberThumbnailScene(env,campaignId,assetId,prompt);
         return json({ imageUrl, prompt, spec, kind: "blog-thumbnail", model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
