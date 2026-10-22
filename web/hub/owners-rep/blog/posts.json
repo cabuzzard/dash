@@ -1,5 +1,15 @@
 [
   {
+    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
+    "title": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
+    "intro": "You have plans, a bid, and a contract draft on your desk. Your architect reviewed the design. Your contractor priced the work. Neither one is hired to tell you where the budget is soft, where the scope is missing, or where a contract clause quietly hands schedule risk to you. That is not a failure o",
+    "date": "2026-10-22",
+    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
+    "contentHash": "b7edd9a3a8587418208f942befc19c992a933c9f39a41d672266861de072db4c",
+    "contentEditedAt": "2026-10-22T13:13:00.000Z",
+    "refreshedAt": "2026-10-22T13:33:00.645Z"
+  },
+  {
     "slug": "owner-side-contract-review",
     "title": "Construction Project Health Check—Independent Review",
     "intro": "You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a",
@@ -18,12 +28,5 @@
     "contentHash": "29b59c0552d9bdb4e0a868854fae435ffce0cc16a7fdff79845afc677d736fef",
     "contentEditedAt": "2026-10-22T13:12:00.000Z",
     "refreshedAt": "2026-10-22T13:12:59.555Z"
-  },
-  {
-    "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
-    "title": "Before You Build, Know What You're Getting Into — Independent Planning & Budget Review",
-    "intro": "You have plans, a bid, and a contract draft on your desk. Your architect reviewed the design. Your contractor priced the work. Neither one is hired to tell you where the budget is soft, where the scope is missing, or where a contract clause quietly hands schedule risk to you. That is not a failure o",
-    "date": "2026-10-22",
-    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf"
   }
 ]
