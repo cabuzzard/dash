@@ -19,9 +19,9 @@
   const font = v => String(v || '').split(/[,(;·]| — | - /)[0].replace(/["']/g, '').trim();
 
   function mount(root, cfg) {
-    const S = { schema: [], saved: {}, staged: {}, inputs: {}, mainKeywords: '', group: 'direction', note: '', reply: '', busy: '', msg: '', kind: '', edit: null, libName: '', libRole: 'brand-guide', libNotes: '', testThumb: null, thumbDirection: '', drafts: {} };
+    const S = { schema: [], saved: {}, staged: {}, inputs: {}, mainKeywords: '', group: 'direction', note: '', reply: '', busy: '', msg: '', kind: '', edit: null, research: null, libName: '', libRole: 'brand-guide', libNotes: '', testThumb: null, thumbDirection: '', drafts: {} };
     const call = async (op, body) => { const r = await cfg.call('designSpec', Object.assign({ campaignId: cfg.campaignId, op }, body || {})); if (r && r.error) throw new Error(r.error); return r || {}; };
-    const take = r => { if (r.schema) S.schema = r.schema; if ('saved' in r) S.saved = r.saved || {}; if (r.staged) S.staged = r.staged; if (r.inputs) S.inputs = r.inputs; if ('mainKeywords' in r) S.mainKeywords = r.mainKeywords || ''; };
+    const take = r => { if ('research' in r) S.research=r.research; if (r.schema) S.schema = r.schema; if ('saved' in r) S.saved = r.saved || {}; if (r.staged) S.staged = r.staged; if (r.inputs) S.inputs = r.inputs; if ('mainKeywords' in r) S.mainKeywords = r.mainKeywords || ''; };
     const group = () => GROUPS.find(g => g.id === S.group) || GROUPS[0];
     const sections = g => S.schema.filter(g.match);
     const keys = g => sections(g).flatMap(s => s.fields.map(f => f[0]));
@@ -135,6 +135,16 @@
       } catch (e) { S.busy = ''; say('Could not add the thumbnail to Spec Images: ' + e.message, 'bad'); }
     }
 
+    async function researchPass() {
+      S.busy='Researching current market practice (one text search request)...';render();
+      try{const r=await cfg.call('designResearchPass',{campaignId:cfg.campaignId});if(r.error)throw Error(r.error);take(r);S.busy='';say(`${r.research.fieldsProposed} field proposals staged from ${r.research.sources.length} search sources. The committed spec is unchanged.`,'ok');}
+      catch(error){S.busy='';say('Research held: '+error.message,'bad');}
+    }
+    async function analyzeReference() {
+      S.busy='Analyzing one reference into tier evidence (one spec-analysis call; cached images are text only)...';render();
+      try{take(await call('analyzeReferences'));S.busy='';say('Reference tier evidence cached; field proposals staged for review. Renders receive spec text only.','ok');}
+      catch(error){S.busy='';say('Reference analysis held: '+error.message,'bad');}
+    }
     function fieldRow(k, label, hint) {
       const a = S.staged[k] || {}, b = S.saved[k] || {}, diff = changed(k), editing = S.edit === k;
       return `<div style="display:grid;grid-template-columns:minmax(145px,28%) 1fr;gap:10px;padding:7px 8px;border-top:1px solid ${C.line};${diff ? `border-left:4px solid ${C.stage};background:rgba(246,173,85,.07);` : ''}">
@@ -144,9 +154,10 @@
     }
     function render() {
       const g = group(), secs = sections(g), diffs = changedKeys(g), photo = S.inputs.photo || {}, library = S.inputs.mediaLibrary || [];
+      const allFields=S.schema.flatMap(section=>section.fields),filled=allFields.filter(([k])=>S.saved[k]?.v).length,pending=allFields.filter(([k])=>changed(k)||(S.staged[k]||{}).alt).length,formats=S.schema.filter(section=>section.tier==='asset');
       root.innerHTML = `<div style="border:1px solid ${C.line};border-radius:10px;background:${C.surf};overflow:hidden;">
-        <div style="padding:12px 14px;border-bottom:1px solid ${C.line};background:${C.surf2};"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b style="font-size:14px;">Codex Design</b><span style="font-size:10px;padding:2px 7px;border:1px solid ${C.acc};border-radius:10px;color:${C.acc};">section-only preview</span><button data-act="reload" style="${btn}margin-left:auto;">↻ Refresh</button></div><div style="font-size:11px;color:${C.ink3};margin-top:4px;">Existing data → prompt for ChatGPT → Codex validates the structured return → staged comparison → deliberate database commit. The original Design section is unchanged.</div></div>
-        <div style="display:grid;grid-template-columns:minmax(190px,240px) 1fr;min-height:520px;">
+        <div style="padding:12px 14px;border-bottom:1px solid ${C.line};background:${C.surf2};"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><b style="font-size:14px;">Codex Design</b><span style="font-size:11px">Committed completeness: ${filled}/${allFields.length} fields; ${pending} unreviewed staged changes</span><button data-act="researchPass" style="${btn}">Run design research pass (1 request, up to 5 searches)</button><button data-act="analyzeReference" style="${btn}" ${(library.some(x=>!x.visualRead||!x.tierEvidence))?'':'disabled'}>Analyze one reference into spec tiers</button><span style="font-size:10px">Research last run: ${S.research?esc(new Date(S.research.at).toLocaleString()):'not yet'}</span><span style="font-size:10px;padding:2px 7px;border:1px solid ${C.acc};border-radius:10px;color:${C.acc};">section-only preview</span><button data-act="reload" style="${btn}margin-left:auto;">↻ Refresh</button></div><div style="font-size:11px;color:${C.ink3};margin-top:4px;">Existing data → prompt for ChatGPT → Codex validates the structured return → staged comparison → deliberate database commit. The original Design section is unchanged.</div></div>
+        ${S.group==='assets'?`<div style="padding:8px;font-size:11px;">Instruction coverage: ${formats.map(section=>{const key=section.id+'.instructions';return `<span title="${esc(section.label)}" style="margin-right:9px;color:${S.saved[key]?.v?C.acc:C.ink3}">${S.saved[key]?.v?'?':'?'} ${esc(section.id.replace('asset.',''))}</span>`;}).join('')}</div>`:''}<div style="display:grid;grid-template-columns:minmax(190px,240px) 1fr;min-height:520px;">
           <div style="padding:10px;border-right:1px solid ${C.line};background:${C.surf2};">${GROUPS.map(x => { const n = changedKeys(x).length; return `<button data-act="group" data-group="${x.id}" style="display:block;width:100%;text-align:left;margin-bottom:5px;padding:8px;border:1px solid ${S.group === x.id ? C.acc : C.line};border-radius:7px;background:${S.group === x.id ? 'rgba(64,180,210,.10)' : C.surf};color:${C.ink};cursor:pointer;font-size:11px;font-weight:${S.group === x.id ? '700' : '500'};">${esc(x.name)}${n ? `<span style="float:right;color:${C.stage};">${n}</span>` : ''}</button>`; }).join('')}
             <div style="font-size:10px;color:${C.ink3};margin-top:12px;line-height:1.45;">Each section previews independently over saved/live values. Orange fields stay staged until you commit this section.</div></div>
           <div style="padding:14px;min-width:0;"><div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:220px;"><b>${esc(g.name)}</b><div style="font-size:11px;color:${C.ink3};margin-top:2px;">${esc(g.note)}</div></div><button data-act="preview" style="${btn}">👁 Preview staged</button><button data-act="revert" ${diffs.length ? '' : 'disabled'} style="${btn}">↺ Revert</button><button data-act="save" ${diffs.length ? '' : 'disabled'} style="${diffs.length ? primary : btn}">✓ Commit ${diffs.length || ''}</button></div>
@@ -170,7 +181,7 @@
     root.addEventListener('change', ev => { if (S.libraryEdit && ev.target.dataset.libEdit === 'role') S.libraryEdit.role = ev.target.value; if (ev.target.dataset.act === 'photo') uploadPhoto(ev.target.files && ev.target.files[0]); if (ev.target.dataset.act === 'library') uploadLibrary(ev.target.files && ev.target.files[0]); if (ev.target.dataset.in === 'libRole') S.libRole = ev.target.value; });
     root.addEventListener('click', ev => { const el = ev.target.closest('[data-act]'); if (!el || S.busy) return; const a = el.dataset.act;
       if (a === 'group') { S.drafts[S.group] = { note: S.note, reply: S.reply, testThumb: S.testThumb, thumbDirection: S.thumbDirection }; S.group = el.dataset.group; Object.assign(S, { note: '', reply: '', testThumb: null, thumbDirection: '' }, S.drafts[S.group] || {}); S.edit = null; S.msg = ''; pushPreview(); render(); }
-      else if (a === 'reload') load(); else if (a === 'copy') copyPrompt(); else if (a === 'stage') stageReply(); else if (a === 'save') saveGroup(); else if (a === 'revert') revertGroup(); else if (a === 'preview') preview(); else if (a === 'testThumb') testThumbnail(); else if (a === 'approveThumb') approveTestThumbnail();
+      else if(a==='researchPass')researchPass();else if(a==='analyzeReference')analyzeReference();else if (a === 'reload') load(); else if (a === 'copy') copyPrompt(); else if (a === 'stage') stageReply(); else if (a === 'save') saveGroup(); else if (a === 'revert') revertGroup(); else if (a === 'preview') preview(); else if (a === 'testThumb') testThumbnail(); else if (a === 'approveThumb') approveTestThumbnail();
       else if (a === 'libEdit') openLibraryEdit(el.dataset.id);
       else if (a === 'libEditCancel') closeLibraryEdit();
       else if (a === 'libRemove') removeLibrary(el.dataset.id);
