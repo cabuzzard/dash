@@ -54654,18 +54654,18 @@ async function designResearchPass(env, body) {
     schema: DS_SCHEMA.map(section => ({ tier: section.tier, fields: section.fields })), formats: DS_ASSETS.map(([id]) => id)
   });
   if (body.dryRun) return { success:true, plannedModelCalls:1, maxSearchCalls:5, maxOutputTokens:12000, imageAttachments:0, promptCharacters:prompt.length, approxInputTokens:Math.ceil(prompt.length/4) };
-  let heldResult = null;
+  let heldResult = null, providerEvidence = null;
   try {
     if (!String(env.XAI_API_KEY || '').trim()) throw new Error('XAI_API_KEY not configured');
     const response = await fetch('https://api.x.ai/v1/responses', { method: 'POST', headers: { Authorization: 'Bearer ' + String(env.XAI_API_KEY || '').trim(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'grok-4.7', max_output_tokens:12000, max_tool_calls:5, include:['web_search_call.action.sources'], input: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search', enable_image_understanding:false }] }) });
+      body: JSON.stringify({ model: 'grok-4.7', reasoning:{effort:'low'}, max_output_tokens:12000, max_tool_calls:5, include:['web_search_call.action.sources'], input: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search', enable_image_understanding:false }] }) });
     const data = await response.json();
+    providerEvidence = { id:data.id || null, usage:data.usage || null, status:data.status || null, output:(data.output || []).map(o => ({ type:o.type, action:o.action, content:(o.content || []).map(c => ({type:c.type,annotations:c.annotations})) })) };
     if (!response.ok) throw new Error(data.error?.message || 'Design research failed: ' + response.status);
     const raw = data.output_text || (data.output || []).flatMap(o => o.content || []).map(x => x.text || '').join('\n'), result = dsParseJson(raw);
     heldResult=raw;
     if(data.status&&data.status!=='completed')throw new Error('Research response incomplete; result held for repair');
-    if (!result?.fields) throw new Error('Research returned no structured field proposals');
-    const fields = dsClean(result.fields, 'grok');
+    const fields = dsClean(dsFieldsOf(result), 'grok');
     if (!Object.keys(fields).length) throw new Error('Research returned no valid design fields');
     const providerSources = new Set();
     const collect = value => { if (!value || typeof value !== 'object') return; for (const [key, item] of Object.entries(value)) { if ((key === 'url' || key === 'uri') && typeof item === 'string' && /^https:\/\//.test(item)) providerSources.add(item); else if (item && typeof item === 'object') collect(item); } };
@@ -54679,7 +54679,7 @@ async function designResearchPass(env, body) {
     await env.TRADES.put('design:research:' + cid, JSON.stringify(stamp));
     return { success: true, applied: merged.applied, suggested: merged.suggested, research: stamp, staged: merged.spec, modelCalls: 1 };
   } catch (error) {
-    await flowHold(env, { action: 'designResearchPass', reason: error.message, payload: { campaignId: cid, keywords, inputsKey: inputKey, stageKey, prompt, result: heldResult } });
+    await flowHold(env, { action: 'designResearchPass', reason: error.message, payload: { campaignId: cid, keywords, inputsKey: inputKey, stageKey, prompt, result: heldResult, providerEvidence } });
     return { error: error.message, held: true };
   }
 }
