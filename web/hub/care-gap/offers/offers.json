@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
+    "slug": "caregiver-circle",
+    "name": "Finding Support When Caregiving Becomes Unsustainable",
+    "promise": "For family and professional caregivers running on empty — peer connection, resource referrals, and practical guidance built entirely around you, not the person you're caring for.",
+    "url": "../blog/caregiver-circle/",
+    "contentHash": "671674f36d6298aa60bd8d09dcbc76d7cf40f2fa7995a4443797c26ef8cbf224",
+    "contentEditedAt": "2026-10-22T16:28:00.000Z",
+    "refreshedAt": "2026-10-22T16:28:31.678Z"
+  },
+  {
     "assetId": "4001f7d3a4bb8162a24bd68d699632eb",
     "slug": "housed",
     "name": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
@@ -18,15 +28,5 @@
     "contentHash": "40b486d9480f2c0e1a8faf053719922ca00a5e60cfeeb0f96425695d33969b0a",
     "contentEditedAt": "2026-10-22T15:49:00.000Z",
     "refreshedAt": "2026-10-22T15:49:57.183Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81cab954e96c0d292165",
-    "slug": "caregiver-circle",
-    "name": "Finding Support When Caregiving Becomes Unsustainable",
-    "promise": "For family and professional caregivers running on empty — peer connection, resource referrals, and practical guidance built entirely around you, not the person you're caring for.",
-    "url": "../blog/caregiver-circle/",
-    "contentHash": "3f27657cf2d1a1be3f3f56be9e1614a5479bbfcfd1f2ed4ee68477af7b86c260",
-    "contentEditedAt": "2026-10-22T15:47:00.000Z",
-    "refreshedAt": "2026-10-22T15:47:59.308Z"
   }
 ]
