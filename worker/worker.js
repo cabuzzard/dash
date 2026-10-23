@@ -4855,8 +4855,10 @@ function hubAssetSyncFields(asset, interviews = []) {
   const assetSync = asset.ivSync || (asset.ivTier === 'None' ? 'n/a' : '');
   const own = interviews.filter(iv=>iv.scope==='Asset' && ((iv.assetIds||[]).length ? iv.assetIds.some(id=>hubAssetId(id)===hubAssetId(asset.assetId||asset.id)) : iv.assetId ? hubAssetId(iv.assetId)===hubAssetId(asset.assetId||asset.id) : iv.titleId && hubAssetId(iv.titleId)===hubAssetId(asset.titleId) && iv.forType===asset.rawAssetType));
   const interviewDebt = asset.ivTier !== 'None' && own.some(iv=>iv.status!=='Finished');
-  const assetSynced = !/^Out of Sync/i.test(assetSync) && !asset.writtenWithoutInterview && !interviewDebt;
-  return {assetSync,assetSynced};
+  // operator 2026-10-23: a written post with an unanswered interview (or written without one) is publishable and stays on the hub —
+  // it carries its ⚑ flag on the asset instead. Only an explicit "Out of Sync" (interview answered, rewrite pending) holds it back.
+  const assetSynced = !/^Out of Sync/i.test(assetSync);
+  return {assetSync,assetSynced,interviewDebt:interviewDebt||!!asset.writtenWithoutInterview};
 }
 async function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interviews, env) {
   const hierarchy=await hierarchyForHub(env,hub.campaignId);
