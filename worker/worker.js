@@ -5,6 +5,7 @@ import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize r
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
+import { NEWSLETTER_FIELDS, NEWSLETTER_DEPTHS, newsletterIssueType, newsletterDepth, newsletterSetting, newsletterSteering, newsletterSchema, newsletterBody, newsletterInPeriod, newsletterVerifyUrl } from './newsletter-methodology.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -960,7 +961,7 @@ async function runAllHubProductIdeas(env) {
       else {
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1200, system: PRODUCT_IDEAS_SYSTEM, messages: [{ role: "user", content: `Campaign keywords: ${kwOf(rec)}` }] }) });
-        const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+        const d = await r.json(); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
         const text = (d.content?.[0]?.text || "").trim();
         const p = await fetch(`https://api.notion.com/v1/pages/${rec.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Product Ideas": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }) });
         if (!p.ok) throw new Error("Notion write failed");
@@ -1815,7 +1816,7 @@ function writingFieldValues(properties) {
 function validateWritingContract(contract,fields) {
   const violations=[];
   for(const {name,rule} of contract){
-    const value=fields?.[name];if(typeof value!=='string'||!value.trim()){violations.push(`${name}: required non-empty text`);continue;}
+    const value=fields?.[name];if(typeof value!=='string'||!value.trim()){if(/\b(?:optional|omit (?:it )?(?:when|rather)|may be omitted)\b/i.test(rule))continue;violations.push(`${name}: required non-empty text`);continue;}
     let m;const lines=value.trim().split(/\r?\n/).filter(x=>x.trim());
     if((m=/≤\s*(\d+)\s+characters/i.exec(rule))&&Array.from(value).length>+m[1])violations.push(`${name}: exceeds ${m[1]} characters`);
     if((m=/at least\s+(\d+)\s+words/i.exec(rule))&&value.trim().split(/\s+/).length<+m[1])violations.push(`${name}: expected at least ${m[1]} words`);
@@ -1835,6 +1836,7 @@ async function writeContractAsset(env,assetId) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
   await governingFlow(env);
   const page=await ivPage(assetId);if(!page?.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
+  if(newsletterIssueType(page.properties?.['Asset Type']?.select?.name))return {error:'newsletter_requires_disseminate',reason:'Newsletter issues are written only by Disseminate on their Digest parent.'};
   const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason};
   const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
   const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
@@ -2286,8 +2288,8 @@ async function nlSendOnPublish(env, assetId) {
   const bodyProp = txt("Body"), from = AC_HUB_SENDERS[hub.slug] || AC_DEFAULT_SENDER;
   let messageId = (bodyProp.match(/\bmessage (\d+)/) || [])[1] || "", subject = txt("Platform Title");
   if (!messageId) {
-    let md = bodyProp, preview = "";
-    const sm = md.match(/^\*\*Subject:\*\*\s*(.+)$/m); if (sm) { subject = subject || sm[1].trim(); preview = ((md.match(/^\*\*Preview:\*\*\s*(.+)$/m) || [])[1] || "").trim(); md = md.replace(/^\*\*(Subject|Preview|Send):\*\*.*$/gm, "").trim(); }
+    let md = bodyProp, preview = txt("Preview Text");
+    const sm = md.match(/^\*\*Subject:\*\*\s*(.+)$/m); if (sm) { subject = subject || sm[1].trim(); preview = preview || ((md.match(/^\*\*Preview:\*\*\s*(.+)$/m) || [])[1] || "").trim(); md = md.replace(/^\*\*(Subject|Preview|Send):\*\*.*$/gm, "").trim(); }
     if (!md || md.length < 200) {   // a ⚙ Disseminate issue: the subject heading + paragraphs live on the page
       const blocks = await extractBlocksTextRecursive(hdr, id).catch(() => "");
       const lines = String(blocks).split("\n").map(l => l.trim()).filter(Boolean);
@@ -13028,7 +13030,7 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
 //   product; titles with assets stay (mismatches are only reported). Staged in KV hubclean:plan:<cid>.
 // kwHubCleanApply / kwHubCleanUndo: run / reverse the plan in chunks (KV hubclean:run:<cid> holds progress + undo).
 const HC_BRIDGE_SUFFIX = " — Introductory Call", HC_BRIDGE_TYPE = "Topic bridge", HC_UNCL = "Unclassified";
-async function hcClaude(env, prompt, name, schema, maxTokens = 8000) {
+async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage) {
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [{ name, description: "Return the result.", input_schema: schema }], tool_choice: { type: "tool", name },
       messages: [{ role: "user", content: prompt }] }) });
@@ -13684,10 +13686,128 @@ async function titleJobsRun(env, invoke) {
 //   { at, items:[{id,claim,publisher,url,date,tier,split}], checks:{<itemId>:{premium,free,news}}, children:{premium:[],free:[],news:[]} }
 // The operator checks items per target; Generate writes ONE Premium issue (all premium-checked items), ONE Free issue (all
 // free-checked), and ONE News SEO post per news-checked item — every child unpublished at Development under the digest's title.
+const newsletterHdr = env => ({Authorization:'Bearer '+(env.NOTION_TOKEN||'').trim(),'Notion-Version':NOTION_VERSION,'Content-Type':'application/json'});
+async function newsletterNotion(env,path,options={}) {
+  const response=await hubNotionFetch('https://api.notion.com/v1/'+path,{...options,headers:newsletterHdr(env)}),data=await response.json();
+  if(!response.ok||data.object==='error'||JSON.stringify(data).includes('APIResponseError'))throw new Error(data.message||'Newsletter Notion request failed');
+  return data;
+}
+function newsletterValues(page) {
+  const values=writingFieldValues(page?.properties||{});
+  return Object.fromEntries([...NEWSLETTER_FIELDS,'Customer','Benefits','Transformation'].map(k=>[k,values[k]||'']));
+}
+async function newsletterContext(env,campaignId) {
+  const cid=hubAssetId(campaignId);if(!/^[a-f0-9]{32}$/i.test(cid))throw new Error('campaignId required');
+  await hubSitesMerge(env);
+  const products=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(cid)}}});
+  const candidates=products.filter(p=>!p.archived&&!p.in_trash&&/^premium newsletter$/i.test(kwTitleOf(p).trim()));
+  const mains=await hubMainList(env,cid),placed=candidates.filter(p=>mains.map(hubAssetId).includes(hubAssetId(p.id)));
+  if(placed.length!==1)throw new Error('Expected one existing Premium Newsletter product on ★ Main for this campaign; found '+placed.length);
+  const product=placed[0],record=await findBestProductResearchRecord(newsletterHdr(env),product.id);
+  if(!record?.properties)throw new Error('Premium Newsletter Product Research is missing; no duplicate record was created');
+  const fields=newsletterValues(record);fields['Research Depth']=newsletterDepth(fields['Research Depth']);
+  return {campaignId:cid,productId:hubAssetId(product.id),recordId:hubAssetId(record.id),fields,product,record};
+}
+async function newsletterEnsureSchema(env) {
+  const add=async(dbId,wanted)=>{
+    const schema=await newsletterNotion(env,'databases/'+dbId),properties={};
+    for(const [name,type] of Object.entries(wanted)){
+      const old=schema.properties?.[name];if(old&&old.type!==type)throw new Error('Unexpected existing property type: '+name);
+      if(!old)properties[name]=type==='select'?{select:{options:NEWSLETTER_DEPTHS.map(name=>({name}))}}:{rich_text:{}};
+      else if(type==='select'){
+        const options=old.select.options||[],missing=NEWSLETTER_DEPTHS.filter(name=>!options.some(x=>x.name===name));
+        if(missing.length)properties[name]={select:{options:[...options.map(x=>({id:x.id,name:x.name,color:x.color})),...missing.map(name=>({name}))]}};
+      }
+    }
+    if(Object.keys(properties).length)await newsletterNotion(env,'databases/'+dbId,{method:'PATCH',body:JSON.stringify({properties})});
+    const after=await newsletterNotion(env,'databases/'+dbId);
+    for(const [name,type]of Object.entries(wanted))if(after.properties?.[name]?.type!==type)throw new Error('Schema readback failed: '+name);
+    return Object.keys(properties);
+  };
+  return {productResearch:await add(PRODUCT_RESEARCH_DB,Object.fromEntries(NEWSLETTER_FIELDS.map(k=>[k,k==='Research Depth'?'select':'rich_text']))),assets:await add(ASSETS_DB,Object.fromEntries(['Preview Text','Executive Summary','Feature Analysis','Data & Signals','Practical Application','Curated Resources','Subscriber Extra','Call to Action'].map(k=>[k,'rich_text'])))};
+}
+async function newsletterSaveSetting(env,body) {
+  const value=newsletterSetting(body.field,body.value),context=await newsletterContext(env,body.campaignId);
+  if(hubAssetId(body.productId)!==context.productId||hubAssetId(body.recordId)!==context.recordId)throw new Error('Product Research does not belong to this newsletter product');
+  const parent=context.record.parent;if(parent?.database_id&&hubAssetId(parent.database_id)!==hubAssetId(PRODUCT_RESEARCH_DB))throw new Error('Newsletter settings may only edit Product Research');
+  if(!(context.record.properties.Product?.relation||[]).some(x=>hubAssetId(x.id)===context.productId))throw new Error('Product Research relation mismatch');
+  const property=body.field==='Research Depth'?{select:{name:value}}:{rich_text:ivRt(value)};
+  await newsletterNotion(env,'pages/'+kwDashId(context.recordId),{method:'PATCH',body:JSON.stringify({properties:{[body.field]:property}})});
+  const after=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));
+  if(writingFieldValues(after.properties)[body.field]!==value.trim())throw new Error('Newsletter setting readback differs');
+  return {ok:true,field:body.field,value};
+}
+function newsletterMethod(table,kind) {
+  const name=kind==='premium'?'Digest - Paid Newsletter':'Digest - Free Newsletter',row=writingRows(table).find(r=>ivNorm(r.name)===ivNorm(name));
+  const missing=writingMissing(row);if(row?.mapped.toLowerCase()!=='yes')missing.push('mapped is not yes');
+  if(missing.length)throw new Error(name+': '+missing.join('; '));
+  const raw=table.rows.find(r=>ivNorm(r.cells?.cname01)===ivNorm(name));
+  const rules=table.columns.filter(c=>/notes|writing/i.test(c.name)).map(c=>String(raw?.cells?.[c.id]||'')).filter(Boolean).join('\n');
+  return {...row,contract:parseWritingContract(row.contractText),rules};
+}
+async function newsletterUsage(env,job,phase,result,countCall=true) {
+  if(!job?.campaignId)return;
+  const key='digest:usage:'+hubAssetId(job.campaignId),log=await env.TRADES.get(key,'json')||[];
+  let run=log.find(x=>x.runId===job.id);if(!run){run={runId:job.id,at:job.createdAt||new Date().toISOString(),depth:job.newsletter?.fields?.['Research Depth']||'Deep',periodStart:job.periodStart,providers:{}};log.unshift(run);}
+  const previous=run.providers[phase]||{},calls=(previous.calls||0)+(countCall&&result?.status!=='skipped'?1:0),usageHistory=previous.usageHistory||[];
+  if(countCall&&result?.status!=='skipped')usageHistory.push({at:new Date().toISOString(),usage:result?.usage??null});
+  else if(result?.usage&&usageHistory.length)usageHistory[usageHistory.length-1].usage=result.usage;
+  run.providers[phase]={status:result?.status||'done',calls,usage:result?.usage??previous.usage??null,usageHistory,usageReported:!!(result?.usage||previous.usage),error:result?.error||'',updatedAt:new Date().toISOString()};
+  await env.TRADES.put(key,JSON.stringify(log.slice(0,20)));
+}
+async function newsletterSeed(env,campaignId) {
+  const context=await newsletterContext(env,campaignId),cid=context.campaignId,key='newsletter:seed:'+cid,prior=await env.TRADES.get(key,'json');
+  if(prior){
+    if(prior.drafts&&prior.status!=='done'){
+      for(const [field,value]of Object.entries(prior.drafts)){const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));if(!writingFieldValues(fresh.properties)[field]?.trim())await newsletterSaveSetting(env,{...context,field,value});}
+      const after=await newsletterContext(env,cid),done={...prior,status:'done',fields:after.fields,error:''};await env.TRADES.put(key,JSON.stringify(done));return {ok:true,already:true,...done};
+    }
+    return {ok:!prior.error,already:true,...prior};
+  }
+  const missing=NEWSLETTER_FIELDS.filter(k=>k!=='Research Depth'&&!context.fields[k].trim());
+  if(!writingFieldValues(context.record.properties)['Research Depth'])await newsletterSaveSetting(env,{...context,field:'Research Depth',value:'Deep'});
+  if(!missing.length){const result={at:new Date().toISOString(),fields:context.fields,calls:0};await env.TRADES.put(key,JSON.stringify(result));return {ok:true,...result};}
+  await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===cid)||{};
+  const research=await notionQuery(RESEARCH_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(cid)}}});
+  const mains=(await hubMainList(env,cid)).filter(id=>hubAssetId(id)!==context.productId),facts=[];
+  for(const id of mains.slice(0,8)){const record=await findBestProductResearchRecord(newsletterHdr(env),id);if(record)facts.push(Object.fromEntries(['Customer','Benefits','Transformation','Offer Structure'].map(k=>[k,writingFieldValues(record.properties)[k]?.slice(0,450)||''])));}
+  const campaign=research.map(r=>Object.fromEntries(['Statement','Customer','Pain Points','Benefits','Keywords'].map(k=>[k,writingFieldValues(r.properties)[k]?.slice(0,600)||''])));
+  const correction=/home.services/i.test(hub.slug||'')?'Home Services means live-in house sitting, pet sitting, caretakers and property oversight; NOT home maintenance.':/care.gap|stable.home/i.test((hub.slug||'')+' '+(hub.name||''))?'Care Gap / Stable Home Foundation serves donor-side impact and where the money goes, plus caregiver housing stability.':/sunflower/i.test(hub.slug||'')?'Sunflower Acres is an accessible farm: visits, the fund and the shop; NOT generic gardening tips.':'';
+  const attempt={at:new Date().toISOString(),calls:1,status:'started'};await env.TRADES.put(key,JSON.stringify(attempt));
+  try{
+    const contract=missing.map(name=>({name,rule:'A concise draft grounded only in supplied research. Subscriber Benefit is the reason to subscribe, not a topic. Value Proposition is the concrete premium outcome beyond free. Research Focus names weekly signals, source preferences and reader questions.'})),{keys,schema}=newsletterSchema(contract);let usage=null;
+    const packet={hub:hub.name,correction,campaign,mainProducts:facts,subscriber:context.fields};
+    const generated=await hcClaude(env,'Draft only the missing newsletter research fields. AI is a filter, not a source. Never invent facts. These are editable drafts for the operator.\n'+JSON.stringify(packet), 'newsletter_seed',schema,900,u=>{usage=u;});
+    attempt.drafts=Object.fromEntries(contract.map((f,i)=>[f.name,String(generated[keys[i]]||'').trim()]).filter(([,value])=>value));attempt.usage=usage;
+    await env.TRADES.put(key,JSON.stringify({...attempt,status:'generated'}));
+    for(let i=0;i<contract.length;i++){
+      const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));if(writingFieldValues(fresh.properties)[contract[i].name]?.trim())continue;
+      const value=String(generated[keys[i]]||'').trim();if(value)await newsletterSaveSetting(env,{...context,field:contract[i].name,value});
+    }
+    const after=await newsletterContext(env,cid),result={...attempt,status:'done',fields:after.fields,usage};await env.TRADES.put(key,JSON.stringify(result));return {ok:true,...result};
+  }catch(error){await env.TRADES.put(key,JSON.stringify({...attempt,status:'held',error:error.message}));throw error;}
+}
+async function newsletterPanel(env,body) {
+  const context=await newsletterContext(env,body.campaignId),table=await writingMethodsTable(env),goals=[];
+  const column=name=>table.columns.find(c=>ivNorm(c.name)===name)?.id;
+  for(const row of table.rows.filter(r=>/^digest[ -]/i.test(r.cells?.cname01||''))){const cells=row.cells||{},name=cells.cname01;if(!/newsletter|parent/i.test(name))continue;const cadence=cells[column('cadence')]||cells.ccad01||'Weekly';goals.push({name,goal:cells[column('goal')]??cells.cgoal01??'',cadence,periodStart:hubCheckPeriodStart(cadence)});}
+  let asset=null,digestId='',sections=[],bodyText='',subject='',preview='';
+  if(body.assetId){asset=await newsletterNotion(env,'pages/'+kwDashId(body.assetId));if(ivRid(asset.properties,'Campaign')!==context.campaignId)throw new Error('Newsletter asset campaign mismatch');
+    digestId=newsletterIssueType(asset.properties?.['Asset Type']?.select?.name)?ivRid(asset.properties,'Parent Asset'):hubAssetId(asset.id);
+    if(newsletterIssueType(asset.properties?.['Asset Type']?.select?.name)){const kind=/paid/i.test(asset.properties['Asset Type'].select.name)?'premium':'free',method=newsletterMethod(table,kind),values=writingFieldValues(asset.properties);sections=method.contract.map(f=>({name:f.name,value:values[f.name]||''}));bodyText=values.Body||'';subject=values['Platform Title']||'';preview=values['Preview Text']||'';}
+  }
+  const periodStart=hubCheckPeriodStart('Weekly'),periodEnd=new Date().toISOString().slice(0,10);
+  const children=digestId?await notionQuery(ASSETS_DB,{filter:{and:[{property:'Parent Asset',relation:{contains:kwDashId(digestId)}},{timestamp:'created_time',created_time:{on_or_after:periodStart}}]}}):[];
+  const sent=(await env.TRADES.get('nlsend:log','json')||[]).filter(x=>hubAssetId(x.campaignId)===context.campaignId||x.slug===(HUB_SITES.find(h=>hubAssetId(h.campaignId)===context.campaignId)?.slug));
+  return {ok:true,productId:context.productId,recordId:context.recordId,fields:context.fields,goals,periodStart,periodEnd,made:{premium:children.filter(p=>/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name)).length,free:children.filter(p=>/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name)).length},sent:sent.filter(x=>String(x.at||'').slice(0,10)>=periodStart).length,usage:(await env.TRADES.get('digest:usage:'+context.campaignId,'json')||[])[0]||null,sections,body:bodyText,subject,preview};
+}
 async function digestItemsSave(env, assetId, sources) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
-  const items = (sources || []).filter(s => s && s.claim).map(s => ({ id: dpId((s.url || "") + "|" + s.claim), claim: String(s.claim).slice(0, 600), publisher: s.publisher || "", url: s.url || "", date: s.date || "", tier: s.tier || "", split: s.split === "premium" ? "premium" : "free" }));
-  await env.TRADES.put(key, JSON.stringify({ at: new Date().toISOString(), items, checks: prev.checks || {}, children: prev.children || { premium: [], free: [], news: [] } }));
+  const periodStart=hubCheckPeriodStart('Weekly'),periodEnd=new Date().toISOString().slice(0,10),items=[];
+  const sourceList=(sources||[]).filter(s=>s&&s.claim),results=new Array(sourceList.length);let index=0;
+  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
+  items.push(...results);
+  await env.TRADES.put(key, JSON.stringify({ at: new Date().toISOString(), items, periodStart, periodEnd, checks: prev.checks || {}, children: prev.children || { premium: [], free: [], news: [] } }));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
@@ -13698,15 +13818,35 @@ async function digestWriteBlocks(env, assetId, heading, text) {
     if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(x.message || "could not write the issue"); }
   }
 }
-async function digestWriteIssue(env, kind, items, hubName) {
-  const list = items.map((x, i) => `${i + 1}. ${x.claim} — ${x.publisher || "source"}${x.date ? " (" + x.date + ")" : ""}${x.url ? " " + x.url : ""}`).join("\n");
-  const brief = kind === "premium"
-    ? `Write the PREMIUM issue of the ${hubName} weekly digest for paying subscribers: for EACH item below — what happened, why it matters to this audience, the deeper analysis, and exactly what to do. Cite the publisher by name. 700-1400 words, markdown with ## per item.`
-    : `Write the FREE issue of the ${hubName} weekly digest: for each item below — what happened and why it matters, briefly (2-4 sentences). Cite the publisher by name. Close with one line inviting readers to the premium issue for the full analysis. 300-700 words, markdown.`;
-  const o = await hcClaude(env, `${brief}\nUse ONLY these facts — do not invent anything.\n\nITEMS:\n${list}`, "digest_issue",
-    { type: "object", properties: { subject: { type: "string" }, body: { type: "string" } }, required: ["subject", "body"] }, 8000);
-  if (!o || !String(o.body || "").trim()) throw new Error("the issue came back empty");
-  return { subject: String(o.subject || "").slice(0, 150), body: String(o.body) };
+async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId,campaignId}) {
+  await governingFlow(env);
+  const method=newsletterMethod(await writingMethodsTable(env),kind),context=await newsletterContext(env,campaignId);
+  const [voice,audience,interviews]=await Promise.all([voiceBlock(env,campaignId),hubAudienceBlock(env,campaignId),ivForTitle(titleId)]);
+  const finished=interviews.filter(x=>x.status==='Finished'&&x.answers.some(a=>a.trim())&&(x.scope==='Title'||x.scope==='Asset'&&x.assetIds.includes(hubAssetId(digestId)))).map(x=>({questions:x.questions,answers:x.answers}));
+  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,finishedInterviews:finished};
+  let usage=null;
+  const instructions='Method instructs; the process executes. Return exactly the worksheet contract fields as strings. Text only. '+
+    'Frame the issue for the Subscriber Benefit, Value Proposition and Customer, in the operator voice. '+
+    'Use only ticked findings and finished interviews. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
+    'Unverified or out-of-period findings must never be presented as verified current developments. Data & Signals may use numbers ONLY from verified findings and must cite them. '+
+    'Omit unsupported sections instead of padding; Feature Analysis and Subscriber Extra can be empty. Never invent news, statistics, sources or research. '+
+    (kind==='premium'?'Target 1,000–1,800 words across the sections, shorter when credible material is thin. ':'Target 300–500 words across Executive Summary and Call to Action. ')+
+    'Do not repeat all sections in Body: return Body as an empty string; the worker assembles the returned section fields into Body in contract order without another model call.';
+  const generated=await hcClaude(env,instructions+'\n\nNEWSLETTER WRITING PACKET\n'+JSON.stringify(packet),'newsletter_contract',schema,8000,u=>{usage=u;});
+  const fields=Object.fromEntries(method.contract.map((f,i)=>[f.name,typeof generated[keys[i]]==='string'?generated[keys[i]]:'']));
+  fields.Body=newsletterBody(method.contract,fields);
+  const violations=validateWritingContract(method.contract,fields),properties={};
+  for(const [name,value]of Object.entries(fields))properties[name]={rich_text:ivRt(value)};
+  const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
+  if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
+  await saveExistingAssetWriting(page,properties,[]);
+  await digestWriteBlocks(env,assetId,fields['Platform Title']||method.name,fields.Body);
+  const after=await newsletterNotion(env,'pages/'+kwDashId(assetId)),readback=writingFieldValues(after.properties);
+  for(const [name,value]of Object.entries(fields))if((readback[name]||'').trim()!==value.trim())throw new Error('Newsletter field readback differs: '+name);
+  if(after.properties['Asset Status']?.select?.name!==page.properties['Asset Status']?.select?.name)throw new Error('Newsletter status changed during write');
+  const run={assetId:hubAssetId(assetId),method:method.name,violations,written:!violations.length,timestamp:new Date().toISOString(),usage};
+  await env.TRADES.put('writeasset:log',JSON.stringify([run,...(await env.TRADES.get('writeasset:log','json')||[])].slice(0,200)));
+  return {subject:fields['Platform Title'],body:fields.Body,fields,violations,written:run.written};
 }
 // ══ AUTO DIGEST (operator 2026-10-16) ══ every hub, ONCE A WEEK (Sunday night Pacific, for Monday): ONE digest covering all of
 // the hub's ★ main offerings — "a true digest of everything that is important". Same pipeline as the Digest modal:
@@ -13730,6 +13870,9 @@ async function adPerplexityDigest(env, job, names) {
   const today = new Date().toISOString().slice(0, 10);
   const input = `You are the editor of a weekly industry digest for one website hub. Its main offerings: ${names.join("; ")}.
 TODAY: ${today}. Use the research below (search more only if it is thin).
+NEWSLETTER FRAMING (from its Product Research):
+${newsletterSteering(job.newsletter?.fields)}
+THIS DIGEST PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${today}. Mark older context as historical.
 
 === GEMINI DEEP RESEARCH ===
 ${(job.gemini?.text || "(not available)").slice(0, 25000)}
@@ -13751,6 +13894,7 @@ Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","cl
   const text = dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
   const out = drJson(text);
   if (!out || !String(out.digest || "").trim()) throw new Error("Perplexity returned no digest");
+  await newsletterUsage(env,job,'perplexityDigest',{status:'done',usage:dd.usage||null});
   return { sources: Array.isArray(out.sources) ? out.sources : [], whatChanged: out.whatChanged || "", digest: String(out.digest) };
 }
 // put already-written text on a title as its pillar (same "Pillar Content" section the Claude writer makes)
@@ -13807,6 +13951,8 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
   const id = String(pa.id).replace(/-/g, ""); await env.TRADES.put(key, id); return id;
 }
 async function adStep(env, cid, S, invoke) {
+  if(!S.newsletter)S.newsletter=await newsletterContext(env,cid);
+  if(S.newsletter.fields['Research Depth']==='Off'){S.step='skip';S.note='Research Depth Off: existing operator inputs retained; no research calls made.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
     const mains = await hubMainList(env, cid); if (!mains.length) { S.step = "skip"; S.note = "no ★ main offerings"; return; }
@@ -13824,7 +13970,7 @@ async function adStep(env, cid, S, invoke) {
   if (S.step === "perplexity") { await invoke({ action: "digestResearch", op: "perplexity", jobId: S.jobId }).catch(() => {}); S.step = "wait"; S.waitFrom = Date.now(); return; }
   if (S.step === "wait") {   // Gemini deep research runs on Google's side — poll until done (or 25 min, then use what finished)
     const r = await invoke({ action: "digestResearch", op: "status", jobId: S.jobId }); const g = r && r.job && r.job.gemini && r.job.gemini.status;
-    if (g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
+    if (S.newsletter.fields['Research Depth']==='Deep' && g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
     S.step = "rank"; return;
   }
   if (S.step === "rank" || S.step === "title") { S.step = "write"; return; }   // (older runs) — the title is permanent now
@@ -13872,6 +14018,7 @@ async function autoDigestRun(env, invoke) {
         else { if (done[cid] === per.key) continue; if (!per.open) continue;   // new runs start Sunday 20:00 → Monday 06:00 Pacific
           S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
       if (S.step === "done" || S.step === "skip" || S.step === "error") { done[cid] = per.key; continue; }
+      S.newsletter=await newsletterContext(env,cid); // fresh once per hub on every scheduled/manual runner invocation
       while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
         const before = S.step;
         try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
@@ -19300,6 +19447,15 @@ ${JSON.stringify(products)}`;
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         return json({ ok: true, ...(await assetOrphanSweep(env, { op: body.op, slug: body.slug })) });
       }
+      if(['getNewsletterSettings','saveNewsletterSettings','newsletterSetup','newsletterSeed','previewNewsletterEmail'].includes(body.action)){
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        if(body.action==='newsletterSetup')return json({ok:true,...await newsletterEnsureSchema(env)});
+        if(body.action==='newsletterSeed')return json(await newsletterSeed(env,body.campaignId));
+        if(body.action==='saveNewsletterSettings')return json(await newsletterSaveSetting(env,body));
+        const panel=await newsletterPanel(env,body);
+        if(body.action==='previewNewsletterEmail')return json({ok:true,subject:panel.subject,preview:panel.preview,html:mdToEmailHtml(panel.body)});
+        return json(panel);
+      }
       // ── Digest parent actions (operator 2026-10-20) ──
       // getDigests {campaignId} → every Digest parent of the hub (newest first) with its findings, checks, children + a running run
       if (body.action === "getDigests") {
@@ -19351,17 +19507,21 @@ ${JSON.stringify(products)}`;
         const productId = ((pg.properties?.Product?.relation || [])[0]?.id || "").replace(/-/g, "");
         if (!titleId) return json({ error: "this digest has no title" }, 400);
         await hubSitesMerge(env); const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid) || {}, hubName = hub.name || "the hub";
-        const picked = t => d.items.filter(x => (d.checks[x.id] || {})[t]), made = { premium: null, free: null, news: [] }, errors = [];
+        const requestId=String(body.requestId||'').slice(0,100);
+        if(requestId&&d.operations?.[requestId])return json({...d.operations[requestId],children:d.children,checks:d.checks,reused:true});
+        const picked = t => d.items.filter(x => (d.checks[x.id] || {})[t]), made = { premium: null, free: null, news: [] }, errors = [], outcomes=[];
         d.children = d.children || { premium: [], free: [], news: [] };
         for (const [kind, type, label] of [["premium", "Newsletter Paid", "Premium issue"], ["free", "Newsletter Free", "Free issue"]]) {
           const its = picked(kind); if (!its.length) continue;
           try {
-            const w = await digestWriteIssue(env, kind, its, hubName);
+            newsletterMethod(await writingMethodsTable(env),kind); // fail honestly before creating an unmapped child
             const c = await invoke({ action: "createDevAssets", titleId, title: dname, productId: productId || undefined, campaignId: cid, slug: hub.slug || body.slug || undefined, allowMulti: true, parentAssetId: id,
-              types: [{ assetType: type, label, titleOverride: `${label} — ${dname}${w.subject ? ": " + w.subject : ""}`.slice(0, 190) }] });
+              types: [{ assetType: type, label, titleOverride: `${label} — ${dname}`.slice(0, 190) }] });
             const aid = ((c && c.created) || [])[0]?.id; if (!aid) throw new Error((c && (c.error || (c.failed || []).join(" · "))) || "not created");
-            await digestWriteBlocks(env, aid, w.subject || label, w.body);
-            d.children[kind].push({ assetId: aid, items: its.map(x => x.id), at: new Date().toISOString() }); made[kind] = aid;
+            const entry={assetId:aid,items:its.map(x=>x.id),at:new Date().toISOString(),requestId};
+            d.children[kind].push(entry);made[kind]=aid;await env.TRADES.put(key,JSON.stringify(d));
+            try{const w=await digestWriteIssue(env,kind,its,hubName,{assetId:aid,digestId:id,titleId,campaignId:cid});entry.violations=w.violations;entry.written=w.written;outcomes.push({kind,assetId:aid,written:w.written,violations:w.violations});}
+            catch(error){entry.error=error.message;entry.held=true;await env.TRADES.put(key,JSON.stringify(d));throw error;}
             its.forEach(x => { d.checks[x.id] = { ...(d.checks[x.id] || {}), [kind]: false }; });
           } catch (e) { errors.push(label + ": " + e.message); }
         }
@@ -19372,9 +19532,10 @@ ${JSON.stringify(products)}`;
           d.children.news.push({ itemId: it.id, jobId: jid, at: new Date().toISOString() }); made.news.push(jid);
           d.checks[it.id] = { ...(d.checks[it.id] || {}), news: false };
         }
+        if(requestId){d.operations={...(d.operations||{}),[requestId]:{ok:true,made,errors,outcomes}};d.operations=Object.fromEntries(Object.entries(d.operations).slice(-20));}
         await env.TRADES.put(key, JSON.stringify(d));
         if (made.news.length) ctx.waitUntil(invoke({ action: "runTitleJobs" }).catch(() => {}));
-        return json({ ok: true, made, errors, children: d.children, checks: d.checks });
+        return json({ ok: true, made, errors, outcomes, children: d.children, checks: d.checks });
       }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
@@ -54140,6 +54301,9 @@ function drBrief(job) {
   const urls = (job.urls || []).map(u => `- ${u}`).join("\n");
   return `Research the latest, most useful information for a weekly industry digest.
 
+NEWSLETTER FRAMING (authoritative Product Research):
+${newsletterSteering(job.newsletter?.fields)}
+PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${new Date().toISOString().slice(0,10)}. Distinguish older background from this period's developments.
 TOPIC KEYWORDS: ${kw}
 ${job.hubName ? `AUDIENCE / HUB: ${job.hubName}\n` : ""}${job.guidance ? `FOCUS: ${job.guidance}\n` : ""}
 Prioritise, in this order:
@@ -54162,7 +54326,7 @@ async function drGeminiStart(env, job) {
   if (r.status === 429 && /free tier|quota/i.test(t)) return { status: "failed", error: "Gemini Deep Research needs billing turned on for this API key's Google project (aistudio.google.com → Billing). Perplexity still runs." };
   if (!r.ok || !d?.id) return { status: "failed", error: `Gemini HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
   await spendAdd(env, "gemini", 2, true, null).catch(() => {});   // per-run estimate — the API doesn't report Deep Research cost
-  return { status: "running", id: d.id };
+  return { status: "running", id: d.id, usage:d.usage||d.usageMetadata||null };
 }
 function drAllText(node, out) {
   if (!node) return out;
@@ -54180,7 +54344,7 @@ async function drGeminiPoll(env, g) {
     const steps = d.steps || d.outputs || [];
     const last = Array.isArray(steps) && steps.length ? steps[steps.length - 1] : d;
     const text = drAllText(last, []).join("\n").trim() || drAllText(d, []).join("\n").trim();
-    return { ...g, status: "done", text: text.slice(0, 60000) };
+    return { ...g, status: "done", text: text.slice(0, 60000), usage:d.usage||d.usageMetadata||g.usage||null };
   }
   if (d.status === "failed" || d.status === "cancelled") return { ...g, status: "failed", error: "Gemini research " + d.status + (d.error?.message ? ": " + d.error.message : "") };
   return g;
@@ -54198,7 +54362,7 @@ async function drPerplexity(env, job) {
   const results = [];
   (d.output || []).forEach(o => { if (o && o.type === "search_results") (o.results || []).forEach(x => results.push({ url: x.url, title: x.title, date: x.date || x.last_updated || "", snippet: (x.snippet || "").slice(0, 400) })); });
   const text = d.output_text || (d.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
-  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80) };
+  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80),usage:d.usage||null };
 }
 
 async function drRank(env, job) {
@@ -54277,9 +54441,13 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     const job = { id: "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), campaignId: cid, hubName: body.hubName || "",
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
       notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString() };
+    const newsletter=await newsletterContext(env,cid);
+    job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=hubCheckPeriodStart('Weekly');
     job.standing = await drStandingSources(env, cid);
-    job.gemini = await drGeminiStart(env, job).catch(e => ({ status: "failed", error: e.message }));
-    job.perplexity = { status: env.PERPLEXITY_API_KEY ? "pending" : "skipped", error: env.PERPLEXITY_API_KEY ? undefined : "PERPLEXITY_API_KEY not set" };
+    const depth=newsletter.fields['Research Depth'];
+    job.gemini = depth==='Deep'?await drGeminiStart(env, job).catch(e => ({ status: "failed", error: e.message })):{status:'skipped',error:'Research Depth '+depth};
+    await newsletterUsage(env,job,'gemini',job.gemini);
+    job.perplexity = { status: depth!=='Off'&&env.PERPLEXITY_API_KEY ? "pending" : "skipped", error: depth==='Off'?'Research Depth Off':env.PERPLEXITY_API_KEY ? undefined : "PERPLEXITY_API_KEY not set" };
     await env.TRADES.put("digres:" + job.id, JSON.stringify(job), { expirationTtl: DR_TTL });
     return { success: true, job: drPublic(job) };
   }
@@ -54288,16 +54456,22 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
   const job = body.jobId ? await env.TRADES.get(key, "json") : null;
   if (!job) return { error: "Research run not found (it may have expired)" };
   const save = () => env.TRADES.put(key, JSON.stringify(job), { expirationTtl: DR_TTL });
+  if(['perplexity','status','rank'].includes(op)){
+    const current=await newsletterContext(env,job.campaignId);job.newsletter={productId:current.productId,recordId:current.recordId,fields:current.fields};
+    if(current.fields['Research Depth']==='Off'){job.gemini={...job.gemini,status:'skipped',error:'Research Depth Off'};job.perplexity={...job.perplexity,status:'skipped',error:'Research Depth Off'};await save();return {success:true,job:drPublic(job),researchOff:true};}
+  }
 
   if (op === "perplexity") {   // long synchronous call — the modal fires it right after start and waits
     if (job.perplexity?.status === "done") return { success: true, job: drPublic(job) };
     job.perplexity = await drPerplexity(env, job).catch(e => ({ status: "failed", error: e.message }));
+    await newsletterUsage(env,job,'perplexityResearch',job.perplexity);
     const fresh = await env.TRADES.get(key, "json"); if (fresh) { fresh.perplexity = job.perplexity; Object.assign(job, fresh); }
     await save(); return { success: true, job: drPublic(job) };
   }
   if (op === "status") {
-    if (job.gemini?.status === "running") {
+    if (job.newsletter?.fields?.['Research Depth']==='Deep' && job.gemini?.status === "running") {
       const g = await drGeminiPoll(env, job.gemini).catch(e => ({ ...job.gemini, status: "failed", error: e.message }));
+      await newsletterUsage(env,job,'gemini',g,false);
       const fresh = (await env.TRADES.get(key, "json")) || job; fresh.gemini = g; Object.assign(job, fresh); await save();   // re-read: the Perplexity call may have saved meanwhile
     }
     return { success: true, job: drPublic(job) };
