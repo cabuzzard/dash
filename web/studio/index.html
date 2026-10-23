@@ -25,6 +25,9 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 Inter, system-ui, -apple-system, Segoe UI, sans-serif; -webkit-font-smoothing: antialiased; }
 .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 120px; }
 header.top { display: flex; align-items: center; gap: 12px; margin: 4px 0 22px; }
+/* ↻ refresh: reloads this exact page fresh (same link + screen) — handy from a phone home-screen shortcut with no address bar */
+.refresh { margin-left: auto; flex: none; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
+.refresh:hover, .refresh:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
 .brand { flex: 1; min-width: 0; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
 h1 { font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 2px 0 0; }
@@ -116,8 +119,10 @@ async function load() {
   if (!KEY) { app.innerHTML = `<div class="empty"><h2>Missing link</h2><p>Open the private link you were sent.</p></div>`; return; }
   try { INFO = await api("info"); route(); } catch (e) { fail(e); }
 }
+// reload the same link + screen, bypassing the cached page (a fresh ?v= keeps the link's key and the #/ screen)
+function freshReload() { try { const u = new URL(location.href); u.searchParams.set("v", Date.now().toString(36)); location.replace(u.toString()); } catch (e) { location.reload(); } }
 function header(sub) {
-  return `<header class="top"><div class="brand"><div class="eyebrow">${esc(INFO.hub || "Script Studio")}</div><h1>${esc(INFO.title || INFO.product || "Your scripts")}</h1></div>${sub || ""}</header>`;
+  return `<header class="top"><div class="brand"><div class="eyebrow">${esc(INFO.hub || "Script Studio")}</div><h1>${esc(INFO.title || INFO.product || "Your scripts")}</h1></div>${sub || ""}<button class="refresh" type="button" onclick="freshReload()" title="Refresh" aria-label="Refresh the page">↻</button></header>`;
 }
 
 async function route() {
