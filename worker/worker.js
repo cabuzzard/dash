@@ -1245,7 +1245,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
     let story = null;
-    for (const x of (await freeNewsSearch(env, [product.name, ...(product.kw || [])], { days: 7, max: 8 }).catch(() => [])).filter(x => !used.includes(x.url))) {
+    for (const x of (await freeNewsSearch(env, [...(product.kw || []), product.name], { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
       const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
     if (story) await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {});
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: story ? story.title : product.name,
@@ -1746,10 +1746,10 @@ async function assetWritingState(page) { return assetWritingContent(page, await 
 async function requireAssetWriting(page) {
   if (!(await assetWritingState(page)).hasWriting) throw new Error('not written yet — write it first');
 }
-function validateBlogArticle(text, sectionCount) {
+function validateBlogArticle(text, sectionCount, minWords = 600) {
   const words=String(text||'').trim().split(/\s+/).filter(Boolean).length;
   const sections=sectionCount === undefined ? (String(text||'').match(/^##\s+\S/gm)||[]).length : sectionCount;
-  if(words < 600 || sections < 2) throw new Error('article came back short — not saved');
+  if(words < minWords || sections < 2) throw new Error('article came back short — not saved');
   return words;
 }
 function validateOfferArticle(offer,included) {
@@ -14081,17 +14081,18 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
   const add = x => { const key = (x.url || "").split("?")[0].toLowerCase() || x.title.toLowerCase(); if (!x.title || seen.has(key) || seen.has(x.title.toLowerCase())) return; seen.add(key); seen.add(x.title.toLowerCase()); items.push(x); };
   const since = Date.now() - days * 86400e3;
   for (const q of qs) {
-    try {   // Google News RSS — one public search feed per query
-      const xml = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:" + days + "d")}&hl=en-US&gl=US&ceid=US:en`, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }).then(r => r.ok ? r.text() : "");
+    try {   // Bing News RSS — free, no key; its links carry the real article URL (Google News links are redirect wrappers whose text can't be read)
+      const xml = await fetch(`https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss`, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }).then(r => r.ok ? r.text() : "");
       for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
         const it = m[1], g = re => fnDecode((it.match(re) || [])[1] || "");
-        const src = it.match(/<source[^>]*>([\s\S]*?)<\/source>/), title = g(/<title>([\s\S]*?)<\/title>/).replace(/\s+-\s+[^-]+$/, "");
+        let link = g(/<link>([\s\S]*?)<\/link>/); const u = link.match(/[?&]url=([^&]+)/); if (u) { try { link = decodeURIComponent(u[1]); } catch (e) {} }
         const date = Date.parse(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (date && date < since) continue;
-        add({ title, url: g(/<link>([\s\S]*?)<\/link>/), publisher: src ? fnDecode(src[1]) : "", date: date ? new Date(date).toISOString().slice(0, 10) : "", q, via: "Google News" });
+        add({ title: g(/<title>([\s\S]*?)<\/title>/), url: link, publisher: g(/<News:Source>([\s\S]*?)<\/News:Source>/), date: date ? new Date(date).toISOString().slice(0, 10) : "", q, via: "Bing News" });
       }
     } catch (e) {}
     try {   // GDELT DOC 2.0 — open global news index
-      const j = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent('"' + q + '" sourcelang:english')}&mode=artlist&maxrecords=15&format=json&timespan=${days}d`).then(r => r.ok ? r.json() : null).catch(() => null);
+      await new Promise(r => setTimeout(r, 5500));   // GDELT allows one request every 5 seconds
+      const j = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q + ' sourcelang:english')}&mode=artlist&maxrecords=15&format=json&timespan=${days}d`).then(r => r.ok ? r.json() : null).catch(() => null);
       for (const a of (j && j.articles) || []) { const sd = String(a.seendate || ""), d = sd ? sd.slice(0, 4) + "-" + sd.slice(4, 6) + "-" + sd.slice(6, 8) : "";
         add({ title: fnDecode(a.title), url: a.url, publisher: a.domain || "", date: d, q, via: "GDELT" }); }
     } catch (e) {}
@@ -32358,8 +32359,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
             return json({ error: "Failed to parse post JSON: " + e.message }, 502);
           }
           const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
-          if (sections.length !== 3 || sections.some(x=>!String(x.body||'').trim())) return json({error:'article came back short — not saved'},502);
-          validateBlogArticle([post.intro,...sections.map(x=>x.body),post.conclusion].join(' '),sections.length);
+          if ((isNewsPost ? sections.length < 3 : sections.length !== 3) || sections.some(x=>!String(x.body||'').trim())) return json({error:'article came back short — not saved'},502);   // news v2: 5 named sections
+          validateBlogArticle([post.intro,...sections.map(x=>x.body),post.conclusion].join(' '),sections.length,isNewsPost?300:600);
 
           // Create the Asset record — published immediately, no Development review step.
           const assetProps = {
