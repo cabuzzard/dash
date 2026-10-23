@@ -12095,6 +12095,49 @@ function hubCheckOpen(i, j, kind) {
   const bd = sec && sec.querySelector('.oc-bd'); if (bd && bd.style.display === 'none') ocToggle(null, sec.querySelector('.oc-hd'));   // open All Output if collapsed
   const target = document.getElementById('dev2Content'); if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+// ＋ on a column: add ONE unwritten asset of that type at Development — hub picker + title picker (only live, synced, placed
+// titles on live products; never an out-of-sync one). Parent columns make that parent (Pillar · <name>). The Digest parent has
+// no ＋ — the weekly cron keeps exactly one per hub, and a hand-made one would repoint the hub's digest. Worker createDevAssets.
+function hubCheckTypeSpec(t) { const m = String(t).match(/^(.*) parent$/i); return m ? { assetType: m[1].trim(), pillar: true, label: m[1].trim() } : { assetType: t, pillar: false, label: t }; }
+function hubCheckCanAdd(t) { return !/^digest parent$/i.test(t); }
+function hubCheckTitles(slug) {
+  const seen = new Map();
+  for (const r of (DEV2_ROWS || [])) {
+    if (!r.titleId || seen.has(r.titleId)) continue; const h = hubCheckHubOf(r); if (!h || h.slug !== slug) continue;
+    if (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic) continue;
+    seen.set(r.titleId, { id: r.titleId, name: r.title || 'Untitled title', product: r.product || '', productId: r.productId || '', topic: r.keywordTopic || '' });
+  }
+  return [...seen.values()].sort((a, b) => (a.product + a.name).localeCompare(b.product + b.name));
+}
+function hubCheckAddAsset(i) {
+  const t = HUBCHECK_COLS[i]; if (!t) return; const hubs = HUB_SITES.filter(h => h.campaignId);
+  const pre = HUBCHECK_OPEN && hubs.some(h => h.slug === HUBCHECK_OPEN.slug) ? HUBCHECK_OPEN.slug : (hubs[0] || {}).slug;
+  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(t)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Adds one unwritten ${esc(t)} asset at Development on the title you pick. Write it later from its publish modal.</div>
+    ${HT_LBL('Hub')}<select id="hcaHub" style="${HT_IN}" onchange="hubCheckAddTitles()">${hubs.map(h => `<option value="${esc(h.slug)}"${h.slug === pre ? ' selected' : ''}>${esc(h.name || h.slug)}</option>`).join('')}</select>
+    ${HT_LBL('Title')}<select id="hcaTitle" style="${HT_IN}"></select>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubCheckAddAssetGo(${i}))">Add asset</button>${HC_CANCEL}</div>`);
+  hubCheckAddTitles();
+}
+function hubCheckAddTitles() {
+  const sel = document.getElementById('hcaTitle'), slug = (document.getElementById('hcaHub') || {}).value; if (!sel) return;
+  const ts = hubCheckTitles(slug), byP = {};
+  ts.forEach(x => (byP[x.product || '— no product —'] = byP[x.product || '— no product —'] || []).push(x));
+  sel.innerHTML = ts.length ? Object.entries(byP).map(([p, list]) => `<optgroup label="📦 ${esc(p)}">${list.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</optgroup>`).join('')
+    : '<option value="">— no live, synced titles on this hub —</option>';
+}
+async function hubCheckAddAssetGo(i) {
+  const t = HUBCHECK_COLS[i], slug = document.getElementById('hcaHub').value, tid = document.getElementById('hcaTitle').value;
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Pick a hub'; if (!tid) return 'Pick a title';
+  const ti = hubCheckTitles(slug).find(x => x.id === tid) || {}, sp = hubCheckTypeSpec(t);
+  const r = await call('createDevAssets', { titleId: tid, title: ti.name || '', productId: ti.productId || undefined, campaignId: h.campaignId, slug, allowMulti: true,
+    types: [{ assetType: sp.assetType, label: sp.label, ...(sp.pillar ? { pillar: true } : {}) }] });
+  if (!r || r.error) return (r && r.error) || 'Not created';
+  if (!(r.created || []).length) return ((r.failed || []).join(' · ') || (r.skipped || []).join(' · ') || 'Not created');
+  showToast('✓ ' + t + ' added at Development — ' + (ti.name || 'title'), 'success');
+  setTimeout(async () => { try { _devTblLast = null; await loadDev2(); } catch (e) {}   // refresh the counts, then show it in All Output (its title opens the publish modal)
+    const hi = HUB_SITES.filter(x => x.campaignId).findIndex(x => x.slug === slug); if (hi >= 0) hubCheckOpen(hi, i, 'dev'); }, 300);
+  return true;
+}
 function renderHubChecklist() {
   const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
   if (!body) return;
@@ -12114,7 +12157,7 @@ function renderHubChecklist() {
     + dot + `<span style="${live ? 'color:#16a34a;font-weight:600;' : 'color:var(--text3);'}${clickLive ? 'cursor:pointer;' : ''}${onLive ? 'text-decoration:underline;' : ''}"${clickLive ? ` onclick="${clickLive}"` : ''} title="Published">${live || '·'}</span>`;
   const gsum = list => { const g = list.filter(Boolean); return g.length ? { goal: g.reduce((a, x) => a + x.goal, 0), cadence: 'each method’s own', method: 'sum of the goals' } : null; };
   let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Each cell: <b style="color:#ff7a00;">goal this period</b> · <b>development</b> · <b style="color:#16a34a;">published</b> — counts are assets on synced, live titles and products (all-time); goals come from the Current Methods worksheet’s tracked methods and reset each period by cron${HUBCHECK_GOALS && HUBCHECK_GOALS.at ? ' (updated ' + new Date(HUBCHECK_GOALS.at).toLocaleString() + ')' : ''}</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th>`
-    + cols.map((t, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="hubCheckDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,${i})" title="Drag to reorder"><div>${esc(t)}</div><div style="font-weight:400;"><button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + cols.map((t, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="hubCheckDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,${i})" title="Drag to reorder"><div>${esc(t)}</div><div style="font-weight:400;">${hubCheckCanAdd(t) ? `<button onclick="hubCheckAddAsset(${i})" title="Add an unwritten ${esc(t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
     + `<th style="${th}">Total</th></tr></thead><tbody>`;
   hubs.forEach((h, hi) => {
     let tot = 0, totD = 0;
