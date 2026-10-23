@@ -1855,10 +1855,16 @@ async function writeContractAsset(env,assetId) {
   const pick=(props,keys)=>{const v=writingFieldValues(props||{});return Object.fromEntries(keys.filter(k=>String(v[k]||'').trim()).map(k=>[k,v[k]]));};
   const PRODUCT_FACTS=['Name','Description','Price','Offer Structure','Transformation','Unique Angle','Product Tier','Type','Keywords'];
   const cur=writingFieldValues(p),currentFields=Object.fromEntries(contract.map(f=>[f.name,cur[f.name]||'']));
+  // operator 2026-10-23: the writer must see what THIS asset is about — its own blurb and the Series idea noted on its page (with the
+  // ranking's type / stage) — not just the shared title's pillar. Topical posts also get the hub's published posts for related links.
+  const pageNote=(await extractBlocksTextRecursive(ivHdr(),page.id).catch(()=>'')).split('\n').filter(l=>/series idea:|^\s*run ·|category:/i.test(l)).join('\n').slice(0,1500);
+  const subject={description:String(cur.Description||'').slice(0,600),note:pageNote};
+  let hubPosts=[];if(/topical/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
+    if(hub)hubPosts=(await hubBlogManifest(env,hub)).filter(x=>x&&x.slug&&hubAssetId(x.assetId||'')!==hubAssetId(page.id)).slice(0,25).map(x=>({title:x.title,url:'../'+x.slug+'/'}));}catch(e){}}
   const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method.properties?.Notes?.rich_text),page:recipe},
     contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
     product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
-    platform:cur['Platform Name']||cur.Platform||'',currentFields};
+    platform:cur['Platform Name']||cur.Platform||'',subject,...(hubPosts.length?{hubPosts}:{}),currentFields};
   const instruction='Method instructs; the process executes. AI is a filter, not a source. Use only the packet sources. Produce exactly the contract fields, following the method recipe, as string values. Return no other fields or commentary. Never invent missing facts; leave unsupported fields empty so advisory validation reports them.';
   // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
@@ -4595,7 +4601,13 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // body text: escaped, then Markdown **bold** → <strong> (contract-written pages are Markdown; was shown as literal asterisks)
-  const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
+  const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/)[^)\s]*)\)/g, '<a href="$2">$1</a>');   // [text](url) → a link (relative ../slug/ for related posts)
+  // a paragraph block: all "- " lines → a list; "### " → a sub-heading; else a paragraph (operator 2026-10-23, Topical Post format v2)
+  const para = raw => { const t = String(raw || '').trim(), ls = t.split('\n').map(l => l.trim()).filter(Boolean);
+    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')) + '</li>').join('') + '</ul>';
+    if (/^###\s+/.test(t)) { const [h, ...rest] = t.split('\n'); return '<h3>' + md(h.replace(/^###\s+/, '')) + '</h3>' + (rest.join('\n').trim() ? para(rest.join('\n')) : ''); }
+    return '<p>' + md(t) + '</p>'; };
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
   const fontsImport = s.fontQuery
     ? `@import url('https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap');`
@@ -4647,8 +4659,8 @@ ${bodyHtml}
   const postBody = `${thumbnail ? `<img class="hero" src="${esc(thumbnail)}" alt="${esc(displayTitle)}">` : ''}
 <h1>${esc(displayTitle)}</h1>
 <div class="meta">${esc(today)}</div>
-${intro ? String(intro).split(/\n{2,}/).map(p => `<p>${md(p.trim())}</p>`).join('\n') : ''}
-${(sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${md(p.trim())}</p>`).join('\n')}`).join('\n')}
+${intro ? String(intro).split(/\n{2,}/).map(p => para(p)).join('\n') : ''}
+${(sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => para(p)).join('\n')}`).join('\n')}
 ${conclusion ? `<p>${md(conclusion)}</p>` : ''}
 ${salesExtras}
 ${(Array.isArray(sources) && sources.filter(s => s && s.url).length) ? `<h2>Sources</h2>\n<ul>\n${sources.filter(s => s && s.url).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label || s.url)}</a></li>`).join('\n')}\n</ul>` : ''}
