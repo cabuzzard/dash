@@ -7,6 +7,11 @@ import * as nl from '../worker/newsletter-methodology.mjs';
 const source=fs.readFileSync('worker/worker.js','utf8');
 const fn=name=>{const start=source.search(new RegExp('(?:async )?function '+name+'\\('));assert.ok(start>=0,name);return source.slice(start,source.indexOf('\n}',start)+2);};
 const rt=text=>[{plain_text:text,text:{content:text}}];
+test('actual shared Claude helper captures returned usage without adding model calls',async()=>{
+ let calls=0,usage;const context=vm.createContext({JSON,fetch:async()=>{calls++;return {ok:true,json:async()=>({usage:{input_tokens:123,output_tokens:45},content:[{type:'tool_use',input:{field:'draft'}}]})};}});
+ vm.runInContext(fn('hcClaude'),context);const result=await context.hcClaude({ANTHROPIC_API_KEY:'test'},'text only','tool',{},900,u=>{usage=u;});assert.equal(calls,1);assert.equal(result.field,'draft');assert.deepEqual(usage,{input_tokens:123,output_tokens:45});
+ assert.equal((source.match(/if\(onUsage\)/g)||[]).length,1);
+});
 test('newsletter context queries the existing Products Campaigns relation',async()=>{
  const id='a'.repeat(32),product={id,properties:{Name:{title:[{plain_text:'Premium Newsletter'}]}}},record={id:'b'.repeat(32),properties:{}};
  const context=vm.createContext({hubAssetId:x=>x,hubSitesMerge:async()=>{},PRODUCTS_DB:'products',notionQuery:async(db,query)=>{assert.equal(db,'products');assert.equal(query.filter.property,'Campaigns');return[product];},kwDashId:x=>x,kwTitleOf:()=> 'Premium Newsletter',hubMainList:async()=>[id],findBestProductResearchRecord:async()=>record,newsletterHdr:()=>({}),newsletterValues:()=>({'Research Depth':''}),newsletterDepth:nl.newsletterDepth});
