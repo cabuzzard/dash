@@ -17587,7 +17587,10 @@ Return: {
             pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", titleOutOfSync: !!t.kwOutOfSync, titleHasResearch: !!t.hasResearch, pillarAt: t.pillarAt || "", kwAt: t.kwAt || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),
           };
-          (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
+          // operator 2026-10-22: "only put the flag on the asset that needs the interview" — an asset's own interview is listed only
+          // while one of its assets is live (not Idea / gone); a title interview stays with its title
+          const liveA = new Set((assetsByTitle[titleId] || []).filter(a => a.status && a.status !== "Idea").map(a => String(a.id).replace(/-/g, "")));
+          (ivByTitle[titleId] || []).filter(iv => iv.scope !== "Asset" || !(iv.assetIds || []).length || iv.assetIds.some(x => liveA.has(String(x).replace(/-/g, "")))).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
             assetName: "🎤 " + (iv.scope === "Asset" ? `[own · ${iv.forType}] ` : "") + (iv.angle || "Interview"), assetType: iv.scope === "Asset" ? "Interview (own)" : "Interview (title)", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
           const assets = assetsByTitle[titleId] || [];
           if (!assets.length) {
@@ -17738,9 +17741,12 @@ Return: {
           r.methodIvTier = r.titleId && r.methodName ? IV_TIER_LABEL[tierOf(r.methodName)] : "";
           r.research = researchOf(r.productId);
           r.keywordOutOfSync = !!(r.productId && productById[r.productId] && productById[r.productId].outOfSync);
-          const pv = r.productId ? ivSum["p:" + r.productId] : null, tv = r.titleId ? ivSum[r.titleId] : null;
-          const iv = (pv || tv) ? { f: ((pv || {}).f || 0) + ((tv || {}).f || 0), d: ((pv || {}).d || 0) + ((tv || {}).d || 0) } : null;
-          r.interviews = !r.titleId && r.kind !== "product" ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
+          const ivCount = list => { const x = { f: 0, d: 0 }; list.forEach(v => { if (v.status === "Finished") x.d++; else x.f++; }); return x.f || x.d ? x : null; };
+          const aid = r.assetId ? String(r.assetId).replace(/-/g, "") : "";
+          const iv = r.kind === "asset" ? (r.assetStatus === "Idea" ? null : ivCount(ivRows.filter(v => v.scope === "Asset" && (v.assetIds || []).some(x => String(x).replace(/-/g, "") === aid))))
+            : r.kind === "title" ? ivCount(ivRows.filter(v => v.scope === "Title" && v.titleId === r.titleId))
+            : r.kind === "product" ? (r.productId ? ivSum["p:" + r.productId] || null : null) : null;
+          r.interviews = r.kind === "interview" || (r.kind === "asset" && r.assetStatus === "Idea") ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
           r.pillarStatus = r.titleId ? ((titleById[r.titleId] || {}).pillarStatus || "") : "";
           if(r.kind === "asset")Object.assign(r,hubAssetSyncFields(r,ivRows));else r.assetSync="";
           r.nextStep = r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
