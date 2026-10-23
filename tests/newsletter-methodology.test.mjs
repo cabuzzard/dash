@@ -16,6 +16,8 @@ test('canonical Digest product resolves without changing a current Main selectio
  const id='a'.repeat(32),product={id,properties:{}},record={id:'b'.repeat(32),properties:{}};
  const context=vm.createContext({hubAssetId:x=>x,hubSitesMerge:async()=>{},PRODUCTS_DB:'products',notionQuery:async()=>[product],kwDashId:x=>x,kwTitleOf:()=> 'Premium Newsletter',hubMainList:async()=>['other-product'],findBestProductResearchRecord:async()=>record,newsletterHdr:()=>({}),newsletterValues:()=>({'Research Depth':'Deep'}),newsletterDepth:nl.newsletterDepth,ivRid:(p,k)=>p[k]||'',newsletterNotion:async()=>({properties:{Campaign:id,Product:id}})});
  vm.runInContext(fn('newsletterContext'),context);const result=await context.newsletterContext({TRADES:{get:async()=> 'digest'}},id);assert.equal(result.productId,id);assert.match(result.placementWarning,/not currently/);
+ context.newsletterNotion=async(e,path)=>({properties:path.endsWith('digest')?{Campaign:id,'Content Strategy':'title'}:{Campaign:id,product:id}});
+ assert.equal((await context.newsletterContext({TRADES:{get:async()=> 'digest'}},id)).productId,id);
 });
 test('the no-bundle Worker upload includes the newsletter module and CI uses the checked Wrangler major',()=>{const config=fs.readFileSync('worker/wrangler.toml','utf8');assert.match(config,/globs\s*=\s*\[[^\]]*"newsletter-methodology\.mjs"/);assert.match(fs.readFileSync('.github/workflows/deploy-worker.yml','utf8'),/wranglerVersion:\s*"4\./);});
 const kv=()=>{const values=new Map();return {values,get:async(key,type)=>values.has(key)?type==='json'?JSON.parse(values.get(key)):values.get(key):null,put:async(key,value,options)=>{values.set(key,value);return options;}};};
