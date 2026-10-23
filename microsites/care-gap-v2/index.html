@@ -94,7 +94,7 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .btn.primary{background:var(--amber);border-color:var(--amber);color:#fff;}
 .btn.primary:hover{opacity:.9;color:#fff;}
 .btn[disabled]{opacity:.5;cursor:not-allowed;}
-.finput{font-family:var(--mono);font-size:10.5px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink);width:150px;flex:1;min-width:110px;}
+.finput{font-family:var(--mono);font-size:10.5px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface,#fff);color:var(--ink);width:150px;flex:1;min-width:110px;}
 .finput::placeholder{color:var(--ink3);}
 .notebtn{font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;white-space:nowrap;}
 .notebtn:hover{border-color:var(--global);color:var(--global);}
@@ -237,7 +237,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </span></div>
       <div id="verNew" style="display:none;margin:6px 0;padding:6px 10px;border-radius:8px;background:#f6ad55;color:#1a1a1a;font-size:12px;cursor:pointer;" onclick="verUpdate()">⬆ A newer version of this page is out — tap to update</div>
       <div class="hdrctrls">
-        <select id="campaignPicker" title="Switch campaign — reloads this page against a different campaign" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink);"><option>Loading campaigns…</option></select>
+        <select id="campaignPicker" title="Switch campaign — reloads this page against a different campaign" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface,#fff);color:var(--ink);"><option>Loading campaigns…</option></select>
         <details class="artnav">
           <summary>📂 Jump to…</summary>
           <div class="artnav-menu">
@@ -1086,6 +1086,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </label>
           <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:10px;"><input type="checkbox" id="pubPublishToHub" disabled> Publish to hub</label>
           <div id="pubPublishToHubState" style="font-size:10.5px;color:var(--ink3);margin-top:4px;"></div>
+        </div>
+        <div id="pubSeriesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <b style="font-size:12px;">✨ Series — ideas, runs and children</b>
+          <div id="pubSeriesBody" style="font-size:11.5px;margin-top:6px;"></div>
         </div>
         <div id="pubDigestWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:12px;">📰 Digest — disseminate</b><span id="pubDigestState" style="font-size:10.5px;color:var(--ink3);"></span>
@@ -6514,6 +6518,7 @@ function openPublishAssetModal(assetId) {
   }
 
   pubDigestLoad(assetId, data);
+  pubSeriesLoad(assetId, data);
   const hubWrap = document.getElementById('pubHubWrap');
   const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
   hubWrap.style.display = isHubOffer ? 'block' : 'none';
@@ -8179,6 +8184,162 @@ async function pubDigestUnreview(btn) {
     document.getElementById('pubStatus').value = 'Development'; if (PUB_ASSET_CACHE[id]) PUB_ASSET_CACHE[id].status = 'Development'; pubDigestStatusLine('Development'); }
   catch (e) { alert('Not changed: ' + e.message); }
   btn.disabled = false;
+}
+// ── Series parent in the Publish modal (operator 2026-10-22: "the publish modal should be one router for all asset types").
+// The ✨ Series panel — the same ideas / runs / Ask Claude / categories the hub card's ✨ ideas opens — rendered inside this
+// modal when the asset is a Series parent. Every button makes a Development child of this Series. Worker: seriesIdeas ·
+// seriesUseIdea · seriesRun · seriesAsk · seriesCats. Child asset types resolve from the Current Methods worksheet.
+let PUB_SR = null, PUB_SR_METHODS = null;
+const pubSrCall = (a, b) => w(a, b).catch(e => ({ error: e.message }));
+function pubIsSeries(data) { return /^series( parent)?$/i.test(data.type || '') || /^series$/i.test(data.pillarType || ''); }
+function pubSrTitleOf(assetId) {
+  const id = normalizedRecordId(assetId);
+  return (CAMPAIGN_TITLES || []).find(t => (t.assets || []).some(a => normalizedRecordId(a.id || a) === id)) || null;
+}
+async function pubSrMethods() {
+  if (PUB_SR_METHODS) return PUB_SR_METHODS;
+  const W = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', match: 'cmatch01' };
+  const r = await pubSrCall('getInfoFlowTable', { name: 'currentmethods' }); if (r.error) return [];
+  PUB_SR_METHODS = ((r.table && r.table.rows) || []).map(row => { const c = row.cells || {}, asset = (c[W.asset] || '').trim(), parent = (c[W.parent] || c[W.pillar] || '').trim();
+    const name = (c[W.name] || '').trim() || (asset ? parent + ' - ' + asset : parent);
+    if (!name || /^notes\b/i.test(c[W.pillar] || '')) return null;
+    return { name, asset, isPillar: !asset, aliases: [name, ...String(c[W.match] || '').split(';')].map(x => x.trim()).filter(Boolean) };
+  }).filter(Boolean);
+  return PUB_SR_METHODS;
+}
+function pubSrType(kind) {   // same resolution as the hub card's hubSeriesType — topical choices bind to their worksheet row
+  const ms = (PUB_SR_METHODS || []).filter(m => !m.isPillar), t = m => m.aliases.find(a => a !== m.name) || m.asset || m.name;
+  const topical = { seo: 'Topical - SEO Post', youtube: 'Topical - YouTube' }[kind];
+  if (topical) { const norm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-').replace(/\s+/g, ''), pick = ms.find(m => norm(m.name) === norm(topical)); return pick ? pick.name : topical; }
+  const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : ms.find(m => /carousel/i.test(m.name));
+  return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel' })[kind];
+}
+async function pubSeriesLoad(assetId, data, force) {
+  const wrap = document.getElementById('pubSeriesWrap');
+  if (!pubIsSeries(data)) { wrap.style.display = 'none'; PUB_SR = null; return; }
+  wrap.style.display = 'block';
+  const t = pubSrTitleOf(assetId);
+  if (!t) { PUB_SR = null; document.getElementById('pubSeriesBody').innerHTML = '<span style="color:var(--ink3);">This Series asset has no title in this campaign — open it from its hub.</span>'; return; }
+  const keep = PUB_SR && PUB_SR.tid === normalizedRecordId(t.id) ? PUB_SR : {};
+  PUB_SR = Object.assign(keep, { assetId: normalizedRecordId(assetId), tid: normalizedRecordId(t.id), titleName: t.name || t.title || '', productId: t.productId || '', busy: 'Gathering ideas from your research…', err: '' });
+  pubSeriesDraw();
+  const [r] = await Promise.all([pubSrCall('seriesIdeas', { titleId: PUB_SR.tid, force: !!force }), pubSrMethods()]);
+  if (!PUB_SR || pubAssetId !== assetId) return;
+  if (r.error) PUB_SR.err = r.error; else { PUB_SR.data = r; PUB_SR.used = new Set(r.used || []); }
+  PUB_SR.busy = ''; pubSeriesDraw();
+}
+function pubSeriesDraw() {
+  const S = PUB_SR, el = document.getElementById('pubSeriesBody'); if (!S || !el) return;
+  const D = S.data, B = 'font-size:10.5px;padding:1px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--ink2);cursor:pointer;white-space:nowrap;';
+  const SEL = 'font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface,#fff);color:var(--ink);';
+  const btns = (src, id) => `<button type="button" style="${B}" onclick="pubSeriesUse('seo','${esc(src)}','${esc(id)}')">＋ Topical - SEO Post</button><button type="button" style="${B}" onclick="pubSeriesUse('single','${esc(src)}','${esc(id)}')">＋ Single Post</button><button type="button" style="${B}" onclick="pubSeriesUse('carousel','${esc(src)}','${esc(id)}')">＋ Carousel</button><button type="button" style="${B}" onclick="pubSeriesUse('youtube','${esc(src)}','${esc(id)}')">▶ Topical - YouTube</button>`;
+  const card = (src, x) => { const used = S.used && S.used.has(x.id);
+    return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);${used ? 'opacity:.55;' : ''}">
+      <div style="flex:1;min-width:0;">${used ? '✓ ' : ''}${esc(x.t)}${x.v ? ` <span style="color:var(--ink3);font-size:10.5px;">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta || x.url ? `<div style="font-size:10px;color:var(--ink3);margin-top:1px;">${esc(x.meta || '')}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">open ↗</a>` : ''}</div>` : ''}</div>
+      <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:260px;">${btns(src, x.id)}</div></div>`; };
+  const order = ['Claude asks', 'Your interviews', 'Pain points', 'Benefits & proof', 'Emotional benefits', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
+  const srcs = D ? order.filter(k => (D.sources[k] || []).length).concat(Object.keys(D.sources).filter(k => !order.includes(k) && D.sources[k].length)) : [];
+  S.open = S.open || {};
+  el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;"><span style="font-size:10.5px;color:var(--ink3);flex:1;">From research you already have. Each button makes an empty Development child of this Series with the idea on it (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</span><button type="button" style="${B}" onclick="pubSeriesLoad(pubAssetId, getCachedPublishAsset(pubAssetId) || {}, true)">⟳ refresh sources</button></div>
+    ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 8px;border:1px solid #d9a400;border-radius:6px;margin-bottom:6px;">
+      <b>＋ Run</b><select id="pubSrRunType" style="${SEL}max-width:300px;" onchange="pubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
+      <button type="button" style="${B}border-color:#d9a400;color:#b58900;" onclick="pubSeriesRun()">Create run</button><div id="pubSrRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--ink3);">${esc(pubSeriesRunInfoText())}</div></div>` : ''}
+    ${D ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;">
+      <b>✍ Ask Claude</b><select id="pubSrAskMode" style="${SEL}" onchange="PUB_SR.askMode=this.value;PUB_SR.askN=undefined;PUB_SR.ask=document.getElementById('pubSrAsk').value;pubSeriesDraw()"><option value="ask"${S.askMode !== 'split' ? ' selected' : ''}>write ideas for my ask</option><option value="split"${S.askMode === 'split' ? ' selected' : ''}>split my pasted list</option></select>
+      <textarea id="pubSrAsk" rows="${S.askMode === 'split' ? 6 : 2}" class="finput" placeholder="${S.askMode === 'split' ? 'Paste your list / notes here — each item becomes one post (or slide)' : 'A specific ask — Claude writes the ideas as a new Run'}" style="flex-basis:100%;box-sizing:border-box;resize:vertical;">${esc(S.ask || '')}</textarea>
+      <select id="pubSrAskN" style="${SEL}">${(S.askMode === 'split' ? [0, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] : [3, 4, 5, 6, 7, 8, 9, 10, 12]).map(k => `<option value="${k}"${k === (S.askN ?? (S.askMode === 'split' ? 0 : 6)) ? ' selected' : ''}>${k ? k + ' ideas' : 'one per item'}</option>`).join('')}</select>
+      <select id="pubSrAskShape" style="${SEL}"><option value="single"${S.askShape !== 'carousel' ? ' selected' : ''}>single posts</option><option value="carousel"${S.askShape === 'carousel' ? ' selected' : ''}>one carousel</option></select>
+      <button type="button" style="${B}" onclick="pubSeriesAsk()">${S.askMode === 'split' ? 'Split → new run' : 'Ask → new run'}</button></div>` : ''}
+    <div style="font-size:11px;color:${S.err ? '#dc2626' : 'var(--ink3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
+    ${D ? pubSeriesCatsHtml(B, SEL) : ''}
+    ${srcs.map(k => { const list = D.sources[k], open = !!S.open[k];
+      return `<div style="margin:5px 0;border:1px solid var(--border);border-radius:6px;"><div onclick="PUB_SR.open['${esc(k)}']=${open ? 'false' : 'true'};pubSeriesDraw()" style="padding:4px 8px;cursor:pointer;font-weight:600;display:flex;gap:6px;"><span style="font-size:10px;color:var(--ink3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--ink3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
+        ${open ? `<div style="padding:0 8px 4px;">${list.map(x => card(k, x)).join('')}</div>` : ''}</div>`; }).join('') || (D ? '<div style="color:var(--ink3);">No ideas found yet — save the title research, add keywords to its topic, or attach a product.</div>' : '')}`;
+}
+function pubSeriesCatsHtml(B, SEL) {
+  const S = PUB_SR, D = S.data, cats = D.cats || [];
+  if (S.catEdit) return `<div style="margin:5px 0 8px;border:1px solid #8ab4f8;border-radius:6px;padding:8px;">
+      <div style="font-weight:600;margin-bottom:4px;">🗂 Edit categories &amp; research style</div>
+      <div style="font-size:10.5px;color:var(--ink3);margin-bottom:3px;">One category per line — <b>Name :: definition</b></div>
+      <textarea id="pubSrCatsTa" rows="8" class="finput" style="width:100%;box-sizing:border-box;">${esc(cats.map(c => c.name + ' :: ' + c.def).join('\n'))}</textarea>
+      <div style="font-size:10.5px;color:var(--ink3);margin:6px 0 3px;">Research style — the spec every prompt from this series is built from</div>
+      <textarea id="pubSrStyleTa" rows="10" class="finput" style="width:100%;box-sizing:border-box;">${esc(D.style || '')}</textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button type="button" class="iconbtn" onclick="pubSeriesCatsSave()">Save</button><button type="button" class="iconbtn" onclick="PUB_SR.catEdit=false;pubSeriesDraw()">Cancel</button></div></div>`;
+  const open = !!S.open.__cats;
+  return `<div style="margin:5px 0 8px;border:1px solid #8ab4f8;border-radius:6px;">
+    <div style="padding:4px 8px;font-weight:600;display:flex;gap:6px;align-items:center;"><span onclick="PUB_SR.open.__cats=${open ? 'false' : 'true'};pubSeriesDraw()" style="cursor:pointer;flex:1;"><span style="font-size:10px;color:var(--ink3);">${open ? '▼' : '▶'}</span> 🗂 Categories <span style="font-weight:400;color:var(--ink3);">(${cats.length})${D.style ? ' · research style set' : ' · no research style yet'}</span></span>
+      <select id="pubSrCatKind" title="What the 📋 prompt asks ChatGPT to write" style="${SEL}"><option value="seo">prompt: Topical - SEO Post</option><option value="single">prompt: Single Post</option><option value="carousel">prompt: Carousel</option><option value="youtube">prompt: Topical - YouTube</option></select>
+      <button type="button" style="${B}" onclick="PUB_SR.catEdit=true;pubSeriesDraw()">✎ edit</button></div>
+    ${open ? `<div style="padding:0 8px 4px;">${cats.map(c => `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;"><b>${esc(c.name)}</b>${c.def ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:1px;">${esc(c.def)}</div>` : ''}</div>
+        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:260px;"><button type="button" style="${B}" title="Copy a ChatGPT prompt for this category (kind picked above), built from the research style" onclick="pubSeriesPrompt('${esc(c.id)}',this)">📋 ChatGPT prompt</button>${['seo', 'single', 'carousel', 'youtube'].map(k => `<button type="button" style="${B}" onclick="pubSeriesUse('${k}','__cat','${esc(c.id)}')">${{ seo: '＋ Topical - SEO Post', single: '＋ Single', carousel: '＋ Carousel', youtube: '▶ Topical - YouTube' }[k]}</button>`).join('')}</div></div>`).join('') || '<div style="color:var(--ink3);padding:4px 0;">No categories yet — ✎ edit to add them (Name :: definition, one per line).</div>'}</div>` : ''}</div>`;
+}
+async function pubSeriesCatsSave() {
+  const S = PUB_SR, D = S && S.data; if (!D) return;
+  const cats = document.getElementById('pubSrCatsTa').value.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf('::'), name = (i < 0 ? l : l.slice(0, i)).trim(), def = i < 0 ? '' : l.slice(i + 2).trim();
+    const old = (D.cats || []).find(c => c.name.toLowerCase() === name.toLowerCase()); return { id: old ? old.id : undefined, name, def }; });
+  const r = await pubSrCall('seriesCats', { titleId: S.tid, op: 'save', cats, style: document.getElementById('pubSrStyleTa').value });
+  if (r.error) { S.msg = '✗ ' + r.error; return pubSeriesDraw(); }
+  D.cats = r.cats; D.style = r.style; S.catEdit = false; S.msg = '✓ Categories saved'; pubSeriesDraw();
+}
+function pubSeriesPrompt(catId, btn) {
+  const S = PUB_SR, D = S.data, c = (D.cats || []).find(x => x.id === catId); if (!c) return;
+  const kind = (document.getElementById('pubSrCatKind') || {}).value || 'seo';
+  const task = {
+    seo: 'Write a long-form SEO article (1,500–2,200 words, H2/H3 headings, an FAQ of 4–5 questions at the end) that teaches this category through ONE worked example, walked through the research style below.',
+    single: 'Write ONE single-image social post about this category built on one example: a headline (max 10 words), an accent line (max 8 words), a 40–70 word body, a caption (80–150 words) and 5 hashtags.',
+    carousel: 'Write a 7–9 slide carousel that walks one example of this category through the research style: for each slide a headline (max 8 words) and 15–35 words of body; slide 1 is the hook, the last slide is the takeaway plus a call to action. Then a caption and 5 hashtags.',
+    youtube: 'Write a 10–12 minute YouTube script (hook, 5–7 sections, outro) that breaks down one example of this category using the research style — spoken, plain language, with on-screen callouts in [brackets].'
+  }[kind];
+  const text = `You are writing for ${CAMPAIGN_NAME || 'our hub'}.\nSeries: ${S.titleName || D.name}\nCategory: ${c.name}${c.def ? ' — ' + c.def : ''}\n\nTASK\n${task}\n\nUse a real, current example that fits this category if you can find one and cite the source. If you cannot verify one, build a clearly labelled ILLUSTRATIVE example — never present invented facts or numbers as real.\n\nRESEARCH STYLE — follow it exactly\n${D.style || '(no research style saved on this series yet)'}`;
+  navigator.clipboard.writeText(text).then(() => { if (btn) { btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 ChatGPT prompt'; }, 1800); } },
+    () => { S.msg = '✗ Clipboard blocked — the prompt is in the console'; console.log(text); pubSeriesDraw(); });
+}
+function pubSeriesRunPick(rt) {   // unused ideas, round-robin across the run type's sources (so a run mixes sources)
+  const S = PUB_SR, D = S && S.data; if (!D || !rt) return [];
+  const lists = rt.sources.map(src => (D.sources[src] || []).filter(x => !(S.used && S.used.has(x.id))).map(x => ({ id: x.id, t: x.t, src })));
+  const out = []; for (let i = 0; out.length < rt.posts && lists.some(l => l.length > i); i++) lists.forEach(l => { if (l[i] && out.length < rt.posts) out.push(l[i]); });
+  return out;
+}
+function pubSeriesRunInfoText() {
+  const S = PUB_SR, D = S && S.data; if (!D || !D.runTypes) return '';
+  const id = (document.getElementById('pubSrRunType') || {}).value || D.runTypes[0].id, rt = D.runTypes.find(r => r.id === id); if (!rt) return '';
+  const n = pubSeriesRunPick(rt).length;
+  return `${rt.formula} · ${rt.cadence} · from ${rt.sources.join(', ')} · ${n ? n + ' unused idea' + (n === 1 ? '' : 's') + ' ready' : 'no unused ideas in these sources yet'}`;
+}
+function pubSeriesRunInfo() { const el = document.getElementById('pubSrRunInfo'); if (el) el.textContent = pubSeriesRunInfoText(); }
+function pubSrBase() { const S = PUB_SR; return { titleId: S.tid, titleName: S.titleName || (S.data || {}).name, seriesAssetId: S.assetId, campaignId: CAMPAIGN_ID, productId: S.productId || undefined, slug: HUB_SLUG || undefined }; }
+async function pubSeriesRun() {
+  const S = PUB_SR, D = S && S.data; if (!D) return;
+  const rt = D.runTypes.find(r => r.id === document.getElementById('pubSrRunType').value); if (!rt) return;
+  const ideas = pubSeriesRunPick(rt); if (!ideas.length) { S.msg = '✗ No unused ideas in ' + rt.sources.join(', ') + ' — ⟳ refresh sources or attach a product'; return pubSeriesDraw(); }
+  S.msg = '⏳ Creating the ' + rt.name + '…'; pubSeriesDraw();
+  const r = await pubSrCall('seriesRun', { ...pubSrBase(), runType: rt.id, ideas, assetType: pubSrType(rt.shape === 'carousel' ? 'carousel' : 'single') });
+  if (r.error) S.msg = '✗ ' + r.error; else { S.used = new Set(r.used || []); S.msg = '✓ ' + rt.name + ' created — ' + r.posts + ' planned ' + (rt.shape === 'carousel' ? 'slides' : 'posts') + ' on one Development asset'; }
+  pubSeriesDraw();
+}
+async function pubSeriesAsk() {
+  const S = PUB_SR, D = S && S.data; if (!D) return;
+  S.ask = document.getElementById('pubSrAsk').value.trim(); S.askN = Number(document.getElementById('pubSrAskN').value) || 0; S.askShape = document.getElementById('pubSrAskShape').value;
+  const split = S.askMode === 'split';
+  if (!S.ask) { S.msg = split ? '✗ Paste the list to split' : '✗ Type what you want ideas for'; return pubSeriesDraw(); }
+  S.msg = split ? '⏳ Claude is splitting your list…' : '⏳ Asking Claude for ' + (S.askN || 6) + ' ideas…'; pubSeriesDraw();
+  const r = await pubSrCall('seriesAsk', { ...pubSrBase(), prompt: S.ask, count: S.askN, shape: S.askShape, mode: split ? 'split' : 'ask', assetType: pubSrType(S.askShape === 'carousel' ? 'carousel' : 'single') });
+  if (r.error) S.msg = '✗ ' + r.error;
+  else { S.used = new Set(r.used || []); D.sources['Claude asks'] = r.ideas.map(x => ({ id: x.id, t: x.t, meta: r.split ? 'From your list' : 'Ask: ' + r.ask.slice(0, 120) })).concat((D.sources['Claude asks'] || []).filter(x => !r.ideas.some(y => y.id === x.id)));
+    S.open['Claude asks'] = true; S.ask = ''; S.msg = '✓ Run created — ' + r.ideas.length + ' ideas on one Development asset (listed under Claude asks)'; }
+  pubSeriesDraw();
+}
+async function pubSeriesUse(kind, src, ideaId) {
+  const S = PUB_SR; if (!S || !S.data) return;
+  const cat = src === '__cat' ? (S.data.cats || []).find(c => c.id === ideaId) : null;
+  const x = cat ? { id: cat.id, t: cat.name + (cat.def ? ' — ' + cat.def : '') } : (S.data.sources[src] || []).find(i => i.id === ideaId); if (!x) return;
+  if (cat) src = 'Category: ' + cat.name;
+  S.msg = '⏳ Creating…'; pubSeriesDraw();
+  const r = await pubSrCall('seriesUseIdea', { ...pubSrBase(), ideaId, idea: x.t, source: src, kind, assetType: pubSrType(kind) });
+  if (r.error) S.msg = '✗ ' + r.error;
+  else { S.used = new Set(r.used || []); S.msg = '✓ ' + ({ single: 'Single Post', carousel: 'Carousel', seo: 'Topical - SEO Post (interview flagged)', youtube: 'Topical - YouTube' })[kind] + ' created from the idea — a Development child of this Series'; }
+  pubSeriesDraw();
 }
 let PUB_LOADED_PD = '';
 async function savePublishAssetFields() {
