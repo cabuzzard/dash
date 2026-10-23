@@ -751,9 +751,6 @@
        for a Development-stage title with none yet). Meant to eventually
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
-    <div id="reviewFlagsAll" style="margin:0 0 14px;"></div>
-    <div id="ivFlagsAll" style="margin:0 0 14px;"></div>
-    <div id="ivSyncAll" style="margin:0 0 14px;"></div>
 
     <div class="oc-sec" data-ock="alloutput"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output</h2>
@@ -5661,7 +5658,7 @@ function loadTabContentNow(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); usLoadPast(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs2' && !hubs2TabLoaded) { hubs2TabLoaded = true; renderHubs2(); }
-  if (name === 'dev2') { restoreAllOutputTables(); reviewFlagsLoad(); ivFlagsLoad(); ivSyncLoad(); }
+  if (name === 'dev2') { restoreAllOutputTables(); }   // the review / interview flag strips were removed (2026-10-22) — interview flagging moves into the hub assets table
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
   if (name === 'trades') {
