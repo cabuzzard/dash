@@ -1743,6 +1743,17 @@ function validateOfferArticle(offer,included) {
   const sections=(included.length?1:0)+[offer.whyItWorks,offer.objection,offer.terms].filter(value=>String(value||'').trim()).length;
   return validateBlogArticle([offer.promise,offer.forWho,...included,offer.whyItWorks,offer.objection,offer.terms].join(' '),sections);
 }
+// A Series child's title + blurb, written from the series row's original idea (operator 2026-10-22: "when I generate the asset from
+// the series parent it should write a title and a blurb based on the original subject matter"). One small call, text only; the
+// body stays unwritten (Write asset in the publish modal does that). Falls back to seriesIdeaHeadline on any failure.
+async function seriesChildTitleBlurb(env, { idea, source, seriesName, hubName, kind }) {
+  const shape = { seo: 'an SEO article: the title is the searcher\'s question answered as a promise, primary subject near the front', youtube: 'a YouTube video: a clear, curiosity-led video title', carousel: 'a social carousel: a scroll-stopping cover headline', single: 'a single social post: a scroll-stopping headline' }[kind] || 'a content piece';
+  const o = await hcClaude(env, `Write the TITLE and a short BLURB for one piece of content made from this idea.\n\nSERIES: ${seriesName || 'Series'}${hubName ? '\nHUB: ' + hubName : ''}\nTHE PIECE: ${shape}\nIDEA${source ? ' (from ' + source + ')' : ''}:\n${String(idea || '').slice(0, 1500)}\n\nRules: use ONLY the idea's own subject matter — invent no facts, numbers or names. Title ≤ 70 characters, plain words. Blurb: 1–2 sentences (≤ 280 characters) saying what the piece covers and why it matters to the reader.`,
+    'submit_title', { type: 'object', properties: { title: { type: 'string' }, blurb: { type: 'string' } }, required: ['title', 'blurb'] }, 400);
+  const title = String(o.title || '').trim().slice(0, 120), blurb = String(o.blurb || '').trim().slice(0, 600);
+  if (!title) throw new Error('no title');
+  return { title, blurb };
+}
 function seriesIdeaHeadline(idea,parentName) {
   const text=String(idea||''),split=text.indexOf(' — '),headline=(split>=0?text.slice(0,split):String(parentName||'Series')).trim();
   if(headline.length<=200)return headline||'Series';
@@ -19012,14 +19023,23 @@ ${JSON.stringify(products)}`;
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const idea = String(body.idea || ""), label = { single: "Single Post", carousel: "Carousel", seo: "SEO Post", youtube: "YouTube" }[body.kind] || "Asset";
+        await hubSitesMerge(env).catch(() => {});
+        const hubN = (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === String(body.campaignId || "").replace(/-/g, "")) || {}).name || "";
+        const tb = await seriesChildTitleBlurb(env, { idea, source: body.source, seriesName: body.titleName, hubName: hubN, kind: body.kind }).catch(e => { console.error("seriesChildTitleBlurb:", e.message); return null; });
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
-          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: seriesIdeaHeadline(idea, body.titleName), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: tb ? tb.title : seriesIdeaHeadline(idea, body.titleName), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        if (tb) for (const asset of r.created) {   // the written title + blurb on the asset (Platform Title + Description); the body stays unwritten
+          const hdrT = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+          await ensureDbRichTextProperty(hdrT, ASSETS_DB, "Description").catch(() => {});
+          await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(asset.id).replace(/-/g, "")), { method: "PATCH", headers: hdrT, body: JSON.stringify({ properties: {
+            "Platform Title": { rich_text: [{ type: "text", text: { content: tb.title.slice(0, 1990) } }] }, "Description": { rich_text: [{ type: "text", text: { content: tb.blurb.slice(0, 1990) } }] } } }) }).catch(e => console.error("series title/blurb save:", e.message));
+        }
         const own = await ivCreationTopicalMethod(env, body.assetType);
         if (own) for (const asset of r.created) await ivCreateForAsset(env, { assetId: asset.id, titleId, own, direction: "Series idea: " + idea });
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !/^cat:/.test(body.ideaId) && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
-        return json({ ok: true, assetId: r.created[0].id, used });
+        return json({ ok: true, assetId: r.created[0].id, used, title: tb ? tb.title : "", blurb: tb ? tb.blurb : "" });
       }
       // seriesRun {titleId, titleName, seriesAssetId, runType, ideas:[{id,t,src}], assetType, campaignId, productId, slug}
       if (body.action === "seriesRun") {
