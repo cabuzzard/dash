@@ -57,6 +57,34 @@ patterns, platform conventions, "Porting notes"/voice-fit corrections left by a 
 operator/agent pass). Read it before writing — it can override generic defaults below for this
 one method specifically.
 
+## Method work: every edit is tracked on the ONE worksheet first
+
+The Current Methods table (Information Flow tab) is the ONE worksheet for method → asset
+flow — every method decision is made there first, before it lands anywhere else. The
+Methods DB pages are the recipes: each method's procedure, in prose. Keeping the two in
+step is a standing job, and it runs in one direction only:
+
+1. **Worksheet first.** Record the decision in the method's Current Methods row (and its
+   notes rows, for procedure) before touching the recipe. If it isn't on the worksheet,
+   it isn't decided.
+2. **Then the recipe.** Update the method's Methods DB page so it matches the worksheet
+   exactly — the recipe carries the procedure, the row carries the contract.
+3. **Stamp it.** End every recipe edit by setting the recipe page's stamp line:
+   `Worksheet sync: YYYY-MM-DD — <the worksheet decision, in one line>`. An edit without a
+   fresh stamp is untracked, and untracked edits are treated as uncommitted.
+
+Cells stay clean: the contract cell holds fields, limits and format only; the inputs cell
+holds the source list only. Procedure never goes in either cell — it lives in the
+worksheet's notes rows and in the recipe page.
+
+Bounds: this covers worksheet rows and Methods DB recipes only — never the Graph, the
+Registry, or the Information Flow Contract page. Changes to the flow or to strategy still
+go through the port checklist on Evan's approval, and registering a new method
+(mapped = yes) is still Evan's call. On any disagreement between a recipe and the
+worksheet, **the worksheet wins** until Evan reconciles it — never silently split the
+difference. Recipe bodies are audited against a recorded baseline; a changed recipe whose
+stamp wasn't updated gets flagged.
+
 ## The quality bar: voice fit is the FINAL check, after format fit, not instead of it
 
 When a piece of copy has to be shortened, reworded, or compressed to fit a format constraint
