@@ -7,6 +7,11 @@ import * as nl from '../worker/newsletter-methodology.mjs';
 const source=fs.readFileSync('worker/worker.js','utf8');
 const fn=name=>{const start=source.search(new RegExp('(?:async )?function '+name+'\\('));assert.ok(start>=0,name);return source.slice(start,source.indexOf('\n}',start)+2);};
 const rt=text=>[{plain_text:text,text:{content:text}}];
+test('newsletter context queries the existing Products Campaigns relation',async()=>{
+ const id='a'.repeat(32),product={id,properties:{Name:{title:[{plain_text:'Premium Newsletter'}]}}},record={id:'b'.repeat(32),properties:{}};
+ const context=vm.createContext({hubAssetId:x=>x,hubSitesMerge:async()=>{},PRODUCTS_DB:'products',notionQuery:async(db,query)=>{assert.equal(db,'products');assert.equal(query.filter.property,'Campaigns');return[product];},kwDashId:x=>x,kwTitleOf:()=> 'Premium Newsletter',hubMainList:async()=>[id],findBestProductResearchRecord:async()=>record,newsletterHdr:()=>({}),newsletterValues:()=>({'Research Depth':''}),newsletterDepth:nl.newsletterDepth});
+ vm.runInContext(fn('newsletterContext'),context);assert.equal((await context.newsletterContext({},id)).productId,id);
+});
 test('the no-bundle Worker upload includes the newsletter module and CI uses the checked Wrangler major',()=>{const config=fs.readFileSync('worker/wrangler.toml','utf8');assert.match(config,/globs\s*=\s*\[[^\]]*"newsletter-methodology\.mjs"/);assert.match(fs.readFileSync('.github/workflows/deploy-worker.yml','utf8'),/wranglerVersion:\s*"4\./);});
 const kv=()=>{const values=new Map();return {values,get:async(key,type)=>values.has(key)?type==='json'?JSON.parse(values.get(key)):values.get(key):null,put:async(key,value,options)=>{values.set(key,value);return options;}};};
 test('newsletter settings are restricted to four Product Research fields and exact Depth options',()=>{
