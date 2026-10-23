@@ -1,5 +1,15 @@
 [
   {
+    "slug": "construction-project-health-check-independent-review",
+    "title": "Construction Project Health Check — Independent Review",
+    "intro": "You signed a contract, accepted a bid, and handed the site over to a crew you chose carefully. Now the change orders are stacking up, the schedule answers are vague, and the number on your current projection looks nothing like the number you agreed to. You are not a developer. You do not have a cons",
+    "date": "2026-10-23",
+    "assetId": "4021f7d3a4bb811da23eddcbc98ca763",
+    "contentHash": "d18d1e7de558860f22457913e8c7e37ed430910aa1206550a9e1a04cc2b5af32",
+    "contentEditedAt": "2026-10-23T19:03:00.000Z",
+    "refreshedAt": "2026-10-23T19:03:59.068Z"
+  },
+  {
     "slug": "residential-owner-s-rep-cost-is-it-worth-it",
     "title": "Residential Owner's Rep Cost — Is It Worth It?",
     "intro": "You are mid-project, the change orders are stacking up, and the number on the current cost projection looks nothing like the number you agreed to. You have heard the term \"owner's representative\" and you are trying to figure out whether hiring one is a real solution or just another expense on a proj",
@@ -18,16 +28,6 @@
     "contentHash": "9c5d9f63c1f687af726447b8ea1c557b781808c4e8b088dafe74018fb7508b3a",
     "contentEditedAt": "2026-10-23T17:43:00.000Z",
     "refreshedAt": "2026-10-23T17:43:12.904Z"
-  },
-  {
-    "slug": "construction-project-health-check-independent-review",
-    "title": "Construction Project Health Check — Independent Review",
-    "intro": "You signed a contract, accepted a bid, and handed the site over to a crew you chose carefully. Now the change orders are stacking up, the schedule answers are vague, and the number on your current projection looks nothing like the number you agreed to. You are not a developer. You do not have a cons",
-    "date": "2026-10-23",
-    "assetId": "4021f7d3a4bb811da23eddcbc98ca763",
-    "contentHash": "22002292756de0527e18cab27458a34a52b1083088e96d562b00e9d5c75b5166",
-    "contentEditedAt": "2026-10-23T17:41:00.000Z",
-    "refreshedAt": "2026-10-23T17:41:20.465Z"
   },
   {
     "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",
