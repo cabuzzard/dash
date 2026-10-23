@@ -12076,9 +12076,17 @@ function hubCheckMove(i, d) { const j = i + d; if (j < 0 || j >= HUBCHECK_COLS.l
 function hubCheckRemove(i) { HUBCHECK_COLS.splice(i, 1); hubCheckSave(); renderHubChecklist(); }
 function hubCheckOpen(i, j, kind) {
   const h = HUB_SITES.filter(x => x.campaignId)[i], t = HUBCHECK_COLS[j]; if (!h || !t) return;
-  kind = kind === 'dev' ? 'dev' : 'live';
-  HUBCHECK_OPEN = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t && HUBCHECK_OPEN.kind === kind ? null : { slug: h.slug, t, kind };
-  renderHubChecklist();
+  // A count opens the All Output table filtered to that hub + asset type (its two filter slots), and scrolls to it.
+  const { cells, dev } = hubCheckData(), k = h.slug + '|' + t, rows = [...(cells[k] || []), ...(dev[k] || [])];
+  if (!rows.length) return;
+  const hubVal = dev2Val(rows[0], 'hub'), shown = new Set(rows.map(r => dev2Val(r, 'assetType')));
+  DEV2_F = [{ col: 'hub', val: hubVal }, shown.size === 1 ? { col: 'assetType', val: [...shown][0] } : { col: 'rawAssetType', val: t }];
+  HUBCHECK_OPEN = { slug: h.slug, t, kind: kind === 'dev' ? 'dev' : 'live' };
+  try { dev2SaveState(); } catch (e) {}
+  dev2OnFilterChange(); dev2DrawPanel(); renderHubChecklist();
+  const sec = document.querySelector('.oc-sec[data-ock="alloutput"]');
+  const bd = sec && sec.querySelector('.oc-bd'); if (bd && bd.style.display === 'none') ocToggle(null, sec.querySelector('.oc-hd'));   // open All Output if collapsed
+  const target = document.getElementById('dev2Content'); if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function renderHubChecklist() {
   const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
@@ -12108,9 +12116,7 @@ function renderHubChecklist() {
   html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td>${cols.map(t => `<td style="${td}">${pair(hubs.reduce((a, h) => a + n(h.slug, t), 0), hubs.reduce((a, h) => a + nd(h.slug, t), 0))}</td>`).join('')}`
     + `<td style="${td}">${pair(hubs.reduce((a, h) => a + cols.reduce((b, t) => b + n(h.slug, t), 0), 0), hubs.reduce((a, h) => a + cols.reduce((b, t) => b + nd(h.slug, t), 0), 0))}</td></tr></tbody></table></div>`;
   body.innerHTML = html;
-  const isDev = HUBCHECK_OPEN && HUBCHECK_OPEN.kind === 'dev', open = HUBCHECK_OPEN && (isDev ? dev : cells)[HUBCHECK_OPEN.slug + '|' + HUBCHECK_OPEN.t];
-  list.innerHTML = open ? `<div style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:8px 10px;"><b>${esc(HUBCHECK_OPEN.t)}</b> — ${esc(HUBCHECK_OPEN.slug)} (${open.length} ${isDev ? 'not yet published' : 'published'})<ul style="margin:6px 0 0 18px;padding:0;">`
-    + open.map(r => `<li>${r.hubLiveUrl ? `<a href="${esc(r.hubLiveUrl)}" target="_blank" rel="noopener">${esc(r.assetName || r.title || r.assetId)}</a>` : esc(r.assetName || r.title || r.assetId)}</li>`).join('') + '</ul></div>' : '';
+  list.innerHTML = HUBCHECK_OPEN ? `<div style="font-size:11.5px;color:var(--text2);">All Output below is filtered to <b>${esc(HUBCHECK_OPEN.slug)}</b> · <b>${esc(HUBCHECK_OPEN.t)}</b> — clear it with the table's ⚙ filter panel → Clear filters.</div>` : '';
 }
 async function loadDev2() {
   hpInit();
