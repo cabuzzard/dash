@@ -8204,7 +8204,7 @@ function pubDigestPaint() {
     + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button type="button" class="iconbtn" ${np + nf + nn ? '' : 'disabled'} style="font-size:11px;padding:3px 10px;" onclick="pubDigestGenerate(this)">⚙ Disseminate — ${np ? 'Premium issue (' + np + ')' : 'no Premium'} · ${nf ? 'Free issue (' + nf + ')' : 'no Free'} · ${nn} News post${nn === 1 ? '' : 's'}</button><span id="pubDigestMsg" style="font-size:10.5px;color:var(--ink3);"></span></div>`
     + (kids.length ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : '');
 }
-function pubDigestOpenChild(id) { if (getCachedPublishAsset(id)) openPublishAssetModal(id); else window.open('https://www.notion.so/' + id, '_blank', 'noopener'); }
+async function pubDigestOpenChild(id) { try { if(!getCachedPublishAsset(id))PUB_ASSET_CACHE[id]=await w('getAsset',{assetId:id});openPublishAssetModal(id); } catch(error) { pubDigestMsg('Could not open issue: '+error.message,true); } }
 async function pubDigestCheck(itemId, target, on) {
   const d = PUB_DIG; if (!d) return; delete d.requestId; d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; pubDigestPaint();
   try { await w('digestCheck', { assetId: d.assetId, itemId, target, on }); }
@@ -8218,6 +8218,7 @@ async function pubDigestGenerate(btn) {
     const m = r.made || {}, parts = [m.premium && 'Premium issue', m.free && 'Free issue', (m.news || []).length && m.news.length + ' News post' + (m.news.length === 1 ? '' : 's') + ' queued'].filter(Boolean);
     const violations=(r.outcomes||[]).flatMap(x=>(x.violations||[]).map(v=>x.kind+': '+v));
     pubDigestMsg((parts.length ? '✓ ' + parts.join(' · ') + ' — each at Development'+(violations.length?' · Saved with violations: '+violations.join('; '):'') : 'Nothing made') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length);
+    const panel=PUB_NL;if(panel&&panel.assetId===d.assetId)w('getNewsletterSettings',{assetId:d.assetId,campaignId:CAMPAIGN_ID}).then(fresh=>{if(PUB_NL===panel){Object.assign(panel,fresh);pubNewsletterPaint();}}).catch(error=>{if(PUB_DIG===d)pubDigestMsg('Issues saved; goal refresh unavailable: '+error.message,true);});
   } catch (e) { btn.disabled = false; btn.textContent = '⚙ Disseminate'; pubDigestMsg(e.message, true); }
 }
 async function pubDigestReviewSet(box) {   // the Review box: checked = Review, unchecked = Development (saved at once)
