@@ -1,5 +1,15 @@
 [
   {
+    "slug": "medicare-advantage-vs-medigap-which-one-actually-fits-you",
+    "title": "Medicare Advantage vs. Medigap: Which One Actually Fits You",
+    "intro": "You've read the mailers. You've watched the TV ads. You've possibly spent an afternoon on Medicare.gov and emerged more confused than when you started. That's not a sign you're bad at research — it's a sign that almost every source you've found was built by someone who earns money when you enroll in",
+    "date": "2026-10-23",
+    "assetId": "4021f7d3a4bb811d9e5ee7f130916706",
+    "contentHash": "52192fa1c0db5ec9bf294b1ff2a73566a38fdc3dc63c04562d55cfd5b91394f6",
+    "contentEditedAt": "2026-10-23T19:25:00.000Z",
+    "refreshedAt": "2026-10-23T19:25:36.552Z"
+  },
+  {
     "slug": "switching-from-medicare-advantage-to-medigap-what-to-know",
     "title": "Switching From Medicare Advantage to Medigap: What to Know",
     "intro": "You enrolled in Medicare Advantage because the math looked right at the time — low premium, benefits bundled in, easy to say yes. Now something has shifted. Maybe your specialist left the network. Maybe you had a hospital stay and saw what \"out-of-pocket maximum\" actually means in real dollars. Mayb",
@@ -12,16 +22,6 @@
     "intro": "You've done the right things. You searched for help, maybe filled out a form, possibly called a number from a mailer. Now you're getting fifteen calls a day and every person on the line sounds helpful, patient, and knowledgeable — and every conversation ends with a plan recommendation. What nobody m",
     "date": "2026-10-23",
     "assetId": "4021f7d3a4bb81d69516e9b65a55dadf"
-  },
-  {
-    "slug": "medicare-advantage-vs-medigap-which-one-actually-fits-you",
-    "title": "Medicare Advantage vs. Medigap: Which One Actually Fits You",
-    "intro": "You've read the mailers. You've watched the TV ads. You've possibly spent an afternoon on Medicare.gov and emerged more confused than when you started. That's not a sign you're bad at research — it's a sign that almost every source you've found was built by someone who earns money when you enroll in",
-    "date": "2026-10-23",
-    "assetId": "4021f7d3a4bb811d9e5ee7f130916706",
-    "contentHash": "21f810c61d4b4d76410ee626b024bfde6463a054edd8d0669a784fba57b4cf16",
-    "contentEditedAt": "2026-10-23T17:52:00.000Z",
-    "refreshedAt": "2026-10-23T17:52:34.996Z"
   },
   {
     "slug": "the-medicare-clarity-premium-newsletter",
