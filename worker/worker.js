@@ -13737,8 +13737,8 @@ async function adStep(env, cid, S, invoke) {
     await digestItemsSave(env, S.assetId, w.sources).catch(e => console.error("digestItemsSave:", e.message));   // its findings, premium / free, for the Digest section
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
       "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
-    await env.TRADES.delete("digest:asset:" + cid);
-    await adEnsureBlank(env, cid, S.titleId, S.name, invoke).catch(() => {});   // next week's blank
+    // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
+    // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
     S.items = w.sources.length; S.step = "done"; return;
   }
