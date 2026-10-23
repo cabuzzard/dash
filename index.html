@@ -12632,7 +12632,7 @@ function renderDev2() {
         const s = DEV2_SORT[sortIdx];
         arrow = ' ' + (s.custom ? '✥' : s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
       }
-      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+      return `<th draggable="true" data-col="${c.key}" ondragstart="dev2ColDragStart(event,'${c.key}')" ondragover="event.preventDefault()" ondrop="dev2ColDrop(event,'${c.key}')" onclick="dev2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
     }).join('')}
   </tr>`;
 
@@ -12646,7 +12646,7 @@ function renderDev2() {
     const titleCell = !r.titleId && !r.assetId ? dash : r.assetId
       ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(r.assetId)}" target="_blank" rel="noopener" title="${esc(titleText || 'Untitled')} — open in the publish modal" style="${titleClip}color:var(--accent);text-decoration:none;">${esc(titleText || 'Untitled')}</a>`
       : `<span title="${esc(titleText || 'Untitled')}" style="${titleClip}">${esc(titleText || 'Untitled')}</span>`;
-    const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? compactBtn('Asset ' + (assetOrdinal[r.assetId] || 1), 'Open asset name') : dash;
+    const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(r.assetName || 'Untitled')} — click to edit" style="padding:0;border:0;background:transparent;color:var(--text);font:inherit;cursor:pointer;display:inline-block;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;text-align:left;">${esc(r.assetName || 'Untitled')}</button>` : dash;
     const assetTypeCell = r.assetId ? esc(r.assetType || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
@@ -12702,7 +12702,20 @@ function renderDev2() {
   }
 
   el.innerHTML = `<div style="overflow-x:auto;"><table class="dev2-nowrap" style="width:100%;border-collapse:collapse;"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+  dev2ApplyColOrder(el);
   dev2NoWrap(el);
+}
+// All Output column order (operator 2026-10-22: drag the columns): drag a header onto another to move it there. Kept in this browser
+// (localStorage dev2ColOrder). Rows render in DEV2_COLS order and are rearranged here, so sort / filter / grouping are untouched.
+let DEV2_COL_DRAG = '';
+function dev2ColOrder() { let o = []; try { o = JSON.parse(localStorage.getItem('dev2ColOrder') || '[]'); } catch (e) {} const keys = DEV2_COLS.map(c => c.key); o = o.filter(k => keys.includes(k)); keys.forEach(k => { if (!o.includes(k)) o.push(k); }); return o; }
+function dev2ColDragStart(ev, key) { DEV2_COL_DRAG = key; try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', key); } catch (e) {} }
+function dev2ColDrop(ev, key) { ev.preventDefault(); const from = DEV2_COL_DRAG; DEV2_COL_DRAG = ''; if (!from || from === key) return; const o = dev2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('dev2ColOrder', JSON.stringify(o)); } catch (e) {} renderDev2(); }
+function dev2ApplyColOrder(el) {
+  const keys = DEV2_COLS.map(c => c.key), o = dev2ColOrder(); if (o.every((k, i) => k === keys[i])) return;
+  const perm = o.map(k => keys.indexOf(k) + 1), n = keys.length + 1;   // +1: the leading checkbox cell stays first
+  el.querySelectorAll('table.dev2-nowrap tr').forEach(tr => { const cs = [...tr.children]; if (cs.length !== n) return;   // group header rows (one colspan cell) are left as they are
+    perm.forEach(i => tr.appendChild(cs[i])); });
 }
 
 // ── DEVELOPMENT ──────────────────────────────────────────────────────
