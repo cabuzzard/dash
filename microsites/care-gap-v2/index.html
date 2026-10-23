@@ -1087,6 +1087,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:10px;"><input type="checkbox" id="pubPublishToHub" disabled> Publish to hub</label>
           <div id="pubPublishToHubState" style="font-size:10.5px;color:var(--ink3);margin-top:4px;"></div>
         </div>
+        <div id="pubDigestWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:12px;">📰 Digest — disseminate</b><span id="pubDigestState" style="font-size:10.5px;color:var(--ink3);"></span>
+            <button type="button" id="pubDigestUnreview" class="iconbtn" style="margin-left:auto;font-size:10.5px;padding:2px 9px;" onclick="pubDigestUnreview(this)">✓ Remove Review status</button></div>
+          <div style="font-size:10.5px;color:var(--ink3);margin:4px 0 6px;">This week's research, pre-sorted Premium / Free. Tick each finding for where it goes, then ⚙ Disseminate: one Premium issue, one Free issue, one News post per ticked finding — each its own asset at Development.</div>
+          <div id="pubDigestBody" style="font-size:11.5px;"></div>
+        </div>
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);">📍 Content Hub <span style="color:var(--ink3);">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
           <select id="pubContentHub" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
@@ -6507,6 +6513,7 @@ function openPublishAssetModal(assetId) {
     document.getElementById('pubPostImageSource').value = data.postImageSource || '';
   }
 
+  pubDigestLoad(assetId, data);
   const hubWrap = document.getElementById('pubHubWrap');
   const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
   hubWrap.style.display = isHubOffer ? 'block' : 'none';
@@ -8112,6 +8119,66 @@ async function pubSpSave() {
   if (!PUB_SP_LOADED || PUB_SP_LOADED !== pubAssetId) return 0;
   const r = await w('saveSinglePostFields', { assetId: pubAssetId, fields: pubSpFields() });
   return r.learned || 0;
+}
+// ── Digest parent in the Publish modal (operator 2026-10-22): the findings pre-sorted Premium / Free, a checkbox per target
+// (publish to Premium · publish to Free · write a News post), ⚙ Disseminate → digestGenerate makes each child its own
+// Development asset. ✓ Remove Review drops the parent back to Development. Worker: getDigests · digestCheck · digestGenerate.
+let PUB_DIG = null;
+function pubIsDigest(data) { return /^digest( parent)?$/i.test(data.type || '') || /^digest$/i.test(data.pillarType || ''); }
+async function pubDigestLoad(assetId, data) {
+  const wrap = document.getElementById('pubDigestWrap'); PUB_DIG = null;
+  if (!pubIsDigest(data)) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block'; document.getElementById('pubDigestBody').innerHTML = '<span style="color:var(--ink3);">Loading findings…</span>';
+  pubDigestStatusLine(data.status);
+  try { const r = await w('getDigests', { campaignId: CAMPAIGN_ID }); if (pubAssetId !== assetId) return;
+    PUB_DIG = (r.digests || []).find(d => normalizedRecordId(d.assetId) === normalizedRecordId(assetId)) || { assetId: normalizedRecordId(assetId), items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+    pubDigestPaint(); }
+  catch (e) { document.getElementById('pubDigestBody').innerHTML = '<span style="color:#dc2626;">' + esc(e.message) + '</span>'; }
+}
+function pubDigestStatusLine(st) {
+  document.getElementById('pubDigestState').textContent = st ? 'Status: ' + st : '';
+  document.getElementById('pubDigestUnreview').style.display = st === 'Review' ? '' : 'none';
+}
+function pubDigestMsg(text, bad) { const m = document.getElementById('pubDigestMsg'); if (m) { m.style.color = bad ? '#dc2626' : '#16a34a'; m.textContent = text; } }
+function pubDigestPaint() {
+  const d = PUB_DIG, el = document.getElementById('pubDigestBody'); if (!d) return;
+  const items = d.items || [], checks = d.checks || {}, ch = d.children || { premium: [], free: [], news: [] };
+  if (!items.length) { el.innerHTML = '<span style="color:var(--ink3);">No findings stored for this digest yet — they arrive with the weekly rewrite.</span>'; return; }
+  const used = { premium: new Set(ch.premium.flatMap(c => c.items || [])), free: new Set(ch.free.flatMap(c => c.items || [])), news: new Set(ch.news.map(c => c.itemId)) };
+  const box = (x, t, label) => { const on = !!(checks[x.id] || {})[t];
+    return `<label style="display:inline-flex;gap:3px;align-items:center;font-size:10.5px;white-space:nowrap;cursor:pointer;"><input type="checkbox" ${on ? 'checked' : ''} onchange="pubDigestCheck('${esc(x.id)}','${t}',this.checked)">${label}${used[t].has(x.id) ? ' ✓' : ''}</label>`; };
+  const row = x => `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;"><div>${esc(x.claim)}</div><div style="font-size:10px;color:var(--ink3);">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">source ↗</a>` : ''}</div></div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">${box(x, 'premium', 'Publish to Premium')}${box(x, 'free', 'Publish to Free')}${box(x, 'news', 'Write a News post')}</div></div>`;
+  const grp = (label, list) => list.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin:8px 0 2px;">${label} (${list.length})</div>` + list.map(row).join('') : '';
+  const n = t => items.filter(x => (checks[x.id] || {})[t]).length, np = n('premium'), nf = n('free'), nn = n('news');
+  const kids = [...ch.premium.map((c, i) => ['★ Premium issue ' + (i + 1), c.assetId]), ...ch.free.map((c, i) => ['Free issue ' + (i + 1), c.assetId]),
+    ...ch.news.map(c => { const it = items.find(x => x.id === c.itemId); return ['📰 ' + (it ? it.claim : 'news post').slice(0, 40) + (c.assetId ? '' : c.state === 'error' ? ' ✗' : ' ⏳'), c.assetId]; })]
+    .map(([t, id]) => id ? `<a href="#" onclick="event.preventDefault();pubDigestOpenChild('${esc(id)}')">${esc(t)}</a>` : esc(t));
+  el.innerHTML = grp('Premium', items.filter(x => x.split === 'premium')) + grp('Free', items.filter(x => x.split !== 'premium'))
+    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button type="button" class="iconbtn" ${np + nf + nn ? '' : 'disabled'} style="font-size:11px;padding:3px 10px;" onclick="pubDigestGenerate(this)">⚙ Disseminate — ${np ? 'Premium issue (' + np + ')' : 'no Premium'} · ${nf ? 'Free issue (' + nf + ')' : 'no Free'} · ${nn} News post${nn === 1 ? '' : 's'}</button><span id="pubDigestMsg" style="font-size:10.5px;color:var(--ink3);"></span></div>`
+    + (kids.length ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : '');
+}
+function pubDigestOpenChild(id) { if (getCachedPublishAsset(id)) openPublishAssetModal(id); else window.open('https://www.notion.so/' + id, '_blank', 'noopener'); }
+async function pubDigestCheck(itemId, target, on) {
+  const d = PUB_DIG; if (!d) return; d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; pubDigestPaint();
+  try { await w('digestCheck', { assetId: d.assetId, itemId, target, on }); }
+  catch (e) { d.checks[itemId][target] = !on; pubDigestPaint(); pubDigestMsg('Not saved: ' + e.message, true); }
+}
+async function pubDigestGenerate(btn) {
+  const d = PUB_DIG; if (!d) return; btn.disabled = true; btn.textContent = '⏳ Writing the ticked children…';
+  try { const r = await w('digestGenerate', { assetId: d.assetId, campaignId: CAMPAIGN_ID });
+    d.children = r.children || d.children; d.checks = r.checks || d.checks; pubDigestPaint();
+    const m = r.made || {}, parts = [m.premium && 'Premium issue', m.free && 'Free issue', (m.news || []).length && m.news.length + ' News post' + (m.news.length === 1 ? '' : 's') + ' queued'].filter(Boolean);
+    pubDigestMsg((parts.length ? '✓ ' + parts.join(' · ') + ' — each at Development' : 'Nothing made') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length);
+  } catch (e) { btn.disabled = false; btn.textContent = '⚙ Disseminate'; pubDigestMsg(e.message, true); }
+}
+async function pubDigestUnreview(btn) {
+  const id = pubAssetId; btn.disabled = true;
+  try { await w('updateAllOutputField', { kind: 'asset', field: 'status', assetId: id, value: 'Development' });
+    document.getElementById('pubStatus').value = 'Development'; if (PUB_ASSET_CACHE[id]) PUB_ASSET_CACHE[id].status = 'Development'; pubDigestStatusLine('Development'); }
+  catch (e) { alert('Not changed: ' + e.message); }
+  btn.disabled = false;
 }
 let PUB_LOADED_PD = '';
 async function savePublishAssetFields() {
