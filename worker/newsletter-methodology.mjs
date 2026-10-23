@@ -1,10 +1,10 @@
 // Helpers for the existing digest flow. Current Methods remains the contract authority.
 export const NEWSLETTER_FIELDS = ['Subscriber Benefit','Value Proposition','Research Focus','Research Depth'];
-export const NEWSLETTER_DEPTHS = ['Deep','Standard','Off'];
+export const NEWSLETTER_DEPTHS = ['Deep','Standard','Free','Off'];   // Free = free news sources only, no research calls (2026-10-23)
 export const newsletterIssueType = type => /^newsletter (paid|free)$/i.test(String(type||''));
 export function newsletterDepth(value) {
   if(!value)return 'Deep';
-  if(!NEWSLETTER_DEPTHS.includes(value))throw new Error('Research Depth must be Deep, Standard or Off');
+  if(!NEWSLETTER_DEPTHS.includes(value))throw new Error('Research Depth must be Deep, Standard, Free or Off');
   return value;
 }
 export function newsletterSetting(field,value) {

@@ -28,9 +28,9 @@ test('the no-bundle Worker upload includes the newsletter module and CI uses the
 const kv=()=>{const values=new Map();return {values,get:async(key,type)=>values.has(key)?type==='json'?JSON.parse(values.get(key)):values.get(key):null,put:async(key,value,options)=>{values.set(key,value);return options;}};};
 test('newsletter settings are restricted to four Product Research fields and exact Depth options',()=>{
  assert.equal(nl.newsletterDepth(''),'Deep');
- for(const depth of ['Deep','Standard','Off'])assert.equal(nl.newsletterSetting('Research Depth',depth),depth);
+ for(const depth of ['Deep','Standard','Free','Off'])assert.equal(nl.newsletterSetting('Research Depth',depth),depth);
  for(const field of ['Status','Customer','Name','Newsletter Benefit'])assert.throws(()=>nl.newsletterSetting(field,'x'),/not allowed/);
- assert.throws(()=>nl.newsletterSetting('Research Depth','deep'),/Deep, Standard or Off/);
+ assert.throws(()=>nl.newsletterSetting('Research Depth','deep'),/Deep, Standard, Free or Off/);
  assert.throws(()=>nl.newsletterSetting('Research Focus','x'.repeat(12001)),/12000/);
 });
 test('source checks follow public redirects, cache reachability for seven days, and never fetch private destinations',async()=>{

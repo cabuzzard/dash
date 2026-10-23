@@ -1224,7 +1224,8 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const pg = await fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: hdrN }).then(r => r.json()).catch(() => ({}));
     const name = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
     const desc = (pg.properties?.Description?.rich_text || []).map(t => t.plain_text).join("").trim();
-    if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, desc });
+    const kw = (pg.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").split(/[,\n]/).map(x => x.trim()).filter(Boolean).slice(0, 3);
+    if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, desc, kw });
   }
   if (!mains.length) return { error: "no main products", hub: hub.name };
   const audienceN = await hubAudienceBlock(env, cid);
@@ -1241,7 +1242,13 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
     const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.${digestBlock}`;
-    const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
+    // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
+    const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
+    const story = (await freeNewsSearch(env, [product.name, ...(product.kw || [])], { days: 7, max: 8 }).catch(() => [])).find(x => !used.includes(x.url));
+    if (story) await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {});
+    const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: story ? story.title : product.name,
+      newsBody: story ? lead + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}` : lead,
+      ...(story ? { newsSource: [story.publisher, story.url].filter(Boolean).join(" "), newsDate: story.date || "" } : {}), allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
   }
@@ -14050,8 +14057,60 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
   if (!pa || pa.error || !pa.id) throw new Error("blank digest asset: " + ((pa && pa.error) || "no id"));
   const id = String(pa.id).replace(/-/g, ""); await env.TRADES.put(key, id); return id;
 }
+// ── FREE NEWS TIER (operator 2026-10-23: "anything free should be in that tier … premium doesn't even run unless I get sign ups").
+// Free sources only — Google News RSS search (no key) + GDELT DOC 2.0 (open API) — last 7 days, English, deduped, ranked by keyword
+// overlap + recency. Zero model calls. Used by: the weekly digest when Research Depth is Free (or when Deep/Standard is gated off for a
+// hub with no newsletter sign-ups), and the hub news cron, which now builds each News SEO post on one real, current article.
+function fnTokens(s) { return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 3)); }
+function fnDecode(s) { return String(s || "").replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").trim(); }
+async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
+  const qs = [...new Set((queries || []).map(q => String(q || "").trim()).filter(q => q.length > 2))].slice(0, 6), seen = new Set(), items = [];
+  const add = x => { const key = (x.url || "").split("?")[0].toLowerCase() || x.title.toLowerCase(); if (!x.title || seen.has(key) || seen.has(x.title.toLowerCase())) return; seen.add(key); seen.add(x.title.toLowerCase()); items.push(x); };
+  const since = Date.now() - days * 86400e3;
+  for (const q of qs) {
+    try {   // Google News RSS — one public search feed per query
+      const xml = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:" + days + "d")}&hl=en-US&gl=US&ceid=US:en`, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }).then(r => r.ok ? r.text() : "");
+      for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+        const it = m[1], g = re => fnDecode((it.match(re) || [])[1] || "");
+        const src = it.match(/<source[^>]*>([\s\S]*?)<\/source>/), title = g(/<title>([\s\S]*?)<\/title>/).replace(/\s+-\s+[^-]+$/, "");
+        const date = Date.parse(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (date && date < since) continue;
+        add({ title, url: g(/<link>([\s\S]*?)<\/link>/), publisher: src ? fnDecode(src[1]) : "", date: date ? new Date(date).toISOString().slice(0, 10) : "", q, via: "Google News" });
+      }
+    } catch (e) {}
+    try {   // GDELT DOC 2.0 — open global news index
+      const j = await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent('"' + q + '" sourcelang:english')}&mode=artlist&maxrecords=15&format=json&timespan=${days}d`).then(r => r.ok ? r.json() : null).catch(() => null);
+      for (const a of (j && j.articles) || []) { const sd = String(a.seendate || ""), d = sd ? sd.slice(0, 4) + "-" + sd.slice(4, 6) + "-" + sd.slice(6, 8) : "";
+        add({ title: fnDecode(a.title), url: a.url, publisher: a.domain || "", date: d, q, via: "GDELT" }); }
+    } catch (e) {}
+  }
+  const want = fnTokens(qs.join(" "));
+  return items.map(x => { let hit = 0; fnTokens(x.title).forEach(w => { if (want.has(w)) hit++; }); const age = x.date ? (Date.now() - Date.parse(x.date)) / 86400e3 : days;
+    return { ...x, score: hit * 10 + Math.max(0, days - age) }; }).filter(x => x.score >= 10).sort((a, b) => b.score - a.score).slice(0, max);
+}
+// the hub's weekly digest from free news: findings (all Free split) + a plain digest body — no model call
+async function freeNewsDigest(env, hubName, keywords) {
+  const found = await freeNewsSearch(env, keywords, { days: 7, max: 12 });
+  const sources = found.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free" }));
+  const digest = sources.length ? `## This week for ${hubName}\n\n` + sources.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n")
+    : `No qualifying news found this week for ${hubName}.`;
+  return { digest, sources };
+}
+// active subscribers on the hub's ActiveCampaign newsletter list (KV hub:aclist:<slug>) — cached 6 h; any failure counts as 0
+async function hubListSubscribers(env, cid) {
+  await hubSitesMerge(env).catch(() => {});
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === String(cid || "").replace(/-/g, "")); if (!hub) return 0;
+  const ck = "aclist:subs:" + hub.slug, c = await env.TRADES.get(ck, "json").catch(() => null); if (c && Date.now() - c.at < 6 * 3600e3) return c.n;
+  let n = 0;
+  try { const listId = await env.TRADES.get("hub:aclist:" + hub.slug), { url, key } = acCreds(env);
+    if (listId && url && key) { const j = await fetch(`${url}/api/3/contacts?listid=${encodeURIComponent(listId)}&status=1&limit=1`, { headers: { "Api-Token": key } }).then(r => r.ok ? r.json() : null);
+      n = Number(j && j.meta && j.meta.total) || 0; } } catch (e) { n = 0; }
+  await env.TRADES.put(ck, JSON.stringify({ n, at: Date.now() }), { expirationTtl: 86400 }).catch(() => {});
+  return n;
+}
 async function adStep(env, cid, S, invoke) {
-  if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};}
+  if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};
+    // operator 2026-10-23: premium research doesn't run until the hub has sign-ups — Deep / Standard drop to Free for this run
+    const set=S.newsletter.fields['Research Depth'];if(set==='Deep'||set==='Standard'){const subs=await hubListSubscribers(env,cid);S.subscribers=subs;if(!(subs>0)){S.newsletter.fields['Research Depth']='Free';S.depthNote=`${set} set, but the newsletter list has no sign-ups yet — ran on the Free news tier`;}}}
   if(S.newsletter.fields['Research Depth']==='Off'){const prior=S.jobId?await env.TRADES.get('digres:'+S.jobId,'json'):null;await newsletterUsage(env,{...(prior||{}),id:prior?.id||'off:'+cid+':'+S.period,campaignId:cid,newsletter:S.newsletter},'research',{status:'skipped',error:'Research Depth Off: no further provider calls'},false);S.step='skip';S.note='Research Depth Off: no further provider calls; operator inputs and last good digest retained.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
@@ -14062,6 +14121,7 @@ async function adStep(env, cid, S, invoke) {
     if (!prods.length) { S.step = "skip"; S.note = "main offerings not found"; return; }
     const kws = hcUniq([...prods.flatMap(p => [kwNorm(p.name), ...p.keywords])]).slice(0, 30);
     S.mainIds = prods.map(p => p.id); S.names = prods.map(p => p.name);
+    if (S.newsletter.fields['Research Depth'] === 'Free') { S.freeKeywords = kws; S.step = 'write'; return; }   // free news tier: no paid research job
     const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords: kws,runKind:S.manual?'manual':'weekly',periodKey:S.period,
       guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
@@ -14075,9 +14135,10 @@ async function adStep(env, cid, S, invoke) {
   }
   if (S.step === "rank" || S.step === "title") { S.step = "write"; return; }   // (older runs) — the title is permanent now
   if (S.step === "write" || S.step === "pillar") {   // Perplexity ranks + writes (no Claude) → this week's Digest asset under the permanent title
-    const job = await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
+    const free = S.newsletter && S.newsletter.fields['Research Depth'] === 'Free';
+    const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
     S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
-    const w = await adPerplexityDigest(env, job, S.names);
+    const w = free ? await freeNewsDigest(env, S.name, S.freeKeywords || []) : await adPerplexityDigest(env, job, S.names);
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
     const label = adPeriod().label;
     S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
