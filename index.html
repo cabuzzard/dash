@@ -12061,7 +12061,7 @@ function hubCheckData() {
     if (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic) continue;   // only assets on synced, live, placed titles + products
     types.add(t);
     const k = h.slug + '|' + t;
-    if (r.assetStatus === 'Published') (cells[k] = cells[k] || []).push(r);   // published
+    if (r.assetStatus === 'Published' || / parent$/i.test(t)) (cells[k] = cells[k] || []).push(r);   // published — a parent asset counts as published once it exists
     else (dev[k] = dev[k] || []).push(r);                                    // not yet published (Development / Review / Publish / Planning)
   }
   return { types: [...types].sort((a, b) => a.localeCompare(b)), cells, dev };
