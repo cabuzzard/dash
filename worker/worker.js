@@ -13546,6 +13546,62 @@ const RUN_TYPES = [
   { id: "seasonal", group: "Timely & engagement", name: "Seasonal calendar", shape: "single", posts: 4, cadence: "monthly set", sources: ["Title research", "Search questions", "What's new (Digest)"], formula: "'It's <month> — here's what to do now'" },
   { id: "challenge", group: "Timely & engagement", name: "7-day challenge", shape: "single", posts: 7, cadence: "daily for a week", sources: ["Title research", "Your interviews", "Search questions"], formula: "Day n task → small win → share prompt" },
 ];
+// ── SERIES STRATEGY RANKING (operator 2026-10-23: "the series format needs a step in which hub strategy is considered in the
+// ranking of topics"). Two layers over the Series' gathered ideas (seriesIdeas):
+//   1. free scoring — overlap with the hub's main keywords + the Series topic keywords + the ★ product's name/research terms,
+//      search volume, a penalty for repeating a title/post the hub already has, per-source cap → a shortlist of ≤ 30;
+//   2. ONE ranking call (text only, no web) against a compact hub-strategy summary (campaign Statement / Unique Opportunity /
+//      Keywords + the product's Customer / Pain Points / Benefits) → the top 10, each {score, type, stage, why}.
+// Cached in KV seriesrank:<titleId> for 24 h, keyed to the ideas' timestamp; only runs when asked (never on page load).
+const SR_RANK_SOURCES = ["Search questions", "Pain points", "Benefits & proof", "Emotional benefits", "Title research", "Google autocomplete", "YouTube autocomplete", "Reddit", "What's new (Digest)", "Your interviews", "Claude asks"];
+function srTokens(s) { return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 3 && !SR_STOP.has(w))); }
+const SR_STOP = new Set(["that", "this", "with", "your", "from", "they", "their", "have", "what", "when", "which", "will", "would", "into", "about", "more", "than", "them", "were", "there", "these", "those", "does", "doesn", "just", "like", "also", "over", "only", "very", "much", "many", "some", "most", "make", "made", "need", "best"]);
+async function seriesStrategy(env, titleId) {
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+  const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(titleId), { headers: hdr }).then(r => r.json());
+  const tp = (pg && pg.properties) || {}, cid = String((tp.Campaign?.relation || [])[0]?.id || "").replace(/-/g, ""), pid = String((tp.Product?.relation || [])[0]?.id || "").replace(/-/g, "");
+  const camp = cid ? await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } }).catch(() => []) : [];
+  const first = k => { for (const r of camp) { const v = trRt(r.properties, k); if (v) return v; } return ""; };
+  let prod = {}; if (pid) { try { const rr = await findBestProductResearchRecord(hdr, pid); if (rr && rr.properties) prod = rr.properties; } catch (e) {} }
+  let productName = ""; if (pid) { try { const pp = await fetch("https://api.notion.com/v1/pages/" + kwDashId(pid), { headers: hdr }).then(r => r.json()); productName = (pp.properties?.Name?.title || []).map(t => t.plain_text).join(""); } catch (e) {} }
+  const topic = await titleTopicKeywords(env, hdr, tp).catch(() => ({ keywords: "" }));
+  await hubSitesMerge(env).catch(() => {});
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid) || {};
+  return { cid, pid, hub: hub.name || "", product: productName, statement: first("Statement").slice(0, 900), unique: first("Unique Opportunity").slice(0, 600),
+    hubKeywords: first("Keywords").slice(0, 900), topicKeywords: String(topic.keywords || "").slice(0, 600),
+    customer: trRt(prod, "Customer").slice(0, 500), pains: trRt(prod, "Pain Points").slice(0, 700), benefits: trRt(prod, "Benefits").slice(0, 700) };
+}
+async function seriesRank(env, titleId, force) {
+  titleId = String(titleId || "").replace(/-/g, "");
+  const ideas = await seriesIdeas(env, titleId, false), ck = "seriesrank:" + titleId;
+  if (!force) { const c = await env.TRADES.get(ck, "json"); if (c && c.ideasAt === ideas.at) return c; }
+  const st = await seriesStrategy(env, titleId);
+  const used = new Set((await env.TRADES.get("series:used:" + titleId, "json")) || []);
+  // what the hub already has (titles of its assets) — repeats score down
+  const have = st.cid ? (await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(st.cid) } } }).catch(() => []))
+    .map(a => srTokens((a.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("") + " " + trRt(a.properties, "Platform Title"))).filter(s => s.size) : [];
+  const strat = srTokens([st.hubKeywords, st.topicKeywords, st.product, st.statement, st.unique, st.pains, st.benefits].join(" ")), topicT = srTokens(st.topicKeywords + " " + st.product);
+  const pool = [];
+  for (const src of SR_RANK_SOURCES) for (const x of ((ideas.sources || {})[src] || [])) {
+    if (used.has(x.id)) continue;
+    const tk = srTokens(x.t); if (!tk.size) continue;
+    let hit = 0, topicHit = 0; tk.forEach(w => { if (strat.has(w)) hit++; if (topicT.has(w)) topicHit++; });
+    const dup = have.reduce((m, h) => { let n = 0; tk.forEach(w => { if (h.has(w)) n++; }); return Math.max(m, n / Math.max(1, Math.min(tk.size, h.size))); }, 0);
+    const score = hit / tk.size * 50 + topicHit * 6 + Math.min(20, Math.log10(1 + (x.v || 0)) * 6) - (dup > 0.7 ? 40 : dup > 0.5 ? 15 : 0);
+    pool.push({ id: x.id, t: x.t, src, v: x.v || 0, free: Math.round(score * 10) / 10 });
+  }
+  pool.sort((a, b) => b.free - a.free);
+  const per = {}, short = []; for (const x of pool) { if ((per[x.src] = (per[x.src] || 0) + 1) > 8) continue; short.push(x); if (short.length >= 30) break; }
+  if (!short.length) { const out = { ideasAt: ideas.at, at: Date.now(), ranked: [], note: "no unused ideas to rank" }; await env.TRADES.put(ck, JSON.stringify(out), { expirationTtl: 86400 }); return out; }
+  const brief = `HUB: ${st.hub}\nSERIES: ${ideas.name}\nOFFER (★ main product): ${st.product}\nHUB STATEMENT: ${st.statement}\nUNIQUE OPPORTUNITY: ${st.unique}\nHUB MAIN KEYWORDS: ${st.hubKeywords}\nSERIES TOPIC KEYWORDS: ${st.topicKeywords}\nCUSTOMER: ${st.customer}\nPAIN POINTS: ${st.pains}\nBENEFITS: ${st.benefits}`;
+  const o = await hcClaude(env, `You rank content ideas for ONE recurring series on a content hub. Pick the ideas that best serve the hub's strategy: they speak to its customer, sit on its keywords, and lead naturally toward its offer. A good set mixes informational, pain and benefit pieces across awareness → decision. Never favour an idea just because it is emotional.\n\n${brief}\n\nIDEAS (id · source · monthly searches · text):\n${short.map(x => `${x.id} · ${x.src}${x.v ? " · " + x.v + "/mo" : ""} · ${String(x.t).replace(/\s+/g, " ").slice(0, 220)}`).join("\n")}\n\nReturn the best 10 (fewer if fewer fit), best first. score 0-100 = fit to this hub's strategy; type informational | pain | benefit; stage awareness | consideration | decision; why = one short line naming the strategy link.`,
+    "rank_ideas", { type: "object", properties: { ranked: { type: "array", items: { type: "object", properties: { id: { type: "string" }, score: { type: "number" }, type: { type: "string" }, stage: { type: "string" }, why: { type: "string" } }, required: ["id", "score", "type", "stage", "why"] } } }, required: ["ranked"] }, 2500);
+  const byId = new Map(short.map(x => [x.id, x]));
+  const ranked = (o.ranked || []).filter(r => byId.has(r.id)).slice(0, 10).map(r => ({ ...byId.get(r.id), score: Math.max(0, Math.min(100, Math.round(+r.score || 0))), type: String(r.type || "").slice(0, 20), stage: String(r.stage || "").slice(0, 20), why: String(r.why || "").slice(0, 240) }));
+  const out = { ideasAt: ideas.at, at: Date.now(), ranked, shortlist: short.length };
+  await env.TRADES.put(ck, JSON.stringify(out), { expirationTtl: 86400 });
+  return out;
+}
 async function seriesIdeas(env, titleId, force) {
   titleId = String(titleId || "").replace(/-/g, "");
   const ck = "seriesideas:" + titleId; if (!force) { const c = await env.TRADES.get(ck, "json"); if (c) return c; }
@@ -19194,6 +19250,12 @@ ${JSON.stringify(products)}`;
           await env.TRADES.put(key, JSON.stringify(v)); return json({ ok: true, ...v });
         }
         return json({ ok: true, ...((await env.TRADES.get(key, "json")) || { style: "", cats: [] }) });
+      }
+      // seriesRank {titleId, force?} — the Series ideas ranked against the hub strategy (free scoring → one cached ranking call)
+      if (body.action === "seriesRank") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        if (!body.titleId) return json({ error: "titleId required" }, 400);
+        try { return json({ ok: true, ...(await seriesRank(env, body.titleId, !!body.force)) }); } catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "seriesIdeas") {
         if (!body.titleId) return json({ error: "titleId required" }, 400);

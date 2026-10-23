@@ -8294,6 +8294,7 @@ function pubSeriesDraw() {
       <select id="pubSrAskShape" style="${SEL}"><option value="single"${S.askShape !== 'carousel' ? ' selected' : ''}>single posts</option><option value="carousel"${S.askShape === 'carousel' ? ' selected' : ''}>one carousel</option></select>
       <button type="button" style="${B}" onclick="pubSeriesAsk()">${S.askMode === 'split' ? 'Split → new run' : 'Ask → new run'}</button></div>` : ''}
     <div style="font-size:11px;color:${S.err ? '#dc2626' : 'var(--ink3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
+    ${D ? pubSeriesRankHtml(B, card) : ''}
     ${D ? pubSeriesCatsHtml(B, SEL) : ''}
     ${srcs.map(k => { const list = D.sources[k], open = !!S.open[k];
       return `<div style="margin:5px 0;border:1px solid var(--border);border-radius:6px;"><div onclick="PUB_SR.open['${esc(k)}']=${open ? 'false' : 'true'};pubSeriesDraw()" style="padding:4px 8px;cursor:pointer;font-weight:600;display:flex;gap:6px;"><span style="font-size:10px;color:var(--ink3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--ink3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
@@ -8371,6 +8372,22 @@ async function pubSeriesAsk() {
   if (r.error) S.msg = '✗ ' + r.error;
   else { S.used = new Set(r.used || []); D.sources['Claude asks'] = r.ideas.map(x => ({ id: x.id, t: x.t, meta: r.split ? 'From your list' : 'Ask: ' + r.ask.slice(0, 120) })).concat((D.sources['Claude asks'] || []).filter(x => !r.ideas.some(y => y.id === x.id)));
     S.open['Claude asks'] = true; S.ask = ''; S.msg = '✓ Run created — ' + r.ideas.length + ' ideas on one Development asset (listed under Claude asks)'; }
+  pubSeriesDraw();
+}
+// ★ Best fit for this hub (operator 2026-10-23): the Series ideas ranked against the hub strategy — worker seriesRank (free scoring,
+// then one cached ranking call; runs only when you press it). Same ＋ buttons; the raw source groups stay below.
+function pubSeriesRankHtml(B, card) {
+  const S = PUB_SR, R = S.rank;
+  const head = `<div style="display:flex;gap:8px;align-items:center;padding:4px 8px;font-weight:600;"><span style="flex:1;">★ Best fit for this hub</span><button type="button" style="${B}border-color:#d9a400;color:#b58900;" onclick="pubSeriesRank(${R ? 'true' : 'false'})">${S.ranking ? '⏳ ranking…' : R ? '↻ re-rank' : '★ Rank for this hub'}</button></div>`;
+  if (!R) return `<div style="margin:5px 0 8px;border:1px solid #d9a400;border-radius:6px;">${head}<div style="padding:0 8px 6px;font-size:10.5px;color:var(--ink3);">Ranks these ideas against the hub's strategy — its keywords, the ★ product's customer, pains and benefits, and what the hub already has. About 1–2¢, cached 24 h.</div></div>`;
+  const rows = (R.ranked || []).map(x => { const tag = `<div style="font-size:10px;color:var(--ink3);margin-top:1px;"><b style="color:#b58900;">${x.score}</b> · ${esc(x.type)} · ${esc(x.stage)} · ${esc(x.src)}${x.v ? ' · ' + Number(x.v).toLocaleString() + '/mo' : ''} — ${esc(x.why)}</div>`;
+    return card(x.src, { id: x.id, t: x.t, meta: '' }).replace('</div>\n      <div style="display:flex;gap:4px;', tag + '</div>\n      <div style="display:flex;gap:4px;'); }).join('');
+  return `<div style="margin:5px 0 8px;border:1px solid #d9a400;border-radius:6px;">${head}<div style="padding:0 8px 4px;">${rows || '<div style="color:var(--ink3);">' + esc(R.note || 'No ideas fit yet.') + '</div>'}</div></div>`;
+}
+async function pubSeriesRank(force) {
+  const S = PUB_SR; if (!S || S.ranking) return; S.ranking = true; pubSeriesDraw();
+  const r = await pubSrCall('seriesRank', { titleId: S.tid, force: !!force });
+  S.ranking = false; if (r.error) S.msg = '✗ ' + r.error; else { S.rank = r; S.msg = '★ Ranked ' + (r.ranked || []).length + ' of ' + (r.shortlist || 0) + ' shortlisted ideas'; }
   pubSeriesDraw();
 }
 async function pubSeriesUse(kind, src, ideaId) {
