@@ -5174,7 +5174,8 @@ async function hubCheckGoalsBuild(env, force) {
     if (!name || /^notes\b/i.test(String(c[W.pillar] || "")) || /^notes\b/i.test(name)) continue;
     const cadence = String(c[W.cadence] || "").trim() || "On demand", target = Math.max(1, +c[W.goal] || 1);
     const types = new Set([name, ...String(c[W.match] || "").split(";")].map(norm).filter(Boolean));
-    if (asset) types.add(norm(asset)); else { types.add(norm(name + " parent")); types.add(norm(parent + " parent")); }
+    const isParent = !asset || /^parent$/i.test(asset) || /- parent$/i.test(name);   // a parent row also names its "<alias> parent" column
+    if (asset && !isParent) types.add(norm(asset)); else { [name, parent, ...String(c[W.match] || "").split(";")].map(x => String(x).replace(/\s*-\s*parent$/i, "").trim()).filter(Boolean).forEach(x => types.add(norm(x + " parent"))); }
     const period = hubCheckPeriodStart(cadence); if (period) periods[cadence] = period;
     for (const h of HUB_SITES) {
       if (!h.slug || !h.campaignId) continue;
