@@ -4213,6 +4213,7 @@ async function spCarouselSlides(carouselId) {
   })).sort((a, b) => a.slide - b.slide);
 }
 const ASSET_TYPE_METHOD_ALIAS = {
+  "topical - seo post": "blog post",   // worksheet row "Topical - SEO Post" › methods: blog post (2026-10-22)
   "gig description": "Listing",
   "single post carousel": "single post carousel",
   "single post": "single post",
