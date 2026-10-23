@@ -1875,7 +1875,7 @@ async function getWritableAsset(env,assetId) {
   if(info.mapping?.contract.length){writing.violations=validateWritingContract(info.mapping.contract,writingFieldValues(p));writing.hasWriting=writing.violations.length===0;}
   delete info.mapping;
   return {page,writing,info,public:{id:hubAssetId(page.id),assetTitle:hubRichText(p['Asset Title']?.title),type:info.type,
-    status:p['Asset Status']?.select?.name||'',body:writing.body,text:writing.text,hasWriting:writing.hasWriting,
+    status:p['Asset Status']?.select?.name||'',pillarType:p['Pillar Type']?.select?.name||'',body:writing.body,text:writing.text,hasWriting:writing.hasWriting,
     platformTitle:hubRichText(p['Platform Title']?.rich_text),postCaption:hubRichText(p['Post Caption']?.rich_text),hashtags:hubRichText(p.Hashtags?.rich_text),
     videoUrl:p['Video URL']?.url||'',thumbnail:p.Thumbnail?.url||'',designLink:p['Design Link']?.url||'',productLink:p['Product Link']?.url||'',
     hubSection:({'News':'news','Articles':'articles','Offers':'offers','Interactive':'interactive','CTA':'cta','Main Offering':'main','Unlisted':'unlisted'})[p['Hub Section']?.select?.name]||'',
@@ -28581,6 +28581,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             thumbnailSource: p["Thumbnail Source"]?.url || "",
             instagramBackgroundSource: p["Instagram Background Source"]?.url || "",
             postImageSource: p["Post Image Source"]?.url || "",
+            pillarType: p["Pillar Type"]?.select?.name || "",   // a parent (Series / Digest / Sales…) — the publish modal routes on it
             // single post carousel: the slides of one carousel share an id → the page shows them as ONE row
             carouselId: (p["Carousel ID"]?.rich_text || []).map(x => x.plain_text).join("") || "",
             slide: p["Slide"]?.number || 0,
