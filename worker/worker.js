@@ -13715,11 +13715,14 @@ async function newsletterContext(env,campaignId) {
   const products=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaigns',relation:{contains:kwDashId(cid)}}});
   const candidates=products.filter(p=>!p.archived&&!p.in_trash&&!/^archived$/i.test(p.properties?.Status?.select?.name||p.properties?.Status?.status?.name||'')&&/^premium newsletter$/i.test(kwTitleOf(p).trim()));
   const mains=await hubMainList(env,cid),placed=candidates.filter(p=>mains.map(hubAssetId).includes(hubAssetId(p.id)));
-  if(placed.length!==1)throw new Error('Expected one existing Premium Newsletter product on ★ Main for this campaign; found '+placed.length);
-  const product=placed[0],record=await findBestProductResearchRecord(newsletterHdr(env),product.id);
+  const digestId=await env.TRADES.get('digest:asset:'+cid);
+  let canonical=null;
+  if(digestId){const digest=await newsletterNotion(env,'pages/'+kwDashId(digestId));if(ivRid(digest.properties,'Campaign')!==cid)throw new Error('Canonical Digest campaign mismatch');const productId=ivRid(digest.properties,'Product')||ivRid(digest.properties,'product');canonical=candidates.find(p=>hubAssetId(p.id)===productId);if(!canonical)throw new Error('Canonical Digest does not link to the existing Premium Newsletter product');}
+  if(!canonical&&placed.length!==1)throw new Error('Expected one existing Premium Newsletter product linked to the canonical Digest or on ★ Main; found '+placed.length);
+  const product=canonical||placed[0],record=await findBestProductResearchRecord(newsletterHdr(env),product.id);
   if(!record?.properties)throw new Error('Premium Newsletter Product Research is missing; no duplicate record was created');
   const fields=newsletterValues(record);fields['Research Depth']=newsletterDepth(fields['Research Depth']);
-  return {campaignId:cid,productId:hubAssetId(product.id),recordId:hubAssetId(record.id),fields,product,record};
+  return {campaignId:cid,productId:hubAssetId(product.id),recordId:hubAssetId(record.id),fields,product,record,placementWarning:mains.map(hubAssetId).includes(hubAssetId(product.id))?'':'Premium Newsletter product is not currently on ★ Main; existing placement preserved'};
 }
 async function newsletterEnsureSchema(env) {
   const add=async(dbId,wanted)=>{
@@ -13817,7 +13820,7 @@ async function newsletterPanel(env,body) {
   for(const goal of goals){goal.made=children.filter(p=>String(p.created_time||'').slice(0,10)>=(goal.periodStart||periodStart)&&(/paid/i.test(goal.name)?/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name):/free/i.test(goal.name)?/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name):newsletterIssueType(p.properties?.['Asset Type']?.select?.name))).length;}
   const sent=(await env.TRADES.get('nlsend:log','json')||[]).filter(x=>hubAssetId(x.campaignId)===context.campaignId||x.slug===(HUB_SITES.find(h=>hubAssetId(h.campaignId)===context.campaignId)?.slug));
   const current=children.filter(p=>String(p.created_time||'').slice(0,10)>=periodStart);
-  return {ok:true,productId:context.productId,recordId:context.recordId,fields:context.fields,goals,periodStart,periodEnd,made:{premium:current.filter(p=>/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name)).length,free:current.filter(p=>/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name)).length},sent:sent.filter(x=>String(x.at||'').slice(0,10)>=periodStart).length,usage:(await env.TRADES.get('digest:usage:'+context.campaignId,'json')||[])[0]||null,sections,body:bodyText,subject,preview};
+  return {ok:true,productId:context.productId,recordId:context.recordId,fields:context.fields,placementWarning:context.placementWarning,goals,periodStart,periodEnd,made:{premium:current.filter(p=>/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name)).length,free:current.filter(p=>/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name)).length},sent:sent.filter(x=>String(x.at||'').slice(0,10)>=periodStart).length,usage:(await env.TRADES.get('digest:usage:'+context.campaignId,'json')||[])[0]||null,sections,body:bodyText,subject,preview};
 }
 async function digestItemsSave(env, assetId, sources, options={}) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
