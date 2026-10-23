@@ -1,5 +1,15 @@
 [
   {
+    "slug": "on-your-side-ongoing-build-coordination",
+    "title": "Your Project. Your Money. Someone Watching Out for You.",
+    "intro": "You hired an architect. You hired a general contractor. You are still the least-informed person in every meeting about your own project.\n\nThat is not a coincidence — it is a structure. Your architect is hired to protect the design. Your contractor is hired to manage the build. Neither one is hired t",
+    "date": "2026-10-23",
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "contentHash": "fcd05509ef8a165cefc7a28a3afb92823c31372f215fdffbd38fd0167c0e6e84",
+    "contentEditedAt": "2026-10-23T05:43:00.000Z",
+    "refreshedAt": "2026-10-23T05:43:04.764Z"
+  },
+  {
     "slug": "owner-side-contract-review",
     "title": "Construction Project Health Check—Independent Review",
     "intro": "You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a",
@@ -8,16 +18,6 @@
     "contentHash": "8e1ab0e97f7661e373be7e5c39e3ff702b524ed1067baed75f05ecf36ebaa9ef",
     "contentEditedAt": "2026-10-23T05:38:00.000Z",
     "refreshedAt": "2026-10-23T05:38:42.596Z"
-  },
-  {
-    "slug": "on-your-side-ongoing-build-coordination",
-    "title": "Your Project. Your Money. Someone Watching Out for You.",
-    "intro": "You hired an architect. You hired a general contractor. You are still the least-informed person in every meeting about your own project.\n\nThat is not a coincidence — it is a structure. Your architect is hired to protect the design. Your contractor is hired to manage the build. Neither one is hired t",
-    "date": "2026-10-22",
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
-    "contentHash": "4c33edc92886be74e91c6ce4ce8b2bcfd74184fd66dfbec37e1c41022be19843",
-    "contentEditedAt": "2026-10-22T16:25:00.000Z",
-    "refreshedAt": "2026-10-22T16:25:24.974Z"
   },
   {
     "slug": "before-you-build-know-what-you-re-getting-into-independent-planning-bu",

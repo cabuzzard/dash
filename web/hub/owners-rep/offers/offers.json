@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
+    "slug": "on-your-side-ongoing-build-coordination",
+    "name": "Your Project. Your Money. Someone Watching Out for You.",
+    "promise": "For homeowners managing a custom build or major renovation. Get independent eyes on every pay application, change order, and decision — someone on your side of the table, with a written record to back it up.",
+    "url": "../blog/on-your-side-ongoing-build-coordination/",
+    "contentHash": "fcd05509ef8a165cefc7a28a3afb92823c31372f215fdffbd38fd0167c0e6e84",
+    "contentEditedAt": "2026-10-23T05:43:00.000Z",
+    "refreshedAt": "2026-10-23T05:43:04.764Z"
+  },
+  {
     "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
     "slug": "owner-side-contract-review",
     "name": "Construction Project Health Check—Independent Review",
@@ -8,16 +18,6 @@
     "contentHash": "8e1ab0e97f7661e373be7e5c39e3ff702b524ed1067baed75f05ecf36ebaa9ef",
     "contentEditedAt": "2026-10-23T05:38:00.000Z",
     "refreshedAt": "2026-10-23T05:38:42.596Z"
-  },
-  {
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
-    "slug": "on-your-side-ongoing-build-coordination",
-    "name": "Your Project. Your Money. Someone Watching Out for You.",
-    "promise": "For homeowners managing a custom build or major renovation. Get independent eyes on every pay application, change order, and decision — someone on your side of the table, with a written record to back it up.",
-    "url": "../blog/on-your-side-ongoing-build-coordination/",
-    "contentHash": "4c33edc92886be74e91c6ce4ce8b2bcfd74184fd66dfbec37e1c41022be19843",
-    "contentEditedAt": "2026-10-22T16:25:00.000Z",
-    "refreshedAt": "2026-10-22T16:25:24.974Z"
   },
   {
     "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
