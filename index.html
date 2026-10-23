@@ -11836,8 +11836,6 @@ const DEV2_COLS = [
   { key: 'hub',          label: 'Hub' },
   { key: 'kind',         label: 'Type' },   // Product / Title / Asset / Interview — what kind of record the row is
   { key: 'hubSection',   label: 'Section assignment' },
-  { key: 'group',        label: 'Group' },
-  { key: 'productStack', label: 'Stack' },
   { key: 'product',      label: 'Product' },
   { key: 'keywordCluster', label: 'Keyword cluster' },
   { key: 'keywordTopic',   label: 'Keyword topic' },
@@ -12589,6 +12587,8 @@ function dev2NoWrap(el) {
   el.querySelectorAll('.dev2-nowrap td, .dev2-nowrap th').forEach(c => { const t = (c.textContent || '').trim(); if (t && !c.title) c.title = t; });
 }
 function renderDev2() {
+  { const gone = c => c === 'group' || c === 'productStack';   // Group + Stack columns removed (2026-10-22) — drop them from saved sorts / filters
+    if (DEV2_SORT.some(x => gone(x.col))) DEV2_SORT = DEV2_SORT.filter(x => !gone(x.col)); DEV2_F.forEach(f => { if (gone(f.col)) { f.col = ''; f.val = ''; } }); }
   const el = document.getElementById('dev2Content');
   const countEl = document.getElementById('dev2Count');
   if (!DEV2_ROWS.length) { el.innerHTML = '<div class="empty">Nothing found.</div>'; if (countEl) countEl.textContent = ''; return; }
@@ -12662,8 +12662,6 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;color:var(--text2);">${esc(dev2Val(r, 'kind'))}</td>
       <td style="padding:6px 10px;font-size:12px;min-width:150px;${r.hubLive ? '' : 'color:var(--text3);'}" title="${esc(r.hubPublish || '')}">${r.hubSectionDisplay ? esc(r.hubSectionDisplay) : ''}${r.hubLive && r.hubSectionHeading && r.hubSectionHeading.toLowerCase() !== String(r.hubSectionDisplay || '').toLowerCase() ? `<div title="Heading shown on the live hub" style="font-size:10px;color:var(--text3);">shown as ${esc(r.hubSectionHeading)}</div>` : ''}</td>
-      <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>
-      <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.productId ? `<input type="checkbox" title="Select this product for bulk actions" ${DEV2_SEL_P.has(r.productId) ? 'checked' : ''} onclick="dev2ToggleRec('p','${esc(r.productId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${productCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.keywordCluster ? esc(r.keywordCluster) : dash}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.keywordTopic ? esc(r.keywordTopic) : dash}</td>
