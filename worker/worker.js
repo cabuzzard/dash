@@ -1068,6 +1068,7 @@ async function studioAssetCreate(env, link) {
     ...(link.productId ? { Product: { relation: [{ id: dash(link.productId) }] } } : {}),
     ...(link.campaignId ? { Campaign: { relation: [{ id: dash(link.campaignId) }] } } : {}),
     ...(link.hubSlug ? { "Content Hub": { select: { name: String(link.hubSlug).slice(0, 100) } } } : {}),
+    ...(link.parentAssetId ? { "Parent Asset": { relation: [{ id: dash(link.parentAssetId) }] } } : {}),   // e.g. the title's Series parent
   };
   const r = await fetch("https://api.notion.com/v1/pages", { method: "POST",
     headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -32051,6 +32052,33 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           let assetError = "";
           try { await studioAssetCreate(env, link); } catch (e) { assetError = e.message; console.error("studioAssetCreate:", e.message); }   // the link works either way
           return json({ ok: true, link: { ...link, url: await urlFor(id), count: 0 }, ...(assetError ? { assetError } : {}) });
+        }
+        // move {id, titleId, parentAssetId?} — re-pin a link to another (live, placed) title: the link, its Client Studio asset and every
+        // script it already made follow (Content Strategy + Product + Parent Asset; an Idea script comes back to Development).
+        if (op === "move") {
+          const id = String(body.id || ""); if (!idx.includes(id)) return json({ error: "Link not found" }, 404);
+          const link = await env.TRADES.get("client:link:" + id, "json"); const tid = String(body.titleId || "").replace(/-/g, "");
+          if (!tid) return json({ error: "titleId required" }, 400);
+          const tp = await fetch(`https://api.notion.com/v1/pages/${nd(tid)}`, { headers: hdrC }).then(r => r.json()).catch(() => ({}));
+          const tname = (tp.properties?.Title?.title || []).map(t => t.plain_text).join("").trim(); if (!tname) return json({ error: "Title not found" }, 404);
+          const tpid = String((tp.properties?.product?.relation || [])[0]?.id || "").replace(/-/g, ""); if (!tpid) return json({ error: "That title has no product" }, 400);
+          const pp = await fetch(`https://api.notion.com/v1/pages/${nd(tpid)}`, { headers: hdrC }).then(r => r.json()).catch(() => ({}));
+          const parent = String(body.parentAssetId || "").replace(/-/g, "");
+          Object.assign(link, { titleId: tid, titleName: tname, productId: tpid, productName: (pp.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || link.productName,
+            ...(parent ? { parentAssetId: parent } : {}) });
+          await env.TRADES.put("client:link:" + id, JSON.stringify(link));
+          const rel = { "Content Strategy": { relation: [{ id: nd(tid) }] }, Product: { relation: [{ id: nd(tpid) }] }, ...(parent ? { "Parent Asset": { relation: [{ id: nd(parent) }] } } : {}) };
+          const out = { asset: "", scripts: [] };
+          if (link.assetId) { await kwNotionPatch(env, link.assetId, rel); out.asset = link.assetId + " (moved)"; }
+          else out.asset = await studioAssetCreate(env, link) + " (created)";
+          const its = (await env.TRADES.get("client:items:" + id, "json").catch(() => null)) || [];
+          for (const x of its) if (x.assetId) {
+            const ap = await fetch(`https://api.notion.com/v1/pages/${nd(x.assetId)}`, { headers: hdrC }).then(r => r.json()).catch(() => ({}));
+            const idea = (ap.properties?.["Asset Status"]?.select?.name || "") === "Idea";
+            try { await kwNotionPatch(env, x.assetId, { ...rel, ...(idea ? { "Asset Status": { select: { name: "Development" } } } : {}) }); out.scripts.push(x.assetId + (idea ? " (moved, Idea → Development)" : " (moved)")); }
+            catch (e) { out.scripts.push(x.assetId + " ✗ " + e.message); }
+          }
+          return json({ ok: true, ...out, link: { titleName: link.titleName, productName: link.productName } });
         }
         if (op === "revoke") {
           const id = String(body.id || ""); if (!idx.includes(id)) return json({ error: "Link not found" }, 404);
