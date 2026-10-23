@@ -13720,7 +13720,7 @@ async function newsletterContext(env,campaignId) {
   if(digestId){
     const digest=await newsletterNotion(env,'pages/'+kwDashId(digestId));if(ivRid(digest.properties,'Campaign')!==cid)throw new Error('Canonical Digest campaign mismatch');
     let productId=ivRid(digest.properties,'Product')||ivRid(digest.properties,'product');
-    if(!productId){const titleId=ivRid(digest.properties,'Content Strategy');if(titleId){const title=await newsletterNotion(env,'pages/'+kwDashId(titleId));if(ivRid(title.properties,'Campaign')!==cid)throw new Error('Canonical Digest title campaign mismatch');productId=ivRid(title.properties,'product')||ivRid(title.properties,'Product');}}
+    if(!candidates.some(p=>hubAssetId(p.id)===productId)){const titleId=ivRid(digest.properties,'Content Strategy');if(titleId){const title=await newsletterNotion(env,'pages/'+kwDashId(titleId));if(ivRid(title.properties,'Campaign')!==cid)throw new Error('Canonical Digest title campaign mismatch');productId=ivRid(title.properties,'product')||ivRid(title.properties,'Product');}}
     canonical=candidates.find(p=>hubAssetId(p.id)===productId);if(!canonical)throw new Error('Canonical Digest does not link to the existing Premium Newsletter product');
   }
   if(!canonical&&placed.length!==1)throw new Error('Expected one existing Premium Newsletter product linked to the canonical Digest or on ★ Main; found '+placed.length);
