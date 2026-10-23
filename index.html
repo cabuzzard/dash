@@ -12044,9 +12044,9 @@ function dev2CollapseAll(close) {
 }
 // ── All Hubs — Deployed Assets checklist: hubs × asset types, deployed-only counts (Published AND live on the hub).
 // Columns are the viewer's own (add from the asset types present in hubs, reorder, remove) — kept in this browser.
-const HUBCHECK_KEY = 'hubChecklistCols:v1';
+const HUBCHECK_KEY = 'hubChecklistCols:v2';   // v2: parents split by name (Series / Digest / Sales parent)
 let HUBCHECK_COLS = null, HUBCHECK_OPEN = null;
-const HUBCHECK_LIVE = new Set(['Development', 'Publish', 'Review', 'Published']);   // a live title / product
+const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
   return HUB_SITES.find(h => String(h.campaignId || '').replace(/-/g, '') === cid) || HUB_SITES.find(h => h.slug === r.contentHub) || null;
@@ -12056,7 +12056,8 @@ function hubCheckData() {
   for (const r of (DEV2_ROWS || [])) {
     if (!r.assetId || seen.has(r.assetId)) continue; seen.add(r.assetId);
     const h = hubCheckHubOf(r); if (!h) continue;
-    const t = r.rawAssetType || r.assetType || ''; if (!t || !r.assetStatus || r.assetStatus === 'Idea') continue;   // Idea status never counts
+    // parents (Series / Digest / Sales…) all share the raw type 'Pillar' — use their own name so each gets its column
+    const t = / parent$/i.test(r.assetType || '') ? r.assetType : (r.rawAssetType || r.assetType || ''); if (!t || !r.assetStatus || r.assetStatus === 'Idea') continue;   // Idea status never counts
     if (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic) continue;   // only assets on synced, live, placed titles + products
     types.add(t);
     const k = h.slug + '|' + t;
@@ -12080,7 +12081,7 @@ function hubCheckOpen(i, j, kind) {
   const { cells, dev } = hubCheckData(), k = h.slug + '|' + t, rows = [...(cells[k] || []), ...(dev[k] || [])];
   if (!rows.length) return;
   const hubVal = dev2Val(rows[0], 'hub'), shown = new Set(rows.map(r => dev2Val(r, 'assetType')));
-  DEV2_F = [{ col: 'hub', val: hubVal }, shown.size === 1 ? { col: 'assetType', val: [...shown][0] } : { col: 'rawAssetType', val: t }];
+  DEV2_F = [{ col: 'hub', val: hubVal }, shown.size === 1 ? { col: 'assetType', val: [...shown][0] } : { col: 'rawAssetType', val: rows[0].rawAssetType || t }];
   HUBCHECK_OPEN = { slug: h.slug, t, kind: kind === 'dev' ? 'dev' : 'live' };
   try { dev2SaveState(); } catch (e) {}
   dev2OnFilterChange(); dev2DrawPanel(); renderHubChecklist();
