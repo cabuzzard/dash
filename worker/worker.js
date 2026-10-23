@@ -5149,6 +5149,46 @@ async function hubRepublishSweep(env, campaignId) {
   }
   return { ok: !results.some(r => r.held || r.error), checked: results.length, results };
 }
+// ── All Hubs checklist GOALS (operator 2026-10-22): the goal per hub × asset type for the CURRENT period, from the Current
+// Methods worksheet (goal + cadence per method row; the row's "counts asset types" + name name its asset types) and each hub's
+// Track toggle (KV hub2:checklist:v1 "<slug>|row:<id>"). Snapshot KV hubcheck:goals:v1 — the */30 cron rewrites it when a
+// period rolls over or the worksheet / tracking changes; the dashboard reads it (getHubCheckGoals). Zero model calls.
+function hubCheckPeriodStart(cadence, now) {
+  const d = new Date(now || Date.now()); d.setUTCHours(0, 0, 0, 0);
+  if (cadence === "Monthly") d.setUTCDate(1);
+  else if (cadence === "Quarterly") d.setUTCMonth(Math.floor(d.getUTCMonth() / 3) * 3, 1);
+  else if (cadence === "Weekly") d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 1) % 7));   // weeks start Saturday, same as the hub checklist
+  else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
+  else return "";
+  return d.toISOString().slice(0, 10);
+}
+async function hubCheckGoalsBuild(env, force) {
+  const W = { parent: "cmuzq03ywty8b", asset: "cmuzq36hb77sq", name: "cname01", pillar: "c1", match: "cmatch01", goal: "cgoal01", cadence: "ccad01" };
+  const [table, tracking] = await Promise.all([writingMethodsTable(env), env.TRADES.get("hub2:checklist:v1", "json").then(x => x || {})]);
+  await hubSitesMerge(env);
+  const norm = x => String(x || "").toLowerCase().replace(/[—–]/g, "-").replace(/\s+/g, " ").trim();
+  const goals = {}, periods = {};
+  for (const r of ((table && table.rows) || [])) {
+    const c = r.cells || {}, asset = String(c[W.asset] || "").trim(), parent = String(c[W.parent] || c[W.pillar] || "").trim();
+    const name = String(c[W.name] || "").trim() || (asset ? parent + " - " + asset : parent);
+    if (!name || /^notes\b/i.test(String(c[W.pillar] || "")) || /^notes\b/i.test(name)) continue;
+    const cadence = String(c[W.cadence] || "").trim() || "On demand", target = Math.max(1, +c[W.goal] || 1);
+    const types = new Set([name, ...String(c[W.match] || "").split(";")].map(norm).filter(Boolean));
+    if (asset) types.add(norm(asset)); else { types.add(norm(name + " parent")); types.add(norm(parent + " parent")); }
+    const period = hubCheckPeriodStart(cadence); if (period) periods[cadence] = period;
+    for (const h of HUB_SITES) {
+      if (!h.slug || !h.campaignId) continue;
+      const t = tracking[h.slug + "|row:" + String(r.id).toLowerCase()]; if (!t || !t.tracked) continue;
+      for (const ty of types) { const g = ((goals[h.slug] = goals[h.slug] || {})[ty] = goals[h.slug][ty] || { goal: 0, rows: [] });
+        if (!g.rows.includes(r.id)) { g.goal += target; g.rows.push(r.id); g.cadence = g.cadence && g.cadence !== cadence ? "mixed" : cadence; g.period = period; g.method = g.method ? g.method + " · " + name : name; } }
+    }
+  }
+  const snap = { goals, periods }, sig = JSON.stringify(snap), prev = await env.TRADES.get("hubcheck:goals:v1", "json");
+  if (!force && prev && prev.sig === sig) return { changed: false, at: prev.at };
+  const out = { ...snap, sig, at: new Date().toISOString() };
+  await env.TRADES.put("hubcheck:goals:v1", JSON.stringify(out));
+  return { changed: true, at: out.at };
+}
 async function hubRepublishTick(env) {
   if (await env.TRADES.get('hub:republish:sweep-lock')) return {busy:true};
   await env.TRADES.put('hub:republish:sweep-lock','1',{expirationTtl:1800});
@@ -22511,6 +22551,13 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // Content Hubs 2 production checklist. Methods define which asset
       // types are available; this small KV record only stores the operator's
       // per-hub decision to track a type and its cadence/goal.
+      // getHubCheckGoals {rebuild?} — the All Hubs checklist's per-period goals (snapshot hubcheck:goals:v1, kept by the */30 cron)
+      if (body.action === "getHubCheckGoals") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let g = await env.TRADES.get("hubcheck:goals:v1", "json");
+        if (!g || body.rebuild) { await hubCheckGoalsBuild(env, !!body.rebuild); g = await env.TRADES.get("hubcheck:goals:v1", "json"); }
+        return json({ ok: true, goals: (g && g.goals) || {}, periods: (g && g.periods) || {}, at: g && g.at });
+      }
       if (body.action === "getHub2ChecklistGoals") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         let goals = {}, grayed = null; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
@@ -52245,6 +52292,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/30 * * * *") {
+      cw("hubCheckGoals", hubCheckGoalsBuild(env).then(r => { if (r.changed) console.log("hubCheckGoals: rewritten"); }).catch(e => console.error("hubCheckGoals failed:", e.message)));
       cw("hubRepublishSweep", hubRepublishTick(env).then(r => console.log('hubRepublishSweep:', JSON.stringify(r))).catch(e => console.error('hubRepublishSweep failed:',e.message)));
       cw("productStageBackfill", productStageBackfill(env).catch(e => console.error("productStageBackfill failed:", e.message)));
       if (await env.TRADES.get("titleidle:runnow")) { await env.TRADES.delete("titleidle:runnow");
