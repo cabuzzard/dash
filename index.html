@@ -12527,6 +12527,11 @@ function dev2OpenInterview(id) {
     renderDev2();
   } });
 }
+// All Output table: no text wraps anywhere — every cell is one line, clipped at its column; hover shows the full text
+function dev2NoWrap(el) {
+  if (!document.getElementById('dev2NoWrapCss')) { const st = document.createElement('style'); st.id = 'dev2NoWrapCss'; st.textContent = '.dev2-nowrap th,.dev2-nowrap td{white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;}'; document.head.appendChild(st); }
+  el.querySelectorAll('.dev2-nowrap td, .dev2-nowrap th').forEach(c => { const t = (c.textContent || '').trim(); if (t && !c.title) c.title = t; });
+}
 function renderDev2() {
   const el = document.getElementById('dev2Content');
   const countEl = document.getElementById('dev2Count');
@@ -12640,7 +12645,8 @@ function renderDev2() {
     });
   }
 
-  el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+  el.innerHTML = `<div style="overflow-x:auto;"><table class="dev2-nowrap" style="width:100%;border-collapse:collapse;"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+  dev2NoWrap(el);
 }
 
 // ── DEVELOPMENT ──────────────────────────────────────────────────────
