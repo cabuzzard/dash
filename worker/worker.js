@@ -961,7 +961,7 @@ async function runAllHubProductIdeas(env) {
       else {
         const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1200, system: PRODUCT_IDEAS_SYSTEM, messages: [{ role: "user", content: `Campaign keywords: ${kwOf(rec)}` }] }) });
-        const d = await r.json(); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+        const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
         const text = (d.content?.[0]?.text || "").trim();
         const p = await fetch(`https://api.notion.com/v1/pages/${rec.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Product Ideas": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }) });
         if (!p.ok) throw new Error("Notion write failed");
@@ -13047,7 +13047,7 @@ async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage) {
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [{ name, description: "Return the result.", input_schema: schema }], tool_choice: { type: "tool", name },
       messages: [{ role: "user", content: prompt }] }) });
-  const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  const d = await r.json(); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
   return (((d.content || []).find(b => b.type === "tool_use") || {}).input) || {};
 }
 async function kwVolumes(env, keywords, market) {
