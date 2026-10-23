@@ -17654,9 +17654,10 @@ Return: {
             productStack: prod ? (prod.stack || "No Stack") : "No Product", product: prod ? prod.name : "No Product", productId: a.productId || null,
             productStatus: prod ? (prod.status || "") : "", title: "", titleId: null, ...assetFields(a, campId) });
         });
-        // products with no titles and no assets
+        // every product gets exactly ONE Product row (operator 2026-10-23: Type = Product must list each product once, like the hub
+        // card's Keywords section) — whether or not it has titles; Archived products are left out of All Output entirely
         Object.entries(productById).forEach(([pid, prod]) => {
-          if (usedProducts.has(pid)) return;
+          if (/^archived$/i.test(String(prod.status || "").trim())) return;
           const camp = prod.campId ? campById[prod.campId] : null;
           rows.push({ kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "",
             productStack: prod.stack || "No Stack", product: prod.name, productId: pid, title: "", titleId: null,
