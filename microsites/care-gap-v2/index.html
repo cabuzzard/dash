@@ -1093,7 +1093,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
         <div id="pubDigestWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:12px;">📰 Digest — disseminate</b><span id="pubDigestState" style="font-size:10.5px;color:var(--ink3);"></span>
-            <button type="button" id="pubDigestUnreview" class="iconbtn" style="margin-left:auto;font-size:10.5px;padding:2px 9px;" onclick="pubDigestUnreview(this)">✓ Remove Review status</button></div>
+            <label style="margin-left:auto;display:inline-flex;gap:5px;align-items:center;font-size:11px;cursor:pointer;" title="Checked = this digest is at Review (it shows as ⚑ in the All Hubs table). Uncheck to clear Review → Development."><input type="checkbox" id="pubDigestReview" onchange="pubDigestReviewSet(this)"> Review</label></div>
           <div style="font-size:10.5px;color:var(--ink3);margin:4px 0 6px;">This week's research, pre-sorted Premium / Free. Tick each finding for where it goes, then ⚙ Disseminate: one Premium issue, one Free issue, one News post per ticked finding — each its own asset at Development.</div>
           <div id="pubDigestBody" style="font-size:11.5px;"></div>
         </div>
@@ -8142,7 +8142,7 @@ async function pubDigestLoad(assetId, data) {
 }
 function pubDigestStatusLine(st) {
   document.getElementById('pubDigestState').textContent = st ? 'Status: ' + st : '';
-  document.getElementById('pubDigestUnreview').style.display = st === 'Review' ? '' : 'none';
+  document.getElementById('pubDigestReview').checked = st === 'Review';
 }
 function pubDigestMsg(text, bad) { const m = document.getElementById('pubDigestMsg'); if (m) { m.style.color = bad ? '#dc2626' : '#16a34a'; m.textContent = text; } }
 function pubDigestPaint() {
@@ -8178,12 +8178,12 @@ async function pubDigestGenerate(btn) {
     pubDigestMsg((parts.length ? '✓ ' + parts.join(' · ') + ' — each at Development' : 'Nothing made') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length);
   } catch (e) { btn.disabled = false; btn.textContent = '⚙ Disseminate'; pubDigestMsg(e.message, true); }
 }
-async function pubDigestUnreview(btn) {
-  const id = pubAssetId; btn.disabled = true;
-  try { await w('updateAllOutputField', { kind: 'asset', field: 'status', assetId: id, value: 'Development' });
-    document.getElementById('pubStatus').value = 'Development'; if (PUB_ASSET_CACHE[id]) PUB_ASSET_CACHE[id].status = 'Development'; pubDigestStatusLine('Development'); }
-  catch (e) { alert('Not changed: ' + e.message); }
-  btn.disabled = false;
+async function pubDigestReviewSet(box) {   // the Review box: checked = Review, unchecked = Development (saved at once)
+  const id = pubAssetId, st = box.checked ? 'Review' : 'Development'; box.disabled = true;
+  try { await w('updateAllOutputField', { kind: 'asset', field: 'status', assetId: id, value: st });
+    document.getElementById('pubStatus').value = st; if (PUB_ASSET_CACHE[id]) PUB_ASSET_CACHE[id].status = st; pubDigestStatusLine(st); }
+  catch (e) { box.checked = !box.checked; alert('Not changed: ' + e.message); }
+  box.disabled = false;
 }
 // ── Series parent in the Publish modal (operator 2026-10-22: "the publish modal should be one router for all asset types").
 // The ✨ Series panel — the same ideas / runs / Ask Claude / categories the hub card's ✨ ideas opens — rendered inside this
