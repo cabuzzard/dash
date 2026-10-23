@@ -1229,6 +1229,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   }
   if (!mains.length) return { error: "no main products", hub: hub.name };
   const audienceN = await hubAudienceBlock(env, cid);
+  let hubKw = []; try { const rr = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } }); for (const r of rr) { const v = trRt(r.properties, "Keywords"); if (v) { hubKw = v.split(/[,\n]/).map(x => x.trim()).filter(x => x && x.length < 60).slice(0, 4); break; } } } catch (e) {}
   // 2026-10-15 (operator): consult the hub's latest written Digest as a source — it's premium-level, so the SEO article may use
   // a fact or two (publisher named) but never reproduces the premium analysis
   let digestBlock = "";
@@ -1238,16 +1239,17 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     if (ds[0]) { const txt = await extractPillarContent(hdrN, ds[0].id).catch(() => "");
       if (txt) digestBlock = `\n\nTHIS PERIOD'S PREMIUM DIGEST (one source among others — it is premium content: you may use at most one or two of its facts, naming the publisher; never reproduce or summarise its analysis; the article stays an original SEO piece):\n${txt.slice(0, 3500)}`; }
   } catch (e) {}
-  let t = null, product = null;
+  let t = null, product = null, storyUsed = null;
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
     const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.${digestBlock}`;
     // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
     let story = null;
-    for (const x of (await freeNewsSearch(env, [...(product.kw || []), product.name], { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
+    for (const x of (await freeNewsSearch(env, [...(product.kw || []), ...hubKw, product.name].slice(0, 6), { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
       const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
-    if (story) await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {});
+    if (!story && opts.requireStory) { if (k === mains.length - 1) return { skipped: true, reason: "no readable news story this week", hub: hub.name }; continue; }
+    if (story) { await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {}); storyUsed = story; }
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: story ? story.title : product.name,
       newsBody: story ? lead + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; report ONLY what the article text below says; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}\n\nSOURCE ARTICLE TEXT (the only source of facts):\n${story.text}` : lead,
       ...(story ? { newsSource: [story.publisher, story.url].filter(Boolean).join(" "), newsDate: story.date || "" } : {}), allowDuplicate: k === mains.length - 1 });
@@ -1271,8 +1273,8 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
-  const issue = await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "", digest: digestBlock }).catch(e => ({ error: e.message }));
-  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
+  const issue = opts.noIssue ? { skipped: true } : await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "", digest: digestBlock }).catch(e => ({ error: e.message }));
+  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, story: storyUsed ? { title: storyUsed.title, publisher: storyUsed.publisher, url: storyUsed.url, date: storyUsed.date, via: storyUsed.via } : null, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
 }
 // rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
 // → the title renamed + its pillar rewritten (grounded) → refreshBlogAssetFromPillar republishes under the existing slug →
@@ -32003,7 +32005,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // writeHubNewsPost {campaignId, force?} — one Blog - SEO - News post for a hub off a main product (see writeHubNewsPost).
       // force writes even when the hub already has HUB_NEWS_TARGET.
       if (body.action === "writeHubNewsPost") {
-        try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
+        try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force, requireStory: !!body.requireStory, noIssue: !!body.noIssue })); } catch (e) { return json({ error: e.message }, 500); }
       }
       // getCronLog → every trigger's recent runs (KV cron:log:<trigger>, written by scheduled()) for dash's Cron log tab.
       if (body.action === "getCronLog") {
