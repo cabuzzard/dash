@@ -12140,6 +12140,13 @@ async function hubCheckAddAssetGo(i) {
     const hi = HUB_SITES.filter(x => x.campaignId).findIndex(x => x.slug === slug); if (hi >= 0) hubCheckOpen(hi, i, 'dev'); }, 300);
   return true;
 }
+// ↻ Refresh: fresh rows (skips the 5-second table cache) + goals rebuilt from the worksheet — no model calls
+async function hubCheckRefresh(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing…'; }
+  _devTblLast = null;
+  try { await Promise.all([loadDev2(), hubCheckGoalsLoad(true)]); } catch (e) { showToast('Refresh failed: ' + e.message, 'error'); }
+  renderHubChecklist();
+}
 function renderHubChecklist() {
   const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
   if (!body) return;
@@ -12147,7 +12154,7 @@ function renderHubChecklist() {
   const { types, cells, dev, flag } = hubCheckData(), cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
   const nf = (slug, t) => (flag[slug + '|' + t] || []).length;
   const left = types.filter(t => !cols.includes(t));
-  bar.innerHTML = `<select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>`
+  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>`
     + `<span style="font-size:11px;color:var(--text3);">${cols.length} column${cols.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
   if (!cols.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
   const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;';
