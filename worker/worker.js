@@ -1290,8 +1290,13 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   const assetId = g && ((g.assets || [])[0] || {}).id;
   if (!assetId) return { error: "article: " + ((g && g.error) || "no asset"), hub: hub.name, headline: t.headline };
   await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
+  // generateTitleAssets pushed the page while the asset was still at Development, and its own hub refresh pulled it straight back
+  // off (2026-10-23: 19 news posts Published but 404). Route it explicitly now it is Published + News; already-live is fine.
+  let routedUrl = "";
+  { const rp = await selfAction(env, "publishHubSectionAsset", { assetId, section: "news", campaignId: cid }).catch(e => ({ error: e.message }));
+    if (rp && rp.liveUrl) routedUrl = rp.liveUrl; else if (rp && rp.error && !/no longer eligible/i.test(rp.error)) console.error("news route:", rp.error); }
   try { await ivCreateForAsset(env, { assetId, titleId: t.titleId, own: "Blog - SEO - News", direction: "Optional enrichment interview for a published news post" }); } catch (e) { console.error("news interview:", e.message); }   // optional, later — never blocks the post
-  let liveUrl = g.liveUrl || "";
+  let liveUrl = routedUrl || g.liveUrl || "";
   if (!g.sitePublished) {   // the blog push failed (e.g. a GitHub write race) — republish this hub's unpublished posts
     const bf = await selfAction(env, "backfillHubBlog", { campaignId: cid }).catch(() => null);
     liveUrl = liveUrl || (bf && !bf.error ? "(republished via backfill)" : "");
