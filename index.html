@@ -808,8 +808,13 @@
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div></div>
+    <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
+    <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts are DEPLOYED only: Asset Status Published and live on that hub. ＋ add a column, ◀ ▶ reorder, × remove. Click a count for its assets.</span></div>
+    <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
     <!-- HUB PRODUCTS AUDIT START -->
-    <div class="oc-sec" data-ock="hubproducts"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+    <div class="oc-sec" data-ock="hubproducts" hidden title="Removed from All Output (2026-10-22); kept hidden as the clone source for hub-card Products views"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▶</span><h2 style="margin:0;font-size:16px;">Hub Products</h2><span style="font-size:11.5px;color:var(--text2);">12-hub audit · keyword snapshot October 19, 2026 · live product sync and asset counts</span></div>
     <div class="oc-bd" style="display:none;">
     <p style="font-size:12px;color:var(--text2);">Target: market-verified main product → focused hub keywords → main digest. ★ identifies designated main products, not proven market validation. Rank = average best keyword token overlap with hub main keywords (0–100); missing keywords remain unscored. Search volume and USD high top-of-page bid are stored US/English Google Ads metrics for exact product keywords, not revenue.</p>
@@ -853,7 +858,7 @@
       <span id="cmFlowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div class="oc-bd"><div id="fvmethodsBar"></div><div id="fvmethodsPanel" style="display:none;"></div><div id="cmFlowBody"></div></div></div>
-    <div class="oc-sec" data-ock="subassets"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+    <div class="oc-sec" data-ock="subassets" hidden title="Removed (2026-10-22) — merged into Current Methods; its KV data is kept"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Sub-asset Matrix</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every asset / pillar from Current Methods (added automatically) × every publish-modal field and sub-asset. Click a cell to mark ✕ (needed); each field has a notes column for requests.</span>
       <span id="saFlowMsg" style="font-size:11px;color:var(--text3);"></span>
@@ -5641,8 +5646,7 @@ function loadInformationFlowTables() {
   }
   ocApply();
   if (!FLOWS.main.data) loadFlowTable('main');
-  if (!FLOWS.methods.data) loadFlowTable('methods').then(() => loadFlowTable('subassets'));
-  else if (!FLOWS.subassets.data) loadFlowTable('subassets');
+  if (!FLOWS.methods.data) loadFlowTable('methods');
 }
 
 function loadTabContent(name) {
@@ -5658,7 +5662,7 @@ function loadTabContentNow(name) {
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs2' && !hubs2TabLoaded) { hubs2TabLoaded = true; renderHubs2(); }
   if (name === 'dev2') { restoreAllOutputTables(); reviewFlagsLoad(); ivFlagsLoad(); ivSyncLoad(); }
-  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods').then(() => loadFlowTable('subassets')); }
+  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
@@ -12038,6 +12042,68 @@ function dev2CollapseAll(close) {
   rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) delete o[k]; else o[k] = 1; } });
   dev2SaveOpen(o); renderDev2();
 }
+// ── All Hubs — Deployed Assets checklist: hubs × asset types, deployed-only counts (Published AND live on the hub).
+// Columns are the viewer's own (add from the asset types present in hubs, reorder, remove) — kept in this browser.
+const HUBCHECK_KEY = 'hubChecklistCols:v1';
+let HUBCHECK_COLS = null, HUBCHECK_OPEN = null;
+function hubCheckHubOf(r) {
+  const cid = String(r.campId || '').replace(/-/g, '');
+  return HUB_SITES.find(h => String(h.campaignId || '').replace(/-/g, '') === cid) || HUB_SITES.find(h => h.slug === r.contentHub) || null;
+}
+function hubCheckData() {
+  const seen = new Set(), types = new Set(), cells = {};
+  for (const r of (DEV2_ROWS || [])) {
+    if (!r.assetId || seen.has(r.assetId)) continue; seen.add(r.assetId);
+    const h = hubCheckHubOf(r); if (!h) continue;
+    const t = r.rawAssetType || r.assetType || ''; if (!t) continue; types.add(t);
+    if (r.assetStatus !== 'Published' || !r.hubLive) continue;
+    const k = h.slug + '|' + t; (cells[k] = cells[k] || []).push(r);
+  }
+  return { types: [...types].sort((a, b) => a.localeCompare(b)), cells };
+}
+function hubCheckSave() { try { localStorage.setItem(HUBCHECK_KEY, JSON.stringify(HUBCHECK_COLS)); } catch (e) {} }
+function hubCheckCols(types, cells) {
+  if (HUBCHECK_COLS) return HUBCHECK_COLS;
+  try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) return (HUBCHECK_COLS = v); } catch (e) {}
+  return (HUBCHECK_COLS = types.filter(t => Object.keys(cells).some(k => k.endsWith('|' + t))));   // default: types with something deployed
+}
+function hubCheckAdd(sel) { const t = sel.value; if (!t) return; if (!HUBCHECK_COLS.includes(t)) HUBCHECK_COLS.push(t); hubCheckSave(); renderHubChecklist(); }
+function hubCheckMove(i, d) { const j = i + d; if (j < 0 || j >= HUBCHECK_COLS.length) return; [HUBCHECK_COLS[i], HUBCHECK_COLS[j]] = [HUBCHECK_COLS[j], HUBCHECK_COLS[i]]; hubCheckSave(); renderHubChecklist(); }
+function hubCheckRemove(i) { HUBCHECK_COLS.splice(i, 1); hubCheckSave(); renderHubChecklist(); }
+function hubCheckOpen(i, j) {
+  const h = HUB_SITES.filter(x => x.campaignId)[i], t = HUBCHECK_COLS[j]; if (!h || !t) return;
+  HUBCHECK_OPEN = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t ? null : { slug: h.slug, t };
+  renderHubChecklist();
+}
+function renderHubChecklist() {
+  const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
+  if (!body) return;
+  const { types, cells } = hubCheckData(), cols = hubCheckCols(types, cells), hubs = HUB_SITES.filter(h => h.campaignId);
+  const left = types.filter(t => !cols.includes(t));
+  bar.innerHTML = `<select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>`
+    + `<span style="font-size:11px;color:var(--text3);">${cols.length} column${cols.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
+  if (!cols.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
+  const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;';
+  const td = 'padding:5px 8px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);';
+  const n = (slug, t) => (cells[slug + '|' + t] || []).length;
+  let html = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th>`
+    + cols.map((t, i) => `<th style="${th}"><div>${esc(t)}</div><div style="font-weight:400;"><button onclick="hubCheckMove(${i},-1)" title="Move left" style="font-size:10px;padding:0 4px;">◀</button><button onclick="hubCheckMove(${i},1)" title="Move right" style="font-size:10px;padding:0 4px;">▶</button><button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + `<th style="${th}">Total</th></tr></thead><tbody>`;
+  hubs.forEach((h, hi) => {
+    let tot = 0;
+    html += `<tr><td style="${td}text-align:left;white-space:nowrap;">${esc(h.name || h.slug)}</td>` + cols.map((t, ci) => {
+      const c = n(h.slug, t); tot += c;
+      const on = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t;
+      return `<td style="${td}${c ? 'color:#16a34a;font-weight:600;cursor:pointer;' : 'color:var(--text3);'}${on ? 'background:var(--surface2);' : ''}"${c ? ` onclick="hubCheckOpen(${hi},${ci})"` : ''}>${c || '·'}</td>`;
+    }).join('') + `<td style="${td}font-weight:600;">${tot}</td></tr>`;
+  });
+  html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td>${cols.map(t => `<td style="${td}font-weight:600;">${hubs.reduce((a, h) => a + n(h.slug, t), 0)}</td>`).join('')}`
+    + `<td style="${td}font-weight:600;">${hubs.reduce((a, h) => a + cols.reduce((b, t) => b + n(h.slug, t), 0), 0)}</td></tr></tbody></table></div>`;
+  body.innerHTML = html;
+  const open = HUBCHECK_OPEN && cells[HUBCHECK_OPEN.slug + '|' + HUBCHECK_OPEN.t];
+  list.innerHTML = open ? `<div style="font-size:12px;border:1px solid var(--border2);border-radius:6px;padding:8px 10px;"><b>${esc(HUBCHECK_OPEN.t)}</b> — ${esc(HUBCHECK_OPEN.slug)} (${open.length} deployed)<ul style="margin:6px 0 0 18px;padding:0;">`
+    + open.map(r => `<li>${r.hubLiveUrl ? `<a href="${esc(r.hubLiveUrl)}" target="_blank" rel="noopener">${esc(r.assetName || r.title || r.assetId)}</a>` : esc(r.assetName || r.title || r.assetId)}</li>`).join('') + '</ul></div>' : '';
+}
 async function loadDev2() {
   hpInit();
   const el = document.getElementById('dev2Content');
@@ -12048,6 +12114,7 @@ async function loadDev2() {
     DEV2_ROWS = data.rows || []; DEV2_APPS = data.apps || DEV2_APPS;
     hpApplyLive(data.productStats);
     renderDev2();
+    renderHubChecklist();
   } catch (e) {
     hpLiveFailed(e.message);
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
