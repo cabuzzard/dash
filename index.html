@@ -12044,6 +12044,14 @@ function dev2CollapseAll(close) {
 const HUBCHECK_KEY = 'hubChecklistCols:v2';   // v2: parents split by name (Series / Digest / Sales parent)
 let HUBCHECK_COLS = null, HUBCHECK_OPEN = null;
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
+// All Output › a Series parent's title opens the ✨ Series modal (same one as the hub title row's ✨ ideas). The modal reads the
+// hub's title rows + checklist methods, so load those first if the hub card hasn't been opened this session.
+async function dev2OpenSeries(assetId) {
+  const r = (DEV2_ROWS || []).find(x => x.assetId === assetId); if (!r) return;
+  const h = hubCheckHubOf(r); if (!h) { showToast('This series is not on a hub', 'error'); return; }
+  await Promise.all([_hubTitles[h.slug] && _hubTitles[h.slug].rows ? null : hubTitlesLoad(h.slug).catch(() => {}), (_hub2Checklist[h.slug] || {}).methods ? null : hub2ChecklistLoad(h.slug).catch(() => {})]);
+  hubSeriesOpen(h.slug, String(r.titleId).replace(/-/g, ''), String(assetId).replace(/-/g, ''));
+}
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
   return HUB_SITES.find(h => String(h.campaignId || '').replace(/-/g, '') === cid) || HUB_SITES.find(h => h.slug === r.contentHub) || null;
@@ -12584,7 +12592,10 @@ function renderDev2() {
     // Title column: the asset's Platform Title (else the title's name) on ONE line, clipped by the next column — never
     // wrapped; the full text on hover. Asset rows link straight into that asset's publish modal (care-gap-v2).
     const titleText = r.platformTitle || r.title || '', titleClip = 'display:inline-block;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;';
-    const titleCell = !r.titleId && !r.assetId ? dash : r.assetId
+    const isSeries = r.assetId && r.titleId && /^series( parent)?$/i.test(r.rawAssetType || r.assetType || '');
+    const titleCell = !r.titleId && !r.assetId ? dash : isSeries
+      ? `<a href="#" onclick="dev2OpenSeries('${esc(r.assetId)}');return false;" title="${esc(titleText || 'Untitled')} — open the ✨ Series modal" style="${titleClip}color:var(--accent);text-decoration:none;">${esc(titleText || 'Untitled')}</a>`
+      : r.assetId
       ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(r.assetId)}" target="_blank" rel="noopener" title="${esc(titleText || 'Untitled')} — open in the publish modal" style="${titleClip}color:var(--accent);text-decoration:none;">${esc(titleText || 'Untitled')}</a>`
       : `<span title="${esc(titleText || 'Untitled')}" style="${titleClip}">${esc(titleText || 'Untitled')}</span>`;
     const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? compactBtn('Asset ' + (assetOrdinal[r.assetId] || 1), 'Open asset name') : dash;
