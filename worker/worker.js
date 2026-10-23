@@ -32004,6 +32004,15 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       }
       // writeHubNewsPost {campaignId, force?} — one Blog - SEO - News post for a hub off a main product (see writeHubNewsPost).
       // force writes even when the hub already has HUB_NEWS_TARGET.
+      // freeNewsTest {queries[]} — diagnostics for the free news tier: what the worker itself gets back (stories + readable text length); no model calls
+      if (body.action === "freeNewsTest") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const qs = (Array.isArray(body.queries) ? body.queries : []).slice(0, 4);
+        const raw = await fetch(`https://www.bing.com/news/search?q=${encodeURIComponent(qs[0] || "news")}&format=rss`, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }).then(async r => ({ status: r.status, len: (await r.text()).length })).catch(e => ({ error: e.message }));
+        const items = await freeNewsSearch(env, qs, { days: 7, max: 15 });
+        const out = []; for (const x of items.slice(0, 10)) out.push({ title: x.title, via: x.via, url: x.url, qhit: x.qhit, text: (await fnArticleText(x.url)).length });
+        return json({ ok: true, bing: raw, count: items.length, items: out });
+      }
       if (body.action === "writeHubNewsPost") {
         try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force, requireStory: !!body.requireStory, noIssue: !!body.noIssue })); } catch (e) { return json({ error: e.message }, 500); }
       }
