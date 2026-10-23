@@ -8370,7 +8370,10 @@ async function savePublishAssetFields() {
   btn.disabled = true;
   status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
   try {
+    { const cur = getCachedPublishAsset(pubAssetId) || {};   // a Free newsletter → Published = sent to the hub's mailing list (queued ~15 min in ActiveCampaign)
+      if (fields.status === 'Published' && cur.status !== 'Published' && /^newsletter (free|issue)$/i.test(cur.type || '') && !confirm('Publishing sends this newsletter to the hub\'s mailing list.\n\nIt is queued in ActiveCampaign as a Scheduled campaign ~15 minutes out — cancel it there if you need to.\n\nPublish and send?')) { btn.disabled = false; return; } }
     const pr = await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    if (pr && pr.newsletter) { const n = pr.newsletter; if (n.error) alert('Newsletter NOT sent: ' + n.error); else if (!n.already) alert('📤 Queued in ActiveCampaign → ' + n.hub + ' list, sends ' + n.sdate + ' Pacific.\nCancel or edit it in ActiveCampaign → Campaigns.'); }
     if(typeof fields.publishToHub==='boolean'){
       document.getElementById('pubPublishToHub').checked=!!pr.hubLive;
       document.getElementById('pubPublishToHubState').textContent=pr.hubPublish||'';

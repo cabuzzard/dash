@@ -2253,6 +2253,54 @@ async function acIssueDraft(env, { slug, hubName, subject, preview, md }) {
   if (!c.id) return { error: "campaign: " + (c.result_message || "failed"), messageId: m.id };
   return { ok: true, campaignId: String(c.id), messageId: String(m.id), listId, from };
 }
+// ── Free newsletter → the hub's mailing list ON PUBLISH (operator 2026-10-22: "publish sends it to a queued run in active
+// campaign"). Setting a Newsletter Free / Newsletter Issue asset to Published creates an ActiveCampaign campaign to that hub's
+// list (KV hub:aclist:<slug>) SCHEDULED ~15 min out — it shows in ActiveCampaign's Campaigns as Scheduled (cancel it there), then
+// AC sends it. sdate is written in Pacific time; an account set further east just sends sooner, never later. One send per
+// asset (KV nlsend:<assetId>). The email: an existing AC draft's message when the asset came from 📧 Create email draft (Body
+// "message <id>"), else the asset's own text (Body, or its page blocks — a ⚙ Disseminate Free issue). No cron, no model call.
+async function nlSendOnPublish(env, assetId) {
+  const id = String(assetId || "").replace(/-/g, ""); if (id.length !== 32) return null;
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+  const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: hdr }).then(r => r.json()).catch(() => null);
+  const p = (pg && pg.properties) || {}, type = p["Asset Type"]?.select?.name || "";
+  if (!/^newsletter (free|issue)$/i.test(type)) return null;
+  const prev = await env.TRADES.get("nlsend:" + id, "json"); if (prev) return { ...prev, already: true };
+  await hubSitesMerge(env);
+  const cid = ((p.Campaign?.relation || [])[0]?.id || "").replace(/-/g, ""), hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  if (!hub) return { error: "this newsletter isn't on a hub — not sent" };
+  const { url, key } = acCreds(env); if (!url || !key) return { error: "ActiveCampaign not configured — not sent" };
+  const listId = await env.TRADES.get("hub:aclist:" + hub.slug); if (!listId) return { error: "no ActiveCampaign list for " + hub.name + " — not sent" };
+  const txt = k => (p[k]?.rich_text || p[k]?.title || []).map(x => x.plain_text).join("");
+  const bodyProp = txt("Body"), from = AC_HUB_SENDERS[hub.slug] || AC_DEFAULT_SENDER;
+  let messageId = (bodyProp.match(/\bmessage (\d+)/) || [])[1] || "", subject = txt("Platform Title");
+  if (!messageId) {
+    let md = bodyProp, preview = "";
+    const sm = md.match(/^\*\*Subject:\*\*\s*(.+)$/m); if (sm) { subject = subject || sm[1].trim(); preview = ((md.match(/^\*\*Preview:\*\*\s*(.+)$/m) || [])[1] || "").trim(); md = md.replace(/^\*\*(Subject|Preview|Send):\*\*.*$/gm, "").trim(); }
+    if (!md || md.length < 200) {   // a ⚙ Disseminate issue: the subject heading + paragraphs live on the page
+      const blocks = await extractBlocksTextRecursive(hdr, id).catch(() => "");
+      const lines = String(blocks).split("\n").map(l => l.trim()).filter(Boolean);
+      if (lines.length) { subject = subject || lines[0].replace(/^#+\s*/, ""); md = lines.slice(1).join("\n\n"); }
+    }
+    if (!md) return { error: "this newsletter has no text — not sent" };
+    subject = (subject || txt("Asset Title").replace(/^(free issue|newsletter)\s*—\s*/i, "")).slice(0, 150);
+    const m = await acV1(env, "message_add", { format: "html", subject, fromemail: from, fromname: hub.name, reply2: from, priority: "3", charset: "utf-8", encoding: "quoted-printable",
+      htmlconstructor: "editor", html: (preview ? `<div style="display:none;max-height:0;overflow:hidden">${preview.replace(/</g, "&lt;")}</div>` : "") + mdToEmailHtml(md), textconstructor: "editor", text: md, [`p[${listId}]`]: listId });
+    if (!m.id) return { error: "ActiveCampaign message: " + (m.result_message || "failed") + " — not sent" };
+    messageId = String(m.id);
+  }
+  const pt = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date(Date.now() + 15 * 60000)).map(x => [x.type, x.value]));
+  const sdate = `${pt.year}-${pt.month}-${pt.day} ${pt.hour}:${pt.minute}:${pt.second}`;
+  const c = await acV1(env, "campaign_create", { type: "single", name: `${hub.name} — ${subject || "newsletter"}`.slice(0, 250), sdate, status: "1", public: "1", tracklinks: "all", trackreads: "1",
+    [`p[${listId}]`]: listId, [`m[${messageId}]`]: "100" });
+  if (!c.id) return { error: "ActiveCampaign campaign: " + (c.result_message || "failed") + " — not sent", messageId };
+  const acWeb = url.replace(".api-us1.com", ".activehosted.com");
+  const rec = { campaignId: String(c.id), messageId, listId: String(listId), hub: hub.name, slug: hub.slug, subject, sdate, sdateTz: "America/Los_Angeles", link: `${acWeb}/app/campaigns/${c.id}`, at: new Date().toISOString() };
+  await env.TRADES.put("nlsend:" + id, JSON.stringify(rec));
+  const log = (await env.TRADES.get("nlsend:log", "json")) || []; log.push({ assetId: id, ...rec }); await env.TRADES.put("nlsend:log", JSON.stringify(log.slice(-200)));
+  return { ok: true, ...rec };
+}
 async function addReviewFlag(env, flag) {
   const list = (await env.TRADES.get("review:flags", "json").catch(() => null)) || [];
   list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), status: "open", at: new Date().toISOString(), ...flag });
@@ -17760,7 +17808,8 @@ Return: {
         const r = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: props }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) return json({ error: d.message || "Update failed" }, r.status);
-        return json({ success: true });
+        const nlSend = field === "status" && kind === "asset" && body.sendNewsletter === true && props["Asset Status"]?.select?.name === "Published" ? await nlSendOnPublish(env, pageId).catch(e => ({ error: e.message + " — not sent" })) : null;   // a Free newsletter → its hub list
+        return json({ success: true, ...(nlSend ? { newsletter: nlSend } : {}) });
       }
 
       // ── hubContent ── the Content Hubs card's "Content" section. Lists ONLY the strategies created there
@@ -40021,7 +40070,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
         const { videoUrl } = body;
-        let stampAfter = false;
+        let stampAfter = false, nlSend = null;
         const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource, hubSection } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
@@ -40154,6 +40203,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
         if (stampAfter) await stampPublishingDate(assetId);
+        if (status === "Published") nlSend = await nlSendOnPublish(env, assetId).catch(e => ({ error: e.message + " — not sent" }));   // a Free newsletter → its hub list (queued in ActiveCampaign)
         try {
           const hubHdr={"Authorization":`Bearer ${NOTION_TOKEN}`,"Notion-Version":NOTION_VERSION};
           if(hasHubSwitch){
@@ -40219,7 +40269,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
             } catch (e) { /* best-effort */ }
           })());
         }
-        return json({ success: true, voiceEdits, ...(hasHubSwitch ? {hubSync, status:body.publishToHub?'Published':'Development', ...await hubAssetRoutedState(env, {...result2,properties:{...result2.properties,...(hubSync?.liveUrl?{'Content URL':{url:hubSync.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}:{})}})} : {}) });
+        return json({ success: true, voiceEdits, ...(nlSend ? { newsletter: nlSend } : {}), ...(hasHubSwitch ? {hubSync, status:body.publishToHub?'Published':'Development', ...await hubAssetRoutedState(env, {...result2,properties:{...result2.properties,...(hubSync?.liveUrl?{'Content URL':{url:hubSync.liveUrl},'Deployment Status':{select:{name:'Deployed'}}}:{})}})} : {}) });
       }
 
       // ── uploadAssetThumbnail ──
@@ -40986,7 +41036,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const ar = await hubNotionFetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
         const savedAsset = await ar.json();
-        if(body.statusOnly === true)return json({success:true});
+        const nlSend = status === "Published" && body.sendNewsletter === true ? await nlSendOnPublish(env, assetId).catch(e => ({ error: e.message + " — not sent" })) : null;   // a Free newsletter → its hub list (queued in ActiveCampaign)
+        if(body.statusOnly === true)return json({success:true, ...(nlSend ? { newsletter: nlSend } : {})});
         try { await syncOfferAssetBlog(env, { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, savedAsset); }
         catch (e) { return json({ error: 'Status saved, but offer blog sync failed: ' + e.message }, 502); }
         if (status === "Published") await stampPublishingDate(assetId);
@@ -41006,7 +41057,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
             }
           } catch (e) { /* best-effort */ }
         }
-        return json({ success: true });
+        return json({ success: true, ...(nlSend ? { newsletter: nlSend } : {}) });
       }
 
       if (body.action === "updateLoginFull") {

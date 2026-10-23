@@ -11928,7 +11928,10 @@ async function dev2EditSave() {
   for (const c of changes) {
     msg.textContent = 'Saving ' + ((DEV2_COLS.find(x => x.key === c.k) || {}).label || c.k) + '…';
     try {
-      const res = await call('updateAllOutputField', { kind: r.kind, field: c.k, value: c.v, productId: r.productId, titleId: r.titleId, assetId: r.assetId, campId: r.campId, productStack: r.productStack });
+      const nlPub = c.k === 'status' && c.v === 'Published' && r.assetId && /^newsletter (free|issue)$/i.test(r.rawAssetType || '') && r.assetStatus !== 'Published';   // publishing a Free newsletter sends it to the hub list
+      if (nlPub && !confirm('Publishing sends this newsletter to the hub’s mailing list — queued in ActiveCampaign ~15 minutes out (cancel it there).\n\nPublish and send?')) { failed.push('Status: not changed'); continue; }
+      const res = await call('updateAllOutputField', { kind: r.kind, field: c.k, value: c.v, productId: r.productId, titleId: r.titleId, assetId: r.assetId, campId: r.campId, productStack: r.productStack, ...(nlPub ? { sendNewsletter: true } : {}) });
+      if (res && res.newsletter) showToast(res.newsletter.error ? 'Newsletter NOT sent: ' + res.newsletter.error : '📤 Queued in ActiveCampaign → ' + res.newsletter.hub + ' list, sends ' + res.newsletter.sdate + ' Pacific', res.newsletter.error ? 'error' : 'success');
       if (!res || res.error) throw new Error((res && res.error) || 'no response');
       dev2EditApply(r, c.k, c.v); done.push(c.k);
     } catch (e) { failed.push(((DEV2_COLS.find(x => x.key === c.k) || {}).label || c.k) + ': ' + e.message); }
