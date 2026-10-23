@@ -11836,6 +11836,7 @@ const DEV2_COLS = [
   { key: 'hub',          label: 'Hub' },
   { key: 'kind',         label: 'Type' },   // Product / Title / Asset / Interview — what kind of record the row is
   { key: 'hubSection',   label: 'Section assignment' },
+  { key: 'main',         label: '★' },   // ★ main offering of its hub — click the cell to toggle
   { key: 'product',      label: 'Product' },
   { key: 'keywordCluster', label: 'Keyword cluster' },
   { key: 'keywordTopic',   label: 'Keyword topic' },
@@ -11955,6 +11956,15 @@ function dev2EditApply(r, k, v) {
 }
 const DEV2_KIND = { product: 'Product', title: 'Title', asset: 'Asset', interview: 'Interview' };
 function dev2Val(r, col) { if(col === 'hubSection')return String(r.hubSectionDisplay || ''); if (col === 'kind') return DEV2_KIND[r.kind] || (r.assetId ? 'Asset' : r.titleId ? 'Title' : r.productId ? 'Product' : ''); if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); if (col === 'inputApp') return appLabel(r.inputApp); return String(r[col] == null ? '' : r[col]); }
+// ★ column: toggle a product's ★ main-offering status on its hub (same worker action as the hub card's ★), then repaint every row of it
+async function dev2MainToggle(productId, campId, btn) {
+  const nid = x => String(x || '').replace(/-/g, ''), rows = (DEV2_ROWS || []).filter(r => nid(r.productId) === nid(productId) && nid(r.campId) === nid(campId)); if (!rows.length) return;
+  const on = !rows[0].main; if (btn) btn.disabled = true;
+  const r = await call('setHubMainOffering', { campaignId: campId, productId, op: on ? 'add' : 'remove' }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('★ not changed: ' + ((r && r.error) || 'no response'), 'error'); if (btn) btn.disabled = false; return; }
+  rows.forEach(x => { x.main = on ? '★' : ''; }); _devTblLast = null; renderDev2();
+  showToast(on ? '★ Set as a main offering' : 'Removed from main offerings', 'success');
+}
 function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
 function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2TogglePanel() { const p = document.getElementById('dev2Panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; dev2DrawPanel(); }
@@ -12676,6 +12686,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;color:var(--text2);">${esc(dev2Val(r, 'kind'))}</td>
       <td style="padding:6px 10px;font-size:12px;min-width:150px;${r.hubLive ? '' : 'color:var(--text3);'}" title="${esc(r.hubPublish || '')}">${r.hubSectionDisplay ? esc(r.hubSectionDisplay) : ''}${r.hubLive && r.hubSectionHeading && r.hubSectionHeading.toLowerCase() !== String(r.hubSectionDisplay || '').toLowerCase() ? `<div title="Heading shown on the live hub" style="font-size:10px;color:var(--text3);">shown as ${esc(r.hubSectionHeading)}</div>` : ''}</td>
+      <td style="padding:6px 4px;font-size:13px;text-align:center;width:22px;">${r.productId && r.campId ? `<button type="button" onclick="dev2MainToggle('${esc(r.productId)}','${esc(r.campId)}',this)" title="${r.main ? '★ Main offering — click to remove' : 'Not main — click to set as a ★ main offering'}" style="padding:0;border:0;background:transparent;cursor:pointer;font-size:13px;line-height:1;color:${r.main ? '#f5c542' : 'var(--text3)'};opacity:${r.main ? 1 : .45};">${r.main ? '★' : '☆'}</button>` : ''}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.productId ? `<input type="checkbox" title="Select this product for bulk actions" ${DEV2_SEL_P.has(r.productId) ? 'checked' : ''} onclick="dev2ToggleRec('p','${esc(r.productId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${productCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.keywordCluster ? esc(r.keywordCluster) : dash}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.keywordTopic ? esc(r.keywordTopic) : dash}</td>

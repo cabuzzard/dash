@@ -17747,7 +17747,10 @@ Return: {
           stat.count++; if (iv.status === "Finished") stat.finished++;
         });
         const tierOf = await ivTierFn(env);
+        const mainBy = {};   // ★ main offerings per hub (the hub card's ★ toggle) — the All Output ★ column
+        for (const c of new Set(rows.map(r => r.campId).filter(Boolean))) mainBy[c] = new Set((await hubMainList(env, c)).map(x => String(x).replace(/-/g, "")));
         rows.forEach(r => {
+          r.main = r.productId && mainBy[r.campId] && mainBy[r.campId].has(String(r.productId).replace(/-/g, "")) ? "★" : "";
           r.titleInterviewCount = titleInterviewStats[r.titleId]?.count || 0;
           r.titleInterviewFinished = titleInterviewStats[r.titleId]?.finished || 0;
           r.ivTier = r.kind === "asset" ? IV_TIER_LABEL[tierOf(r.assetType || r.rawAssetType)] : "";
