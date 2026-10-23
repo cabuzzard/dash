@@ -12140,6 +12140,13 @@ async function hubCheckAddAssetGo(i) {
     const hi = HUB_SITES.filter(x => x.campaignId).findIndex(x => x.slug === slug); if (hi >= 0) hubCheckOpen(hi, i, 'dev'); }, 300);
   return true;
 }
+// hub name → that hub's card on Content Hubs 2 (one hub card at a time)
+function hubCheckGoHub(slug) {
+  const i = HUB_SITES.findIndex(x => x.slug === slug); if (i < 0) return;
+  HUB2_IDX = i; try { localStorage.setItem('hub2Slug', slug); } catch (e) {}
+  switchTab('contenthubs2'); if (typeof hubs2TabLoaded !== 'undefined' && hubs2TabLoaded) renderHubs2();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 // ↻ Refresh: fresh rows (skips the 5-second table cache) + goals rebuilt from the worksheet — no model calls
 async function hubCheckRefresh(btn) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Refreshing…'; }
@@ -12172,7 +12179,7 @@ function renderHubChecklist() {
     + `<th style="${th}">Total</th></tr></thead><tbody>`;
   hubs.forEach((h, hi) => {
     let tot = 0, totD = 0, totF = 0;
-    html += `<tr><td style="${td}text-align:left;white-space:nowrap;">${esc(h.name || h.slug)}</td>` + cols.map((t, ci) => {
+    html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + cols.map((t, ci) => {
       const c = n(h.slug, t), d = nd(h.slug, t), fl = nf(h.slug, t); tot += c; totD += d; totF += fl;
       const at = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t;
       return `<td style="${td}${at ? 'background:var(--surface2);' : ''}">${pair(c, d, c ? `hubCheckOpen(${hi},${ci},'live')` : '', d ? `hubCheckOpen(${hi},${ci},'dev')` : '', at && HUBCHECK_OPEN.kind === 'live', at && HUBCHECK_OPEN.kind === 'dev', hubCheckGoal(h.slug, t), fl, fl ? `hubCheckOpen(${hi},${ci},'flag')` : '', at && HUBCHECK_OPEN.kind === 'flag')}</td>`;
