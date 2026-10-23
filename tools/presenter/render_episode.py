@@ -10,6 +10,7 @@ episode.json (built by the worker's renderSpec, or by hand):
            # or {"engine": "elevenlabs", "id": "<voice_id>", "rate": "-4%"} (needs ELEVENLABS_API_KEY)
   "voice2": {"engine": "edge", "id": "en-US-BrianNeural"},   # optional: interviewer voice for item "ask" lines
   "background": {"url": "https://..."},            # optional; else the character's default scene
+  "backgrounds": [{"url": "..."}, ...],            # optional, 2+: switch plate at every section (crossfade), cycling
   "fonts": {"display": "Fraunces", "body": "Inter"},  # Google Fonts families (campaign Fonts)
   "palette": {"accent": "#e8b234", "ink": "#f6eede", "panel": "#121a16"},   # optional
   "segments": [
@@ -521,8 +522,22 @@ def main(ep_path, out, work):
             sc = Image.open(os.path.join(cdir, ds["file"])).convert("RGB")
             if ds.get("crop"): sc = sc.crop(tuple(ds["crop"]))
         else: sc = Image.new("RGB", (W, H), (34, 44, 38))   # library presenter with no background set
-    sw = int(W * 1.12); sc = sc.resize((sw, max(int(H * 1.12), int(sw * sc.height / sc.width))), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
-    sc = Image.blend(sc, Image.new("RGB", sc.size, (10, 18, 14)), 0.28)
+    sw = int(W * 1.12)
+    def prep_plate(im):   # softened + darkened, oversized for the drift
+        im = im.resize((sw, max(int(H * 1.12), int(sw * im.height / im.width))), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
+        return Image.blend(im, Image.new("RGB", im.size, (10, 18, 14)), 0.28)
+    sc = prep_plate(sc)
+    # 🔁 background switch (operator 2026-10-23): with 2+ plates, each section (item / point) starts on the next
+    # plate in the list, cycling, with a 1.2 s crossfade. One plate = the old single background.
+    plates = [sc]
+    for b in (ep.get("backgrounds") or [])[1:13]:
+        try: plates.append(prep_plate(Image.open(io.BytesIO(fetch(b["url"]))).convert("RGB")))
+        except Exception as e: print("background plate skipped:", e, flush=True)
+    if (ep.get("backgrounds") or [{}])[0].get("url") and len(plates) > 1 and not bg.get("url"):
+        try: plates[0] = sc = prep_plate(Image.open(io.BytesIO(fetch(ep["backgrounds"][0]["url"]))).convert("RGB"))
+        except Exception as e: print("background plate 1 skipped:", e, flush=True)
+    BG_FADE = 1.2
+    bg_switch = [t0 for t0, t1, sg in timeline if sg.get("kind") in ("item", "point")] if len(plates) > 1 else []
 
     pl = P.c["place"]; chx = W - pl["figureRightEdge"] - pl["right"]
     fmt = ep.get("format", "ranked")
@@ -713,8 +728,17 @@ def main(ep_path, out, work):
     def frame(i):
         t = i / FPS
         dx = int(40 * math.sin(t / 23)); dy = 0   # no vertical drift: it read as the presenter floating (operator 2026-10-02)
-        ox, oy = (sc.width - W) // 2 + dx, max(0, (sc.height - H) // 2 + dy)
-        fr = sc.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
+        def plate_view(p):
+            ox, oy = (p.width - W) // 2 + dx, max(0, (p.height - H) // 2 + dy)
+            return p.crop((ox, oy, ox + W, oy + H))
+        if bg_switch:
+            n_ = sum(1 for s_ in bg_switch if s_ <= t)
+            cur = plate_view(plates[n_ % len(plates)])
+            if n_ and t - bg_switch[n_ - 1] < BG_FADE:
+                cur = Image.blend(plate_view(plates[(n_ - 1) % len(plates)]), cur, ease((t - bg_switch[n_ - 1]) / BG_FADE))
+            fr = cur.convert("RGBA")
+        else:
+            fr = plate_view(sc).convert("RGBA")
         if not STAGE_LAYOUT and SHOW("presenter"):
             ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
             bob = 0   # idle bob removed — operator: "he seems to be floating up and down"

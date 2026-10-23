@@ -5895,7 +5895,7 @@ async function caLfAsIs(btn) {
   resEl.style.color = 'var(--ink3)'; resEl.textContent = `Turning “${CA_TITLE.title}” into an episode — your words as written, one chapter per heading…`;
   try {
     const r = await w('generateLongformScript', { asIs: true, titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId,
-      layout: lfIsTitles(methodName) ? 'titles' : /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter', productId: CA_TITLE.productId || undefined });
+      layout: lfIsTitles(methodName) ? 'titles' : 'stage', productId: CA_TITLE.productId || undefined });   // text over video by default (2026-10-23)
     CA_LF.made = { q: '__asis__', asIs: true, title: r.title, assetId: r.assetId };
     resEl.style.color = 'var(--fresh)';
     resEl.textContent = `✓ Episode made from your script — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick presenter/voice/background (📝 Script & cards to check it), then 🎬 Render.`;
@@ -6124,7 +6124,7 @@ Generating again creates a SECOND, separate asset (the first one keeps its rende
     try {
       const r = await w('generateLongformScript', { titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId, question: q.question,
         format: document.getElementById('caLfFormat').value, items: +document.getElementById('caLfItems').value || undefined,
-        interview, layout: /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter',
+        interview, layout: 'stage',
         productId: CA_TITLE.productId || undefined });
       CA_LF.made = { q: q.question, title: r.title, assetId: r.assetId };
       resEl.style.color = 'var(--fresh)';
@@ -6998,7 +6998,7 @@ function pubFitBoxes() {
   return { B, tr, name: it ? it.name : 'Campaign default' };
 }
 // The LAYOUT chosen at the top of the Publish modal decides which "fit script" prompt is sent.
-function pubFitTopLayout() { const v = (document.getElementById('pubLfLayout') || {}).value; return ['stage', 'titles'].includes(v) ? v : 'presenter'; }
+function pubFitTopLayout() { const v = (document.getElementById('pubLfLayout') || {}).value; return ['presenter', 'titles'].includes(v) ? v : 'stage'; }
 function pubFitScriptJson(ep) {
   const script = (ep.segments || []).filter(x => !['intro', 'jingle', 'topic'].includes(x.kind)).map(x => {
     const o = { kind: x.kind }; for (const f of ['n', 'name', 'blurb', 'label', 'ask']) if (x[f] != null && x[f] !== '') o[f] = x[f]; o.text = x.text; return o; });
@@ -7212,10 +7212,10 @@ async function pubLfLoad(assetId, token) {
   const ly = document.getElementById('pubLfLayout');
   ly.innerHTML = r.titlesScript
     ? '<option value="titles">Paragraphs with titles: no presenter (Titles episode)</option>'
-    : '<option value="presenter">Avatar — presenter + image box</option><option value="stage">Text &amp; images — big image frame, no avatar</option>';
+    : '<option value="stage">Text over video — cards, captions, pictures (default)</option><option value="presenter">Avatar — presenter + image box (parked)</option>';
   ly.disabled = !!r.titlesScript;
   ly.title = r.titlesScript ? 'A YouTube Longform — Titles episode always uses the titles format' : 'Interview episodes: Avatar or Text & images';
-  ly.value = r.titlesScript ? 'titles' : (r.render.layout === 'stage' ? 'stage' : 'presenter');
+  ly.value = r.titlesScript ? 'titles' : (r.render.layout === 'presenter' ? 'presenter' : 'stage');
   document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none';
   ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none'; pubLfSave({ layout: ly.value }); pubFitShowFor(); };
   pubFitShowFor();
@@ -7934,6 +7934,11 @@ function pubLfBgModal(target) {
     </div>
     <div style="font-weight:700;margin-bottom:4px;">🗂 Earlier images <span style="color:var(--ink3);font-weight:400;">(this campaign's video backgrounds and thumbnails — click one to use it)</span></div>
     <div id="lfBgLib" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">Loading…</div>
+    ${isT ? '' : `<div style="margin-top:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;">
+      <div style="font-weight:700;">🔁 Switch background each section <span id="lfRotCount" style="color:var(--ink3);font-weight:400;"></span></div>
+      <div style="font-size:11px;color:var(--ink3);margin:2px 0 6px;">Tick 🔁 on the images above to put them in the rotation. The video starts on the background in use, then moves to the next one at every section (about every 90 s) with a soft crossfade, cycling. Fewer than 2 = one background all the way through.</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><button class="btn" type="button" style="font-size:11px;" onclick="pubLfRotGen(this, 3)">✨ Make 3 more for the rotation</button>
+        <button class="btn" type="button" style="font-size:11px;" onclick="pubLfRotSet([])">Clear rotation</button><span id="lfRotMsg" style="font-size:11px;color:var(--ink3);"></span></div></div>`}
     <div class="modalrow" style="display:flex;justify-content:flex-end;margin-top:10px;"><button class="btn" type="button" onclick="document.getElementById('lfBgModal').remove()">Done</button></div>
   </div>`;
   document.body.appendChild(ov);
@@ -7949,9 +7954,11 @@ async function pubLfBgModalLoad(fillDir) {
     if (r.current) { cur.src = r.current; cur.style.display = 'inline-block'; } else cur.style.display = 'none';
     if (fillDir && r.direction) document.getElementById('lfBgDir').value = r.direction;
     PUB_LF.bgLib = (r.library || []).filter(b => LFBG.target !== 'thumb' || !/default scene/.test(b.source || ''));
-    lib.innerHTML = PUB_LF.bgLib.length ? PUB_LF.bgLib.map((b, i) => `<button type="button" onclick="pubLfUseBg(${i})" title="${esc(b.direction || b.source || '')}" style="padding:0;border:2px solid ${b.url === r.current ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;background:none;cursor:pointer;text-align:left;">
+    const rot = new Set((PUB_LF.render && PUB_LF.render.backgrounds) || []), rc = document.getElementById('lfRotCount');
+    if (rc) rc.textContent = rot.size ? '· ' + rot.size + ' in the rotation' : '· off';
+    lib.innerHTML = PUB_LF.bgLib.length ? PUB_LF.bgLib.map((b, i) => '<div>' + (LFBG.target === 'thumb' || /default scene/.test(b.source || '') ? '' : `<label style="display:flex;gap:4px;align-items:center;font-size:10.5px;cursor:pointer;margin-bottom:2px;"><input type="checkbox" ${rot.has(b.url) ? 'checked' : ''} onchange="pubLfRotToggle(${i}, this.checked)"> 🔁 rotation</label>`) + `<button type="button" onclick="pubLfUseBg(${i})" title="${esc(b.direction || b.source || '')}" style="padding:0;border:2px solid ${b.url === r.current ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;background:none;cursor:pointer;text-align:left;">
         <img src="${esc(b.url)}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:6px 6px 0 0;">
-        <div style="font-size:10px;padding:3px 5px;color:var(--ink3);">${b.url === r.current ? '✓ in use · ' : ''}${esc(b.source || '')}${b.at ? ' · ' + new Date(b.at).toLocaleDateString() : ''}</div></button>`).join('')
+        <div style="font-size:10px;padding:3px 5px;color:var(--ink3);">${b.url === r.current ? '✓ in use · ' : ''}${esc(b.source || '')}${b.at ? ' · ' + new Date(b.at).toLocaleDateString() : ''}</div></button>` + '</div>').join('')
       : '<span style="color:var(--ink3);">No backgrounds yet for this campaign — generate or upload one above.</span>';
   } catch (e) { lib.textContent = 'Could not load: ' + e.message; }
 }
@@ -7986,6 +7993,35 @@ async function pubThumbGenDir(btn, direction) {
     await pubThumbApply({ imageUrl: r.imageUrl, prompt: r.prompt });
     msg.textContent = '✓ New thumbnail background — add the title text when ready.'; pubLfBgModalLoad();
   } catch (e) { msg.textContent = 'Thumbnail failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+// 🔁 background rotation (render.backgrounds): the plates the renderer switches to at each section
+async function pubLfRotSet(list) {
+  const msg = document.getElementById('lfRotMsg'); if (msg) msg.textContent = 'Saving…';
+  try { await pubLfSave({ backgrounds: list }); if (msg) msg.textContent = list.length >= 1 ? '✓ Saved' : '✓ Rotation off'; } catch (e) { if (msg) msg.textContent = 'Not saved: ' + e.message; }
+  pubLfBgModalLoad();
+}
+function pubLfRotToggle(i, on) {
+  const b = (PUB_LF.bgLib || [])[i]; if (!b) return;
+  const cur = ((PUB_LF.render && PUB_LF.render.backgrounds) || []).filter(u => u !== b.url);
+  pubLfRotSet(on ? cur.concat(b.url) : cur);
+}
+// ✨ make N new plates (same Grok background generator, one at a time) and add them to the rotation; the background in use stays
+async function pubLfRotGen(btn, n) {
+  if (!confirm('Make ' + n + ' new backgrounds for the rotation? About ' + n + ' Grok images + ' + n + ' short Claude prompts (a few cents each).')) return;
+  const o = btn.textContent, msg = document.getElementById('lfRotMsg'), keep = (document.getElementById('lfBgCur') || {}).src || '';
+  btn.disabled = true; const made = [];
+  try {
+    for (let k = 0; k < n; k++) {
+      btn.textContent = '✨ ' + (k + 1) + ' of ' + n + '…';
+      const r = await w('generateLongformBackground', { assetId: PUB_LF.assetId, direction: ((document.getElementById('lfBgDir') || {}).value || '') + ' — a different scene from the earlier ones (variation ' + (k + 1) + ')' });
+      if (!r.imageUrl) throw new Error(r.error || 'No image returned');
+      const s = await w('saveOfferImage', { assetId: PUB_LF.assetId, kind: 'longform-background', imageUrl: r.imageUrl, prompt: r.prompt, background: true });
+      if (s && s.url) made.push(s.url);
+    }
+  } catch (e) { if (msg) msg.textContent = 'Stopped: ' + e.message; }
+  if (keep && /^https:/.test(keep)) { try { await w('longformBackgrounds', { assetId: PUB_LF.assetId, op: 'use', url: keep }); pubLfShowBg(keep); } catch (e) {} }   // saving a plate makes it the main one — put the original back
+  if (made.length) await pubLfRotSet([...new Set([...((PUB_LF.render && PUB_LF.render.backgrounds) || []), ...made])]);
   btn.disabled = false; btn.textContent = o;
 }
 async function pubLfUseBg(i) {

@@ -1172,7 +1172,7 @@ async function handleStudio(env, body) {
     if (!(await rate("generate"))) return { error: "That's the limit of scripts for today. Try again tomorrow." };
     it.generating = Date.now(); await saveItems();
     const r = await studioInner(env, "generateLongformScript", { titleId: link.titleId, campaignId: link.campaignId, productId: link.productId, methodId: STUDIO_INTERVIEW_METHOD_ID,
-      question: it.topic, format: "interview", layout: "presenter", interview });
+      question: it.topic, format: "interview", layout: "stage", interview });
     items = (await env.TRADES.get(KI, "json").catch(() => null)) || items;   // re-read: answers may have autosaved meanwhile
     const cur = items.find(x => x.d === it.d) || it; delete cur.generating;
     if (!r || r.error || !r.assetId) { await saveItems(); return { error: (r && r.error) || "The script didn't come back. Try again." }; }
@@ -2006,7 +2006,7 @@ async function writeTopicalYouTube(env, assetId, options = {}) {
   let old = {}; try { old = JSON.parse(lfReadRich(input.state.page.properties['Video Spec']) || '{}'); } catch (e) {}
   const spec = { v: 1, question: input.headline, format: 'explainer', title: out.title || input.headline, segments, tags: out.tags || [],
     interview: input.skipInterview ? [] : input.state.own.filter(iv => iv.status === 'Finished').flatMap(iv => iv.qs.map((q, i) => ({ q, a: iv.answers[i] || '' })).filter(x => x.a)),
-    render: old.render || { character: 'mountain-man', voice: LF_DEFAULT_VOICE, layout: 'presenter' } };
+    render: old.render || { character: 'mountain-man', voice: LF_DEFAULT_VOICE, layout: 'stage' } };
   const text = '# ' + spec.title + '\n\n' + segments.map(s => (s.name ? '## ' + s.name + '\n\n' : '') + s.text).join('\n\n');
   return topicalSaveWriting(env, input, text, { 'Video Spec': { rich_text: ivRt(JSON.stringify(spec)) }, 'Platform Title': { rich_text: ivRt(spec.title) },
     'Post Caption': { rich_text: ivRt(out.description || '') }, 'Video URL': { url: null } }); // an older render cannot represent a newly written script
@@ -3723,7 +3723,7 @@ async function lfBuildEpisode(env, assetId) {
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
     ...(await (async () => { if (!/^p-/.test(r.character || "")) return {}; const p = (await lfPresenterList(env)).find(x => x.id === r.character); return p ? { presenter: p } : {}; })()),
-    layout: ["stage", "titles"].includes(r.layout) ? r.layout : "presenter",
+    layout: ["presenter", "titles"].includes(r.layout) ? r.layout : "stage",   // text over video unless the avatar was chosen (2026-10-23)
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
@@ -3733,6 +3733,10 @@ async function lfBuildEpisode(env, assetId) {
     ...(() => { const vv = LF_VOICES.find(x => x.id === (r.voice || LF_DEFAULT_VOICE)); return vv && vv.ambience ? { ambience: vv.ambience } : {}; })(),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
+    // 🔁 background switch: the episode's background + its rotation plates (render.backgrounds) — the renderer moves to
+    // the next plate at every section with a crossfade. Needs 2+ plates; otherwise the single background as before.
+    ...(() => { const list = [...new Set([pr["Longform Background"]?.url || "", ...(Array.isArray(r.backgrounds) ? r.backgrounds : [])].filter(Boolean))];
+      return list.length >= 2 ? { backgrounds: list.slice(0, 13).map(url => ({ url })) } : {}; })(),
     fonts, campaignFonts, palette,
     segments: introSegs.concat(spec.segments),
   };
@@ -21814,7 +21818,7 @@ Write for the ear: short sentences, concrete examples, no jargon. Call submit_ti
           if (!String(question || "").trim()) question = String(body.topic || rtx("Core Idea") || tName || "this episode").trim();
         }
         const format = (body.asIs || body.writeTitles) ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
-        const layout = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
+        const layout = ["presenter", "titles"].includes(body.layout) ? body.layout : "stage";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
         const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 15);
@@ -21957,8 +21961,12 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           // two separate editors: a Titles episode stays on the titles format; an Interview episode can't switch to it
           if (body.layout) {
             const isT = !!(spec.titlesScript || spec.render.layout === "titles");
-            const want = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
-            spec.render.layout = isT ? "titles" : (want === "titles" ? (spec.render.layout || "presenter") : want);
+            const want = ["presenter", "titles"].includes(body.layout) ? body.layout : "stage";
+            spec.render.layout = isT ? "titles" : (want === "titles" ? (spec.render.layout || "stage") : want);
+          }
+          if (Array.isArray(body.backgrounds)) {   // 🔁 rotation plates (https image URLs, max 12)
+            const bg = [...new Set(body.backgrounds.map(u => String(u || "").trim()).filter(u => /^https:\/\/\S+$/.test(u)))].slice(0, 12);
+            if (bg.length) spec.render.backgrounds = bg; else delete spec.render.backgrounds;
           }
           if (body.intro !== undefined) { const v = String(body.intro || "").slice(0, 60); if (v) spec.render.intro = v; else delete spec.render.intro; }
           if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
@@ -22564,7 +22572,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           return json({ ok: true, boxes: b, campaignBoxes: camp });
         }
         const own = lfCleanBoxes(spec.render && spec.render.boxes);
-        return json({ ok: true, boxes: own, campaignBoxes: camp, inEffect: own ? "episode" : camp ? "campaign" : "design", treatment: (spec.render && spec.render.treatment) || null, layout: (spec.render && spec.render.layout) || "presenter" });
+        return json({ ok: true, boxes: own, campaignBoxes: camp, inEffect: own ? "episode" : camp ? "campaign" : "design", treatment: (spec.render && spec.render.treatment) || null, layout: (spec.render && spec.render.layout) || "stage" });
       }
       if (body.action === "getLongformEpisode") {
         try { return json({ success: true, episode: await lfBuildEpisode(env, String(body.assetId || "").replace(/-/g, "")) }); }
@@ -22713,7 +22721,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         ispec += approvedPlateBlock(brief);
         const charStyle = await lfCharStyle(env, spec?.render?.character);
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
-        const stageLayout = ["stage", "titles"].includes(spec?.render?.layout);
+        const stageLayout = spec?.render?.layout !== "presenter";
         const bgCid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
         const direction = String(body.direction || "").trim().slice(0, 600);
         if (bgCid && typeof body.direction === "string") await env.TRADES.put("lfbg:dir:" + bgCid, direction).catch(() => {});
