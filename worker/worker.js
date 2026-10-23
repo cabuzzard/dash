@@ -13712,7 +13712,7 @@ function newsletterValues(page) {
 async function newsletterContext(env,campaignId) {
   const cid=hubAssetId(campaignId);if(!/^[a-f0-9]{32}$/i.test(cid))throw new Error('campaignId required');
   await hubSitesMerge(env);
-  const products=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(cid)}}});
+  const products=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaigns',relation:{contains:kwDashId(cid)}}});
   const candidates=products.filter(p=>!p.archived&&!p.in_trash&&!/^archived$/i.test(p.properties?.Status?.select?.name||p.properties?.Status?.status?.name||'')&&/^premium newsletter$/i.test(kwTitleOf(p).trim()));
   const mains=await hubMainList(env,cid),placed=candidates.filter(p=>mains.map(hubAssetId).includes(hubAssetId(p.id)));
   if(placed.length!==1)throw new Error('Expected one existing Premium Newsletter product on ★ Main for this campaign; found '+placed.length);
