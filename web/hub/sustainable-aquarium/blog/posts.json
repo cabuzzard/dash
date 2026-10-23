@@ -1,5 +1,15 @@
 [
   {
+    "slug": "walstad-method-build-a-self-sustaining-planted-aquarium",
+    "title": "Walstad Method: Build a Self-Sustaining Planted Aquarium",
+    "intro": "You have probably kept a conventional tank before — or you are researching one now — and the maintenance picture does not add up. Weekly water changes, liquid fertilisers, a canister filter full of media you half-understand, and a low-grade dread that something is quietly dying. The Walstad method i",
+    "date": "2026-10-23",
+    "assetId": "4021f7d3a4bb8137a582cec43e9e9943",
+    "contentHash": "367b83f48dec23284e3070ae8f32e2fc46f4d50620067bfbbad2bcce208bd8b9",
+    "contentEditedAt": "2026-10-23T18:39:00.000Z",
+    "refreshedAt": "2026-10-23T18:39:51.132Z"
+  },
+  {
     "slug": "walstad-dirted-tank-problems-you-can-fix-at-home",
     "title": "Walstad & Dirted Tank Problems You Can Fix at Home",
     "intro": "You followed the method — soil down, capped with gravel, planted densely, lights on a timer — and something still went sideways. The water turned the wrong colour, algae crept across every surface, or a fish that looked fine yesterday is now gasping at the surface. The frustration is specific: you d",
@@ -15,16 +25,6 @@
     "contentHash": "73774264a06f5cc4e6b6600a7d88c1ce5f985af3bbab57364398b5536aded421",
     "contentEditedAt": "2026-10-23T17:26:00.000Z",
     "refreshedAt": "2026-10-23T17:26:08.945Z"
-  },
-  {
-    "slug": "walstad-method-build-a-self-sustaining-planted-aquarium",
-    "title": "Walstad Method: Build a Self-Sustaining Planted Aquarium",
-    "intro": "You have probably kept a conventional tank before — or you are researching one now — and the maintenance picture does not add up. Weekly water changes, liquid fertilisers, a canister filter full of media you half-understand, and a low-grade dread that something is quietly dying. The Walstad method i",
-    "date": "2026-10-23",
-    "assetId": "4021f7d3a4bb8137a582cec43e9e9943",
-    "contentHash": "7213cb42678b6b55364b346b1346c2fd3bf19b954d2934b36cadb73fb694613c",
-    "contentEditedAt": "2026-10-23T17:23:00.000Z",
-    "refreshedAt": "2026-10-23T17:24:04.691Z"
   },
   {
     "slug": "tank-diagnosis",
