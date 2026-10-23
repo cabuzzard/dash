@@ -1806,7 +1806,8 @@ async function writingMethod(env,page) {
   const rows=writingRows(await writingMethodsTable(env)),p=page.properties||{},type=p['Asset Type']?.select?.name||'';
   const methodId=ivRid(p,'Method')||await resolveMethodIdByName(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()]||type);
   const method=methodId?await ivPage(methodId):null,name=method?hubRichText(method.properties?.Name?.title):type;
-  const row=rows.find(r=>ivNorm(r.name)===ivNorm(name))||rows.find(r=>r.aliases.includes(ivNorm(name)));
+  const named=rows.find(r=>ivNorm(r.name)===ivNorm(name)),typed=rows.find(r=>r.aliases.includes(ivNorm(type)));
+  const row=/^newsletter (paid|free)$/i.test(type)&&/^digest(?: parent)?$/.test(ivNorm(name))?typed||named:named||rows.find(r=>r.aliases.includes(ivNorm(name)));
   const missing=writingMissing(row);if(!method)missing.unshift('no method record');if(row && row.mapped.toLowerCase()!=='yes')missing.push('mapped is not yes');
   return {methodId,method,name,row,contract:row?parseWritingContract(row.contractText):[],reason:missing.length?`${name||type||'Asset'}: ${missing.join('; ')}`:''};
 }
@@ -1820,6 +1821,7 @@ function validateWritingContract(contract,fields) {
     let m;const lines=value.trim().split(/\r?\n/).filter(x=>x.trim());
     if((m=/≤\s*(\d+)\s+characters/i.exec(rule))&&Array.from(value).length>+m[1])violations.push(`${name}: exceeds ${m[1]} characters`);
     if((m=/at least\s+(\d+)\s+words/i.exec(rule))&&value.trim().split(/\s+/).length<+m[1])violations.push(`${name}: expected at least ${m[1]} words`);
+    if((m=/\b(\d+)\s*[–-]\s*(\d+)\s+words\b/i.exec(rule))){const count=value.trim().split(/\s+/).length;if(count<+m[1]||count>+m[2])violations.push(`${name}: expected ${m[1]}–${m[2]} words, got ${count}`);}
     if((m=/exactly\s+(\d+)\s+lines/i.exec(rule))&&lines.length!==+m[1])violations.push(`${name}: expected exactly ${m[1]} lines, got ${lines.length}`);
     if((m=/exactly\s+(\d+)\s+tags.*comma-separated/i.exec(rule))){const tags=value.split(',').map(x=>x.trim());if(tags.length!==+m[1]||tags.some(x=>!x))violations.push(`${name}: expected exactly ${m[1]} comma-separated tags`);}
     if((m=/at least\s+(\d+)\s+Q&A pairs/i.exec(rule))){const pairs=value.match(/Q:\s*\S[\s\S]*?\s+A:\s*\S[\s\S]*?(?=\s+Q:|$)/g)||[];if(pairs.length<+m[1])violations.push(`${name}: expected at least ${m[1]} Q&A pairs`);}
@@ -1836,7 +1838,7 @@ async function writeContractAsset(env,assetId) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
   await governingFlow(env);
   const page=await ivPage(assetId);if(!page?.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
-  if(newsletterIssueType(page.properties?.['Asset Type']?.select?.name))return {error:'newsletter_requires_disseminate',reason:'Newsletter issues are written only by Disseminate on their Digest parent.'};
+  if(/^newsletter (paid|free)$/i.test(page.properties?.['Asset Type']?.select?.name||''))return {error:'newsletter_requires_disseminate',reason:'Newsletter issues are written only by Disseminate on their Digest parent.'};
   const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason};
   const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
   const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
@@ -1879,6 +1881,7 @@ async function writeContractAsset(env,assetId) {
 
 async function assetWriterInfo(env,page) {
   const mapping=await writingMethod(env,page);
+  if(/^newsletter (paid|free)$/i.test(page.properties?.['Asset Type']?.select?.name||''))return {writer:'',methodId:mapping.methodId,methodName:mapping.name,type:page.properties['Asset Type'].select.name,writerAvailable:false,writerError:'Written only by Disseminate on the Digest parent',mapping};
   return {writer:mapping.reason?'':'contract',methodId:mapping.methodId,methodName:mapping.name,type:page.properties?.['Asset Type']?.select?.name||'',
     writerAvailable:!mapping.reason,writerError:mapping.reason||'',mapping};
 }
@@ -2244,14 +2247,24 @@ async function acV1(env, action, fields) {
   const t = await r.text(); try { return JSON.parse(t); } catch (e) { return { result_code: 0, result_message: t.slice(0, 200) }; }
 }
 function mdToEmailHtml(md) {
-  const esc = x => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const inline = x => esc(x).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2">$1</a>');
-  const out = []; let list = [];
-  const flush = () => { if (list.length) { out.push("<ul>" + list.map(li => "<li>" + inline(li) + "</li>").join("") + "</ul>"); list = []; } };
-  for (const raw of String(md).split("\n")) { const l = raw.trim(); if (!l) { flush(); continue; }
-    if (/^[-*]\s+/.test(l)) list.push(l.replace(/^[-*]\s+/, "")); else { flush(); out.push("<p>" + inline(l) + "</p>"); } }
-  flush();
-  return `<div style="font-family:Georgia,serif;font-size:17px;line-height:1.6;color:#222;max-width:600px;margin:0 auto;padding:16px">${out.join("")}</div>`;
+  const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const inline=x=>esc(x).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2">$1</a>');
+  const out=[],lines=String(md).split('\n');let list=[],listType='ul';
+  const flush=()=>{if(list.length){out.push('<'+listType+'>'+list.map(x=>'<li>'+inline(x)+'</li>').join('')+'</'+listType+'>');list=[];}};
+  const cells=line=>line.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>x.trim());
+  const divider=line=>line&&line.includes('|')&&cells(line).every(x=>/^:?-{3,}:?$/.test(x));
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i].trim();if(!line){flush();continue;}
+    if(line.includes('|')&&divider(lines[i+1])){
+      flush();const head=cells(line);i++;const rows=[];while(i+1<lines.length&&lines[i+1].includes('|'))rows.push(cells(lines[++i]));
+      const cell=(tag,x)=>'<'+tag+' style="border:1px solid #ddd;padding:6px;text-align:left">'+inline(x)+'</'+tag+'>';
+      out.push('<table style="border-collapse:collapse;width:100%"><thead><tr>'+head.map(x=>cell('th',x)).join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+head.map((_,j)=>cell('td',row[j]||'')).join('')+'</tr>').join('')+'</tbody></table>');continue;
+    }
+    const heading=/^(#{1,3})\s+(.+)$/.exec(line);if(heading){flush();const level=heading[1].length;out.push('<h'+level+'>'+inline(heading[2])+'</h'+level+'>');continue;}
+    const bullet=/^[-*]\s+(.+)$/.exec(line),number=/^\d+[.)]\s+(.+)$/.exec(line);
+    if(bullet||number){const type=number?'ol':'ul';if(type!==listType)flush();listType=type;list.push((bullet||number)[1]);}else{flush();out.push('<p>'+inline(line)+'</p>');}
+  }
+  flush();return '<div style="font-family:Georgia,serif;font-size:17px;line-height:1.6;color:#222;max-width:600px;margin:0 auto;padding:16px">'+out.join('')+'</div>';
 }
 async function acIssueDraft(env, { slug, hubName, subject, preview, md }) {
   const { url, key } = acCreds(env); if (!url || !key) return { error: "ActiveCampaign not configured" };
@@ -13700,7 +13713,7 @@ async function newsletterContext(env,campaignId) {
   const cid=hubAssetId(campaignId);if(!/^[a-f0-9]{32}$/i.test(cid))throw new Error('campaignId required');
   await hubSitesMerge(env);
   const products=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(cid)}}});
-  const candidates=products.filter(p=>!p.archived&&!p.in_trash&&/^premium newsletter$/i.test(kwTitleOf(p).trim()));
+  const candidates=products.filter(p=>!p.archived&&!p.in_trash&&!/^archived$/i.test(p.properties?.Status?.select?.name||p.properties?.Status?.status?.name||'')&&/^premium newsletter$/i.test(kwTitleOf(p).trim()));
   const mains=await hubMainList(env,cid),placed=candidates.filter(p=>mains.map(hubAssetId).includes(hubAssetId(p.id)));
   if(placed.length!==1)throw new Error('Expected one existing Premium Newsletter product on ★ Main for this campaign; found '+placed.length);
   const product=placed[0],record=await findBestProductResearchRecord(newsletterHdr(env),product.id);
@@ -13731,6 +13744,7 @@ async function newsletterSaveSetting(env,body) {
   if(hubAssetId(body.productId)!==context.productId||hubAssetId(body.recordId)!==context.recordId)throw new Error('Product Research does not belong to this newsletter product');
   const parent=context.record.parent;if(parent?.database_id&&hubAssetId(parent.database_id)!==hubAssetId(PRODUCT_RESEARCH_DB))throw new Error('Newsletter settings may only edit Product Research');
   if(!(context.record.properties.Product?.relation||[]).some(x=>hubAssetId(x.id)===context.productId))throw new Error('Product Research relation mismatch');
+  if(body.onlyIfEmpty){const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId)),current=writingFieldValues(fresh.properties)[body.field]||'';if(current.trim())return {ok:true,field:body.field,value:current,skipped:true};}
   const property=body.field==='Research Depth'?{select:{name:value}}:{rich_text:ivRt(value)};
   await newsletterNotion(env,'pages/'+kwDashId(context.recordId),{method:'PATCH',body:JSON.stringify({properties:{[body.field]:property}})});
   const after=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));
@@ -13748,7 +13762,7 @@ function newsletterMethod(table,kind) {
 async function newsletterUsage(env,job,phase,result,countCall=true) {
   if(!job?.campaignId)return;
   const key='digest:usage:'+hubAssetId(job.campaignId),log=await env.TRADES.get(key,'json')||[];
-  let run=log.find(x=>x.runId===job.id);if(!run){run={runId:job.id,at:job.createdAt||new Date().toISOString(),depth:job.newsletter?.fields?.['Research Depth']||'Deep',periodStart:job.periodStart,providers:{}};log.unshift(run);}
+  let run=log.find(x=>x.runId===job.id);if(!run){run={runId:job.id,at:job.createdAt||new Date().toISOString(),kind:job.runKind||'manual',periodKey:job.periodKey||'',depth:job.newsletter?.fields?.['Research Depth']||'Deep',periodStart:job.periodStart,providers:{}};log.unshift(run);}
   const previous=run.providers[phase]||{},calls=(previous.calls||0)+(countCall&&result?.status!=='skipped'?1:0),usageHistory=previous.usageHistory||[];
   if(countCall&&result?.status!=='skipped')usageHistory.push({at:new Date().toISOString(),usage:result?.usage??null});
   else if(result?.usage&&usageHistory.length)usageHistory[usageHistory.length-1].usage=result.usage;
@@ -13759,30 +13773,31 @@ async function newsletterSeed(env,campaignId) {
   const context=await newsletterContext(env,campaignId),cid=context.campaignId,key='newsletter:seed:'+cid,prior=await env.TRADES.get(key,'json');
   if(prior){
     if(prior.drafts&&prior.status!=='done'){
-      for(const [field,value]of Object.entries(prior.drafts)){const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));if(!writingFieldValues(fresh.properties)[field]?.trim())await newsletterSaveSetting(env,{...context,field,value});}
-      const after=await newsletterContext(env,cid),done={...prior,status:'done',fields:after.fields,error:''};await env.TRADES.put(key,JSON.stringify(done));return {ok:true,already:true,...done};
+      for(const [field,value]of Object.entries(prior.drafts)){const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));if(!writingFieldValues(fresh.properties)[field]?.trim())await newsletterSaveSetting(env,{...context,field,value,onlyIfEmpty:true});}
+      const after=await newsletterContext(env,cid);if(NEWSLETTER_FIELDS.some(k=>!after.fields[k].trim()))throw new Error('Some newsletter draft fields remain empty; saved drafts retained, no new model call');const done={...prior,status:'done',fields:after.fields,error:''};await env.TRADES.put(key,JSON.stringify(done));return {ok:true,already:true,...done};
     }
     return {ok:!prior.error,already:true,...prior};
   }
   const missing=NEWSLETTER_FIELDS.filter(k=>k!=='Research Depth'&&!context.fields[k].trim());
-  if(!writingFieldValues(context.record.properties)['Research Depth'])await newsletterSaveSetting(env,{...context,field:'Research Depth',value:'Deep'});
+  if(!writingFieldValues(context.record.properties)['Research Depth'])await newsletterSaveSetting(env,{...context,field:'Research Depth',value:'Deep',onlyIfEmpty:true});
   if(!missing.length){const result={at:new Date().toISOString(),fields:context.fields,calls:0};await env.TRADES.put(key,JSON.stringify(result));return {ok:true,...result};}
   await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===cid)||{};
   const research=await notionQuery(RESEARCH_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(cid)}}});
   const mains=(await hubMainList(env,cid)).filter(id=>hubAssetId(id)!==context.productId),facts=[];
   for(const id of mains.slice(0,8)){const record=await findBestProductResearchRecord(newsletterHdr(env),id);if(record)facts.push(Object.fromEntries(['Customer','Benefits','Transformation','Offer Structure'].map(k=>[k,writingFieldValues(record.properties)[k]?.slice(0,450)||''])));}
-  const campaign=research.map(r=>Object.fromEntries(['Statement','Customer','Pain Points','Benefits','Keywords'].map(k=>[k,writingFieldValues(r.properties)[k]?.slice(0,600)||''])));
+  const campaign=research.slice(0,2).map(r=>Object.fromEntries(['Statement','Customer','Pain Points','Benefits','Keywords'].map(k=>[k,writingFieldValues(r.properties)[k]?.slice(0,450)||''])));
   const correction=/home.services/i.test(hub.slug||'')?'Home Services means live-in house sitting, pet sitting, caretakers and property oversight; NOT home maintenance.':/care.gap|stable.home/i.test((hub.slug||'')+' '+(hub.name||''))?'Care Gap / Stable Home Foundation serves donor-side impact and where the money goes, plus caregiver housing stability.':/sunflower/i.test(hub.slug||'')?'Sunflower Acres is an accessible farm: visits, the fund and the shop; NOT generic gardening tips.':'';
   const attempt={at:new Date().toISOString(),calls:1,status:'started'};await env.TRADES.put(key,JSON.stringify(attempt));
   try{
     const contract=missing.map(name=>({name,rule:'A concise draft grounded only in supplied research. Subscriber Benefit is the reason to subscribe, not a topic. Value Proposition is the concrete premium outcome beyond free. Research Focus names weekly signals, source preferences and reader questions.'})),{keys,schema}=newsletterSchema(contract);let usage=null;
     const packet={hub:hub.name,correction,campaign,mainProducts:facts,subscriber:context.fields};
-    const generated=await hcClaude(env,'Draft only the missing newsletter research fields. AI is a filter, not a source. Never invent facts. These are editable drafts for the operator.\n'+JSON.stringify(packet), 'newsletter_seed',schema,900,u=>{usage=u;});
+    const generated=await hcClaude(env,'Draft only the missing newsletter research fields. AI is a filter, not a source. Never invent facts. The operator correction is binding and overrides stale generic research framing. These are editable drafts for the operator.\n'+JSON.stringify(packet), 'newsletter_seed',schema,900,u=>{usage=u;});
     attempt.drafts=Object.fromEntries(contract.map((f,i)=>[f.name,String(generated[keys[i]]||'').trim()]).filter(([,value])=>value));attempt.usage=usage;
     await env.TRADES.put(key,JSON.stringify({...attempt,status:'generated'}));
+    if(missing.some(field=>!attempt.drafts[field]))throw new Error('Seed draft omitted required fields; saved drafts retained without another model call');
     for(let i=0;i<contract.length;i++){
       const fresh=await newsletterNotion(env,'pages/'+kwDashId(context.recordId));if(writingFieldValues(fresh.properties)[contract[i].name]?.trim())continue;
-      const value=String(generated[keys[i]]||'').trim();if(value)await newsletterSaveSetting(env,{...context,field:contract[i].name,value});
+      const value=String(generated[keys[i]]||'').trim();if(value)await newsletterSaveSetting(env,{...context,field:contract[i].name,value,onlyIfEmpty:true});
     }
     const after=await newsletterContext(env,cid),result={...attempt,status:'done',fields:after.fields,usage};await env.TRADES.put(key,JSON.stringify(result));return {ok:true,...result};
   }catch(error){await env.TRADES.put(key,JSON.stringify({...attempt,status:'held',error:error.message}));throw error;}
@@ -13797,17 +13812,20 @@ async function newsletterPanel(env,body) {
     if(newsletterIssueType(asset.properties?.['Asset Type']?.select?.name)){const kind=/paid/i.test(asset.properties['Asset Type'].select.name)?'premium':'free',method=newsletterMethod(table,kind),values=writingFieldValues(asset.properties);sections=method.contract.map(f=>({name:f.name,value:values[f.name]||''}));bodyText=values.Body||'';subject=values['Platform Title']||'';preview=values['Preview Text']||'';}
   }
   const periodStart=hubCheckPeriodStart('Weekly'),periodEnd=new Date().toISOString().slice(0,10);
-  const children=digestId?await notionQuery(ASSETS_DB,{filter:{and:[{property:'Parent Asset',relation:{contains:kwDashId(digestId)}},{timestamp:'created_time',created_time:{on_or_after:periodStart}}]}}):[];
+  const earliest=[periodStart,...goals.map(g=>g.periodStart).filter(Boolean)].sort()[0];
+  const children=digestId?await notionQuery(ASSETS_DB,{filter:{and:[{property:'Parent Asset',relation:{contains:kwDashId(digestId)}},{timestamp:'created_time',created_time:{on_or_after:earliest}}]}}):[];
+  for(const goal of goals){goal.made=children.filter(p=>String(p.created_time||'').slice(0,10)>=(goal.periodStart||periodStart)&&(/paid/i.test(goal.name)?/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name):/free/i.test(goal.name)?/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name):newsletterIssueType(p.properties?.['Asset Type']?.select?.name))).length;}
   const sent=(await env.TRADES.get('nlsend:log','json')||[]).filter(x=>hubAssetId(x.campaignId)===context.campaignId||x.slug===(HUB_SITES.find(h=>hubAssetId(h.campaignId)===context.campaignId)?.slug));
-  return {ok:true,productId:context.productId,recordId:context.recordId,fields:context.fields,goals,periodStart,periodEnd,made:{premium:children.filter(p=>/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name)).length,free:children.filter(p=>/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name)).length},sent:sent.filter(x=>String(x.at||'').slice(0,10)>=periodStart).length,usage:(await env.TRADES.get('digest:usage:'+context.campaignId,'json')||[])[0]||null,sections,body:bodyText,subject,preview};
+  const current=children.filter(p=>String(p.created_time||'').slice(0,10)>=periodStart);
+  return {ok:true,productId:context.productId,recordId:context.recordId,fields:context.fields,goals,periodStart,periodEnd,made:{premium:current.filter(p=>/^newsletter paid$/i.test(p.properties?.['Asset Type']?.select?.name)).length,free:current.filter(p=>/^newsletter free$/i.test(p.properties?.['Asset Type']?.select?.name)).length},sent:sent.filter(x=>String(x.at||'').slice(0,10)>=periodStart).length,usage:(await env.TRADES.get('digest:usage:'+context.campaignId,'json')||[])[0]||null,sections,body:bodyText,subject,preview};
 }
-async function digestItemsSave(env, assetId, sources) {
+async function digestItemsSave(env, assetId, sources, options={}) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
-  const periodStart=hubCheckPeriodStart('Weekly'),periodEnd=new Date().toISOString().slice(0,10),items=[];
+  const periodStart=options.preserveTimestamp&&prev.periodStart||hubCheckPeriodStart('Weekly'),periodEnd=options.preserveTimestamp&&prev.periodEnd||new Date().toISOString().slice(0,10),items=[];
   const sourceList=(sources||[]).filter(s=>s&&s.claim),results=new Array(sourceList.length);let index=0;
-  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
+  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
   items.push(...results);
-  await env.TRADES.put(key, JSON.stringify({ at: new Date().toISOString(), items, periodStart, periodEnd, checks: prev.checks || {}, children: prev.children || { premium: [], free: [], news: [] } }));
+  await env.TRADES.put(key, JSON.stringify({ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items,periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} }));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
@@ -13821,6 +13839,9 @@ async function digestWriteBlocks(env, assetId, heading, text) {
 async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId,campaignId}) {
   await governingFlow(env);
   const method=newsletterMethod(await writingMethodsTable(env),kind),context=await newsletterContext(env,campaignId);
+  const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
+  if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
+  const methodId=ivRid(page.properties,'Method')||await resolveMethodIdByName('digest');if(!methodId)throw new Error('Existing Digest method record is missing; no issue was written');
   const [voice,audience,interviews]=await Promise.all([voiceBlock(env,campaignId),hubAudienceBlock(env,campaignId),ivForTitle(titleId)]);
   const finished=interviews.filter(x=>x.status==='Finished'&&x.answers.some(a=>a.trim())&&(x.scope==='Title'||x.scope==='Asset'&&x.assetIds.includes(hubAssetId(digestId)))).map(x=>({questions:x.questions,answers:x.answers}));
   const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,finishedInterviews:finished};
@@ -13836,15 +13857,16 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
   const fields=Object.fromEntries(method.contract.map((f,i)=>[f.name,typeof generated[keys[i]]==='string'?generated[keys[i]]:'']));
   fields.Body=newsletterBody(method.contract,fields);
   const violations=validateWritingContract(method.contract,fields),properties={};
+  const forbidden=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
+  if(method.contract.some(f=>forbidden.has(ivNorm(f.name))))throw new Error('Newsletter contract contains protected operational fields');
   for(const [name,value]of Object.entries(fields))properties[name]={rich_text:ivRt(value)};
-  const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
-  if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
+  if(!ivRid(page.properties,'Method'))Object.assign(properties,await assetMethodProp(methodId,page.properties['Asset Type'].select.name));
   await saveExistingAssetWriting(page,properties,[]);
   await digestWriteBlocks(env,assetId,fields['Platform Title']||method.name,fields.Body);
   const after=await newsletterNotion(env,'pages/'+kwDashId(assetId)),readback=writingFieldValues(after.properties);
   for(const [name,value]of Object.entries(fields))if((readback[name]||'').trim()!==value.trim())throw new Error('Newsletter field readback differs: '+name);
   if(after.properties['Asset Status']?.select?.name!==page.properties['Asset Status']?.select?.name)throw new Error('Newsletter status changed during write');
-  const run={assetId:hubAssetId(assetId),method:method.name,violations,written:!violations.length,timestamp:new Date().toISOString(),usage};
+  const run={assetId:hubAssetId(assetId),method:method.name,methodId,violations,written:!violations.length,timestamp:new Date().toISOString(),usage};
   await env.TRADES.put('writeasset:log',JSON.stringify([run,...(await env.TRADES.get('writeasset:log','json')||[])].slice(0,200)));
   return {subject:fields['Platform Title'],body:fields.Body,fields,violations,written:run.written};
 }
@@ -13886,15 +13908,17 @@ Do two things:
 2. The digest itself, in markdown: a short intro, then ## sections; each item = what happened, why it matters to this audience, what to do. Cite publishers by name. Premium items are only teased (no full analysis). 600-1200 words.
 
 Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","claim","tier","split"}],"whatChanged":"one line","digest":"<markdown>"}`;
-  const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
+  await newsletterUsage(env,job,'perplexityDigest',{status:'running'});
+  let r;try{r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
     headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" }, body: JSON.stringify({ preset: "medium", input }) });
+  }catch(error){await newsletterUsage(env,job,'perplexityDigest',{status:'failed',error:error.message},false);throw error;}
   const t = await r.text(); let dd = null; try { dd = JSON.parse(t); } catch (e) {}
-  if (!r.ok || !dd) throw new Error(`Perplexity HTTP ${r.status}: ${(dd?.error?.message || t).slice(0, 300)}`);
+  if (!r.ok || !dd) {await newsletterUsage(env,job,'perplexityDigest',{status:'failed',usage:dd?.usage||null,error:'Perplexity HTTP '+r.status},false);throw new Error(`Perplexity HTTP ${r.status}: ${(dd?.error?.message || t).slice(0, 300)}`);}
   { const pc = pplxCost(dd.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, dd.usage).catch(() => {}); }
   const text = dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
   const out = drJson(text);
-  if (!out || !String(out.digest || "").trim()) throw new Error("Perplexity returned no digest");
-  await newsletterUsage(env,job,'perplexityDigest',{status:'done',usage:dd.usage||null});
+  if (!out || !String(out.digest || "").trim()){await newsletterUsage(env,job,'perplexityDigest',{status:'failed',usage:dd.usage||null,error:'Perplexity returned no digest'},false);throw new Error("Perplexity returned no digest");}
+  await newsletterUsage(env,job,'perplexityDigest',{status:'done',usage:dd.usage||null},false);
   return { sources: Array.isArray(out.sources) ? out.sources : [], whatChanged: out.whatChanged || "", digest: String(out.digest) };
 }
 // put already-written text on a title as its pillar (same "Pillar Content" section the Claude writer makes)
@@ -13951,8 +13975,8 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
   const id = String(pa.id).replace(/-/g, ""); await env.TRADES.put(key, id); return id;
 }
 async function adStep(env, cid, S, invoke) {
-  if(!S.newsletter)S.newsletter=await newsletterContext(env,cid);
-  if(S.newsletter.fields['Research Depth']==='Off'){S.step='skip';S.note='Research Depth Off: existing operator inputs retained; no research calls made.';return;}
+  if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};}
+  if(S.newsletter.fields['Research Depth']==='Off'){const prior=S.jobId?await env.TRADES.get('digres:'+S.jobId,'json'):null;await newsletterUsage(env,{...(prior||{}),id:prior?.id||'off:'+cid+':'+S.period,campaignId:cid,newsletter:S.newsletter},'research',{status:'skipped',error:'Research Depth Off: no further provider calls'},false);S.step='skip';S.note='Research Depth Off: no further provider calls; operator inputs and last good digest retained.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
     const mains = await hubMainList(env, cid); if (!mains.length) { S.step = "skip"; S.note = "no ★ main offerings"; return; }
@@ -13962,7 +13986,7 @@ async function adStep(env, cid, S, invoke) {
     if (!prods.length) { S.step = "skip"; S.note = "main offerings not found"; return; }
     const kws = hcUniq([...prods.flatMap(p => [kwNorm(p.name), ...p.keywords])]).slice(0, 30);
     S.mainIds = prods.map(p => p.id); S.names = prods.map(p => p.name);
-    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords: kws,
+    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords: kws,runKind:S.manual?'manual':'weekly',periodKey:S.period,
       guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
@@ -14018,7 +14042,7 @@ async function autoDigestRun(env, invoke) {
         else { if (done[cid] === per.key) continue; if (!per.open) continue;   // new runs start Sunday 20:00 → Monday 06:00 Pacific
           S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
       if (S.step === "done" || S.step === "skip" || S.step === "error") { done[cid] = per.key; continue; }
-      S.newsletter=await newsletterContext(env,cid); // fresh once per hub on every scheduled/manual runner invocation
+      const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
       while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
         const before = S.step;
         try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
@@ -17960,6 +17984,7 @@ Return: {
         else if (field === "status") {
           const st = normStatus4(value);
           if (!STATUS4.includes(st)) return json({ error: "Status must be one of " + STATUS4.join(", ") }, 400);
+          if(kind==='asset'&&['Publish','Published'].includes(st)){const page=await ivPage(body.assetId);if(/^newsletter paid$/i.test(page.properties?.['Asset Type']?.select?.name||''))return json({error:'paid_newsletter_review_only',reason:'Premium newsletters have no send target; use Development or Review.'},400);}
           if (kind === "asset") { pageId = body.assetId; props = { "Asset Status": { select: { name: st } } }; }
           else if (kind === "title") { pageId = body.titleId; props = { Status: { select: { name: st } } }; }
           else { pageId = body.productId; props = { Status: { select: { name: st } } }; }
@@ -19447,11 +19472,16 @@ ${JSON.stringify(products)}`;
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         return json({ ok: true, ...(await assetOrphanSweep(env, { op: body.op, slug: body.slug })) });
       }
-      if(['getNewsletterSettings','saveNewsletterSettings','newsletterSetup','newsletterSeed','previewNewsletterEmail'].includes(body.action)){
+      if(['getNewsletterSettings','saveNewsletterSettings','newsletterSetup','newsletterSeed','newsletterVerifySources','previewNewsletterEmail'].includes(body.action)){
         if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
         if(body.action==='newsletterSetup')return json({ok:true,...await newsletterEnsureSchema(env)});
         if(body.action==='newsletterSeed')return json(await newsletterSeed(env,body.campaignId));
         if(body.action==='saveNewsletterSettings')return json(await newsletterSaveSetting(env,body));
+        if(body.action==='newsletterVerifySources'){
+          const page=await newsletterNotion(env,'pages/'+kwDashId(body.assetId));if(ivRid(page.properties,'Campaign')!==hubAssetId(body.campaignId)||!/^digest$/i.test(page.properties?.['Pillar Type']?.select?.name||page.properties?.['Asset Type']?.select?.name||''))return json({error:'Expected this campaign’s existing Digest parent'},400);
+          const key='digest:items:'+hubAssetId(body.assetId),data=await env.TRADES.get(key,'json');if(!data)return json({ok:true,items:0,verified:0,unverified:0});
+          await digestItemsSave(env,body.assetId,data.items,{preserveTimestamp:true});const updated=await env.TRADES.get(key,'json');return json({ok:true,items:updated.items.length,verified:updated.items.filter(x=>x.verified).length,unverified:updated.items.filter(x=>!x.verified).length,outOfPeriod:updated.items.filter(x=>!x.inPeriod).length});
+        }
         const panel=await newsletterPanel(env,body);
         if(body.action==='previewNewsletterEmail')return json({ok:true,subject:panel.subject,preview:panel.preview,html:mdToEmailHtml(panel.body)});
         return json(panel);
@@ -19510,6 +19540,7 @@ ${JSON.stringify(products)}`;
         const requestId=String(body.requestId||'').slice(0,100);
         if(requestId&&d.operations?.[requestId])return json({...d.operations[requestId],children:d.children,checks:d.checks,reused:true});
         const picked = t => d.items.filter(x => (d.checks[x.id] || {})[t]), made = { premium: null, free: null, news: [] }, errors = [], outcomes=[];
+        if(requestId){d.operations={...(d.operations||{}),[requestId]:{ok:true,pending:true,made,errors,outcomes}};await env.TRADES.put(key,JSON.stringify(d));}
         d.children = d.children || { premium: [], free: [], news: [] };
         for (const [kind, type, label] of [["premium", "Newsletter Paid", "Premium issue"], ["free", "Newsletter Free", "Free issue"]]) {
           const its = picked(kind); if (!its.length) continue;
@@ -40268,6 +40299,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         let stampAfter = false, nlSend = null;
         const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource, hubSection } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
+        if(['Publish','Published'].includes(status)){const page=await ivPage(assetId);if(/^newsletter paid$/i.test(page.properties?.['Asset Type']?.select?.name||''))return json({error:'paid_newsletter_review_only',reason:'Premium newsletters have no send target; use Development or Review.'},400);}
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
         if(status==='Published'&&body.publishToHub!==false){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
@@ -54440,7 +54472,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     if (!keywords.length) return { error: "Enter at least one keyword" };
     const job = { id: "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), campaignId: cid, hubName: body.hubName || "",
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
-      notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString() };
+      notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
     const newsletter=await newsletterContext(env,cid);
     job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=hubCheckPeriodStart('Weekly');
     job.standing = await drStandingSources(env, cid);
@@ -54457,7 +54489,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
   if (!job) return { error: "Research run not found (it may have expired)" };
   const save = () => env.TRADES.put(key, JSON.stringify(job), { expirationTtl: DR_TTL });
   if(['perplexity','status','rank'].includes(op)){
-    const current=await newsletterContext(env,job.campaignId);job.newsletter={productId:current.productId,recordId:current.recordId,fields:current.fields};
+    const current=await newsletterContext(env,job.campaignId);job.newsletter={productId:current.productId,recordId:current.recordId,fields:current.fields};await save();
     if(current.fields['Research Depth']==='Off'){job.gemini={...job.gemini,status:'skipped',error:'Research Depth Off'};job.perplexity={...job.perplexity,status:'skipped',error:'Research Depth Off'};await save();return {success:true,job:drPublic(job),researchOff:true};}
   }
 

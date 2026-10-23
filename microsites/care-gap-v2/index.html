@@ -1094,7 +1094,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="pubDigestWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b style="font-size:12px;">📰 Digest — disseminate</b><span id="pubDigestState" style="font-size:10.5px;color:var(--ink3);"></span>
             <label style="margin-left:auto;display:inline-flex;gap:5px;align-items:center;font-size:11px;cursor:pointer;" title="Checked = this digest is at Review (it shows as ⚑ in the All Hubs table). Uncheck to clear Review → Development."><input type="checkbox" id="pubDigestReview" onchange="pubDigestReviewSet(this)"> Review</label></div>
-          <div style="font-size:10.5px;color:var(--ink3);margin:4px 0 6px;">This week's research, pre-sorted Premium / Free. Tick each finding for where it goes, then ⚙ Disseminate: one Premium issue, one Free issue, one News post per ticked finding — each its own asset at Development.</div>
+          <div id="pubDigestIntro" style="font-size:10.5px;color:var(--ink3);margin:4px 0 6px;">This week's research, pre-sorted Premium / Free. Tick each finding for where it goes, then ⚙ Disseminate: one Premium issue, one Free issue, one News post per ticked finding — each its own asset at Development.</div>
+          <div id="pubNewsletterPanel" style="font-size:11.5px;margin:10px 0;"></div>
+          <div id="pubNewsletterSections" style="font-size:11.5px;"></div>
           <div id="pubDigestBody" style="font-size:11.5px;"></div>
         </div>
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
@@ -6517,6 +6519,7 @@ function openPublishAssetModal(assetId) {
     document.getElementById('pubPostImageSource').value = data.postImageSource || '';
   }
 
+  for(const option of document.getElementById('pubStatus').options)option.disabled=false;
   pubDigestLoad(assetId, data);
   pubSeriesLoad(assetId, data);
   const hubWrap = document.getElementById('pubHubWrap');
@@ -6633,6 +6636,7 @@ function openPublishAssetModal(assetId) {
 }
 function pubWriteAssetState(data){
   const wrap=document.getElementById('pubWriteWrap'),button=document.getElementById('pubWriteAsset');
+  if(/^newsletter (paid|free)$/i.test(data.type||'')){wrap.hidden=true;return;}
   delete button.dataset.unmapped;wrap.hidden=!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
   button.textContent='✍ Write asset';document.getElementById('pubWriteResult').textContent='';
 }
@@ -8130,15 +8134,51 @@ async function pubSpSave() {
 // Development asset. ✓ Remove Review drops the parent back to Development. Worker: getDigests · digestCheck · digestGenerate.
 let PUB_DIG = null;
 function pubIsDigest(data) { return /^digest( parent)?$/i.test(data.type || '') || /^digest$/i.test(data.pillarType || ''); }
-async function pubDigestLoad(assetId, data) {
-  const wrap = document.getElementById('pubDigestWrap'); PUB_DIG = null;
-  if (!pubIsDigest(data)) { wrap.style.display = 'none'; return; }
-  wrap.style.display = 'block'; document.getElementById('pubDigestBody').innerHTML = '<span style="color:var(--ink3);">Loading findings…</span>';
+let PUB_NL=null;
+async function pubDigestLoad(assetId,data){
+  const wrap=document.getElementById('pubDigestWrap'),isIssue=/^newsletter (paid|free)$/i.test(data.type||'');PUB_DIG=null;PUB_NL=null;
+  if(!pubIsDigest(data)&&!isIssue){wrap.style.display='none';return;}
+  wrap.style.display='block';document.getElementById('pubNewsletterPanel').textContent='Loading newsletter settings…';document.getElementById('pubNewsletterSections').innerHTML='';document.getElementById('pubDigestBody').innerHTML=isIssue?'':'Loading findings…';
+  wrap.querySelector('label').style.display=isIssue?'none':'';wrap.querySelector('b').textContent=isIssue?'📰 Newsletter':'📰 Digest — disseminate';
+  document.getElementById('pubDigestIntro').style.display=isIssue?'none':'';
   pubDigestStatusLine(data.status);
-  try { const r = await w('getDigests', { campaignId: CAMPAIGN_ID }); if (pubAssetId !== assetId) return;
-    PUB_DIG = (r.digests || []).find(d => normalizedRecordId(d.assetId) === normalizedRecordId(assetId)) || { assetId: normalizedRecordId(assetId), items: [], checks: {}, children: { premium: [], free: [], news: [] } };
-    pubDigestPaint(); }
-  catch (e) { document.getElementById('pubDigestBody').innerHTML = '<span style="color:#dc2626;">' + esc(e.message) + '</span>'; }
+  for(const option of document.getElementById('pubStatus').options)option.disabled=/^newsletter paid$/i.test(data.type||'')&&['Publish','Published'].includes(option.value);
+  try{
+    const panel=await w('getNewsletterSettings',{assetId,campaignId:CAMPAIGN_ID});if(pubAssetId!==assetId)return;PUB_NL={...panel,assetId,readOnly:isIssue,saving:{}};pubNewsletterPaint();
+  }catch(error){if(pubAssetId===assetId)document.getElementById('pubNewsletterPanel').textContent='Newsletter settings unavailable: '+error.message;}
+  if(isIssue)return;
+  try{const r=await w('getDigests',{campaignId:CAMPAIGN_ID});if(pubAssetId!==assetId)return;
+    PUB_DIG=(r.digests||[]).find(d=>normalizedRecordId(d.assetId)===normalizedRecordId(assetId))||{assetId:normalizedRecordId(assetId),items:[],checks:{},children:{premium:[],free:[],news:[]}};pubDigestPaint();
+  }catch(error){if(pubAssetId===assetId)document.getElementById('pubDigestBody').textContent=error.message;}
+}
+function pubNewsletterPaint(){
+  const n=PUB_NL;if(!n||n.assetId!==pubAssetId)return;
+  const names=['Subscriber Benefit','Value Proposition','Research Focus','Research Depth'];
+  document.getElementById('pubNewsletterPanel').innerHTML='<b>Newsletter</b>'+names.map((field,i)=>{
+    const value=n.fields[field]||'',input=field==='Research Depth'?`<select id="pubNlField${i}" ${n.readOnly?'disabled':''} onchange="pubNewsletterSave(${i})">${['Deep','Standard','Off'].map(v=>`<option ${v===value?'selected':''}>${v}</option>`).join('')}</select>`:`<textarea id="pubNlField${i}" rows="${field==='Research Focus'?4:2}" style="width:100%;box-sizing:border-box;" ${n.readOnly?'readonly':`onblur="pubNewsletterSave(${i})"`}>${esc(value)}</textarea>`;
+    return `<div style="margin:7px 0;"><label>${esc(field)}${input}</label>${n.readOnly?'':`<button type="button" class="iconbtn" onclick="pubNewsletterSave(${i})" title="Save ${esc(field)}">✓</button>`}<span id="pubNlSaved${i}" style="font-size:10px;margin-left:5px;"></span></div>`;
+  }).join('')+`<div style="font-size:10.5px;color:var(--ink3);">Goals (worksheet): ${(n.goals||[]).map(g=>esc(g.name)+': '+(/paid|free/i.test(g.name)?g.made+'/':'')+esc(g.goal||'not set')+' / '+esc(g.cadence)).join(' · ')}<br>Since ${esc(n.periodStart)}: Paid ${n.made.premium} · Free ${n.made.free} issues made · ${n.sent} sends queued. Goals are edited in Current Methods.</div>`+pubNewsletterUsage(n.usage);
+  if(n.readOnly){
+    document.getElementById('pubNewsletterSections').innerHTML=(n.sections||[]).map(f=>`<details style="margin:5px 0;"><summary>${esc(f.name)}${f.value?'':' — omitted'}</summary><div style="white-space:pre-wrap;margin:5px 0;">${esc(f.value||'')}</div></details>`).join('')+`<button type="button" class="iconbtn" onclick="pubNewsletterPreview(this)">Preview email</button><div id="pubNewsletterEmail"></div>`+(/^newsletter paid$/i.test((getCachedPublishAsset(pubAssetId)||{}).type||'')?'<div style="font-size:10.5px;color:var(--ink3);">Premium issue: review only. No paid send target is configured.</div>':'');
+  }
+}
+function pubNewsletterUsage(run){
+  if(!run)return '<div style="font-size:10.5px;color:var(--ink3);">Provider usage: no run recorded yet.</div>';
+  const phases=Object.entries(run.providers||{}).map(([name,p])=>{const u=p.usage||{};const tokens=u.total_tokens??u.totalTokenCount??u.total_tokens_count;return esc(name)+': '+esc(p.status||'')+' · '+(p.calls||0)+' call(s)'+(p.error?' · '+esc(p.error):'')+', '+(tokens!==undefined?esc(tokens)+' tokens':p.usageReported?esc(JSON.stringify(u)):'usage not returned by provider');});
+  return `<div style="font-size:10.5px;color:var(--ink3);margin-top:6px;">Last run ${esc(run.at||'')} · ${esc(run.depth||'')} · ${phases.join(' · ')}</div>`;
+}
+async function pubNewsletterSave(i){
+  const n=PUB_NL;if(!n||n.readOnly||n.assetId!==pubAssetId)return;const field=['Subscriber Benefit','Value Proposition','Research Focus','Research Depth'][i],value=document.getElementById('pubNlField'+i).value.trim(),status=document.getElementById('pubNlSaved'+i);
+  if(value===n.fields[field]||n.saving[field]===value)return;n.saving[field]=value;status.textContent='Saving…';status.style.color='var(--ink3)';
+  try{const r=await w('saveNewsletterSettings',{campaignId:CAMPAIGN_ID,productId:n.productId,recordId:n.recordId,field,value});if(PUB_NL!==n)return;n.fields[field]=r.value;status.textContent='saved ✓';status.style.color='#16a34a';}
+  catch(error){if(PUB_NL===n){status.textContent=error.message;status.style.color='#dc2626';}}
+  finally{delete n.saving[field];}
+}
+async function pubNewsletterPreview(button){
+  const n=PUB_NL;if(!n)return;button.disabled=true;
+  try{const r=await w('previewNewsletterEmail',{campaignId:CAMPAIGN_ID,assetId:n.assetId});if(PUB_NL!==n)return;const host=document.getElementById('pubNewsletterEmail');host.innerHTML=`<div style="margin:8px 0;"><b>${esc(r.subject)}</b><div>${esc(r.preview||'')}</div></div><iframe title="Email preview" sandbox="" style="width:100%;height:500px;border:1px solid var(--border2);"></iframe>`;host.querySelector('iframe').srcdoc=r.html;}
+  catch(error){if(PUB_NL===n)document.getElementById('pubNewsletterEmail').textContent=error.message;}
+  finally{button.disabled=false;}
 }
 function pubDigestStatusLine(st) {
   document.getElementById('pubDigestState').textContent = st ? 'Status: ' + st : '';
@@ -8153,7 +8193,7 @@ function pubDigestPaint() {
   const box = (x, t, label) => { const on = !!(checks[x.id] || {})[t];
     return `<label style="display:inline-flex;gap:3px;align-items:center;font-size:10.5px;white-space:nowrap;cursor:pointer;"><input type="checkbox" ${on ? 'checked' : ''} onchange="pubDigestCheck('${esc(x.id)}','${t}',this.checked)">${label}${used[t].has(x.id) ? ' ✓' : ''}</label>`; };
   const row = x => `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);">
-      <div style="flex:1;min-width:0;"><div>${esc(x.claim)}</div><div style="font-size:10px;color:var(--ink3);">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">source ↗</a>` : ''}</div></div>
+      <div style="flex:1;min-width:0;"><div>${esc(x.claim)}</div><div style="font-size:10px;color:var(--ink3);">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''} <span title="Mechanical source URL reachability; not independent fact checking">${x.verified?'✓ verified':'⚠ unverified'}</span>${x.inPeriod===false?' · <span>out of period</span>':''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener">source ↗</a>` : ''}</div></div>
       <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">${box(x, 'premium', 'Publish to Premium')}${box(x, 'free', 'Publish to Free')}${box(x, 'news', 'Write a News post')}</div></div>`;
   const grp = (label, list) => list.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin:8px 0 2px;">${label} (${list.length})</div>` + list.map(row).join('') : '';
   const n = t => items.filter(x => (checks[x.id] || {})[t]).length, np = n('premium'), nf = n('free'), nn = n('news');
@@ -8166,16 +8206,18 @@ function pubDigestPaint() {
 }
 function pubDigestOpenChild(id) { if (getCachedPublishAsset(id)) openPublishAssetModal(id); else window.open('https://www.notion.so/' + id, '_blank', 'noopener'); }
 async function pubDigestCheck(itemId, target, on) {
-  const d = PUB_DIG; if (!d) return; d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; pubDigestPaint();
+  const d = PUB_DIG; if (!d) return; delete d.requestId; d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; pubDigestPaint();
   try { await w('digestCheck', { assetId: d.assetId, itemId, target, on }); }
   catch (e) { d.checks[itemId][target] = !on; pubDigestPaint(); pubDigestMsg('Not saved: ' + e.message, true); }
 }
 async function pubDigestGenerate(btn) {
   const d = PUB_DIG; if (!d) return; btn.disabled = true; btn.textContent = '⏳ Writing the ticked children…';
-  try { const r = await w('digestGenerate', { assetId: d.assetId, campaignId: CAMPAIGN_ID });
-    d.children = r.children || d.children; d.checks = r.checks || d.checks; pubDigestPaint();
+  try { d.requestId=d.requestId||crypto.randomUUID(); const r = await w('digestGenerate', { assetId: d.assetId, campaignId: CAMPAIGN_ID, requestId:d.requestId });
+    d.children = r.children || d.children; d.checks = r.checks || d.checks; if(!r.pending&&!(r.errors||[]).length)delete d.requestId; pubDigestPaint();
+    if(r.pending){pubDigestMsg('Dissemination is still running; the existing child records are retained. No duplicate write started.');return;}
     const m = r.made || {}, parts = [m.premium && 'Premium issue', m.free && 'Free issue', (m.news || []).length && m.news.length + ' News post' + (m.news.length === 1 ? '' : 's') + ' queued'].filter(Boolean);
-    pubDigestMsg((parts.length ? '✓ ' + parts.join(' · ') + ' — each at Development' : 'Nothing made') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length);
+    const violations=(r.outcomes||[]).flatMap(x=>(x.violations||[]).map(v=>x.kind+': '+v));
+    pubDigestMsg((parts.length ? '✓ ' + parts.join(' · ') + ' — each at Development'+(violations.length?' · Saved with violations: '+violations.join('; '):'') : 'Nothing made') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length);
   } catch (e) { btn.disabled = false; btn.textContent = '⚙ Disseminate'; pubDigestMsg(e.message, true); }
 }
 async function pubDigestReviewSet(box) {   // the Review box: checked = Review, unchecked = Development (saved at once)
