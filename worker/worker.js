@@ -1246,7 +1246,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
     let story = null;
-    for (const x of (await freeNewsSearch(env, [...(product.kw || []), ...hubKw, product.name].slice(0, 6), { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
+    for (const x of (await freeNewsSearch(env, fnNewsQueries([...(product.kw || []), ...hubKw, product.name]), { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
       const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
     if (!story && opts.requireStory) { if (k === mains.length - 1) return { skipped: true, reason: "no readable news story this week", hub: hub.name }; continue; }
     if (story) { await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {}); storyUsed = story; }
@@ -14076,6 +14076,15 @@ async function fnArticleText(url) {
     return paras.join("\n\n").slice(0, 6000);
   } catch (e) { return ""; }
 }
+// keywords → NEWS topics: service-search words (consultant, near me, services…) never appear in headlines, so strip them,
+// keep 1–3 core words, dedupe — "independent medicare advisors near me" → "medicare" (2026-10-23)
+const FN_SERVICE_WORDS = new Set(["near", "me", "my", "consultant", "consultants", "consulting", "consultation", "consultations", "advisor", "advisors", "adviser", "advisers", "agent", "agents", "service", "services", "company", "companies", "coach", "coaching", "coaches", "expert", "experts", "help", "hire", "hiring", "best", "top", "cheap", "affordable", "local", "independent", "professional", "how", "to", "what", "is", "the", "a", "for", "and", "&", "of", "in", "with", "your", "get", "find", "vs", "—", "-"]);
+function fnNewsQueries(list, max = 5) {
+  const out = [];
+  for (const raw of (list || [])) { const words = String(raw || "").toLowerCase().replace(/[^a-z0-9&\s-]/g, " ").split(/\s+/).filter(w => w && !FN_SERVICE_WORDS.has(w));
+    const q = words.slice(0, 3).join(" ").trim(); if (q.length > 2 && !out.some(x => x === q || x.includes(q) || q.includes(x))) out.push(q); if (out.length >= max) break; }
+  return out;
+}
 function fnTokens(s) { return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 3)); }
 function fnDecode(s) { return String(s || "").replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").trim(); }
 async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
@@ -14106,7 +14115,7 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
 }
 // the hub's weekly digest from free news: findings (all Free split) + a plain digest body — no model call
 async function freeNewsDigest(env, hubName, keywords) {
-  const found = await freeNewsSearch(env, keywords, { days: 7, max: 12 });
+  const found = await freeNewsSearch(env, fnNewsQueries(keywords), { days: 7, max: 12 });
   const sources = found.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free" }));
   const digest = sources.length ? `## This week for ${hubName}\n\n` + sources.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n")
     : `No qualifying news found this week for ${hubName}.`;
