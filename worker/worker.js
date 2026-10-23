@@ -1051,6 +1051,34 @@ async function studioApps(env) {
   }
   return out;
 }
+// Client Studio as an ASSET TYPE (operator 2026-10-23: "that app managed as an asset type, listed in the All Hubs"): every studio
+// link has ONE Notion asset, Asset Type "Client Studio", on the link's title + product + campaign, carrying the link id in "Input App".
+// Active link = Published; revoked = Planning. KV client:asset:<assetId> = link id (the publish modal's Studio panel reads it).
+const STUDIO_ASSET_TYPE = "Client Studio";
+async function studioAssetCreate(env, link) {
+  await inputAppEnsureProp(env);
+  const dash = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const props = {
+    "Asset Title": { title: [{ type: "text", text: { content: `${String(link.titleName || link.productName || "Client").slice(0, 120)} — Client Studio (${String(link.label || "Client").slice(0, 60)})` } }] },
+    "Asset Status": { select: { name: link.revoked ? "Planning" : "Published" } },
+    "Asset Class": { select: { name: "Publishable" } },
+    "Asset Type": { select: { name: STUDIO_ASSET_TYPE } },
+    "Input App": { rich_text: [{ type: "text", text: { content: String(link.id).slice(0, 60) } }] },
+    ...(link.titleId ? { "Content Strategy": { relation: [{ id: dash(link.titleId) }] } } : {}),
+    ...(link.productId ? { Product: { relation: [{ id: dash(link.productId) }] } } : {}),
+    ...(link.campaignId ? { Campaign: { relation: [{ id: dash(link.campaignId) }] } } : {}),
+    ...(link.hubSlug ? { "Content Hub": { select: { name: String(link.hubSlug).slice(0, 100) } } } : {}),
+  };
+  const r = await fetch("https://api.notion.com/v1/pages", { method: "POST",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+  const j = await r.json().catch(() => ({})); if (!r.ok || !j.id) throw new Error(j.message || "Notion " + r.status);
+  const assetId = j.id.replace(/-/g, "");
+  link.assetId = assetId;
+  await env.TRADES.put("client:link:" + link.id, JSON.stringify(link));
+  await env.TRADES.put("client:asset:" + assetId, link.id);
+  return assetId;
+}
 async function studioInner(env, action, extra) {
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -31961,6 +31989,30 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // clientStudioLink {op: create | list | revoke, campaignId, productId, titleId?, label?, id?} — the 🎤 Client links on a hub's
       // Main products row. Each link is pinned to ONE title + product (titleId, else the product's own main title, else a new
       // one named after the product); every script the client makes is an asset under that title.
+      // studioAssetInfo {assetId} — the publish modal's Client Studio panel: the link behind a Client Studio asset + its scripts
+      if (body.action === "studioAssetInfo") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const lid = aid && await env.TRADES.get("client:asset:" + aid);
+        if (!lid) return json({ error: "No studio link is attached to this asset." }, 404);
+        const l = await env.TRADES.get("client:link:" + lid, "json").catch(() => null); if (!l) return json({ error: "Studio link not found" }, 404);
+        const its = (await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || [];
+        return json({ ok: true, link: { id: l.id, label: l.label, hubName: l.hubName, campaignId: l.campaignId, productName: l.productName, titleName: l.titleName, revoked: !!l.revoked, at: l.at,
+          url: l.revoked ? "" : `https://cabuzzard.github.io/dash/web/studio/?k=${l.id}.${(await hmacHex(HMAC_SECRET, "cl:" + l.id)).slice(0, 32)}` },
+          items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title, topic: p.topic, status: p.status, generating: p.generating,
+            answered: p.answered, questions: p.qs.length, assetId: p.assetId, minutes: p.minutes, updatedAt: p.updatedAt, expert: !!x.expert }; }) });
+      }
+      // studioAssetBackfill {dryRun?} — every studio link made before 2026-10-23 gets its Client Studio asset
+      if (body.action === "studioAssetBackfill") {
+        const out = [];
+        for (const k of (await env.TRADES.list({ prefix: "client:link:" })).keys) {
+          const l = await env.TRADES.get(k.name, "json").catch(() => null); if (!l || !l.id) continue;
+          if (l.assetId) { out.push({ id: l.id, label: l.label, assetId: l.assetId, skipped: "has asset" }); continue; }
+          if (body.dryRun) { out.push({ id: l.id, label: l.label, hub: l.hubName, wouldCreate: true }); continue; }
+          try { out.push({ id: l.id, label: l.label, hub: l.hubName, assetId: await studioAssetCreate(env, l) }); } catch (e) { out.push({ id: l.id, label: l.label, error: e.message }); }
+          await new Promise(r => setTimeout(r, 340));
+        }
+        return json({ ok: true, links: out });
+      }
       if (body.action === "clientStudioLink") {
         const op = body.op || "list", cid = String(body.campaignId || "").replace(/-/g, ""), pid = String(body.productId || "").replace(/-/g, "");
         if (!cid) return json({ error: "campaignId required" }, 400);
@@ -31996,12 +32048,16 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const link = { id, campaignId: cid, productId: pid, titleId, titleName, label, productName: pname, hubName: hub.name || "", hubSlug: hub.slug || "", at: Date.now() };
           await env.TRADES.put("client:link:" + id, JSON.stringify(link));
           idx.push(id); await env.TRADES.put(KX, JSON.stringify(idx));
-          return json({ ok: true, link: { ...link, url: await urlFor(id), count: 0 } });
+          let assetError = "";
+          try { await studioAssetCreate(env, link); } catch (e) { assetError = e.message; console.error("studioAssetCreate:", e.message); }   // the link works either way
+          return json({ ok: true, link: { ...link, url: await urlFor(id), count: 0 }, ...(assetError ? { assetError } : {}) });
         }
         if (op === "revoke") {
           const id = String(body.id || ""); if (!idx.includes(id)) return json({ error: "Link not found" }, 404);
           const link = await env.TRADES.get("client:link:" + id, "json"); link.revoked = Date.now();
-          await env.TRADES.put("client:link:" + id, JSON.stringify(link)); return json({ ok: true });
+          await env.TRADES.put("client:link:" + id, JSON.stringify(link));
+          if (link.assetId) await kwNotionPatch(env, link.assetId, { "Asset Status": { select: { name: "Planning" } } }).catch(e => console.error("studio revoke asset:", e.message));
+          return json({ ok: true });
         }
         const links = (await Promise.all(idx.map(id => env.TRADES.get("client:link:" + id, "json").catch(() => null)))).filter(l => l && (!pid || l.productId === pid));
         return json({ ok: true, links: await Promise.all(links.reverse().map(async l => {

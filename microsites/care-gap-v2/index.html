@@ -1087,6 +1087,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:10px;"><input type="checkbox" id="pubPublishToHub" disabled> Publish to hub</label>
           <div id="pubPublishToHubState" style="font-size:10.5px;color:var(--ink3);margin-top:4px;"></div>
         </div>
+        <div id="pubStudioWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <b style="font-size:12px;">🎤 Client Studio — the client's app</b>
+          <div id="pubStudioBody" style="font-size:11.5px;margin-top:6px;"></div>
+        </div>
         <div id="pubSeriesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <b style="font-size:12px;">✨ Series — ideas, runs and children</b>
           <div id="pubSeriesBody" style="font-size:11.5px;margin-top:6px;"></div>
@@ -6522,6 +6526,7 @@ function openPublishAssetModal(assetId) {
   for(const option of document.getElementById('pubStatus').options)option.disabled=false;
   pubDigestLoad(assetId, data);
   pubSeriesLoad(assetId, data);
+  pubStudioLoad(assetId, data);
   const hubWrap = document.getElementById('pubHubWrap');
   const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
   hubWrap.style.display = isHubOffer ? 'block' : 'none';
@@ -8256,6 +8261,35 @@ function pubSrType(kind) {   // same resolution as the hub card's hubSeriesType 
   if (topical) { const norm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-').replace(/\s+/g, ''), pick = ms.find(m => norm(m.name) === norm(topical)); return pick ? pick.name : topical; }
   const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : ms.find(m => /carousel/i.test(m.name));
   return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel' })[kind];
+}
+// Client Studio asset (one per studio link): the link (copy / open / revoke) and the client's scripts. Worker studioAssetInfo.
+async function pubStudioLoad(assetId, data) {
+  const wrap = document.getElementById('pubStudioWrap'), el = document.getElementById('pubStudioBody');
+  if (!/^client studio$/i.test(String(data.type || '').trim())) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block'; el.innerHTML = '<span style="color:var(--ink3);">Loading the studio link…</span>';
+  const r = await w('studioAssetInfo', { assetId }).catch(e => ({ error: e.message }));
+  if (pubAssetId !== assetId) return;
+  if (!r || r.error) { el.innerHTML = `<span style="color:#dc2626;">✗ ${esc((r && r.error) || 'Could not load')}</span>`; return; }
+  const L = r.link, B = 'font-size:10.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--ink2);cursor:pointer;text-decoration:none;';
+  const when = t => t ? new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const ST = { script: 'Script ready', answering: 'Answering', new: 'Not started' };
+  el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="flex:1;min-width:140px;"><b>${esc(L.label || 'Client')}</b> <span style="color:var(--ink3);">· ${esc(L.productName || '')}${L.titleName && L.titleName !== L.productName ? ' · ' + esc(L.titleName) : ''} · made ${when(L.at)}${L.revoked ? ' · <b style="color:#dc2626;">revoked</b>' : ''}</span></span>
+      ${L.revoked ? '' : `<button type="button" style="${B}" onclick="navigator.clipboard.writeText(${esc(JSON.stringify(L.url))}).then(()=>{this.textContent='✓ Copied'})">Copy link</button><a href="${esc(L.url)}" target="_blank" rel="noopener" style="${B}">Open ↗</a><button type="button" style="${B}color:#dc2626;" onclick="pubStudioRevoke('${esc(assetId)}','${esc(L.campaignId)}','${esc(L.id)}')">Revoke</button>`}
+    </div>
+    <div style="margin-top:8px;">${r.items.length ? r.items.map(x => `<div style="display:flex;gap:8px;padding:3px 0;border-top:1px solid var(--border);">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.title || x.topic)}</span>
+        <span style="color:var(--ink3);flex-shrink:0;">${x.generating ? 'writing…' : x.status === 'script' ? (x.minutes ? '~' + x.minutes + ' min script' : 'script') : x.answered + '/' + x.questions + ' answered'}${x.expert ? ' · expert checked' : ''} · ${when(x.updatedAt)}</span>
+        ${x.assetId ? `<a href="https://www.notion.so/${esc(x.assetId)}" target="_blank" rel="noopener" style="${B}">Notion ↗</a>` : ''}</div>`).join('')
+      : '<span style="color:var(--ink3);">No scripts yet.</span>'}</div>
+    <div style="font-size:10.5px;color:var(--ink3);margin-top:6px;">Active link = Published · revoked = Planning. Scripts are their own assets under this title.</div>`;
+}
+async function pubStudioRevoke(assetId, cid, id) {
+  if (!confirm('Revoke this link? The client can no longer open it (their scripts stay). This asset moves to Planning.')) return;
+  const r = await w('clientStudioLink', { op: 'revoke', campaignId: cid, id }).catch(e => ({ error: e.message }));
+  if (r && r.error) { alert(r.error); return; }
+  document.getElementById('pubStatus').value = 'Planning';
+  pubStudioLoad(assetId, { type: 'Client Studio' });
 }
 async function pubSeriesLoad(assetId, data, force) {
   const wrap = document.getElementById('pubSeriesWrap');

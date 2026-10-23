@@ -12061,6 +12061,9 @@ async function hubCheckGoalsLoad(rebuild) {
 }
 const hubCheckNorm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
 function hubCheckGoal(slug, t) { const g = HUBCHECK_GOALS && (HUBCHECK_GOALS.goals[slug] || {})[hubCheckNorm(t)]; return g || null; }
+// offered on every hub even with nothing deployed yet (operator 2026-10-23): the Client Studio app, the listing types (Fiverr gigs are
+// "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
+const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
@@ -12080,13 +12083,17 @@ function hubCheckData() {
     if (r.assetStatus === 'Published' || / parent$/i.test(t)) (cells[k] = cells[k] || []).push(r);   // published — a parent asset counts as published once it exists
     else (dev[k] = dev[k] || []).push(r);                                    // not yet published (Development / Review / Publish / Planning)
   }
+  for (const t of HUBCHECK_ALWAYS) if (![...types].some(x => hubCheckNorm(x) === hubCheckNorm(t))) types.add(t);
   return { types: [...types].sort((a, b) => a.localeCompare(b)), cells, dev, flag };
 }
 function hubCheckSave() { try { localStorage.setItem(HUBCHECK_KEY, JSON.stringify(HUBCHECK_COLS)); } catch (e) {} }
 function hubCheckCols(types, cells, dev) {
   if (HUBCHECK_COLS) return HUBCHECK_COLS;
-  try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) return (HUBCHECK_COLS = v); } catch (e) {}
-  return (HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t))));   // default: types with something deployed or in development
+  try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) HUBCHECK_COLS = v; } catch (e) {}
+  if (!HUBCHECK_COLS) HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t)));   // default: types with something deployed or in development
+  let done = false; try { done = !!localStorage.getItem(HUBCHECK_ALWAYS_KEY); } catch (e) {}
+  if (!done) { for (const t of HUBCHECK_ALWAYS) if (!HUBCHECK_COLS.some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, '1'); } catch (e) {} }
+  return HUBCHECK_COLS;
 }
 function hubCheckAdd(sel) { const t = sel.value; if (!t) return; if (!HUBCHECK_COLS.includes(t)) HUBCHECK_COLS.push(t); hubCheckSave(); renderHubChecklist(); }
 // drag a column header onto another to move it there
@@ -12124,10 +12131,13 @@ function hubCheckTitles(slug) {
 }
 function hubCheckAddAsset(i) {
   const t = HUBCHECK_COLS[i]; if (!t) return; const hubs = HUB_SITES.filter(h => h.campaignId);
+  const studio = hubCheckNorm(t) === 'client studio';
   const pre = HUBCHECK_OPEN && hubs.some(h => h.slug === HUBCHECK_OPEN.slug) ? HUBCHECK_OPEN.slug : (hubs[0] || {}).slug;
-  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(t)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Adds one unwritten ${esc(t)} asset at Development on the title you pick. Write it later from its publish modal.</div>
+  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(t)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${studio
+      ? 'Makes a private Client Studio link for one client, pinned to the title you pick. The link is the asset: Published while it is active, Planning once revoked. The client\'s scripts land under the same title.'
+      : `Adds one unwritten ${esc(t)} asset at Development on the title you pick. Write it later from its publish modal.`}</div>
     ${HT_LBL('Hub')}<select id="hcaHub" style="${HT_IN}" onchange="hubCheckAddTitles()">${hubs.map(h => `<option value="${esc(h.slug)}"${h.slug === pre ? ' selected' : ''}>${esc(h.name || h.slug)}</option>`).join('')}</select>
-    ${HT_LBL('Title')}<select id="hcaTitle" style="${HT_IN}"></select>
+    ${HT_LBL('Title')}<select id="hcaTitle" style="${HT_IN}"></select>${studio ? `${HT_LBL('Client name')}<input id="hcaClient" placeholder="e.g. Dana R." style="${HT_IN}">` : ''}
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubCheckAddAssetGo(${i}))">Add asset</button>${HC_CANCEL}</div>`);
   hubCheckAddTitles();
 }
@@ -12142,6 +12152,17 @@ async function hubCheckAddAssetGo(i) {
   const t = HUBCHECK_COLS[i], slug = document.getElementById('hcaHub').value, tid = document.getElementById('hcaTitle').value;
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Pick a hub'; if (!tid) return 'Pick a title';
   const ti = hubCheckTitles(slug).find(x => x.id === tid) || {}, sp = hubCheckTypeSpec(t);
+  if (hubCheckNorm(t) === 'client studio') {
+    const label = ((document.getElementById('hcaClient') || {}).value || '').trim(); if (!label) return 'Give the client a name';
+    if (!ti.productId) return 'That title has no product — pick a title on a product';
+    const q = await call('clientStudioLink', { op: 'create', campaignId: h.campaignId, productId: ti.productId, titleId: tid, label });
+    if (!q || q.error) return (q && q.error) || 'Not created';
+    let copied = false; try { await navigator.clipboard.writeText(q.link.url); copied = true; } catch (e) {}
+    showToast(q.assetError ? '⚠ Link made' + (copied ? ' and copied' : '') + ', but its asset was not: ' + q.assetError : '✓ Client Studio link for ' + label + (copied ? ' — copied' : ''), q.assetError ? 'error' : 'success');
+    setTimeout(async () => { try { _devTblLast = null; await loadDev2(); } catch (e) {}
+      const hi = HUB_SITES.filter(x => x.campaignId).findIndex(x => x.slug === slug); if (hi >= 0) hubCheckOpen(hi, i, 'live'); }, 300);
+    return true;
+  }
   const r = await call('createDevAssets', { titleId: tid, title: ti.name || '', productId: ti.productId || undefined, campaignId: h.campaignId, slug, allowMulti: true,
     types: [{ assetType: sp.assetType, label: sp.label, ...(sp.pillar ? { pillar: true } : {}) }] });
   if (!r || r.error) return (r && r.error) || 'Not created';
