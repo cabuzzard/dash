@@ -1244,10 +1244,12 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.${digestBlock}`;
     // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
-    const story = (await freeNewsSearch(env, [product.name, ...(product.kw || [])], { days: 7, max: 8 }).catch(() => [])).find(x => !used.includes(x.url));
+    let story = null;
+    for (const x of (await freeNewsSearch(env, [product.name, ...(product.kw || [])], { days: 7, max: 8 }).catch(() => [])).filter(x => !used.includes(x.url))) {
+      const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
     if (story) await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {});
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: story ? story.title : product.name,
-      newsBody: story ? lead + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}` : lead,
+      newsBody: story ? lead + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; report ONLY what the article text below says; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}\n\nSOURCE ARTICLE TEXT (the only source of facts):\n${story.text}` : lead,
       ...(story ? { newsSource: [story.publisher, story.url].filter(Boolean).join(" "), newsDate: story.date || "" } : {}), allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
@@ -1257,6 +1259,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   const assetId = g && ((g.assets || [])[0] || {}).id;
   if (!assetId) return { error: "article: " + ((g && g.error) || "no asset"), hub: hub.name, headline: t.headline };
   await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
+  try { await ivCreateForAsset(env, { assetId, titleId: t.titleId, own: "Blog - SEO - News", direction: "Optional enrichment interview for a published news post" }); } catch (e) { console.error("news interview:", e.message); }   // optional, later — never blocks the post
   let liveUrl = g.liveUrl || "";
   if (!g.sitePublished) {   // the blog push failed (e.g. a GitHub write race) — republish this hub's unpublished posts
     const bf = await selfAction(env, "backfillHubBlog", { campaignId: cid }).catch(() => null);
@@ -1503,10 +1506,12 @@ PIECE: ${aname || tname} (${atype})
 TITLE IT BELONGS TO: ${tname}
 ${audience}${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${direction ? `\nOPERATOR'S DIRECTION: ${direction}\n` : ""}
 ${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentType}" piece for this title, written from the title's pillar plus these answers; every asset for this title is then cut from that parent. Ask 6-10 questions specific to THIS title that only the owner can answer: a real client story on this exact topic, how they actually do it, what most advice gets wrong, a mistake and what it taught them, numbers they know, the questions clients ask them about it. Order them the way the piece should flow.`
-      : short ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video). Its job is to extract the owner's KNOWLEDGE and PERSPECTIVE (voice comes second): first-hand detail that improves the explanation, and — best of all — one original insight the whole article could be built around. Ask 3-5 short questions, ADAPTED to what this piece is: a how-to / decision / technical piece → the mistakes they've seen, unusual cases, and what conventional advice gets wrong; a comparison of options → what they've actually used, which tradeoffs really matter, and how they'd advise a customer choosing; an exploratory, lifestyle or perspective piece → their observations, experiences, values, and where they see it differently from most people. Make the FIRST question invite their single strongest view on the topic. Every question must be answerable honestly with "I don't have first-hand experience with this" — never presume expertise they may not have. Ask for opinions as opinions. The writer REWRITES the answers into the article, so ask for substance, not polished prose.`
+      : short && !/\bnews\b/i.test(atype) ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video). Its job is to extract the owner's KNOWLEDGE and PERSPECTIVE (voice comes second): first-hand detail that improves the explanation, and — best of all — one original insight the whole article could be built around. Ask 3-5 short questions, ADAPTED to what this piece is: a how-to / decision / technical piece → the mistakes they've seen, unusual cases, and what conventional advice gets wrong; a comparison of options → what they've actually used, which tradeoffs really matter, and how they'd advise a customer choosing; an exploratory, lifestyle or perspective piece → their observations, experiences, values, and where they see it differently from most people. Make the FIRST question invite their single strongest view on the topic. Every question must be answerable honestly with "I don't have first-hand experience with this" — never presume expertise they may not have. Ask for opinions as opinions. The writer REWRITES the answers into the article, so ask for substance, not polished prose.`
+      : /\bnews\b/i.test(atype) ? `THIS IS AN OPTIONAL INTERVIEW FOR A NEWS POST that is already written and published from verified reporting. Ask 2-3 short questions ONLY about the development's significance: what people in this field are overlooking, who is most affected and how, and what practical decision the reader should consider. Never ask about the facts themselves. Every question must be answerable with "I don't have a meaningful view on this" — then the post stays as it is.`
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
-  const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1, short ? 3 : 5, short ? 5 : 10), {   // short tier: 3-5 adaptive questions
+  const isNewsIv = /\bnews\b/i.test(atype);
+  const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1, isNewsIv ? 2 : short ? 3 : 5, isNewsIv ? 3 : short ? 5 : 10), {   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) });
@@ -14061,6 +14066,14 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
 // Free sources only — Google News RSS search (no key) + GDELT DOC 2.0 (open API) — last 7 days, English, deduped, ranked by keyword
 // overlap + recency. Zero model calls. Used by: the weekly digest when Research Depth is Free (or when Deep/Standard is gated off for a
 // hub with no newsletter sign-ups), and the hub news cron, which now builds each News SEO post on one real, current article.
+// the linked article's own words — the ONLY source of facts for a free-tier news post (a plain fetch, no model call)
+const NEWS_POST_FALLBACK = "Sections: The news in brief (2–3 sentences: who, what, when, where); What happened (verified facts, attributed); Why it matters (for this hub's customer); Our perspective (research-based interpretation, clearly marked as such); What happens next (deadlines, decisions, uncertainties). About 500–900 words; shorter for a small story.";
+async function fnArticleText(url) {
+  try { const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 dash-news" }, redirect: "follow" }); if (!r.ok) return "";
+    const html = await r.text(); const paras = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map(m => fnDecode(m[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()).filter(t => t.length > 60);
+    return paras.join("\n\n").slice(0, 6000);
+  } catch (e) { return ""; }
+}
 function fnTokens(s) { return new Set(String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 3)); }
 function fnDecode(s) { return String(s || "").replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").trim(); }
 async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
@@ -14085,7 +14098,8 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
   }
   const want = fnTokens(qs.join(" "));
   return items.map(x => { let hit = 0; fnTokens(x.title).forEach(w => { if (want.has(w)) hit++; }); const age = x.date ? (Date.now() - Date.parse(x.date)) / 86400e3 : days;
-    return { ...x, score: hit * 10 + Math.max(0, days - age) }; }).filter(x => x.score >= 10).sort((a, b) => b.score - a.score).slice(0, max);
+    const qt = fnTokens(x.q); let qhit = 0; fnTokens(x.title).forEach(w => { if (qt.has(w)) qhit++; });   // relevance floor: loosely related trending headlines are rejected
+    return { ...x, qhit, need: Math.min(2, qt.size), score: hit * 10 + Math.max(0, days - age) }; }).filter(x => x.qhit >= x.need && x.score >= 10).sort((a, b) => b.score - a.score).slice(0, max);
 }
 // the hub's weekly digest from free news: findings (all Free split) + a plain digest body — no model call
 async function freeNewsDigest(env, hubName, keywords) {
@@ -32297,21 +32311,26 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             })() : Promise.resolve(""),
           ]);
 
+          const isNewsPost = /\bnews\b/i.test(assetType);
+          let newsSpec = ""; if (isNewsPost) { try { const t = await writingMethodsTable(env); newsSpec = String(((t.rows || []).find(r => r.id === "r2") || {}).cells?.cwcontract01 || ""); } catch (e) {} }
+          const reqBlock = isNewsPost
+            ? `Requirements — NEWS POST FORMAT (from the Current Methods worksheet, row "Digest - News SEO"; follow it exactly):\n${newsSpec || NEWS_POST_FALLBACK}\n- Sections go in "sections" in this order, each heading exactly the section name; the intro is the deck; the conclusion is one line inviting readers to the hub's newsletter.\n- Report only facts present in the pillar (which is built from the source article); keep reporting and interpretation clearly separate; name the publisher.`
+            : null;
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO content editor. Your job is to FORMAT the pillar piece below into a complete, publish-ready blog post — this is a structuring and polishing pass, not a rewrite from scratch. The pillar already contains the real substance, claims, and examples; preserve them. Do not invent new claims, statistics, or examples that aren't already in the source, and do not water the ideas down into generic filler.
 
 TITLE: ${title}
 ${methodFrameworkText ? `METHOD FRAMEWORK — follow any writing-quality/structure/voice conventions defined here on top of the requirements below:\n${methodFrameworkText.slice(0, 3000)}\n` : ""}${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${pillarContent ? `PILLAR CONTENT (the source material — format THIS into the blog post below, don't write a different piece):\n${pillarContent.slice(0, 12000)}\n` : `NO PILLAR CONTENT FOUND — this title has no Pillar Content section yet, so write the post from the title/description/keywords/instructions above instead.\n`}${existingOutline && existingOutline !== pillarContent ? `PRE-PLANNED OUTLINE ON THIS TITLE (if it already defines subheads, use those headings verbatim as the article's structure — otherwise choose headings that naturally divide the pillar content above):\n${existingOutline.slice(0, 2000)}\n` : ""}
-Requirements:
+${reqBlock || `Requirements:
 - Structure the post under EXACTLY 3 subheads (H2-level sections), each one a natural division of the pillar content above — not 3 arbitrary new angles on the topic.
 - Reorganize, tighten, and polish for blog readability (clear paragraphs, no rambling), but stay faithful to the pillar's own substance and voice. If the pillar's material doesn't fully fill out a section, elaborate consistent with what's already there rather than padding with generic filler.
 - Each section should read as substantial, specific, useful writing — roughly 400-700 words per section.
 - Write a short 2-3 sentence intro before the first subhead, and a short concluding paragraph after the last section.
-- No meta-commentary, no "in this article we will," no headers other than the 3 subheads.
+- No meta-commentary, no "in this article we will," no headers other than the 3 subheads.`}
 
 Also write "seoTitle": the actual title-tag/headline this post should publish under — distinct from the working title above if a sharper, more search-friendly phrasing exists; SEO posts always use this field since the platform's own title entry is the whole point of the format.
 
 Return ONLY this JSON object, no other text, no markdown fences:
-{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... exactly 3 total ... ], "conclusion": "...", "seoTitle": "..." }`;
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... ${isNewsPost ? "one per news section, in order" : "exactly 3 total"} ... ], "conclusion": "...", "seoTitle": "..." }`;
 
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
