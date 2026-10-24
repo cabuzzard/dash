@@ -13653,6 +13653,7 @@ const PARENT_BRIEFS = {
   "Long Form Sales": "the sales piece for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader's awareness level; never hype.",
   "Digest": "this period's most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).",
   "Product": "the canonical source material for the product itself: what it is, who it's for, what it contains, how it's used, and the rules for writing about it.",
+  "Product · Premium Take": "the operator's own positions on the contested points the expert check raised — one section per argument: the counter-view stated fairly with its source named, then where the operator agrees, where they push back and what first-hand experience shows. It is the canonical source for premium products (e-book chapters, workbooks, a paid-newsletter take); keep it complete, opinionated and attributed.",
   "Interactivity": "the specification for an interactive tool (calculator, estimator, checker) on this topic: the question it answers, inputs, the logic, outputs, and the SEO copy around it.",
   "Job Application": "the verified opportunity source: the role's real requirements matched to the owner's actual experience — never invent experience.",
   "Marketplace Listing": "the canonical offer/listing package: what's offered, for whom, price logic, proof, and the details every marketplace variant needs.",
@@ -13677,7 +13678,7 @@ async function writeParentAsset(env, assetId) {
   const prompt = `${voice}${ib.text || ""}You are writing a PARENT piece: the long-form "${ptype}" piece for one content title. Every downstream asset of this class (articles, videos, posts) is cut from it, so it must be complete and specific.
 
 TITLE: ${titleText}
-WHAT THIS PIECE IS: ${PARENT_BRIEFS[ptype] || PARENT_BRIEFS.Generic}
+WHAT THIS PIECE IS: ${(ptype === "Product" && /premium take/i.test((A["Asset Title"]?.title || []).map(t => t.plain_text).join("")) ? PARENT_BRIEFS["Product · Premium Take"] : PARENT_BRIEFS[ptype]) || PARENT_BRIEFS.Generic}
 ${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}
 THE TITLE'S PILLAR (the researched source — build on it, don't repeat it verbatim):
 ${String(pillar).slice(0, 9000)}
@@ -52747,16 +52748,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const src = await ivPage(aid), P = src.properties || {}, titleId = ivRid(P, "Content Strategy"); if (!titleId) return json({ error: "This asset has no title" }, 400);
         const dash = x => ivDash(x), name = hubRichText(P["Asset Title"]?.title) || "Asset";
         const props = { "Asset Title": { title: ivRt((name.replace(/ — Premium Take$/, "") + " — Premium Take").slice(0, 190)) }, "Asset Status": { select: { name: "Development" } },
-          "Asset Class": { select: { name: "Publishable" } }, "Asset Type": { select: { name: "Premium Take" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] },
+          "Asset Class": { select: { name: "Pillar" } }, "Asset Type": { select: { name: "Pillar" } }, "Pillar Type": { select: { name: "Product" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] },   // a Product parent (2026-10-24)
           "Parent Asset": { relation: [{ id: dash(aid) }] },
           ...(ivRid(P, "Product") ? { Product: { relation: [{ id: dash(ivRid(P, "Product")) }] } } : {}), ...(ivRid(P, "Campaign") ? { Campaign: { relation: [{ id: dash(ivRid(P, "Campaign")) }] } } : {}),
-          ...(P["Content Hub"]?.select?.name ? { "Content Hub": { select: { name: P["Content Hub"].select.name } } } : {}), ...(await assetMethodProp(null, "Premium Take").catch(() => ({}))) };
+          ...(P["Content Hub"]?.select?.name ? { "Content Hub": { select: { name: P["Content Hub"].select.name } } } : {}), };
         const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
         const cj = await cr.json().catch(() => ({})); if (!cr.ok || !cj.id) return json({ error: "Could not create the Premium Take: " + (cj.message || cr.status) }, 502);
         const nid = hubAssetId(cj.id); await env.TRADES.put("premiumtake:" + aid, nid);
         const args = bank.map((b, i) => `${i + 1}. CONTESTED POINT: "${b.quote}"${b.question ? " (from: " + b.question + ")" : ""}\n   WHAT THE EXPERT CHECK SAID (${b.verdict || "challenge"}): ${b.expertView}${b.levelUp ? "\n   WHAT A TOP PRACTITIONER WOULD ADD: " + b.levelUp : ""}${b.sources.length ? "\n   CITED: " + b.sources.map(s => s.title || s.url).join("; ") : ""}`).join("\n");
-        const direction = "PREMIUM TAKE — a members-only piece where the operator answers the arguments the expert check raised against them. Make ONE outline section per argument below (heading = the contested point, as a question a reader would ask), and ask in each section for the operator's OWN position: where they agree, where they push back, and what first-hand experience the cited sources miss. Name the counter-view fairly; never put words in the operator's mouth. ARGUMENTS:\n" + args;
-        let iv = null; try { iv = await ivCreateForAsset(env, { assetId: nid, titleId, own: "Premium Take", direction: direction.slice(0, 6000) }); } catch (e) { return json({ ok: true, assetId: nid, interviewError: e.message }); }
+        const direction = "PREMIUM TAKE — the source material for premium PRODUCTS (it is packaged later into e-book chapters, workbooks, a paid newsletter take): the operator answers the arguments the expert check raised against them. Ask ONE question per argument below (in this order), each for the operator's OWN position: where they agree, where they push back, and what first-hand experience the cited sources miss. Name the counter-view fairly; never put words in the operator's mouth. ARGUMENTS:\n" + args;
+        let iv = null; try { iv = await ivCreateForAsset(env, { assetId: nid, titleId, direction: direction.slice(0, 6000) }); } catch (e) { return json({ ok: true, assetId: nid, interviewError: e.message }); }
         return json({ ok: true, assetId: nid, arguments: bank.length, interview: ((iv && iv.interviews) || [])[0] || null, outline: iv && iv.outline });
       }
       if (body.action === "writeStyle") {
