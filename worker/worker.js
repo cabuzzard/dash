@@ -1508,7 +1508,7 @@ const ivHdr = () => ({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Versio
 const ivRid = (p, k) => ((p?.[k]?.relation || [])[0]?.id || "").replace(/-/g, "");
 function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${String(answers[i] || "").trim()}`).join("\n\n"); }
 // ACCUMULATIVE INTERVIEWS — verbatim answers, provenance and strict operator/client boundaries.
-function ivAnswerHash(text) {let h=2166136261;for(const c of String(text||''))h=Math.imul(h^c.charCodeAt(0),16777619);return String(text||'').length+':'+(h>>>0).toString(16);}
+function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
 function ivActiveReuse(reused,answers) {return (reused||[]).filter(x=>ivAnswerHash(String(answers[x.index]||'').replace(/^♻ /,''))===x.answerHash);}
 function ivReuseTokens(text) {
@@ -1932,7 +1932,8 @@ async function topicalWriteInputs(env, assetId, options = {}) {
   if (!skipInterview && !state.hasAnsweredInterview) {
     const created = !state.own.length;
     const interviews = created ? ((await ivCreateForAsset(env, { assetId: state.assetId, titleId: state.titleId, own: state.type })).interviews || []) : state.own;
-    return { needsInterview: true, created, interviews: interviews.map(iv => ({ id: iv.id })) };
+    if(!interviews.some(iv=>iv.status==='Finished'&&(iv.answers||[]).some(a=>a.trim())))return { needsInterview: true, created, interviews: interviews.map(iv => ({ id: iv.id })) };
+    state.own=interviews;state.hasFinishedInterview=true;state.hasAnsweredInterview=true;
   }
   const p = state.page.properties, cid = ivRid(p, 'Campaign'), pid = ivRid(p, 'Product');
   const [voice, audience, product, research, pillar] = await Promise.all([
