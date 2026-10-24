@@ -1055,8 +1055,18 @@ async function studioApps(env) {
 // link has ONE Notion asset, Asset Type "Client Studio", on the link's title + product + campaign, carrying the link id in "Input App".
 // Active link = Published; revoked = Planning. KV client:asset:<assetId> = link id (the publish modal's Studio panel reads it).
 const STUDIO_ASSET_TYPE = "Client Studio";
+// Assets "Studio URL" (url) = the client's private studio link, on the Client Studio asset (operator 2026-10-23); cleared on revoke.
+async function studioUrlEnsureProp(env) {
+  if (await env.TRADES.get("studiourl:prop")) return;
+  const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Studio URL": { url: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Studio URL to Assets: " + (d.message || r.status)); }
+  await env.TRADES.put("studiourl:prop", "1");
+}
+async function studioUrlOf(env, id) { return `https://cabuzzard.github.io/dash/web/studio/?k=${id}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + id)).slice(0, 32)}`; }
 async function studioAssetCreate(env, link) {
-  await inputAppEnsureProp(env);
+  await inputAppEnsureProp(env); await studioUrlEnsureProp(env);
   const dash = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const props = {
     "Asset Title": { title: [{ type: "text", text: { content: `${String(link.titleName || link.productName || "Client").slice(0, 120)} — Client Studio (${String(link.label || "Client").slice(0, 60)})` } }] },
@@ -1064,6 +1074,7 @@ async function studioAssetCreate(env, link) {
     "Asset Class": { select: { name: "Publishable" } },
     "Asset Type": { select: { name: STUDIO_ASSET_TYPE } },
     "Input App": { rich_text: [{ type: "text", text: { content: String(link.id).slice(0, 60) } }] },
+    "Studio URL": { url: link.revoked ? null : await studioUrlOf(env, link.id) },
     ...(link.titleId ? { "Content Strategy": { relation: [{ id: dash(link.titleId) }] } } : {}),
     ...(link.productId ? { Product: { relation: [{ id: dash(link.productId) }] } } : {}),
     ...(link.campaignId ? { Campaign: { relation: [{ id: dash(link.campaignId) }] } } : {}),
@@ -32020,7 +32031,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const out = [];
         for (const k of (await env.TRADES.list({ prefix: "client:link:" })).keys) {
           const l = await env.TRADES.get(k.name, "json").catch(() => null); if (!l || !l.id) continue;
-          if (l.assetId) { out.push({ id: l.id, label: l.label, assetId: l.assetId, skipped: "has asset" }); continue; }
+          if (l.assetId) {
+            if (body.dryRun) { out.push({ id: l.id, label: l.label, assetId: l.assetId, skipped: "has asset" }); continue; }
+            try { await studioUrlEnsureProp(env); await kwNotionPatch(env, l.assetId, { "Studio URL": { url: l.revoked ? null : await studioUrlOf(env, l.id) } }); out.push({ id: l.id, label: l.label, assetId: l.assetId, studioUrl: l.revoked ? "cleared" : "stamped" }); }
+            catch (e) { out.push({ id: l.id, label: l.label, assetId: l.assetId, error: e.message }); }
+            continue;
+          }
           if (body.dryRun) { out.push({ id: l.id, label: l.label, hub: l.hubName, wouldCreate: true }); continue; }
           try { out.push({ id: l.id, label: l.label, hub: l.hubName, assetId: await studioAssetCreate(env, l) }); } catch (e) { out.push({ id: l.id, label: l.label, error: e.message }); }
           await new Promise(r => setTimeout(r, 340));
@@ -32097,7 +32113,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const id = String(body.id || ""); if (!idx.includes(id)) return json({ error: "Link not found" }, 404);
           const link = await env.TRADES.get("client:link:" + id, "json"); link.revoked = Date.now();
           await env.TRADES.put("client:link:" + id, JSON.stringify(link));
-          if (link.assetId) await kwNotionPatch(env, link.assetId, { "Asset Status": { select: { name: "Planning" } } }).catch(e => console.error("studio revoke asset:", e.message));
+          if (link.assetId) await kwNotionPatch(env, link.assetId, { "Asset Status": { select: { name: "Planning" } }, "Studio URL": { url: null } }).catch(e => console.error("studio revoke asset:", e.message));
           return json({ ok: true });
         }
         const links = (await Promise.all(idx.map(id => env.TRADES.get("client:link:" + id, "json").catch(() => null)))).filter(l => l && (!pid || l.productId === pid));
