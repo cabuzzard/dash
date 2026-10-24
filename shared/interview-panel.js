@@ -113,6 +113,9 @@
       catch (err) { S.err = err.message; }
       S.busy = ''; draw();
     }
+    // the quote's words appear in one of the answers (case / spacing / punctuation ignored) — same rule as the worker's matcher
+    const wds = t => (String(t || '').toLowerCase().replace(/’/g, "'").match(/[\p{L}\p{N}]+(?:'[\p{L}]+)?/gu) || []).join(' ');
+    const inAnswers = q => { const w = wds(q); if (!w) return false; const list = (typeof cfg.answers === 'function' ? cfg.answers() : (cfg.iv || {}).answers) || []; return list.some(a => (' ' + wds(a) + ' ').includes(' ' + w + ' ')); };
     function draw() {
       const R = S.report, items = (R && R.items) || [], nPick = Object.values(S.pick).filter(Boolean).length;
       el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -134,6 +137,7 @@
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
               ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
               ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
+                : x.fix && !inAnswers(x.quote) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ This quotes the question, not your answer — nothing in your answer to change. Use it as a pointer if you want to add to your answer.</div>`
                 : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
                   <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
                   <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea></span></label>` : ''}

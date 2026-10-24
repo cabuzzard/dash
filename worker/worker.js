@@ -1180,9 +1180,9 @@ async function handleStudio(env, body) {
       if (!want.has(x.id)) continue;
       const own = String(ov[x.id] || "").trim().slice(0, 1500), replacement = own || x.fix;
       if (!replacement) continue;
-      const k = ivQuoteSwap(answers, x, replacement);
+      const clean = ivCleanFix(replacement), k = clean ? ivQuoteSwap(answers, x, clean) : -1;
       if (k < 0) { missed.push(x.id); continue; }
-      x.applied = true; x.appliedText = replacement; applied++;
+      x.applied = true; x.appliedText = clean; applied++;
     }
     it.answers = answers; it.updatedAt = Date.now(); await saveItems();
     return { ok: true, report: it.expert, answers, applied, missed };
@@ -1513,6 +1513,11 @@ function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${S
 function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
 function ivPooled(iv,i){return (iv.reused||[]).some(r=>r.index===i)||/^♻ /.test(String((iv.answers||[])[i]||''));}   // a pooled answer is background, never this asset's own words
+function ivCleanFix(t) {   // 2026-10-24: three applied fixes pasted the reviewer's note into the operator's answers
+  let x = String(t || '').trim();
+  const m = /^["“]([\s\S]+?)["”](?:\s*(?:—|–|-|\(|\[|;)[\s\S]*)?$/.exec(x); if (m) x = m[1].trim();
+  return x.replace(/\s*\((?:replaces|swap|changes|removes|keeps|this )[^)]*\)\s*$/i, '').trim();
+}
 function ivQuoteSpan(answer, quote) {
   const A = String(answer || ''), words = [], re = /[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu; let m;
   while ((m = re.exec(A))) words.push({ w: m[0].toLowerCase().replace(/’/g, "'"), s: m.index, e: m.index + m[0].length });
@@ -22347,7 +22352,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const byId = { ...carried, ...Object.fromEntries((p2.results || []).map(r => [r.id, r])) };
         const items = claims.map(c => c.type === "opinion" ? { ...c, verdict: "opinion", expert_view: "Your opinion — kept as yours, not judged.", sources: [], fix: "", level_up: "" }
           : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""),
-              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || ""), carried: !!byId[c.id]?.carried });
+              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: ivCleanFix(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || ""), carried: !!byId[c.id]?.carried });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), pass, field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
         if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); await env.TRADES.delete("ivfact:err:" + id).catch(() => {}); }
@@ -22378,9 +22383,9 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         for (const x of report.items) {
           if (!want.has(x.id)) continue;
           const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix; if (!text) continue;
-          const k = ivQuoteSwap(answers, x, text);
+          const clean = ivCleanFix(text), k = clean ? ivQuoteSwap(answers, x, clean) : -1;
           if (k < 0) { missed.push(x.id); continue; }
-          x.applied = true; x.appliedText = text; applied++;
+          x.applied = true; x.appliedText = clean; applied++;
           if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "expert-check fix", before: x.fix, after: own });
         }
         if (applied) {
