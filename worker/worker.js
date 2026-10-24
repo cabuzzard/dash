@@ -2200,6 +2200,7 @@ async function methodMappingReport(env) {
   return {total:methods.length,methods:methods.map(method=>{const p=method.properties||{},name=hubRichText(p.Name?.title),row=rows.find(r=>ivNorm(r.name)===ivNorm(name))||rows.find(r=>r.aliases.includes(ivNorm(name)));
     return {id:method.id,name,Status:p.Status?.select?.name||p.Status?.status?.name||'',hasRow:!!row,mapped:row?.mapped||'',missing:writingMissing(row)};})};
 }
+// Q&A writer (2026-10-24) — the operator's answered questions, printed
 async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId}) {
   const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
   const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),String(iv.answers[i]||'').replace(/^♻\s*/,'').trim()]).filter(x=>x[0]&&x[1]));
