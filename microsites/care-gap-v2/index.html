@@ -875,7 +875,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="modaloverlay" id="publishAssetModal">
     <div class="modalbox" style="max-width:620px;">
       <div class="mtitle">Publish</div>
-      <div class="mfield" id="pubAssetTitle">Publish</div>
+      <div style="display:flex;align-items:baseline;gap:8px;"><div class="mfield" id="pubAssetTitle" style="flex:1;min-width:0;">Publish</div><a id="pubNotionLink" href="#" target="_blank" rel="noopener" title="Open this asset in Notion" style="font-size:10.5px;color:var(--ink3);text-decoration:none;white-space:nowrap;">Notion ↗</a></div>
       <div style="display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow-y:auto;padding-right:2px;">
         <label style="font-size:11px;color:var(--ink2);">Status
           <select id="pubStatus" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"><option value="Idea">Idea</option><option value="Development">Development</option>
@@ -1231,8 +1231,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </label>
         <label style="font-size:11px;color:var(--ink2);">Post Body <span style="color:var(--ink3);">(the full written post/article from this asset's page content — blank if this asset has none)</span>
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
-            <textarea id="pubPostBody" rows="6" readonly style="flex:1;opacity:.85;"></textarea>
-            <button class="iconbtn" onclick="copyPublishField('pubPostBody', this)">📋</button>
+            <textarea id="pubPostBody" rows="10" style="flex:1;" oninput="document.getElementById('pubBodySave').disabled=false;document.getElementById('pubBodyMsg').textContent='unsaved edits'"></textarea>
+            <div style="display:flex;flex-direction:column;gap:4px;"><button class="iconbtn" onclick="copyPublishField('pubPostBody', this)">📋</button><button id="pubBodySave" class="iconbtn" disabled title="Save the body (a published post republishes)" onclick="pubSaveBody(this)">💾</button></div>
+          </div><div id="pubBodyMsg" style="font-size:10.5px;color:var(--ink3);min-height:13px;"></div><div style="display:none;">
           </div>
         </label>
       </div>
@@ -6471,6 +6472,8 @@ function openPublishAssetModal(assetId) {
   imgDirRefresh(assetId);
   const myToken = ++PUB_OPEN_TOKEN;
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
+  { const nl = document.getElementById('pubNotionLink'); if (nl) nl.href = 'https://www.notion.so/' + String(assetId).replace(/-/g, ''); }
+  { const bs = document.getElementById('pubBodySave'); if (bs) bs.disabled = true; const bm = document.getElementById('pubBodyMsg'); if (bm) bm.textContent = ''; }
   document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
   PUB_LOADED_PD = data.publishingDate || '';
@@ -6667,6 +6670,13 @@ async function pubWriteStyleSave(){
     if(PUB_ASSET_CACHE[aid]&&PUB_ASSET_CACHE[aid].writeStyle)Object.assign(PUB_ASSET_CACHE[aid].writeStyle,{keep:r.keep,purpose:r.purpose,own:r.own});
     note.textContent='✓ '+r.keep+' · '+r.purpose;}
   catch(e){note.textContent='Not saved: '+e.message;}
+}
+// 💾 the post body is editable here (2026-10-24) — saved to the asset's Body; a Published post republishes to its hub
+async function pubSaveBody(btn){
+  const aid=pubAssetId,msg=document.getElementById('pubBodyMsg'),text=document.getElementById('pubPostBody').value;btn.disabled=true;msg.textContent='Saving…';
+  try{const r=await w('saveAssetBody',{assetId:aid,body:text});if(pubAssetId!==aid)return;if(r.error)throw new Error(r.error);
+    if(PUB_ASSET_CACHE[aid]){PUB_ASSET_CACHE[aid].body=text;PUB_ASSET_CACHE[aid].text=text;}msg.textContent='✓ Saved · '+r.words+' words'+(r.hubRepublishing&&r.hubRepublishing.length?' · republished to the hub':'');}
+  catch(e){msg.textContent='Not saved: '+e.message;btn.disabled=false;}
 }
 async function pubWriteAssetNow(button){
   const aid=pubAssetId,result=document.getElementById('pubWriteResult');

@@ -1191,7 +1191,7 @@ async function handleStudio(env, body) {
     if (Array.isArray(body.answers)) it.answers = cleanAnswers(body.answers, it.qs.length);
     it.reused=ivActiveReuse(it.reused,it.answers);
     if (it.assetId) return { error: "This interview already has a script. Open it to edit." };
-    const interview = it.qs.map((q, i) => ({ q, a: String(it.answers[i] || "").trim() })).filter(x => x.a);
+    const interview = it.qs.map((q, i) => ({ q, a: ivPooled(it, i) ? "" : String(it.answers[i] || "").trim() })).filter(x => x.a);   // pooled answers never reach the script
     if (interview.length < 3) return { error: "Answer at least 3 questions first." };
     if (it.generating && Date.now() - it.generating < 10 * 60000) return { error: "This script is already being written. Give it a minute, then reload." };
     if (!(await rate("generate"))) return { error: "That's the limit of scripts for today. Try again tomorrow." };
@@ -1512,6 +1512,7 @@ function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${S
 // ACCUMULATIVE INTERVIEWS — verbatim answers, provenance and strict operator/client boundaries.
 function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
+function ivPooled(iv,i){return (iv.reused||[]).some(r=>r.index===i)||/^♻ /.test(String((iv.answers||[])[i]||''));}   // a pooled answer is background, never this asset's own words
 function ivActiveReuse(reused,answers) {return (reused||[]).filter(x=>ivAnswerHash(String(answers[x.index]||'').replace(/^♻ /,''))===x.answerHash);}
 function ivReuseTokens(text) {
   const stop=new Set('the and for that this with from what which when where your their they have has had you how about into been are was were does do did can could would should our its not but who why more most only some any own new use used using one two very also just than then them will each'.split(' '));
@@ -1576,17 +1577,17 @@ async function ivSaveAnswerPatch(env,id,properties,answers) {
   }catch(error){await env.TRADES.put('ivbank:held:'+hubAssetId(id)+':'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:properties}));throw error;}
 }
 function ivReusePrompt(reused,min,max) {
-  return '\nALREADY ANSWERED (do not ask again; ask only what these do not cover):\n'+JSON.stringify(reused.map(p=>({q:p.q,a:p.a,source:p.ivId})))+
-    '\nThe earlier question counts describe the whole interview. Ask ONLY '+min+'–'+max+' NEW questions for gaps, in addition to these already-filled answers. You may return zero new questions if these answers cover the piece. Never invent an answer.\n';
+  return '\nBACKGROUND — what the operator already said in OTHER interviews (knowledge for shaping better questions only: don\'t re-ask what is settled, go deeper or wider instead; these answers belong to other pieces and are never copied into this one):\n'+JSON.stringify(reused.map(p=>({q:p.q,a:p.a})))+
+    '\nAsk '+min+'–'+max+' questions for THIS piece. Never invent an answer.\n';
 }
 async function ivAccumulate(env,{cid,subject,prompt,qmin,qmax,base,outline}) {
-  const bank=await ivAnswerBank(env,cid),reused=ivReuse(bank,{...subject,cid},{max:Math.min(8,qmax)}),minimum=Math.max(0,qmin-reused.length),maximum=Math.max(0,qmax-reused.length);
+  const bank=await ivAnswerBank(env,cid),reused=ivReuse(bank,{...subject,cid},{max:Math.min(8,qmax)}),minimum=qmin,maximum=qmax;   // pooled answers no longer count toward this interview
   let proposals,modelCalls=0;
-  if(reused.length>=qmin&&!outline)proposals=[{angle:'Existing knowledge',why:'Covered by finished answers from earlier interviews.',questions:[]}];
+  if(false)proposals=[];   // pooled answers never 'cover' an interview (2026-10-24)
   else{modelCalls=1;const table=await env.TRADES.get('infoflow:table:currentmethods','json'),doctrine=String(table?.rows?.find(r=>r.id==='rinterviewint01')?.cells?.c2||'').split('\n\nACCUMULATIVE')[0].slice(0,2200);proposals=await ivClaudeInterviews(env,prompt+'\nWORKSHEET INTERVIEW DOCTRINE:\n'+doctrine+ivReusePrompt(reused,minimum,maximum),1,minimum,maximum,!!outline);}
   if(!proposals.length&&reused.length)proposals=[{angle:'Existing knowledge',questions:[]}];
   if(!proposals.length)throw new Error('No questions or relevant existing answers were returned');
-  const finished=(reused.length>=qmin&&!outline)||proposals.every(x=>!x.questions?.length)&&reused.length>0;
+  const finished=false;
   const made=await ivSavePages(proposals,base,{env,reused,finished});
   return {interviews:made,outline:(proposals[0]&&proposals[0].outline)||null,reused:reused.length,modelCalls,questionsBefore:{min:qmin,max:qmax},questionsNow:finished?{min:0,max:0}:{min:minimum,max:maximum}};
 }
@@ -1603,9 +1604,9 @@ async function ivReuseDiagnostic(env,{assetId,titleId,direction}) {
 }
 async function ivStudioAccumulate(env,link,topic,direction) {
   const bank=await ivAnswerBank(env,link.campaignId,{clientLinkId:link.id}),reused=ivReuse(bank,{text:[topic,link.productName,direction].filter(Boolean).join(' '),cid:hubAssetId(link.campaignId),titleId:hubAssetId(link.titleId),productId:hubAssetId(link.productId),direction});
-  let questions=[],covered=reused.length>=3;
-  if(!covered){const result=await studioInner(env,'longformInterview',{question:topic,format:'interview',campaignId:link.campaignId,productId:link.productId,count:Math.max(0,12-reused.length),minQuestions:Math.max(0,3-reused.length),fresh:true,existing:reused.map(x=>x.q),reusedPairs:reused.map(x=>({q:x.q,a:x.a})),direction});if(result?.error)throw new Error(result.error);questions=(result?.questions||[]).map(String);if(!questions.length&&!reused.length)throw new Error('No questions or relevant existing answers were returned');covered=!questions.length&&reused.length>0;}
-  const now=Date.now(),it={d:Math.random().toString(36).slice(2,10),topic,direction,qs:[...reused.map(x=>x.q),...questions],answers:[...reused.map(x=>x.a),...questions.map(()=> '')],reused:reused.map((x,index)=>({index,ivId:x.ivId,scope:'Client',finishedAt:x.finishedAt,answerHash:ivAnswerHash(x.a)})),at:now,status:covered?'Finished':'Flagged',finishedAt:covered?now:null};
+  let questions=[],covered=false;   // earlier answers are background only (2026-10-24)
+  if(!covered){const result=await studioInner(env,'longformInterview',{question:topic,format:'interview',campaignId:link.campaignId,productId:link.productId,count:12,minQuestions:3,fresh:true,existing:reused.map(x=>x.q),reusedPairs:reused.map(x=>({q:x.q,a:x.a})),direction});if(result?.error)throw new Error(result.error);questions=(result?.questions||[]).map(String);if(!questions.length&&!reused.length)throw new Error('No questions or relevant existing answers were returned');covered=!questions.length&&reused.length>0;}
+  const now=Date.now(),it={d:Math.random().toString(36).slice(2,10),topic,direction,qs:questions,answers:questions.map(()=> ''),reused:[],at:now,status:covered?'Finished':'Flagged',finishedAt:covered?now:null};
   it.workingTitle=covered?[topic,direction].filter(Boolean).join(' — ').slice(0,180):await studioWorkingTitle(env,topic,direction,it.qs);
   return it;
 }
@@ -1655,7 +1656,7 @@ async function ivBlock(env, titleId, assetType, assetId) {
   if (!done.length) return { text: "", cid: "" };
   const tierOf = await ivTierFn(env);
   const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — REWRITE these answers for SEO: keep every fact, opinion and example, restructure them under keyword-targeted headings in search-friendly prose; never quote them verbatim" : (parentId && x.assetIds.includes(parentId) ? "the parent piece's interview" : "this asset's own interview")) : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
-    + x.qs.map((q, i) => x.answers[i] ? `Q: ${q}\nTHEIR ANSWER${x.reused?.some(r=>r.index===i)?" (reused from an earlier interview)":""}: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
+    + x.qs.map((q, i) => x.answers[i] && !ivPooled(x, i) ? `Q: ${q}\nTHEIR ANSWER: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
   return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS — first-hand material about this product (and, if marked, this specific asset): their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
 }
 async function ivClaudeInterviews(env, prompt, max, qmin = 5, qmax = 10, withOutline = false) {   // withOutline: structure first (2026-10-24)
@@ -1674,15 +1675,15 @@ async function ivSavePages(ivs, base, options={}) {
   const made=[],env=options.env,reused=options.reused||[];
   if(env)await ivReuseSchema(env);
   for(const iv of ivs){
-    const questions=(iv.questions||[]).map(q=>String(q).trim()).filter(Boolean),qs=[...reused.map(p=>p.q),...questions];
-    const answers=[...reused.map(p=>'♻ '+p.a),...questions.map(()=> '')];
-    const sources=reused.map((p,index)=>({index,ivId:p.ivId,scope:p.scope,finishedAt:p.finishedAt,answerHash:ivAnswerHash(p.a)}));
+    const questions=(iv.questions||[]).map(q=>String(q).trim()).filter(Boolean),qs=questions;   // pooled pairs are background only (2026-10-24)
+    const answers=questions.map(()=> '');
+    const sources=[];
     const finished=!!options.finished;
     const properties={...base,Status:{select:{name:finished?'Finished':'Flagged'}},Angle:{rich_text:ivRt(String(iv.angle||'').slice(0,200))},Why:{rich_text:ivRt(String(iv.why||'').slice(0,500))},Questions:{rich_text:ivRt(qs.map((q,i)=>(i+1)+'. '+q).join('\n'))},Answers:{rich_text:ivRt(ivFormatAnswers(qs,answers))},'Reused From':{rich_text:ivRt(JSON.stringify(sources))},...(finished?{'Finished At':{date:{start:new Date().toISOString()}}}:{})};
     try{
       const cr=await ivReuseNotion(env,'pages',{method:'POST',body:JSON.stringify({parent:{database_id:INTERVIEWS_DB},properties})});
       const after=ivParse(await ivReuseNotion(env,'pages/'+cr.id));
-      if(after.status!==(finished?'Finished':'Flagged')||JSON.stringify(after.qs)!==JSON.stringify(qs)||after.reused.length!==reused.length||reused.some((p,i)=>after.answers[i]!==p.a))throw new Error('Interview readback differs');
+      if(after.status!==(finished?'Finished':'Flagged')||JSON.stringify(after.qs)!==JSON.stringify(qs))throw new Error('Interview readback differs');
       made.push(after);if(env)await ivInvalidateBank(env,after.cid);
     }catch(error){if(env)await env.TRADES.put('ivbank:held:'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:properties}));throw error;}
   }
@@ -1729,7 +1730,7 @@ async function ivRegenerateAsset(env, assetId, direction) {
   const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
   if (!titleId) throw new Error("this asset has no title");
   const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid));
-  const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, String(iv.answers[i] || "").trim()]).filter(x => x[1]));
+  const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, ivPooled(iv, i) ? "" : String(iv.answers[i] || "").trim()]).filter(x => x[1]));
   for (const iv of own) await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
   const made = await ivCreateForAsset(env, { assetId: aid, titleId, direction });
   const nu = (made.interviews || [])[0]; if (!nu) return { ok: false, error: "no interview came back", carried: carried.length };
@@ -1750,7 +1751,7 @@ async function ivMergeAssetInterviews(env, assetId) {
     .sort((a, b) => Date.parse(a.created || 0) - Date.parse(b.created || 0));
   if (own.length < 2) return { merged: false, count: own.length };
   const keep = own[own.length - 1], order = [], ans = new Map();
-  for (const iv of own) iv.qs.forEach((q, i) => { const k = ivNorm(q); if (!ans.has(k)) { order.push(q); ans.set(k, ""); } const a = String(iv.answers[i] || "").trim(); if (a) ans.set(k, a); });
+  for (const iv of own) iv.qs.forEach((q, i) => { if (ivPooled(iv, i)) return; const k = ivNorm(q); if (!ans.has(k)) { order.push(q); ans.set(k, ""); } const a = String(iv.answers[i] || "").trim(); if (a) ans.set(k, a); });
   const answers = order.map(q => ans.get(ivNorm(q)) || ""), finished = own.some(iv => iv.status === "Finished") && answers.some(a => a);
   const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(keep.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
     Questions: { rich_text: ivRt(order.map((q, i) => (i + 1) + ". " + q).join("\n")) }, Answers: { rich_text: ivRt(ivFormatAnswers(order, answers)) },
@@ -2011,7 +2012,7 @@ async function topicalWriteInputs(env, assetId, options = {}) {
     titleResearchBlock(env, state.titleId), extractPillarContent(ivHdr(), ivDash(state.titleId))
   ]);
   const interview = skipInterview ? '' : state.own.filter(iv => iv.answers.some(a => String(a || '').trim()))
-    .map(iv => { const k = iv.qs.map((q, i) => [q, String(iv.answers[i] || '').trim()]).filter(x => x[1]); return ivFormatAnswers(k.map(x => x[0]), k.map(x => x[1])); }).join('\n\n');   // answered questions only
+    .map(iv => { const k = iv.qs.map((q, i) => [q, ivPooled(iv, i) ? '' : String(iv.answers[i] || '').trim()]).filter(x => x[1]); return ivFormatAnswers(k.map(x => x[0]), k.map(x => x[1])); }).join('\n\n');   // answered questions only
   return { state, skipInterview, cid, headline: (p['Asset Title']?.title || []).map(t => t.plain_text).join('').trim(),
     grounding: `${voice}\n${audience}\n${research}\nPRODUCT RESEARCH:\n${product}\nTITLE'S PILLAR:\n${pillar}\n`
       + (interview ? `\nTHE OPERATOR'S FINISHED INTERVIEW ANSWERS (use their facts, examples and opinions; rewrite, never invent experience):\n${interview}\n` : ''),
@@ -2203,7 +2204,7 @@ async function methodMappingReport(env) {
 // Q&A writer (2026-10-24) — the operator's answered questions, printed
 async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts,keywords,title}) {
   const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
-  const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),String(iv.answers[i]||'').replace(/^♻\s*/,'').trim()]).filter(x=>x[0]&&x[1]));
+  const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),ivPooled(iv,i)?'':String(iv.answers[i]||'').trim()]).filter(x=>x[0]&&x[1]));   // own answers only
   if(!pairs.length)return {error:'Q&A needs at least one answered interview question',needsInterview:true};
   // operator 2026-10-24: near-duplicate questions keep the longer answer; Q&A + SEO follows SEO structure where it can without touching the voice
   const tk=x=>new Set(String(x).toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w=>w.length>3));
@@ -18932,7 +18933,7 @@ Return: {
           r.methodIvTier = r.titleId && r.methodName ? IV_TIER_LABEL[tierOf(r.methodName)] : "";
           r.research = researchOf(r.productId);
           r.keywordOutOfSync = !!(r.productId && productById[r.productId] && productById[r.productId].outOfSync);
-          const ivCount = list => { const x = { f: 0, d: 0, a: 0, q: 0 }; list.forEach(v => { if (v.status === "Finished") x.d++; else x.f++; x.q += (v.qs || []).length; x.a += (v.answers || []).filter(a => String(a || "").trim()).length; }); return x.f || x.d ? x : null; };   // a/q = answered / asked (operator 2026-10-24)
+          const ivCount = list => { const x = { f: 0, d: 0, a: 0, q: 0 }; list.forEach(v => { if (v.status === "Finished") x.d++; else x.f++; x.q += (v.qs || []).length; x.a += (v.answers || []).filter((a, i) => String(a || "").trim() && !ivPooled(v, i)).length; }); return x.f || x.d ? x : null; };   // a/q = answered / asked (operator 2026-10-24)
           const aid = r.assetId ? String(r.assetId).replace(/-/g, "") : "";
           const iv = r.kind === "asset" ? (r.assetStatus === "Idea" ? null : ivCount(ivRows.filter(v => v.scope === "Asset" && (v.assetIds || []).some(x => String(x).replace(/-/g, "") === aid))))
             : r.kind === "title" ? ivCount(ivRows.filter(v => v.scope === "Title" && v.titleId === r.titleId))
@@ -52700,6 +52701,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json(await methodMappingReport(env));
       }
       // writeStyle {assetId, keep?, purpose?} — read or set an asset's "Keep my words" / "Purpose" ("" = back to the row default)
+      // saveAssetBody {assetId, body} — the operator edits the post body in the publish modal (2026-10-24); Body edits supersede older prose
+      if (body.action === "saveAssetBody") {
+        if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId||"")))return json({error:"assetId required"},400);
+        const text=String(body.body==null?"":body.body);if(text.length>190000)return json({error:"Body is too long"},400);
+        await kwNotionPatch(env,body.assetId,{Body:{rich_text:ivRt(text)}});
+        const back=hubRichText((await ivPage(body.assetId)).properties?.Body?.rich_text);
+        return json({ok:back===text,words:text.trim()?text.trim().split(/\s+/).length:0,...(back===text?{}:{error:"Saved text read back differently — reload and check"})});
+      }
       if (body.action === "writeStyle") {
         if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId||'')))return json({error:'assetId required'},400);
         await writeStyleEnsureProps(env);
