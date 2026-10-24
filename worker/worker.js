@@ -2098,6 +2098,7 @@ function writingRows(table) {
 // worksheet row's "keep my words" / "purpose" columns; a type fallback covers rows without them. Every write measures kept % (share of
 // the answers' 4-word runs found in the output) and, for SEO, where the keywords landed.
 const WRITE_KEEP = {
+  'Q&A': { band: [95, 100], rule: 'Q&A: only the answered interview questions, each as a heading with the answer under it — basic grammar fixes only, nothing added.' },   // operator 2026-10-24: "100% QA … always available as the top most"
   'Verbatim': { band: [85, 100], rule: "The operator's interview answers ARE the body. Keep at least 85-90% of their wording: fix grammar and filler only, put the answers in the best order, and add only headings, a short intro and a short outro around them. Never paraphrase an answer." },
   'Light edit': { band: [55, 80], rule: "The operator's answers lead each section in their own words, tightened (cut filler, fix grammar, join fragments) — aim to keep 60-70% of their wording — with the research added around them for context, completeness and accuracy." },
   'Integrated': { band: [15, 45], rule: "Integrate: research decides what the piece must answer; the interview supplies the operator's knowledge and perspective (perspective-led when it yields a strong insight, otherwise knowledge-level). Rewrite the answers into the piece; short quoted phrases only where they carry the point." },
@@ -2118,6 +2119,7 @@ function writeStyleDefault(type, row) {
 function writeStyleOf(page, row) {
   const p = page.properties || {}, k = p['Interview Keep']?.select?.name || '', u = p['Write Purpose']?.select?.name || '';
   const d = writeStyleDefault(p['Asset Type']?.select?.name || '', row);
+  if (hubRichText(p.Outline?.rich_text) && d.keep === 'Integrated') { d.keep = 'Light edit'; d.from += ' · outlined interview'; }   // operator 2026-10-24: pre-outlined questions allow more verbatim
   return { keep: WRITE_KEEP[k] ? k : d.keep, purpose: WRITE_PURPOSE[u] ? u : d.purpose, default: { keep: d.keep, purpose: d.purpose, from: d.from }, own: { keep: WRITE_KEEP[k] ? k : '', purpose: WRITE_PURPOSE[u] ? u : '' } };
 }
 function ivOutlineBlock(outline, keep) {   // structure first (2026-10-24): the outline planned with the interview is the fixed frame
@@ -2198,6 +2200,24 @@ async function methodMappingReport(env) {
   return {total:methods.length,methods:methods.map(method=>{const p=method.properties||{},name=hubRichText(p.Name?.title),row=rows.find(r=>ivNorm(r.name)===ivNorm(name))||rows.find(r=>r.aliases.includes(ivNorm(name)));
     return {id:method.id,name,Status:p.Status?.select?.name||p.Status?.status?.name||'',hasRow:!!row,mapped:row?.mapped||'',missing:writingMissing(row)};})};
 }
+async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId}) {
+  const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
+  const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),String(iv.answers[i]||'').replace(/^♻\s*/,'').trim()]).filter(x=>x[0]&&x[1]));
+  if(!pairs.length)return {error:'Q&A needs at least one answered interview question',needsInterview:true};
+  let clean=pairs.map(x=>x[1]),cleaned=0;
+  try{const g=await hcClaude(env,'Fix ONLY spelling, punctuation, capitalisation, spacing and obvious typos in each answer. Do not change, add, remove or reorder words beyond that; keep slang, laughter, exclamations and the speaker\'s voice exactly. Return every answer, in the same order.\n\nANSWERS (JSON array):\n'+JSON.stringify(pairs.map(x=>x[1])),'clean_answers',{type:'object',required:['answers'],properties:{answers:{type:'array',items:{type:'string'}}}},8000);
+    if(Array.isArray(g.answers)&&g.answers.length===pairs.length)clean=g.answers.map((a,i)=>{const k=ivKeptPct(pairs[i][1],a);if(String(a||'').trim()&&(k===null||k>=80)){cleaned++;return String(a).trim();}return pairs[i][1];});}catch(e){console.error('Q&A clean:',e.message);}
+  const body=pairs.map((x,i)=>'## '+x[0]+'\n\n'+clean[i]).join('\n\n');
+  const main=contract.find(f=>/^body$/i.test(f.name))||contract.find(f=>/body|page|script|text|description|caption/i.test(f.name))||{name:'Body'};
+  const properties={[main.name]:{rich_text:ivRt(body)},'Interview Sync':{select:{name:'In Sync'}}};
+  if(page.properties?.[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};
+  const keptPct=ivKeptPct(pairs.map(x=>x[1]).join(' '),body);
+  try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){}
+  await saveExistingAssetWriting(page,properties,[]);
+  const run={assetId:aid,method:name,methodId,violations:[],written:true,qa:true,timestamp:new Date().toISOString()};
+  const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
+  return {ok:true,fields:[main.name],violations:[],written:true,style:{keep:'Q&A',purpose:style.purpose,keptPct,band:WRITE_KEEP['Q&A'].band,questions:pairs.length,grammarFixed:cleaned}};
+}
 async function writeContractAsset(env,assetId) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
   await governingFlow(env);
@@ -2234,6 +2254,7 @@ async function writeContractAsset(env,assetId) {
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
+  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId});   // Q&A: answered questions printed, grammar only
   let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
@@ -5577,7 +5598,7 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     if (!content.body) throw new Error('Body is empty; keeping the last good hub page');
     if (!payload.title) throw new Error('Public title is empty; keeping the last good hub page');
     const mapping = await writingMethod(env, page);
-    if (!mapping.reason) {
+    if (!mapping.reason && p['Interview Keep']?.select?.name !== 'Q&A') {   // a Q&A write is the operator's answers, not the format's word counts
       const violations = validateWritingContract(mapping.contract, writingFieldValues(p));
       if (violations.length) throw new Error('Writing contract: ' + violations.join('; '));
     }
