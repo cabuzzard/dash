@@ -204,7 +204,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 }
 </style>
 <script src="../../shared/design-panel.js?v=2026101001"></script>
-<script src="../../shared/interview-panel.js?v=2026102403"></script>
+<script src="../../shared/interview-panel.js?v=2026102404"></script>
 </head>
 <body>
 
@@ -7649,7 +7649,7 @@ async function factApply(btn) {
   const msg = document.getElementById('factMsg');
   if (!ids.length) { msg.textContent = 'Tick at least one fix first.'; return; }
   btn.disabled = true;
-  try { const r = await w('applyFactFixes', { assetId: PUB_LF.assetId, ids, overrides }); factRender(r.report); msg.textContent = `✓ Applied ${r.applied} fix${r.applied === 1 ? '' : 'es'}${Object.keys(overrides).length ? ` (${Object.keys(overrides).length} in your words${r.learned ? ', taught to your voice profile' : ''})` : ''}${r.missed.length ? ` · ${r.missed.length} couldn't be matched in the script` : ''} — re-render to hear them.`; }
+  try { const r = await w('applyFactFixes', { assetId: PUB_LF.assetId, ids, overrides }); factRender(r.report); msg.textContent = `✓ Applied ${r.applied} fix${r.applied === 1 ? '' : 'es'}${Object.keys(overrides).length ? ` (${Object.keys(overrides).length} in your words${r.learned ? ', taught to your voice profile' : ''})` : ''} — re-render to hear them.`; }
   catch (e) { msg.textContent = 'Not applied: ' + e.message; }
   btn.disabled = false;
 }

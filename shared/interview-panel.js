@@ -108,7 +108,7 @@
       const ov = {}; ids.forEach(k => { if (S.edits[k] != null) ov[k] = S.edits[k]; });
       S.busy = 'Applying the fixes to your answers…'; draw();
       try { const r = await req(cfg.call, 'ivExpertApply', { interviewId: cfg.interviewId, ids, overrides: ov }); S.report = r.report; S.edits = {}; init();
-        S.err = (r.missed || []).length ? `${r.missed.length} couldn't be matched (that answer changed since the check) — edit it by hand.` : '';
+        S.err = '';   // operator 2026-10-24: no 'couldn't be matched' warning — a fix that can't find its words is simply skipped
         changed(); if (cfg.onApplied) cfg.onApplied(r.answers || null, r); }
       catch (err) { S.err = err.message; }
       S.busy = ''; draw();
