@@ -174,17 +174,35 @@
   let modal = null;
   function open(cfg) {
     if (modal) modal.remove();
-    const S = { iv: null, answers: [], dirty: false, busy: 'Loading…', err: '' };
+    const S = { iv: null, answers: [], dirty: false, busy: 'Loading…', err: '', saved: '', timer: null, inflight: false };
+    // AUTOSAVE (2026-10-24): every keystroke is kept in this browser right away (localStorage draft), and saved to Notion
+    // 2 s after typing stops — without redrawing, so the cursor never jumps. A draft newer than Notion is restored on reopen.
+    const dKey = () => 'ivdraft:' + (cfg.interviewId || (S.iv && S.iv.id) || '');
+    const putDraft = () => { try { localStorage.setItem(dKey(), JSON.stringify({ answers: S.answers, at: Date.now() })); } catch (e) {} };
+    const dropDraft = () => { try { localStorage.removeItem(dKey()); } catch (e) {} };
+    const mark = t => { S.saved = t; const el = box && box.querySelector('[data-autosave]'); if (el) el.textContent = t; };
+    async function autosave() {
+      if (!S.iv || !S.dirty || S.busy) return; if (S.inflight) { clearTimeout(S.timer); S.timer = setTimeout(autosave, 1500); return; }
+      S.inflight = true; const sent = S.answers.slice(); mark('Saving…');
+      try { const r = await req(cfg.call, 'saveInterview', { interviewId: S.iv.id, answers: sent, finish: false });
+        S.iv = Object.assign(S.iv, { status: r.interview.status, updatedAt: r.interview.updatedAt });
+        if (JSON.stringify(sent) === JSON.stringify(S.answers)) { S.dirty = false; dropDraft(); }   // typed more meanwhile → stays dirty, saves again
+        mark('✓ Saved ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })); changed(); }
+      catch (err) { mark('⚠ Not saved yet — kept in this browser (' + err.message + ')'); }
+      S.inflight = false; if (S.dirty) { clearTimeout(S.timer); S.timer = setTimeout(autosave, 3000); }
+    }
+    const onHide = () => { if (S.dirty) { putDraft(); autosave(); } };
+    window.addEventListener('beforeunload', onHide); document.addEventListener('visibilitychange', onHide);
     modal = document.createElement('div');
     modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px;';
     document.body.appendChild(modal);
     const box = document.createElement('div');
     box.style.cssText = `width:min(760px,100%);background:var(--bg, ${'#fff'});color:${C.ink};border:1px solid ${C.line};border-radius:12px;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.35);`;
     modal.appendChild(box);
-    const close = async () => { if (S.dirty && S.iv) await save(false).catch(() => {}); if (modal) { modal.remove(); modal = null; } document.removeEventListener('keydown', onKey); };
+    const close = async () => { clearTimeout(S.timer); if (S.dirty && S.iv) { putDraft(); await save(false).catch(() => {}); if (!S.err) dropDraft(); } if (modal) { modal.remove(); modal = null; } document.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onHide); document.removeEventListener('visibilitychange', onHide); };
     const onKey = ev => { if (ev.key === 'Escape') close(); };
     document.addEventListener('keydown', onKey);
-    modal.addEventListener('click', ev => { if (ev.target === modal) close(); });
+    // a stray click outside the box used to close it — only ✕ / Esc close now, and both save first (2026-10-24)
     function draw() {
       const iv = S.iv;
       box.innerHTML = `<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
@@ -198,7 +216,7 @@
             ${reuseBadge(iv,i)}<textarea data-a="${i}" rows="3" placeholder="Type it the way you'd say it…" style="${TA}">${e(S.answers[i] || '')}</textarea></div>`).join('')}
         ${iv ? '<div data-xhost></div>' : ''}
         ${iv ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:10px;">
-            <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">${S.busy ? '⏳ ' + e(S.busy) : `${S.answers.filter(a => (a || '').trim()).length}/${iv.qs.length} answered · skip any question that doesn't apply`}</span>
+            <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">${S.busy ? '⏳ ' + e(S.busy) : `${S.answers.filter(a => (a || '').trim()).length}/${iv.qs.length} answered · skip any question that doesn't apply`} · <span data-autosave style="color:${C.ink2};">${e(S.saved || 'autosaves as you type')}</span></span>
             ${iv.url ? `<a href="${e(iv.url)}" target="_blank" rel="noopener" style="${BTN}text-decoration:none;">Notion ↗</a>` : ''}
             <button data-m="remove" style="${BTN}color:#c0392b;">🗑 Remove</button>
             ${iv.status === 'Finished' ? `<button data-m="reflag" style="${BTN}">↩ Flag again</button>` : ''}
@@ -211,11 +229,11 @@
     }
     async function save(finish, extra) {
       S.busy = finish ? 'Saving + teaching your voice…' : 'Saving…'; draw();
-      try { const r = await req(cfg.call, 'saveInterview', Object.assign({ interviewId: S.iv.id, answers: S.answers, finish }, extra || {})); S.iv = r.interview; S.answers = r.interview.answers.slice(); S.dirty = false; S.err = ''; changed(); if (cfg.onDone) cfg.onDone(r.interview); }
+      try { const r = await req(cfg.call, 'saveInterview', Object.assign({ interviewId: S.iv.id, answers: S.answers, finish }, extra || {})); S.iv = r.interview; S.answers = r.interview.answers.slice(); S.dirty = false; S.err = ''; dropDraft(); S.saved = '✓ Saved'; changed(); if (cfg.onDone) cfg.onDone(r.interview); }
       catch (err) { S.err = err.message; }
       S.busy = ''; if (modal) draw();
     }
-    box.addEventListener('input', ev => { const t = ev.target; if (t.dataset.a != null) { S.answers[+t.dataset.a] = t.value; S.dirty = true; } });
+    box.addEventListener('input', ev => { const t = ev.target; if (t.dataset.a != null) { S.answers[+t.dataset.a] = t.value; S.dirty = true; putDraft(); mark('Unsaved changes…'); clearTimeout(S.timer); S.timer = setTimeout(autosave, 2000); } });
     box.addEventListener('click', async ev => {
       const b = ev.target.closest('[data-m]'); if (!b || S.busy) return;
       const m = b.dataset.m;
@@ -227,7 +245,12 @@
         try { await req(cfg.call, 'removeInterview', { interviewId: S.iv.id }); S.dirty = false; changed(); if (cfg.onDone) cfg.onDone(null); close(); } catch (err) { S.err = err.message; S.busy = ''; draw(); } }
     });
     draw();
-    req(cfg.call, 'getInterview', { interviewId: cfg.interviewId }).then(r => { S.iv = r.interview; S.answers = r.interview.answers.slice(); S.busy = ''; draw(); })
+    req(cfg.call, 'getInterview', { interviewId: cfg.interviewId }).then(r => { S.iv = r.interview; S.answers = r.interview.answers.slice(); S.busy = '';
+        let d = null; try { d = JSON.parse(localStorage.getItem(dKey()) || 'null'); } catch (e) {}
+        if (d && Array.isArray(d.answers) && JSON.stringify(d.answers) !== JSON.stringify(S.answers) && d.answers.some((a, i) => String(a || '').trim() && String(a || '') !== String(S.answers[i] || ''))) {
+          S.answers = S.iv.qs.map((q, i) => String(d.answers[i] || '').trim() ? d.answers[i] : (S.answers[i] || '')); S.dirty = true; S.saved = '↺ Restored unsaved answers from this browser — saving…'; setTimeout(autosave, 500); }
+        else if (d) dropDraft();
+        draw(); })
       .catch(err => { S.err = err.message; S.busy = ''; draw(); });
   }
 
