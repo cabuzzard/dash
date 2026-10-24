@@ -2385,7 +2385,7 @@ async function getWritableAsset(env,assetId) {
     videoUrl:p['Video URL']?.url||'',thumbnail:p.Thumbnail?.url||'',designLink:p['Design Link']?.url||'',productLink:p['Product Link']?.url||'',
     hubSection:({'News':'news','Articles':'articles','Offers':'offers','Interactive':'interactive','CTA':'cta','Main Offering':'main','Unlisted':'unlisted'})[p['Hub Section']?.select?.name]||'',
     contentUrl:p['Content URL']?.url||'',siteUrl:p['Site URL']?.url||'',deploymentStatus:p['Deployment Status']?.select?.name||'',
-    contentHub:p['Content Hub']?.select?.name||'',publishingDate:p['Publishing Date']?.date?.start||'',...info}};
+    contentHub:p['Content Hub']?.select?.name||'',publishingDate:p['Publishing Date']?.date?.start||'',campaignId:ivRid(p,'Campaign'),titleId:ivRid(p,'Content Strategy'),...info}};
 }
 async function topicalSaveWriting(env, input, text, extraProps = {}) {
   if (input.state.kind === 'blog') validateBlogArticle(text);

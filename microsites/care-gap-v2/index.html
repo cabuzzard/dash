@@ -10811,8 +10811,14 @@ async function init() {
     }
     await new Promise(resolve => requestAnimationFrame(resolve));
     // an asset with no title (or on another campaign) isn't in this tree — fetch it on its own so the modal always opens (2026-10-24)
-    if (openAsset && !getCachedPublishAsset(openAsset)) { const one = await w('getAsset', { assetId: openAsset }).catch(() => null); if (one && one.id) cachePublishAsset(one); }
-    if (openAsset) openPublishAssetModal(openAsset);
+    // an asset on ANOTHER campaign reloads this page on its own campaign (once); a stray one is fetched on its own — and a failure says so
+    if (openAsset && !getCachedPublishAsset(openAsset)) {
+      const one = await w('getAsset', { assetId: openAsset }).catch(e => ({ error: e.message }));
+      const own = String((one && one.campaignId) || '').replace(/-/g, ''), here = String(CAMPAIGN_ID || '').replace(/-/g, '');
+      if (own && own !== here && !deepParams.get('hop')) { deepParams.set('campaignId', own); deepParams.set('hop', '1'); location.replace(location.pathname + '?' + deepParams.toString()); return; }
+      if (one && one.id) cachePublishAsset(one); else { alert('That asset could not be opened: ' + ((one && one.error) || 'not found')); return; }
+    }
+    if (openAsset) { try { openPublishAssetModal(openAsset); } catch (e) { alert('The publish modal could not open: ' + e.message); } }
     else if (createAssetFor) openCreateAssetModal(createAssetFor);
   }
 }
