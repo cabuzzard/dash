@@ -2201,14 +2201,16 @@ async function methodMappingReport(env) {
     return {id:method.id,name,Status:p.Status?.select?.name||p.Status?.status?.name||'',hasRow:!!row,mapped:row?.mapped||'',missing:writingMissing(row)};})};
 }
 // Q&A writer (2026-10-24) — the operator's answered questions, printed
-async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId}) {
+async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts}) {
   const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
   const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),String(iv.answers[i]||'').replace(/^♻\s*/,'').trim()]).filter(x=>x[0]&&x[1]));
   if(!pairs.length)return {error:'Q&A needs at least one answered interview question',needsInterview:true};
   let clean=pairs.map(x=>x[1]),cleaned=0;
   try{const g=await hcClaude(env,'Fix ONLY spelling, punctuation, capitalisation, spacing and obvious typos in each answer. Do not change, add, remove or reorder words beyond that; keep slang, laughter, exclamations and the speaker\'s voice exactly. Return every answer, in the same order.\n\nANSWERS (JSON array):\n'+JSON.stringify(pairs.map(x=>x[1])),'clean_answers',{type:'object',required:['answers'],properties:{answers:{type:'array',items:{type:'string'}}}},8000);
     if(Array.isArray(g.answers)&&g.answers.length===pairs.length)clean=g.answers.map((a,i)=>{const k=ivKeptPct(pairs[i][1],a);if(String(a||'').trim()&&(k===null||k>=80)){cleaned++;return String(a).trim();}return pairs[i][1];});}catch(e){console.error('Q&A clean:',e.message);}
-  const body=pairs.map((x,i)=>'## '+x[0]+'\n\n'+clean[i]).join('\n\n');
+  // + the hub's other posts at the bottom (operator 2026-10-24: "put the section / category other post links back in the bottom")
+  const more=(hubPosts||[]).filter(x=>x&&x.title&&x.url).slice(0,5);
+  const body=pairs.map((x,i)=>'## '+x[0]+'\n\n'+clean[i]).join('\n\n')+(more.length?'\n\n## Keep reading\n\n'+more.map(x=>'- ['+x.title+']('+x.url+')').join('\n'):'');
   const main=contract.find(f=>/^body$/i.test(f.name))||contract.find(f=>/body|page|script|text|description|caption/i.test(f.name))||{name:'Body'};
   const properties={[main.name]:{rich_text:ivRt(body)},'Interview Sync':{select:{name:'In Sync'}}};
   if(page.properties?.[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};
@@ -2255,7 +2257,7 @@ async function writeContractAsset(env,assetId) {
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
-  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId});   // Q&A: answered questions printed, grammar only
+  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[]});   // Q&A: answered questions printed, grammar only
   let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
