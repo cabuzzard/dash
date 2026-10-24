@@ -132,6 +132,7 @@
               ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ Marketability: ${e(x.market)}</div>` : ''}
               ${x.level_up ? `<div style="font-size:12px;color:${C.acc};margin-top:4px;">★ A top practitioner would add: ${e(x.level_up)}</div>` : ''}
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
+              ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
               ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
                 : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
                   <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
@@ -161,7 +162,13 @@
       } else S.done = v.scope === 'Product' ? '✓ Finished — it now feeds every title and asset under this offering.' : '✓ Finished — generate the asset from its title when you’re ready.';
       S.busy = ''; changed(); draw();
     }
-    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); });
+    // ★ premium bank (2026-10-24): the asset this interview belongs to holds the banked arguments
+    S.prem = S.prem || {}; const premAsset = () => { const v = cfg.iv || {}; return v.scope === 'Asset' && (v.assetIds || [])[0] || ''; };
+    if (premAsset()) req(cfg.call, 'premiumBank', { op: 'list', assetId: premAsset() }).then(r => { (r.bank || []).forEach(b => { if (b.interviewId === cfg.interviewId) S.prem[String(b.id).split(':')[0]] = true; }); draw(); }).catch(() => {});
+    async function premToggle(id) { const x = ((S.report || {}).items || []).find(i => i.id === id); if (!x) return; const on = !S.prem[id]; S.prem[id] = on; draw();
+      try { await req(cfg.call, 'premiumBank', on ? { op: 'add', assetId: premAsset(), interviewId: cfg.interviewId, item: { ...x, question: questionOf(x.q) } } : { op: 'remove', assetId: premAsset(), id: id + ':' + cfg.interviewId }); }
+      catch (err) { S.prem[id] = !on; S.err = 'Not saved for premium: ' + err.message; draw(); } }
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value;
         const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xe), pv = el.querySelector(`[data-xpv="${t.dataset.xe}"]`);

@@ -1180,9 +1180,9 @@ async function handleStudio(env, body) {
       if (!want.has(x.id)) continue;
       const own = String(ov[x.id] || "").trim().slice(0, 1500), replacement = own || x.fix;
       if (!replacement) continue;
-      const k = String(answers[x.q] || "").includes(x.quote) ? x.q : answers.findIndex(a => String(a || "").includes(x.quote));
+      const k = ivQuoteSwap(answers, x, replacement);
       if (k < 0) { missed.push(x.id); continue; }
-      answers[k] = String(answers[k]).replace(x.quote, replacement); x.applied = true; x.appliedText = replacement; applied++;
+      x.applied = true; x.appliedText = replacement; applied++;
     }
     it.answers = answers; it.updatedAt = Date.now(); await saveItems();
     return { ok: true, report: it.expert, answers, applied, missed };
@@ -1513,6 +1513,20 @@ function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${S
 function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
 function ivPooled(iv,i){return (iv.reused||[]).some(r=>r.index===i)||/^♻ /.test(String((iv.answers||[])[i]||''));}   // a pooled answer is background, never this asset's own words
+function ivQuoteSpan(answer, quote) {
+  const A = String(answer || ''), words = [], re = /[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu; let m;
+  while ((m = re.exec(A))) words.push({ w: m[0].toLowerCase().replace(/’/g, "'"), s: m.index, e: m.index + m[0].length });
+  const q = (String(quote || '').match(re) || []).map(w => w.toLowerCase().replace(/’/g, "'")); if (!q.length) return null;
+  for (let i = 0; i + q.length <= words.length; i++) { let ok = true; for (let j = 0; j < q.length; j++) if (words[i + j].w !== q[j]) { ok = false; break; } if (ok) return [words[i].s, words[i + q.length - 1].e]; }
+  return null;
+}
+function ivQuoteSwap(answers, x, text) {   // → index of the answer changed, or -1
+  const order = [x.q, ...answers.map((_, i) => i).filter(i => i !== x.q)];
+  for (const k of order) { const a = String(answers[k] || ""); if (!a) continue;
+    if (x.quote && a.includes(x.quote)) { answers[k] = a.replace(x.quote, text); return k; }
+    const sp = ivQuoteSpan(a, x.quote); if (sp) { answers[k] = a.slice(0, sp[0]) + text + a.slice(sp[1]); return k; } }
+  return -1;
+}
 function ivActiveReuse(reused,answers) {return (reused||[]).filter(x=>ivAnswerHash(String(answers[x.index]||'').replace(/^♻ /,''))===x.answerHash);}
 function ivReuseTokens(text) {
   const stop=new Set('the and for that this with from what which when where your their they have has had you how about into been are was were does do did can could would should our its not but who why more most only some any own new use used using one two very also just than then them will each'.split(' '));
@@ -2113,6 +2127,7 @@ const WRITE_PURPOSE = {
 function writeStyleDefault(type, row) {
   const keep = WRITE_KEEP[row?.keep] ? row.keep : '', purpose = WRITE_PURPOSE[row?.purpose] ? row.purpose : '';
   const t = String(type || '') + ' ' + String(row?.name || '');
+  if (/premium take/i.test(t)) return { keep: keep || 'Light edit', purpose: purpose || 'Information', from: keep && purpose ? 'worksheet' : 'type' };   // the operator's own position on contested points
   const fk = /youtube longform|client studio|interview/i.test(t) ? 'Verbatim' : /single post|carousel|linkedin|hook post|graphic|pinterest|short video|reel/i.test(t) ? 'Light edit' : 'Integrated';
   const fp = /newsletter|digest|profile|education|experience|skills/i.test(t) ? 'Information' : /\bseo\b|blog|\bnews\b|article|topical - seo/i.test(t) ? 'SEO' : 'Engagement';
   return { keep: keep || fk, purpose: purpose || fp, from: keep && purpose ? 'worksheet' : 'type' };
@@ -4666,7 +4681,8 @@ async function spCarouselSlides(carouselId) {
   })).sort((a, b) => a.slide - b.slide);
 }
 const ASSET_TYPE_METHOD_ALIAS = {
-  "topical - seo post": "blog post",   // worksheet row "Topical - SEO Post" › methods: blog post (2026-10-22)
+  "topical - seo post": "blog post",
+  "premium take": "blog post",   // Premium Take (2026-10-24): written like a topical post, from its own argument-led interview   // worksheet row "Topical - SEO Post" › methods: blog post (2026-10-22)
   "gig description": "Listing",
   "single post carousel": "single post carousel",
   "single post": "single post",
@@ -22361,9 +22377,9 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         for (const x of report.items) {
           if (!want.has(x.id)) continue;
           const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix; if (!text) continue;
-          let k = String(answers[x.q] || "").includes(x.quote) ? x.q : answers.findIndex(a => String(a || "").includes(x.quote));
+          const k = ivQuoteSwap(answers, x, text);
           if (k < 0) { missed.push(x.id); continue; }
-          answers[k] = answers[k].replace(x.quote, text); x.applied = true; x.appliedText = text; applied++;
+          x.applied = true; x.appliedText = text; applied++;
           if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "expert-check fix", before: x.fix, after: own });
         }
         if (applied) {
@@ -52708,6 +52724,40 @@ Return ONLY this JSON object, no other text, no markdown fences:
         await kwNotionPatch(env,body.assetId,{Body:{rich_text:ivRt(text)}});
         const back=hubRichText((await ivPage(body.assetId)).properties?.Body?.rich_text);
         return json({ok:back===text,words:text.trim()?text.trim().split(/\s+/).length:0,...(back===text?{}:{error:"Saved text read back differently — reload and check"})});
+      }
+      // ★ PREMIUM TAKE (operator 2026-10-24: "save the arguments presented in the expert check … a jumping off point for a premium layer of
+      // content … same product, same topic, same title, new asset … save the bank in a group specific to that asset").
+      // premiumBank {op: list | add | remove, assetId, item?, id?} — the expert-check findings the operator ticks, banked per SOURCE asset
+      // (KV premiumbank:<assetId>). createPremiumTake {assetId} — a new "Premium Take" asset on the same title / product / campaign (Parent
+      // Asset = the source), with a structure-first interview built from that bank: one section per argument, each question asking the
+      // operator's own position. Banked arguments are background for the questions — never pasted into the piece.
+      if (body.action === "premiumBank" || body.action === "createPremiumTake") {
+        const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
+        const key = "premiumbank:" + aid; let bank = (await env.TRADES.get(key, "json").catch(() => null)) || [];
+        if (body.action === "premiumBank") {
+          if (body.op === "add" && body.item) { const x = body.item, id = String(x.id || "").slice(0, 80) + ":" + String(body.interviewId || "").slice(0, 32);
+            if (!bank.some(b => b.id === id)) bank.push({ id, interviewId: String(body.interviewId || ""), question: String(x.question || "").slice(0, 400), quote: String(x.quote || "").slice(0, 800),
+              verdict: String(x.verdict || "").slice(0, 40), expertView: String(x.expert_view || "").slice(0, 1200), levelUp: String(x.level_up || "").slice(0, 600),
+              sources: (Array.isArray(x.sources) ? x.sources : []).slice(0, 4).map(s => ({ title: String(s.title || "").slice(0, 120), url: String(s.url || "").slice(0, 400) })), savedAt: new Date().toISOString() });
+            await env.TRADES.put(key, JSON.stringify(bank.slice(-60))); }
+          if (body.op === "remove") { bank = bank.filter(b => b.id !== String(body.id || "") && !String(b.id).startsWith(String(body.id || "") + ":")); await env.TRADES.put(key, JSON.stringify(bank)); }
+          return json({ ok: true, assetId: aid, bank, premiumTake: (await env.TRADES.get("premiumtake:" + aid)) || "" });
+        }
+        if (!bank.length) return json({ error: "Save at least one expert-check argument for premium first (★ in the expert check)." }, 400);
+        const src = await ivPage(aid), P = src.properties || {}, titleId = ivRid(P, "Content Strategy"); if (!titleId) return json({ error: "This asset has no title" }, 400);
+        const dash = x => ivDash(x), name = hubRichText(P["Asset Title"]?.title) || "Asset";
+        const props = { "Asset Title": { title: ivRt((name.replace(/ — Premium Take$/, "") + " — Premium Take").slice(0, 190)) }, "Asset Status": { select: { name: "Development" } },
+          "Asset Class": { select: { name: "Publishable" } }, "Asset Type": { select: { name: "Premium Take" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] },
+          "Parent Asset": { relation: [{ id: dash(aid) }] },
+          ...(ivRid(P, "Product") ? { Product: { relation: [{ id: dash(ivRid(P, "Product")) }] } } : {}), ...(ivRid(P, "Campaign") ? { Campaign: { relation: [{ id: dash(ivRid(P, "Campaign")) }] } } : {}),
+          ...(P["Content Hub"]?.select?.name ? { "Content Hub": { select: { name: P["Content Hub"].select.name } } } : {}), ...(await assetMethodProp(null, "Premium Take").catch(() => ({}))) };
+        const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+        const cj = await cr.json().catch(() => ({})); if (!cr.ok || !cj.id) return json({ error: "Could not create the Premium Take: " + (cj.message || cr.status) }, 502);
+        const nid = hubAssetId(cj.id); await env.TRADES.put("premiumtake:" + aid, nid);
+        const args = bank.map((b, i) => `${i + 1}. CONTESTED POINT: "${b.quote}"${b.question ? " (from: " + b.question + ")" : ""}\n   WHAT THE EXPERT CHECK SAID (${b.verdict || "challenge"}): ${b.expertView}${b.levelUp ? "\n   WHAT A TOP PRACTITIONER WOULD ADD: " + b.levelUp : ""}${b.sources.length ? "\n   CITED: " + b.sources.map(s => s.title || s.url).join("; ") : ""}`).join("\n");
+        const direction = "PREMIUM TAKE — a members-only piece where the operator answers the arguments the expert check raised against them. Make ONE outline section per argument below (heading = the contested point, as a question a reader would ask), and ask in each section for the operator's OWN position: where they agree, where they push back, and what first-hand experience the cited sources miss. Name the counter-view fairly; never put words in the operator's mouth. ARGUMENTS:\n" + args;
+        let iv = null; try { iv = await ivCreateForAsset(env, { assetId: nid, titleId, own: "Premium Take", direction: direction.slice(0, 6000) }); } catch (e) { return json({ ok: true, assetId: nid, interviewError: e.message }); }
+        return json({ ok: true, assetId: nid, arguments: bank.length, interview: ((iv && iv.interviews) || [])[0] || null, outline: iv && iv.outline });
       }
       if (body.action === "writeStyle") {
         if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId||'')))return json({error:'assetId required'},400);
