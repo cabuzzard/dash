@@ -1237,6 +1237,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </label>
       </div>
       <div id="pubWriteWrap" hidden style="margin-top:10px;">
+        <div id="pubWriteStyle" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11.5px;">
+          <label title="How much of your interview wording survives in the piece">Keep my words <select id="pubWsKeep" onchange="pubWriteStyleSave()" style="font-size:11.5px;"></select></label>
+          <label title="What the piece is written for">Purpose <select id="pubWsPurpose" onchange="pubWriteStyleSave()" style="font-size:11.5px;"></select></label>
+          <span id="pubWsNote" style="color:var(--ink3);"></span>
+        </div>
         <button id="pubWriteAsset" class="btn" onclick="pubWriteAssetNow(this)">✍ Write asset</button>
         <span id="pubWriteResult" style="font-size:11.5px;margin-left:8px;"></span>
       </div>
@@ -6642,11 +6647,31 @@ function openPublishAssetModal(assetId) {
 function pubWriteAssetState(data){
   const wrap=document.getElementById('pubWriteWrap'),button=document.getElementById('pubWriteAsset');
   if(/^newsletter (paid|free)$/i.test(data.type||'')){wrap.hidden=true;return;}
-  delete button.dataset.unmapped;wrap.hidden=!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
-  button.textContent='✍ Write asset';document.getElementById('pubWriteResult').textContent='';
+  // ✍ Write for an unwritten asset; ↻ Rewrite once written (e.g. after its interview is finished) — both use the write style below
+  delete button.dataset.unmapped;wrap.hidden=!data.writerAvailable&&!!data.hasWriting;button.disabled=!data.writerAvailable;button.title=data.writerError||'';
+  button.textContent=data.hasWriting?'↻ Rewrite asset':'✍ Write asset';button.dataset.rewrite=data.hasWriting?'yes':'';document.getElementById('pubWriteResult').textContent='';
+  pubWriteStyleDraw(data.writeStyle);
+}
+// ✍ Write style (2026-10-24): Keep my words × Purpose — "Default" = the worksheet row's default for this asset type
+function pubWriteStyleDraw(ws){
+  const box=document.getElementById('pubWriteStyle');if(!box)return;if(!ws){box.style.display='none';return;}box.style.display='flex';
+  const opt=(list,own,def)=>'<option value="">Default ('+esc(def)+')</option>'+list.map(x=>'<option'+(x===own?' selected':'')+'>'+esc(x)+'</option>').join('');
+  document.getElementById('pubWsKeep').innerHTML=opt(ws.keeps||[],ws.own&&ws.own.keep,ws.default&&ws.default.keep);
+  document.getElementById('pubWsPurpose').innerHTML=opt(ws.purposes||[],ws.own&&ws.own.purpose,ws.default&&ws.default.purpose);
+  document.getElementById('pubWsNote').textContent=ws.keptPct!=null?'last write kept '+ws.keptPct+'% of your words':'';
+}
+async function pubWriteStyleSave(){
+  const aid=pubAssetId,note=document.getElementById('pubWsNote');note.textContent='Saving…';
+  try{const r=await w('writeStyle',{assetId:aid,keep:document.getElementById('pubWsKeep').value,purpose:document.getElementById('pubWsPurpose').value});
+    if(pubAssetId!==aid)return;if(r.error)throw new Error(r.error);
+    if(PUB_ASSET_CACHE[aid]&&PUB_ASSET_CACHE[aid].writeStyle)Object.assign(PUB_ASSET_CACHE[aid].writeStyle,{keep:r.keep,purpose:r.purpose,own:r.own});
+    note.textContent='✓ '+r.keep+' · '+r.purpose;}
+  catch(e){note.textContent='Not saved: '+e.message;}
 }
 async function pubWriteAssetNow(button){
-  const aid=pubAssetId,result=document.getElementById('pubWriteResult');button.disabled=true;result.textContent='Writing…';
+  const aid=pubAssetId,result=document.getElementById('pubWriteResult');
+  if(button.dataset.rewrite==='yes'&&!confirm('Rewrite this asset? The current text is replaced (a published post stays published at the same address and is republished).'))return;
+  button.disabled=true;result.textContent='Writing…';
   try{
     const written=await w('writeAsset',{assetId:aid});if(pubAssetId!==aid)return;
     if(written.needsInterview){result.textContent="This asset's interview isn't answered yet";return;}
@@ -6654,7 +6679,8 @@ async function pubWriteAssetNow(button){
     if(written.error)throw new Error(written.reason||written.error);
     const fresh=await w('getAsset',{assetId:aid});if(pubAssetId!==aid)return;
     Object.assign(PUB_ASSET_CACHE[aid]||={},fresh);openPublishAssetModal(aid);
-    document.getElementById('pubAssetStatus').textContent=written.violations?.length?'Saved with violations: '+written.violations.join('; '):written.skipped?'Already written.':'✓ Asset written · '+fresh.status;
+    const st=written.style,styleNote=st?' · '+st.keep+' + '+st.purpose+(st.keptPct!=null?' · kept '+st.keptPct+'% of your words (target '+st.band[0]+'–'+st.band[1]+'%)'+(st.corrected?' after one correction pass':''):'')+(st.seo?' · keywords '+st.seo.placed+'/'+st.seo.total+' placed'+(st.seo.missing.length?' (missing: '+st.seo.missing.join(', ')+')':''):''):'';
+    document.getElementById('pubAssetStatus').textContent=(written.violations?.length?'Saved with violations: '+written.violations.join('; '):written.skipped?'Already written.':'✓ Asset written · '+fresh.status)+styleNote;
     parent.postMessage({type:'hubAssetListingChanged',assetId:aid},location.origin);
   }catch(error){if(pubAssetId===aid)result.textContent=error.message;}
   finally{if(pubAssetId===aid)button.disabled=button.dataset.unmapped==='yes';}

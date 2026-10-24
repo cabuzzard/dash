@@ -2020,7 +2020,68 @@ async function writingMethodsTable(env) {
 function writingRows(table) {
   const id=name=>table.columns.find(c=>ivNorm(c.name)===ivNorm(name))?.id;
   return table.rows.map(r=>{const c=r.cells||{};return {name:c.cname01||c.cmuzq36hb77sq||c.c1||'',aliases:String(c.cmatch01||'').split(';').map(ivNorm),
-    contractText:String(c[id('contract')]||''),inputs:String(c[id('inputs')]||''),mapped:String(c[id('mapped')]||'').trim()};});
+    contractText:String(c[id('contract')]||''),inputs:String(c[id('inputs')]||''),mapped:String(c[id('mapped')]||'').trim(),
+    keep:String(c[id('keep my words')]||'').trim(),purpose:String(c[id('purpose')]||'').trim()};});
+}
+// ── WRITE STYLE (operator 2026-10-24: "a rewrite style choice like % rewriting … add SEO … some assets are for SEO, others for
+// engagement or pure information"): two controls on every interview-informed write. KEEP MY WORDS = how much of the operator's
+// interview wording survives; PURPOSE = what the piece optimises for. Asset fields "Interview Keep" / "Write Purpose" override the
+// worksheet row's "keep my words" / "purpose" columns; a type fallback covers rows without them. Every write measures kept % (share of
+// the answers' 4-word runs found in the output) and, for SEO, where the keywords landed.
+const WRITE_KEEP = {
+  'Verbatim': { band: [85, 100], rule: "The operator's interview answers ARE the body. Keep at least 85-90% of their wording: fix grammar and filler only, put the answers in the best order, and add only headings, a short intro and a short outro around them. Never paraphrase an answer." },
+  'Light edit': { band: [55, 80], rule: "The operator's answers lead each section in their own words, tightened (cut filler, fix grammar, join fragments) — aim to keep 60-70% of their wording — with the research added around them for context, completeness and accuracy." },
+  'Integrated': { band: [15, 45], rule: "Integrate: research decides what the piece must answer; the interview supplies the operator's knowledge and perspective (perspective-led when it yields a strong insight, otherwise knowledge-level). Rewrite the answers into the piece; short quoted phrases only where they carry the point." },
+  'Research-led': { band: [0, 15], rule: "Research-led: the interview only shapes examples, caveats and emphasis; write in the piece's own words." },
+};
+const WRITE_PURPOSE = {
+  'SEO': "PURPOSE — SEO: put the topic's primary keyword in the title, at least one H2 and the first paragraph; make H2s match what people search for (question-style where natural); answer the searcher's question in the first 2-3 sentences; use natural keyword variations, never stuffing. With Verbatim: a Q&A article — the operator's answers under keyword-question headings.",
+  'Engagement': "PURPOSE — ENGAGEMENT: open on a hook (tension, a surprising specific, a story beat); conversational rhythm, short lines; let the story carry the point; end with a question or call to comment/act. No keyword constraints.",
+  'Information': "PURPOSE — INFORMATION: clarity and completeness first: plain structure, definitions, steps, numbers and caveats; no hooks, no hype, no keyword padding.",
+};
+function writeStyleDefault(type, row) {
+  const keep = WRITE_KEEP[row?.keep] ? row.keep : '', purpose = WRITE_PURPOSE[row?.purpose] ? row.purpose : '';
+  const t = String(type || '') + ' ' + String(row?.name || '');
+  const fk = /youtube longform|client studio|interview/i.test(t) ? 'Verbatim' : /single post|carousel|linkedin|hook post|graphic|pinterest|short video|reel/i.test(t) ? 'Light edit' : 'Integrated';
+  const fp = /newsletter|digest|profile|education|experience|skills/i.test(t) ? 'Information' : /\bseo\b|blog|\bnews\b|article|topical - seo/i.test(t) ? 'SEO' : 'Engagement';
+  return { keep: keep || fk, purpose: purpose || fp, from: keep && purpose ? 'worksheet' : 'type' };
+}
+function writeStyleOf(page, row) {
+  const p = page.properties || {}, k = p['Interview Keep']?.select?.name || '', u = p['Write Purpose']?.select?.name || '';
+  const d = writeStyleDefault(p['Asset Type']?.select?.name || '', row);
+  return { keep: WRITE_KEEP[k] ? k : d.keep, purpose: WRITE_PURPOSE[u] ? u : d.purpose, default: { keep: d.keep, purpose: d.purpose, from: d.from }, own: { keep: WRITE_KEEP[k] ? k : '', purpose: WRITE_PURPOSE[u] ? u : '' } };
+}
+function writeStyleBlock(style, hasInterview) {
+  return 'WRITE STYLE — KEEP MY WORDS: ' + style.keep + '. ' + (hasInterview ? WRITE_KEEP[style.keep].rule : "(No interview answers for this piece — write research-led.)") + ' Opinions stay attributed as the operator\'s; never invent experience.\n' + WRITE_PURPOSE[style.purpose];
+}
+async function writeStyleEnsureProps(env) {
+  if (await env.TRADES.get('writestyle:props:v1')) return;
+  const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
+    'Interview Keep': { select: { options: Object.keys(WRITE_KEEP).map(name => ({ name })) } },
+    'Write Purpose': { select: { options: Object.keys(WRITE_PURPOSE).map(name => ({ name })) } },
+    'Interview Kept %': { number: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error('Could not add the write-style fields: ' + (d.message || r.status)); }
+  await env.TRADES.put('writestyle:props:v1', '1');
+}
+// the operator's answers only (ivBlock's "THEIR ANSWER:" lines, or plain "A:" lines), never the questions or labels
+function ivAnswersOnly(text) {
+  const out = []; for (const m of String(text || '').matchAll(/(?:THEIR ANSWER|^A):\s*([^\n]+)/gim)) out.push(m[1]);
+  return out.join(' ');
+}
+function ivKeptPct(answers, output) {
+  const toks = x => String(x || '').toLowerCase().replace(/[^a-z0-9'\s]+/g, ' ').split(/\s+/).filter(Boolean);
+  const a = toks(answers); if (a.length < 8) return null;
+  const hay = ' ' + toks(output).join(' ') + ' ', grams = new Set();
+  for (let i = 0; i + 4 <= a.length; i++) grams.add(a.slice(i, i + 4).join(' '));
+  let hit = 0; for (const g of grams) if (hay.includes(' ' + g + ' ')) hit++;
+  return Math.round(100 * hit / grams.size);
+}
+function seoCoverage(keywords, text, title) {
+  const kws = [...new Set((keywords || []).map(k => String(k || '').toLowerCase().trim()).filter(k => k.length > 2))].slice(0, 6);
+  const md = String(text || ''), h2 = (md.match(/^#{2,3}\s+.+$/gm) || []).join(' ').toLowerCase();
+  const first = (md.split(/\n{2,}/).find(x => x.trim() && !/^#/.test(x.trim())) || '').toLowerCase(), t = String(title || (md.match(/^#\s+(.+)$/m) || [])[1] || '').toLowerCase();
+  const placed = kws.filter(k => t.includes(k) || h2.includes(k) || first.includes(k));
+  return { total: kws.length, placed: placed.length, missing: kws.filter(k => !placed.includes(k)) };
 }
 function parseWritingContract(text) {
   return String(text||'').split(/\r?\n/).filter(x=>x.trim()).map(line=>{const m=/^\s*(?:[-*]\s+)?(.+?)\s+—\s+(.+)$/.exec(line);return m?{name:m[1].trim(),rule:m[2].trim()}:{name:'',rule:line};});
@@ -2099,8 +2160,17 @@ async function writeContractAsset(env,assetId) {
   // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
-  const generated=await hcClaude(env,instruction+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
-  const fields=Object.fromEntries(contract.map((f,i)=>{const v=generated[keyOf[i]]??generated[f.name];return [f.name,typeof v==='string'?v:''];})),violations=validateWritingContract(contract,fields);
+  const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim());
+  let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
+  const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
+  let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
+  if(keptPct!==null&&(keptPct<band[0]-15||keptPct>band[1]+15)){   // one corrective pass when the wording kept misses the chosen band
+    const again=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nYOUR PREVIOUS DRAFT kept '+keptPct+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%. Revise the same fields to hit the target, changing nothing else.\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
+    if(again){const f2=fieldsOf(again),k2=ivKeptPct(answersOnly,Object.values(f2).join('\n'));if(Math.abs((k2??keptPct)-(band[0]+band[1])/2)<Math.abs(keptPct-(band[0]+band[1])/2)){fields=f2;keptPct=k2;corrected=true;}}
+  }
+  const mainText=fields.Body||fields['Offer Page']||Object.values(fields).sort((a,b)=>b.length-a.length)[0]||'';
+  const seo=style.purpose==='SEO'?seoCoverage(kwSplit(String(packet.product?.properties?.Keywords||'')),mainText,fields['Platform Title']):null;
+  const violations=validateWritingContract(contract,fields);
   // Only contract properties and Method can be saved; operational metadata is never a writing field.
   const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
   if(contract.some(f=>protectedFields.has(ivNorm(f.name))))throw new Error('Contract contains protected status, routing or attribution fields');
@@ -2109,10 +2179,11 @@ async function writeContractAsset(env,assetId) {
   if(Object.keys(additions).length){const r=await hubNotionFetch('https://api.notion.com/v1/databases/'+ASSETS_DB,{method:'PATCH',headers:ivHdr(),body:JSON.stringify({properties:additions})});if(!r.ok)throw new Error((await r.json()).message||'Could not add contract properties');}
   const properties=await assetMethodProp(methodId,p['Asset Type']?.select?.name);
   for(const [key,value] of Object.entries(fields)){const type=db.properties?.[key]?.type||'rich_text';if(value.length>190000)throw new Error(`${key}: exceeds Notion text capacity`);properties[key]=type==='select'?{select:value?{name:value}:null}:{[type]:ivRt(value)};}
+  try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){console.error('write style props:',e.message);}
   await saveExistingAssetWriting(page,properties,[]);
   const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString()};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
-  return {ok:true,fields:Object.keys(fields),violations,written:run.written};
+  return {ok:true,fields:Object.keys(fields),violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo}};
 }
 
 async function assetWriterInfo(env,page) {
@@ -2125,6 +2196,7 @@ async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   const [writing,info]=await Promise.all([assetWritingState(page),assetWriterInfo(env,page)]),p=page.properties;
   if(info.mapping?.contract.length){writing.violations=validateWritingContract(info.mapping.contract,writingFieldValues(p));writing.hasWriting=writing.violations.length===0;}
+  const ws=writeStyleOf(page,info.mapping?.row);info.writeStyle={keep:ws.keep,purpose:ws.purpose,default:ws.default,own:ws.own,keptPct:p['Interview Kept %']?.number??null,keeps:Object.keys(WRITE_KEEP),purposes:Object.keys(WRITE_PURPOSE)};
   delete info.mapping;
   return {page,writing,info,public:{id:hubAssetId(page.id),assetTitle:hubRichText(p['Asset Title']?.title),type:info.type,
     status:p['Asset Status']?.select?.name||'',pillarType:p['Pillar Type']?.select?.name||'',body:writing.body,text:writing.text,hasWriting:writing.hasWriting,
@@ -2168,7 +2240,8 @@ async function writeTopicalPost(env, assetId, options = {}) {
   if (input.needsInterview) return input;
   if (input.state.kind !== 'blog') return { error: 'Use the topical YouTube writer for this asset' };
   const notes = lfReadRich(input.state.page.properties.Notes);
-  const prompt = `${input.grounding}\nTODAY: ${new Date().toISOString().slice(0, 10)}. Write ONE complete, publish-ready SEO article in Markdown.
+  const tStyle = writeStyleOf(input.state.page, (await writingMethod(env, input.state.page).catch(() => ({}))).row), tStyleText = writeStyleBlock(tStyle, !!String(input.interview || '').trim());
+  const prompt = `${input.grounding}\n${tStyleText}\nTODAY: ${new Date().toISOString().slice(0, 10)}. Write ONE complete, publish-ready SEO article in Markdown.
 HEADLINE (use as the H1): ${input.headline}
 ASSET'S KEYWORD / TOPIC / INTENT / ANGLE NOTES: ${notes}
 Rules: answer the searcher's question in the first 2-3 sentences; 900-1500 words; ## sections targeting natural keyword variations and related questions; short paragraphs. Use the title research and pillar as the subject; the product is the offering/CTA. ${input.interview ? 'The finished interview supplies the first-hand facts, examples and opinions: rewrite them for SEO.' : 'No interview material is available. Write from the supplied research and pillar; do not invent first-hand experiences, clients, quotations, statistics, credentials or claims.'} End with a short, plain-language pointer to the offering, no hard sell. Output ONLY the Markdown article.`;
@@ -2176,7 +2249,10 @@ Rules: answer the searcher's question in the first 2-3 sentences; 900-1500 words
     body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 6000, messages: [{ role: 'user', content: prompt }] }) });
   const d = await r.json(), text = (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
   if (!r.ok || !text) return { error: d.error?.message || 'No article came back' };
-  return topicalSaveWriting(env, input, text);
+  const tKept = ivKeptPct(ivAnswersOnly(input.interview), text);
+  try { await writeStyleEnsureProps(env); } catch (e) {}
+  const saved = await topicalSaveWriting(env, input, text, tKept === null ? {} : { 'Interview Kept %': { number: tKept } });
+  return { ...saved, style: { keep: tStyle.keep, purpose: tStyle.purpose, keptPct: tKept, band: WRITE_KEEP[tStyle.keep].band } };
 }
 async function writeTopicalYouTube(env, assetId, options = {}) {
   const input = await topicalWriteInputs(env, assetId, options);
@@ -52474,6 +52550,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
       if (body.action === "methodMappingReport") {
         return json(await methodMappingReport(env));
+      }
+      // writeStyle {assetId, keep?, purpose?} — read or set an asset's "Keep my words" / "Purpose" ("" = back to the row default)
+      if (body.action === "writeStyle") {
+        if(!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId||'')))return json({error:'assetId required'},400);
+        await writeStyleEnsureProps(env);
+        const props={};
+        if(body.keep!==undefined){if(body.keep&&!WRITE_KEEP[body.keep])return json({error:'keep must be one of '+Object.keys(WRITE_KEEP).join(', ')},400);props['Interview Keep']={select:body.keep?{name:body.keep}:null};}
+        if(body.purpose!==undefined){if(body.purpose&&!WRITE_PURPOSE[body.purpose])return json({error:'purpose must be one of '+Object.keys(WRITE_PURPOSE).join(', ')},400);props['Write Purpose']={select:body.purpose?{name:body.purpose}:null};}
+        if(Object.keys(props).length)await kwNotionPatch(env,body.assetId,props);
+        const page=await ivPage(body.assetId),row=(await writingMethod(env,page).catch(()=>({}))).row,ws=writeStyleOf(page,row);
+        return json({ok:true,keep:ws.keep,purpose:ws.purpose,default:ws.default,own:ws.own,keptPct:page.properties?.['Interview Kept %']?.number??null});
       }
       if (body.action === "writeAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);
