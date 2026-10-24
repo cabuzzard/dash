@@ -14501,6 +14501,25 @@ async function productNotesScanTopic(topic) {
   }
   return {evidence,errors};
 }
+async function productNotesEtsy(env,topic) {
+  const evidence=[],errors=[];if(!env.ETSY_KEYSTRING||!env.ETSY_SHARED_SECRET)return {evidence,errors:['Etsy API credentials unavailable; public search gaps retained']};
+  const headers={'x-api-key':env.ETSY_KEYSTRING.trim()+':'+env.ETSY_SHARED_SECRET.trim()},seed=fnNewsQueries(String(topic.keywords||topic.name).split(/[\n,]/),1)[0]||topic.name.split(/\s+/).slice(0,2).join(' ');
+  const groups=[['Checklist','Cheat sheet','Swipe file','Canva template','Notion template'],['Workbook','Tracker / log','Guided journal','Challenge pack']];
+  const seen=new Set();
+  for(const group of groups){const form=group.find(x=>topic.forms.includes(x));if(!form)continue;
+    try{
+      const url='https://openapi.etsy.com/v3/application/listings/active?limit=4&sort_on=score&keywords='+encodeURIComponent(seed+' '+form.toLowerCase());
+      const r=await fetch(url,{headers,signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('Etsy listing search HTTP '+r.status);const result=await r.json();
+      if(!result.results?.length)errors.push(topic.name+': Etsy API found no '+form+' listings');
+      for(const listing of result.results||[]){if(seen.has(listing.listing_id))continue;seen.add(listing.listing_id);
+        let reviews=[];try{const rr=await fetch('https://openapi.etsy.com/v3/application/listings/'+listing.listing_id+'/reviews?limit=5',{headers,signal:AbortSignal.timeout(8000)});if(rr.ok){const data=await rr.json();reviews=(data.results||[]).map(x=>({rating:x.rating,review:String(x.review||'').slice(0,260)}));}else errors.push('Listing '+listing.listing_id+': reviews HTTP '+rr.status);}catch{errors.push('Listing '+listing.listing_id+': reviews unavailable');}
+        const facts={title:listing.title,description:String(listing.description||'').slice(0,1200),price:listing.price?.divisor?{amount:listing.price.amount/listing.price.divisor,currency:listing.price.currency_code}:null,searchResultCount:result.count,searchQuery:seed+' '+form.toLowerCase(),reviews};
+        evidence.push({topicId:topic.id,url:listing.url||'https://www.etsy.com/listing/'+listing.listing_id,title:listing.title,text:JSON.stringify(facts),httpStatus:200,via:'Etsy Open API v3',requestedForm:form});
+      }
+    }catch(error){errors.push(error.message);}
+  }
+  return {evidence,errors};
+}
 function newsletterPublicMarketUrl(value){try{const u=new URL(value);return u.protocol==='https:'&&/^(www\.)?(etsy\.com|amazon\.com)$/.test(u.hostname)?u.href:null;}catch{return null;}}
 function productNotesBrief(plan) {
   if(!plan)return '';
@@ -14757,6 +14776,8 @@ async function adStep(env, cid, S, invoke) {
   }
   if(S.step==='market') {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
+    S.marketPlan.apiCursor=S.marketPlan.apiCursor||0;
+    if(S.marketPlan.apiCursor<S.marketPlan.gaps.length){const scan=await productNotesEtsy(env,S.marketPlan.gaps[S.marketPlan.apiCursor]);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.apiCursor++;return;}
     const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,
       guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
@@ -14829,10 +14850,10 @@ async function autoDigestRun(env, invoke) {
       if(!S.manual&&!weeklyEnabled)continue; // also hold old in-flight weekly states until pilot cost is measured
       const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
       while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
-        const before = S.step;
+        const before = S.step,progress=(S.marketPlan?.cursor||0)+(S.marketPlan?.apiCursor||0);
         try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
         await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
-        if (S.step === before) break;   // still waiting on research — next tick
+        if (S.step === before&&!(S.step==='market'&&(S.marketPlan.cursor+(S.marketPlan.apiCursor||0))>progress)) break;   // waiting on research; free scan progress can continue within this tick's budget
       }
       await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
       if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) done[cid] = per.key; S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
