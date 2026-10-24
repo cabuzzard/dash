@@ -14534,12 +14534,17 @@ async function productNotesSave(env,cid,plan,proposed,runId) {
       const topic=plan.topics.find(t=>t.id===note.topicId);if(!topic)throw new Error('Unknown topic ID');
       if(!note.form||/single.issue|reprint|compilation/i.test(note.form))throw new Error('Not a new product form');
       if(note.tier!=='New form'&&!MARKET_FORMS.includes(note.form))throw new Error('Use the exact supplied form name');
-      if(!['Reformat','Functional','New form'].includes(note.tier)||!['Etsy','KDP','Both'].includes(note.platform)||!['Rising','Steady','Fading'].includes(note.trend))throw new Error('Invalid form classifications');
+      if(!['Reformat','Functional','New form'].includes(note.tier)||!['Etsy','KDP','Both'].includes(note.platform)||note.trend&&!['Rising','Steady','Fading'].includes(note.trend))throw new Error('Invalid form classifications');
       const existing=await productNotesRead(env,cid),prior=existing.find(n=>n.topicId===topic.id&&n.form.toLowerCase()===note.form.toLowerCase());
       if(prior&&marketFresh(prior)){out.push({id:prior.id,skipped:'Current'});continue;}
       const evidence=(note.evidenceUrls||[]).filter(url=>plan.evidence.some(e=>e.topicId===topic.id&&e.url===url&&e.httpStatus===200&&e.text));if(!evidence.length)throw new Error('No fetched listing evidence for '+topic.name+' / '+note.form);
+      const facts=plan.evidence.filter(e=>evidence.includes(e.url)&&e.via==='Etsy Open API v3').flatMap(e=>{try{return [JSON.parse(e.text)];}catch{return [];}});
+      const observedPrices=[...new Set(facts.filter(x=>x.price&&Number.isFinite(x.price.amount)).map(x=>x.price.currency+' '+x.price.amount.toFixed(2)))];
+      const priceBand=note.priceBand||observedPrices.join('; ')+(observedPrices.length?' (observed listing prices, not a market-wide estimate)':'');
+      const complaints=facts.flatMap(x=>x.reviews||[]).filter(x=>x.rating<=3&&x.review).slice(0,3).map(x=>x.rating+'/5: '+x.review).join('\n');
+      const formIndex=MARKET_FORMS.indexOf(note.form),tier=formIndex<0?'New form':formIndex<5?'Reformat':'Functional',status=note.trend?'Current':'Stale';
       const date=new Date().toISOString().slice(0,10),rt=x=>({rich_text:ivRt(String(x||''))});
-      const properties={Name:{title:ivRt(topic.name+' — '+note.form)},Topic:rt(topic.id),'Topic Name':rt(topic.name),Hub:rt(cid),Form:rt(note.form),Tier:{select:{name:note.tier}},Platform:{select:{name:note.platform}},'Price Band':rt(note.priceBand),Saturation:rt(note.saturation),'White Space':rt(note.whiteSpace),'Review Pain Points':rt(note.reviewPainPoints),'Built-On Keywords':rt(topic.keywords),'Example Listings':rt((note.exampleListings||[]).filter(url=>evidence.includes(url)).join('\n')),Trend:{select:{name:note.trend}},'Scanned On':{date:{start:date}},'Stale After':{date:{start:marketStaleAfter(date,note.trend)}},Status:{select:{name:'Current'}}};
+      const properties={Name:{title:ivRt(topic.name+' — '+note.form)},Topic:rt(topic.id),'Topic Name':rt(topic.name),Hub:rt(cid),Form:rt(note.form),Tier:{select:{name:tier}},Platform:{select:{name:note.platform}},'Price Band':rt(priceBand),Saturation:rt(note.saturation),'White Space':rt(note.whiteSpace),'Review Pain Points':rt(note.reviewPainPoints||complaints),'Built-On Keywords':rt(topic.keywords),'Example Listings':rt((note.exampleListings||[]).filter(url=>evidence.includes(url)).join('\n')),Trend:{select:note.trend?{name:note.trend}:null},'Scanned On':{date:{start:date}},'Stale After':{date:{start:marketStaleAfter(date,note.trend)}},Status:{select:{name:status}}};
       payload={...(prior?{}:{parent:{database_id:db}}),properties};
       // Keep the previous note snapshot before refreshing its mutable Notion row.
       if(prior)await env.TRADES.put('product:marketnotes:history:'+hubAssetId(prior.id)+':'+runId,JSON.stringify(prior));
@@ -14547,9 +14552,9 @@ async function productNotesSave(env,cid,plan,proposed,runId) {
       for(const [name,value]of Object.entries(properties)) {
         const prop=read.properties?.[name],expected=value.rich_text||value.title;
         if(expected){const text=runs=>(runs||[]).map(x=>x.plain_text??x.text?.content??'').join('');if(text(prop?.rich_text||prop?.title)!==text(expected))throw new Error('Product Market Notes readback differs: '+name);}
-        else if(value.select&&prop?.select?.name!==value.select.name||value.date&&prop?.date?.start!==value.date.start)throw new Error('Product Market Notes readback differs: '+name);
+        else if('select'in value&&(prop?.select?.name||null)!==(value.select?.name||null)||value.date&&prop?.date?.start!==value.date.start)throw new Error('Product Market Notes readback differs: '+name);
       }
-      out.push({id:saved.id,topicId:topic.id,form:note.form});
+      out.push({id:saved.id,topicId:topic.id,form:note.form,status,...(!note.trend?{needsReview:'Trend not established; sourced note retained as Stale, not invented'}:{})});
     }catch(error){errors.push({topicId:note.topicId,form:note.form,reason:error.message});await env.TRADES.put('product:marketnotes:held:'+cid+':'+runId+':'+await governanceHash(JSON.stringify(note)),JSON.stringify({at:new Date().toISOString(),payload:payload||note,reason:error.message}));}
   }
   return {saved:out,errors,gaps:plan.gaps};
@@ -14560,6 +14565,11 @@ async function weeklyResearchPrepare(env,cids) {
 }
 async function digestMemoryTest(env,cid) {const m=await digestMemory(env,cid);return {campaignId:cid,memorySize:m.items.length,lastRun:m.lastRun,excludeUrls:[...new Set(m.items.map(x=>x.url))],knownFindings:m.items.map(x=>({id:x.id,claim:x.claim,topicId:x.topicId})),runs:Object.values(m.runs).slice(-20)};}
 async function productNotesTest(env,cid) {const [topics,notes]=await Promise.all([productNotesTopics(env,cid),productNotesRead(env,cid)]);return {campaignId:cid,databaseId:await productNotesDb(env),topics:topics.map(t=>({...t,notes:notes.filter(n=>n.topicId===t.id)})),staleCount:notes.filter(n=>!marketFresh(n)&&n.status!=='Retired').length,gaps:marketGaps(topics,notes)};}
+async function digestVerifyAsset(env,id,title) {
+  const page=await newsletterNotion(env,'pages/'+kwDashId(id));
+  if(hubRichText(page.properties?.['Asset Title']?.title)!==title||page.properties?.['Asset Status']?.select?.name!=='Review'||page.properties?.['Pillar Readiness']?.select?.name!=='Ready')throw new Error('Digest asset readback differs');
+  return true;
+}
 async function productFromMarketNote(env,cid,noteId) {
   const note=(await productNotesRead(env,cid)).find(n=>hubAssetId(n.id)===hubAssetId(noteId));if(!note||!marketFresh(note))throw new Error('A Current market note belonging to this hub is required');
   const topic=(await productNotesTopics(env,cid)).find(t=>t.id===note.topicId);if(!topic)throw new Error('Market-note topic is not placed in this hub');
@@ -14815,7 +14825,7 @@ async function adStep(env, cid, S, invoke) {
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
-    const read=await newsletterNotion(env,'pages/'+kwDashId(S.assetId));if(kwTitleOf(read)!==`Weekly Digest — ${label} (${S.name})`||read.properties?.['Asset Status']?.select?.name!=='Review')throw new Error('Digest asset readback differs');
+    await digestVerifyAsset(env,S.assetId,`Weekly Digest — ${label} (${S.name})`);
     S.items = w.sources.length; S.step = "done"; return;
   }
 }
