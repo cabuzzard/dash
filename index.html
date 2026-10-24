@@ -11857,6 +11857,13 @@ const DEV2_COLS = [
   { key: 'nextStep',     label: 'Next step' },
 ];
 // colour for a status-vector value: green = done/ok, orange = needs you, red = rebuild, grey = none / n/a
+// Interviews cell: red ⚑ = no answers yet · count only = answered, not rewritten yet · green ⚑ = interviewed and rewritten from it
+function dev2IvCell(r) {
+  const v = r.interviews; if (!v || !r.ivState) return dev2VecCell(v);
+  const c = r.ivState === 'flag' ? '#e5534b' : r.ivState === 'done' ? '#4ade80' : 'var(--text)';
+  const tip = r.ivState === 'flag' ? 'Interview waiting — no answers yet' : r.ivState === 'done' ? 'Interviewed and rewritten from the interview' : r.ivState === 'due' ? 'Answered — rewrite to use the answers' : 'Answered';
+  return `<span title="${tip}" style="font-size:11px;color:${c};font-weight:600;white-space:nowrap;">${esc(v)}</span>`;
+}
 function dev2VecCell(v) {
   if (!v) return '<span style="color:var(--text3);">—</span>';
   const c = /^✓|^Written$|^In Sync$/.test(v) ? '#4ade80' : /Regenerate|^Rewrite|✗|^Refresh/.test(v) ? '#e5534b' : /⚑|Out of Sync|^Not Written$|^Do |^Write|^Review|^Run/.test(v) ? '#ff7a00' : 'var(--text3)';
@@ -12081,7 +12088,7 @@ function hubCheckData() {
     types.add(t);
     const k = h.slug + '|' + t;
     if (r.rewriteDue) (rw[k] = rw[k] || []).push(r);   // interview finished, live text not rewritten yet (blue ↻)
-    else if (/⚑/.test(r.interviews || '') || (/^digest parent$/i.test(t) && r.assetStatus === 'Review')) (flag[k] = flag[k] || []).push(r);   // its own interview is waiting — or a digest at Review (the modal's Review box)
+    else if ((r.ivState ? r.ivState === 'flag' : /⚑/.test(r.interviews || '')) || (/^digest parent$/i.test(t) && r.assetStatus === 'Review')) (flag[k] = flag[k] || []).push(r);   // red ⚑ only (a green ⚑ = interviewed + rewritten)   // its own interview is waiting — or a digest at Review (the modal's Review box)
     if (r.assetStatus === 'Published' || / parent$/i.test(t)) (cells[k] = cells[k] || []).push(r);   // published — a parent asset counts as published once it exists
     else (dev[k] = dev[k] || []).push(r);                                    // not yet published (Development / Review / Publish / Planning)
   }
@@ -12724,7 +12731,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;color:var(--text3);font-variant-numeric:tabular-nums;">${dev2Val(r, 'created') ? esc(dev2Val(r, 'created')) : '—'}</td>
       <td style="padding:6px 10px;font-size:12px;">${appCell(r.inputApp)}</td>
       <td style="padding:6px 10px;">${dev2HubPublishCell(r)}</td>
-      ${['research', 'interviews', 'pillarStatus', 'ivTier', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${dev2VecCell(r[k])}</td>`).join('')}
+      ${['research', 'interviews', 'pillarStatus', 'ivTier', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${k === 'interviews' ? dev2IvCell(r) : dev2VecCell(r[k])}</td>`).join('')}
     </tr>`;
   };
   let tbody = '';

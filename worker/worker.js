@@ -18909,7 +18909,9 @@ Return: {
           r.pillarStatus = r.titleId ? ((titleById[r.titleId] || {}).pillarStatus || "") : "";
           if(r.kind === "asset")Object.assign(r,hubAssetSyncFields(r,ivRows));else r.assetSync="";
           // ↻ rewrite due: its own interview is finished but the live text predates it (Interview Sync Out of Sync, or written without one)
-          if (r.kind === "asset" && /✓/.test(r.interviews || "") && (/^Out of Sync/i.test(r.assetSync || "") || r.writtenWithoutInterview)) { r.rewriteDue = true; }   // counts only in the Interviews column (operator 2026-10-24); All Hubs shows it as the blue ↻ count
+          if (r.kind === "asset" && /✓/.test(r.interviews || "") && (/^Out of Sync/i.test(r.assetSync || "") || r.writtenWithoutInterview)) { r.rewriteDue = true; }
+          if (iv && r.interviews) { r.ivState = !iv.a ? "flag" : r.kind === "asset" && r.rewriteDue ? "due" : r.kind === "asset" ? "done" : "answered";
+            r.interviews = (r.ivState === "flag" || r.ivState === "done" ? "⚑ · " : "") + iv.a + "/" + iv.q + " answered"; }   // counts only in the Interviews column (operator 2026-10-24); All Hubs shows it as the blue ↻ count
           r.nextStep = r.rewriteDue ? "Rewrite with interview" : r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
             : (iv && iv.f && r.kind !== "product") ? "Do interview"
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
