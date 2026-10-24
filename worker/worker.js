@@ -1183,7 +1183,9 @@ async function handleStudio(env, body) {
     if (!(await rate("generate"))) return { error: "That's the limit of scripts for today. Try again tomorrow." };
     it.generating = Date.now(); await saveItems();
     const r = await studioInner(env, "generateLongformScript", { titleId: link.titleId, campaignId: link.campaignId, productId: link.productId, methodId: STUDIO_INTERVIEW_METHOD_ID,
-      question: it.topic, format: "interview", layout: "stage", interview });
+      question: it.topic, format: "interview", layout: "stage", interview,
+      // the script's title follows the client's entry topic (their focus), else what their answers actually cover — not the link's title (2026-10-23)
+      titleFocus: it.direction ? `the client's chosen focus — "${it.direction}"` : "the specific subject the interview answers below actually cover (no focus was given)" });
     items = (await env.TRADES.get(KI, "json").catch(() => null)) || items;   // re-read: answers may have autosaved meanwhile
     const cur = items.find(x => x.d === it.d) || it; delete cur.generating;
     if (!r || r.error || !r.assetId) { await saveItems(); return { error: (r && r.error) || "The script didn't come back. Try again." }; }
@@ -21877,7 +21879,7 @@ ${prodFacts || ""}
 ${campFacts}
 ${pillar ? `PILLAR (stay faithful):\n${pillar.slice(0, 5000)}` : ""}
 
-Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph YouTube "description", 12 "tags", ≤3 "hashtags". Call submit_episode.`;
+Also give: "title" (≤70 chars, the searchable question/format title${String(body.titleFocus || "").trim() ? ` — it MUST name THIS episode's own subject: ${String(body.titleFocus).trim().slice(0, 400)}. The QUESTION above is the series/offer it belongs to — context only, never the whole title` : ""}), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph YouTube "description", 12 "tags", ≤3 "hashtags". Call submit_episode.`;
         const segSchema = { type: "object", required: ["kind", "text"], properties: {
           kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment — put a blank line between paragraphs (keep the narrator's own paragraph breaks); paragraph breaks get a longer pause in the voice-over" },
           n: { type: "integer" }, name: { type: "string" }, ask: { type: "string", description: "interview format only: THE CUSTOMER's spoken question — first person, their words, 15 words or fewer (a second voice reads it before the narrator's answer)" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
