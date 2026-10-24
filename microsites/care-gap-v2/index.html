@@ -10810,6 +10810,8 @@ async function init() {
       return;
     }
     await new Promise(resolve => requestAnimationFrame(resolve));
+    // an asset with no title (or on another campaign) isn't in this tree — fetch it on its own so the modal always opens (2026-10-24)
+    if (openAsset && !getCachedPublishAsset(openAsset)) { const one = await w('getAsset', { assetId: openAsset }).catch(() => null); if (one && one.id) cachePublishAsset(one); }
     if (openAsset) openPublishAssetModal(openAsset);
     else if (createAssetFor) openCreateAssetModal(createAssetFor);
   }
