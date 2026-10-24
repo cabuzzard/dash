@@ -12063,7 +12063,8 @@ const hubCheckNorm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-'
 function hubCheckGoal(slug, t) { const g = HUBCHECK_GOALS && (HUBCHECK_GOALS.goals[slug] || {})[hubCheckNorm(t)]; return g || null; }
 // offered on every hub even with nothing deployed yet (operator 2026-10-23): the Client Studio app, the listing types (Fiverr gigs are
 // "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
-const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
+// + 'Profile parent' (2026-10-23): the Profile collector (Pillar Type "Profile") — one platform profile (Fiverr, Upwork…) per hub
+const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
@@ -12091,8 +12092,9 @@ function hubCheckCols(types, cells, dev) {
   if (HUBCHECK_COLS) return HUBCHECK_COLS;
   try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) HUBCHECK_COLS = v; } catch (e) {}
   if (!HUBCHECK_COLS) HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t)));   // default: types with something deployed or in development
-  let done = false; try { done = !!localStorage.getItem(HUBCHECK_ALWAYS_KEY); } catch (e) {}
-  if (!done) { for (const t of HUBCHECK_ALWAYS) if (!HUBCHECK_COLS.some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, '1'); } catch (e) {} }
+  let offered = []; try { const v = localStorage.getItem(HUBCHECK_ALWAYS_KEY); offered = v === '1' ? ['Client Studio', 'listing', 't shirt'] : JSON.parse(v || '[]'); } catch (e) {}
+  const fresh = HUBCHECK_ALWAYS.filter(t => !offered.includes(t));
+  if (fresh.length) { for (const t of fresh) if (!HUBCHECK_COLS.some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, JSON.stringify(HUBCHECK_ALWAYS)); } catch (e) {} }
   return HUBCHECK_COLS;
 }
 function hubCheckAdd(sel) { const t = sel.value; if (!t) return; if (!HUBCHECK_COLS.includes(t)) HUBCHECK_COLS.push(t); hubCheckSave(); renderHubChecklist(); }
