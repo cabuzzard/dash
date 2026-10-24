@@ -115,7 +115,7 @@ const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds
   const downstream = source.slice(source.indexOf('async function ivMarkDownstream('), source.indexOf('async function ivSyncFlags('));
   const updates = [], dc = vm.createContext({ ivHdr: () => ({}), ivDash: x => x, ASSETS_DB: 'assets', CONTENT_STRATEGY_DB: 'titles',
     ivRid: (p, k) => p[k]?.relation?.[0]?.id || '', ivTypeMatch: (a, b) => norm(a) === norm(b),
-    ivTierFn: async () => () => 'short',
+    ivTierFn: async () => () => 'short', ivInvalidateBank: async () => {},
     notionQuery: async (db, query) => query?.filter?.property === 'Parent Asset' ? [] : db === 'titles' ? [{ id: tid }] : [{ id: aid, properties: { 'Asset Type': { select: { name: 'Topical Post' } } } }],
     fetch: async (url, options) => { updates.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ id: aid }) }; }, extractPillarContent: async () => 'pillar' });
   vm.runInContext(downstream, dc); await dc.ivMarkDownstream({}, { ...finished(), titleId: tid });

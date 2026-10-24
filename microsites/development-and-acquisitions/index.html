@@ -8664,7 +8664,7 @@ let pubAssetId = null;
 // 🎤 Request interview (inside the asset): its OWN interview, answered in the shared modal (../../shared/interview-panel.js)
 async function requestAssetInterview(btn) {
   if (!pubAssetId) return;
-  if (!window.InterviewPanel) { await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = '../../shared/interview-panel.js?v=2026101101'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }).catch(() => {}); }
+  if (!window.InterviewPanel) { await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = '../../shared/interview-panel.js?v=2026102301'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }).catch(() => {}); }
   if (!window.InterviewPanel) return alert('Could not load the interview panel.');
   btn.disabled = true; const t = btn.textContent; btn.textContent = '⏳ writing questions…';
   await window.InterviewPanel.request({ call: (a, b) => w(a, b).catch(e => ({ error: e.message })), assetId: pubAssetId });

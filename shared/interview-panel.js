@@ -14,6 +14,7 @@
   const BTN = `font-size:11px;padding:4px 10px;border:1px solid ${C.line};border-radius:6px;background:${C.surf2};color:${C.ink};cursor:pointer;`;
   const BTNP = `font-size:11px;padding:4px 10px;border:1px solid ${DONE};border-radius:6px;background:${DONE};color:#fff;font-weight:600;cursor:pointer;`;
   const TA = `width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;line-height:1.45;padding:7px 9px;border:1px solid ${C.line};border-radius:6px;background:${C.surf};color:${C.ink};`;
+  const reuseBadge = (iv,i) => { const source=(iv.reused||[]).find(x=>x.index===i);if(!source)return '';const id=String(source.ivId||'').replace(/-/g,'');return `<div style="font-size:11px;color:${DONE};margin:3px 0 6px;">♻ Reused from ${/^[a-f0-9]{32}$/i.test(id)?`<a href="https://www.notion.so/${id}" target="_blank" rel="noopener">an earlier interview</a>`:e(source.ivId)}. Edit this answer to replace it.</div>`; };
   const req = async (call, a, b) => { const r = await call(a, b || {}); if (r && r.error) { const x = new Error(r.error); x.server = true; throw x; } return r || {}; };   // x.server = the worker answered with an error (vs a dropped connection)
   const pill = st => `<span style="font-size:10.5px;padding:1px 8px;border-radius:9px;font-weight:700;${st === 'Finished' ? `background:rgba(58,154,91,.18);color:${DONE};` : `background:${FLAG};color:#111;`}">${st === 'Finished' ? 'Finished' : 'Flagged'}</span>`;
   const listeners = new Set();
@@ -194,7 +195,7 @@
         ${S.err ? `<div style="font-size:12px;color:#c0392b;margin-bottom:8px;">${e(S.err)}</div>` : ''}
         ${!iv ? `<div style="font-size:12px;color:${C.ink3};">${e(S.busy || '')}</div>` : iv.qs.map((q, i) => `<div style="margin-bottom:12px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${i + 1}. ${e(q)}</div>
-            <textarea data-a="${i}" rows="3" placeholder="Type it the way you'd say it…" style="${TA}">${e(S.answers[i] || '')}</textarea></div>`).join('')}
+            ${reuseBadge(iv,i)}<textarea data-a="${i}" rows="3" placeholder="Type it the way you'd say it…" style="${TA}">${e(S.answers[i] || '')}</textarea></div>`).join('')}
         ${iv ? '<div data-xhost></div>' : ''}
         ${iv ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:10px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">${S.busy ? '⏳ ' + e(S.busy) : `${S.answers.filter(a => (a || '').trim()).length}/${iv.qs.length} answered · skip any question that doesn't apply`}</span>
