@@ -2201,25 +2201,36 @@ async function methodMappingReport(env) {
     return {id:method.id,name,Status:p.Status?.select?.name||p.Status?.status?.name||'',hasRow:!!row,mapped:row?.mapped||'',missing:writingMissing(row)};})};
 }
 // Q&A writer (2026-10-24) — the operator's answered questions, printed
-async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts}) {
+async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts,keywords,title}) {
   const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
   const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),String(iv.answers[i]||'').replace(/^♻\s*/,'').trim()]).filter(x=>x[0]&&x[1]));
   if(!pairs.length)return {error:'Q&A needs at least one answered interview question',needsInterview:true};
-  let clean=pairs.map(x=>x[1]),cleaned=0;
-  try{const g=await hcClaude(env,'Fix ONLY spelling, punctuation, capitalisation, spacing and obvious typos in each answer. Do not change, add, remove or reorder words beyond that; keep slang, laughter, exclamations and the speaker\'s voice exactly. Return every answer, in the same order.\n\nANSWERS (JSON array):\n'+JSON.stringify(pairs.map(x=>x[1])),'clean_answers',{type:'object',required:['answers'],properties:{answers:{type:'array',items:{type:'string'}}}},8000);
-    if(Array.isArray(g.answers)&&g.answers.length===pairs.length)clean=g.answers.map((a,i)=>{const k=ivKeptPct(pairs[i][1],a);if(String(a||'').trim()&&(k===null||k>=80)){cleaned++;return String(a).trim();}return pairs[i][1];});}catch(e){console.error('Q&A clean:',e.message);}
+  // operator 2026-10-24: near-duplicate questions keep the longer answer; Q&A + SEO follows SEO structure where it can without touching the voice
+  const tk=x=>new Set(String(x).toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w=>w.length>3));
+  const sim=(a,b)=>{const A=tk(a),B=tk(b);let n=0;A.forEach(w=>{if(B.has(w))n++;});return n/Math.max(1,Math.min(A.size,B.size));};
+  let dropped=0;for(let i=0;i<pairs.length;i++)for(let j=i+1;j<pairs.length;j++){if(pairs[i]&&pairs[j]&&sim(pairs[i][0],pairs[j][0])>=0.6){dropped++;if(pairs[i][1].length>=pairs[j][1].length)pairs[j]=null;else pairs[i]=null;}}
+  const qa=pairs.filter(Boolean),seo=style.purpose==='SEO',kws=(keywords||[]).slice(0,6).join(', ');
+  let clean=qa.map(x=>x[1]),heads=qa.map(x=>x[0]),intro='',cleaned=0;
+  try{const g=await hcClaude(env,'Fix ONLY spelling, punctuation, capitalisation, spacing and obvious typos in each answer. Do not change, add, remove or reorder words beyond that; keep slang, laughter, exclamations and the speaker\'s voice exactly. Return every answer, in the same order.'
+      +(seo?'\n\nALSO, for SEO — WITHOUT touching the answers: "headings": for each answer, a search-shaped H2 (a question or phrase people actually search, max 70 characters) that keeps the meaning of its original question and uses one of these keywords where it fits naturally: '+(kws||'(the topic)')+'. "intro": 1-2 plain sentences for the top of the page, under the title "'+(title||'')+'", that tell a searcher what this page answers — only what the answers themselves say, no new claims, no hype, not in the first person.':'')
+      +'\n\nQUESTIONS (JSON array):\n'+JSON.stringify(qa.map(x=>x[0]))+'\n\nANSWERS (JSON array):\n'+JSON.stringify(qa.map(x=>x[1])),'clean_answers',
+      {type:'object',required:seo?['answers','headings','intro']:['answers'],properties:{answers:{type:'array',items:{type:'string'}},...(seo?{headings:{type:'array',items:{type:'string'}},intro:{type:'string'}}:{})}},8000);
+    if(Array.isArray(g.answers)&&g.answers.length===qa.length)clean=g.answers.map((a,i)=>{const k=ivKeptPct(qa[i][1],a);if(String(a||'').trim()&&(k===null||k>=80)){cleaned++;return String(a).trim();}return qa[i][1];});
+    if(seo&&Array.isArray(g.headings)&&g.headings.length===qa.length)heads=g.headings.map((h,i)=>String(h||'').trim().slice(0,90)||qa[i][0]);
+    if(seo&&g.intro)intro=String(g.intro).trim().slice(0,400);
+  }catch(e){console.error('Q&A clean:',e.message);}
   // + the hub's other posts at the bottom (operator 2026-10-24: "put the section / category other post links back in the bottom")
   const more=(hubPosts||[]).filter(x=>x&&x.title&&x.url).slice(0,5);
-  const body=pairs.map((x,i)=>'## '+x[0]+'\n\n'+clean[i]).join('\n\n')+(more.length?'\n\n## Keep reading\n\n'+more.map(x=>'- ['+x.title+']('+x.url+')').join('\n'):'');
+  const body=(intro?intro+'\n\n':'')+qa.map((x,i)=>'## '+heads[i]+'\n\n'+clean[i]).join('\n\n')+(more.length?'\n\n## Keep reading\n\n'+more.map(x=>'- ['+x.title+']('+x.url+')').join('\n'):'');
   const main=contract.find(f=>/^body$/i.test(f.name))||contract.find(f=>/body|page|script|text|description|caption/i.test(f.name))||{name:'Body'};
   const properties={[main.name]:{rich_text:ivRt(body)},'Interview Sync':{select:{name:'In Sync'}}};
   if(page.properties?.[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};
-  const keptPct=ivKeptPct(pairs.map(x=>x[1]).join(' '),body);
+  const keptPct=ivKeptPct(qa.map(x=>x[1]).join(' '),body);
   try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){}
   await saveExistingAssetWriting(page,properties,[]);
   const run={assetId:aid,method:name,methodId,violations:[],written:true,qa:true,timestamp:new Date().toISOString()};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
-  return {ok:true,fields:[main.name],violations:[],written:true,style:{keep:'Q&A',purpose:style.purpose,keptPct,band:WRITE_KEEP['Q&A'].band,questions:pairs.length,grammarFixed:cleaned}};
+  return {ok:true,fields:[main.name],violations:[],written:true,style:{keep:'Q&A',purpose:style.purpose,keptPct,band:WRITE_KEEP['Q&A'].band,questions:qa.length,duplicatesDropped:dropped,seoHeadings:seo&&heads.some((h,i)=>h!==qa[i][0]),intro:!!intro,keepReading:more.length,grammarFixed:cleaned}};
 }
 async function writeContractAsset(env,assetId) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
@@ -2257,7 +2268,7 @@ async function writeContractAsset(env,assetId) {
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
-  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[]});   // Q&A: answered questions printed, grammar only
+  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
   let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
