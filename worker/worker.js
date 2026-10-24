@@ -2570,7 +2570,7 @@ async function addReviewFlag(env, flag) {
 }
 // the current period's key in Pacific time for a cadence (Weekly = Saturday 00:00 → Friday night)
 function hubNewsPeriodKey(cadence) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute:"2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
   const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
   if (cadence === "Monthly") d.setUTCDate(1);
   else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
@@ -14440,6 +14440,7 @@ async function digestMemoryBrief(env,cid) {
 async function digestMemoryCommit(env,cid,runId,findings) {
   const memory=await digestMemory(env,cid);if(memory.runs[runId])return memory.runs[runId];
   const plan=memoryPlan(memory,findings,runId),at=new Date().toISOString();
+  for(const item of plan.invalid)await env.TRADES.put('digest:memory:held:'+hubAssetId(cid)+':'+runId+':'+await governanceHash(JSON.stringify(item)),JSON.stringify({at,payload:item,reason:'Missing claim or valid source URL; excluded from researched memory, retained for review'}));
   for(const item of [...plan.new,...plan.changed]) {
     const id='f'+await governanceHash(memoryKey(item));item.id=id;
     // Immutable original finding, including provenance; subsequent confirmations are events.
@@ -14563,7 +14564,7 @@ async function digestProviderFetch(env,job,phase,input) {
 }
 // END WEEKLY RESEARCH MEMORY
 function adPeriod() {   // WEEKLY (operator 2026-10-16): the week keyed by its Sunday; runs start Sunday 20:00 → Monday 06:00 Pacific
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
   const dd = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday), hour = +p.hour;
   dd.setUTCDate(dd.getUTCDate() - wd);   // this week's Sunday
   const mon = new Date(dd.getTime() + 864e5);
