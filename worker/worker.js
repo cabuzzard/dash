@@ -1725,13 +1725,13 @@ async function ivSaveOutline(env, assetId, outline) {
 }
 // ivRegenerateAsset: a fresh, structure-first interview for an asset. Earlier interviews → Superseded (kept); every earlier ANSWERED
 // question is carried into the new interview (under "§ · Earlier answer"), so no answer is lost. One model call.
-async function ivRegenerateAsset(env, assetId) {
+async function ivRegenerateAsset(env, assetId, direction) {
   const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
   if (!titleId) throw new Error("this asset has no title");
   const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid));
   const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, String(iv.answers[i] || "").trim()]).filter(x => x[1]));
   for (const iv of own) await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
-  const made = await ivCreateForAsset(env, { assetId: aid, titleId });
+  const made = await ivCreateForAsset(env, { assetId: aid, titleId, direction });
   const nu = (made.interviews || [])[0]; if (!nu) return { ok: false, error: "no interview came back", carried: carried.length };
   if (carried.length) {
     const qs = [...nu.qs, ...carried.map(x => "§ · Earlier answer — " + x[0].replace(/^§[^—]*—\s*/, ""))], answers = [...nu.answers, ...carried.map(x => x[1])];
@@ -22372,6 +22372,14 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
       }
       if (body.action === "createInterviews") {
         if (!body.titleId && !body.productId && !body.assetId) return json({ error: "productId, assetId or titleId required" }, 400);
+        if (body.assetId && !body.productId) {   // operator 2026-10-24: regenerate per asset from 🎤 Request interview, never in bulk
+          const ap = await ivPage(body.assetId).catch(() => null), tId = ap ? ivRid(ap.properties || {}, "Content Strategy") : "";
+          const hasOwn = tId ? (await ivForTitle(tId)).some(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(hubAssetId(body.assetId))) : false;
+          if (ap && hasOwn && !hubRichText(ap.properties?.Outline?.rich_text)) {
+            const g = await ivRegenerateAsset(env, body.assetId, body.direction);
+            if (g.ok) return json({ ok: true, regenerated: true, interviews: [ivParse(await ivPage(g.interview))], carried: g.carried, outline: g.outline });
+          }
+        }
         const r = body.productId ? await ivCreateForProduct(env, String(body.productId).replace(/-/g, ""), { force: true, direction: body.direction })
           : (body.assetId || body.own) ? await ivCreateForAsset(env, { assetId: body.assetId || "", titleId: body.titleId ? String(body.titleId).replace(/-/g, "") : "", own: body.own || "", direction: body.direction })
           : await ivCreateForTitle(env, String(body.titleId).replace(/-/g, ""), { force: true, another: true, direction: body.direction });
