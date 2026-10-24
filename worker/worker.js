@@ -22379,7 +22379,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         if (body.assetId && !body.productId) {   // operator 2026-10-24: regenerate per asset from 🎤 Request interview, never in bulk
           const ap = await ivPage(body.assetId).catch(() => null), tId = ap ? ivRid(ap.properties || {}, "Content Strategy") : "";
           const hasOwn = tId ? (await ivForTitle(tId)).some(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(hubAssetId(body.assetId))) : false;
-          if (ap && hasOwn && !hubRichText(ap.properties?.Outline?.rich_text)) {
+          if (ap && hasOwn) {   // always regenerate from 🎤 Request interview: fresh outline + questions, answered pairs carried, old → Superseded (2026-10-24)
             const g = await ivRegenerateAsset(env, body.assetId, body.direction);
             if (g.ok) return json({ ok: true, regenerated: true, interviews: [ivParse(await ivPage(g.interview))], carried: g.carried, outline: g.outline });
           }
