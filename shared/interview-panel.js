@@ -74,7 +74,8 @@
   const VC = { 'current': ['#3a9a5b', 'rgba(58,154,91,.15)'], 'mostly current': ['#3a9a5b', 'rgba(58,154,91,.10)'], 'outdated': ['#c25e00', 'rgba(255,122,0,.15)'],
     'contested': ['#c25e00', 'rgba(255,122,0,.15)'], 'wrong': ['#c0392b', 'rgba(192,57,43,.15)'], 'opinion': ['#888', 'rgba(127,127,127,.12)'] };
   function expert(cfg) {
-    const el = document.createElement('div'), S = { report: null, busy: '', err: '', edits: {}, pick: {} };
+    const el = document.createElement('div'), S = { report: null, busy: '', err: '', edits: {}, pick: {}, words: {}, resp: {}, dec: {} };
+    const canResolve = cfg.resolve !== false;   // Script Studio (client app) passes resolve:false — it keeps the swap-and-apply flow
     el.style.cssText = `margin:14px 0 4px;border:1px solid ${C.line};border-radius:10px;padding:10px 12px;`;
     // the WHOLE answer for context: the quoted words struck through, the proposed change in orange (live as you edit it)
     const answerOf = i => String(((cfg.answers ? cfg.answers() : null) || (cfg.iv || {}).answers || [])[i] || '');
@@ -116,6 +117,60 @@
     // the quote's words appear in one of the answers (case / spacing / punctuation ignored) — same rule as the worker's matcher
     const wds = t => (String(t || '').toLowerCase().replace(/’/g, "'").match(/[\p{L}\p{N}]+(?:'[\p{L}]+)?/gu) || []).join(' ');
     const inAnswers = q => { const w = wds(q); if (!w) return false; const list = (typeof cfg.answers === 'function' ? cfg.answers() : (cfg.iv || {}).answers) || []; return list.some(a => (' ' + wds(a) + ' ').includes(' ' + w + ' ')); };
+    // where a finding's words sit in your answers (2026-10-24): exact → same words → the closest sentence → the whole answer
+    const ansList = () => ((typeof cfg.answers === 'function' ? cfg.answers() : (cfg.iv || {}).answers) || []).map(a => String(a || ''));
+    const wordList = t => String(t || '').toLowerCase().replace(/’/g, "'").match(/[\p{L}\p{N}]+(?:'[\p{L}]+)?/gu) || [];
+    function locate(x) {
+      const L = ansList(), order = [x.q, ...L.map((_, i) => i).filter(i => i !== x.q)].filter(i => L[i] && L[i].trim());
+      for (const k of order) if (x.quote && L[k].includes(x.quote)) return { k, text: x.quote, how: 'exact' };
+      const q = wordList(x.quote);
+      if (q.length) for (const k of order) { const re = /[\p{L}\p{N}]+(?:['’][\p{L}]+)?/gu, w = []; let m;
+        while ((m = re.exec(L[k]))) w.push({ w: m[0].toLowerCase().replace(/’/g, "'"), s: m.index, e: m.index + m[0].length });
+        for (let i = 0; i + q.length <= w.length; i++) if (q.every((t, j) => w[i + j].w === t)) return { k, text: L[k].slice(w[i].s, w[i + q.length - 1].e), how: 'exact' }; }
+      let best = null; const qs = new Set(q);
+      if (qs.size) for (const k of order) for (const sn of (L[k].match(/[^.!?\n]+[.!?]*/g) || [])) { const sw = new Set(wordList(sn)); let hit = 0; qs.forEach(t => { if (sw.has(t)) hit++; });
+        const sc = hit / qs.size; if (sn.trim() && sc >= 0.35 && (!best || sc > best.sc)) best = { k, text: sn.trim(), how: 'closest', sc }; }
+      if (best) return best;
+      return L[x.q] && L[x.q].trim() ? { k: x.q, text: L[x.q].trim(), how: 'whole' } : null;
+    }
+    const locOf = x => locate({ ...x, quote: (x.resolved && x.resolved.words) || x.quote });
+    function inPlace(loc, now) {   // the whole answer, the finding's words underlined — struck through + your edit in orange while you type
+      if (!loc) return `<div style="font-size:12px;color:${C.ink3};">(that answer is empty now)</div>`;
+      const a = ansList()[loc.k] || '', at = a.indexOf(loc.text); if (at < 0) return '';
+      const mid = now == null || now === loc.text ? `<span style="text-decoration:underline;text-decoration-color:${FLAG};text-underline-offset:3px;">${e(loc.text)}</span>`
+        : `<span style="text-decoration:line-through;color:${C.ink3};">${e(loc.text)}</span> <span style="color:#ff7a00;font-weight:700;">${e(now)}</span>`;
+      return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">${e(a.slice(0, at))}${mid}${e(a.slice(at + loc.text.length))}</div>`;
+    }
+    // each finding: edit your words, answer the expert, then PRINT IT (your view, controversial or not) or LEAVE IT OUT of the write-up
+    // (kept in your answer, held out of every writer, banked for premium) — operator 2026-10-24
+    function resolveBox(x) {
+      const r = x.resolved || {}, loc = locOf(x), id = e(x.id);
+      const words = S.words[x.id] != null ? S.words[x.id] : loc ? loc.text : '', dec = S.dec[x.id] || r.decision || 'include', resp = S.resp[x.id] != null ? S.resp[x.id] : (r.response || '');
+      return `<div style="margin-top:7px;padding:8px 10px;border:1px solid ${C.line};border-radius:8px;">
+        <div style="font-size:11.5px;color:${C.ink3};margin-bottom:3px;">${!loc ? 'That answer is empty now.' : loc.how === 'exact' ? 'Your words it’s about — edit them here:' : loc.how === 'closest' ? 'The closest sentence in your answer — edit it here:' : 'Your whole answer (the exact sentence couldn’t be pinned) — edit it here:'}</div>
+        ${loc ? `<textarea data-xw="${id}" rows="2" style="${TA}font-size:12.5px;">${e(words)}</textarea>` : ''}
+        ${x.fix && x.verdict !== 'opinion' ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:4px;">Suggested wording: “${e(x.fix)}”${loc && loc.how === 'exact' ? ` <button type="button" data-x="usefix" data-id="${id}" style="${BTN}font-size:11px;padding:2px 8px;">↧ Use it</button>` : ''}</div>` : ''}
+        <div style="font-size:11.5px;color:${C.ink3};margin:7px 0 3px;">Your response to the expert (optional — saved for premium):</div>
+        <textarea data-xr="${id}" rows="2" placeholder="Where you agree, where you push back, what you’ve seen first-hand…" style="${TA}font-size:12.5px;">${e(resp)}</textarea>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:7px;font-size:12px;color:${C.ink};">
+          <label style="display:flex;gap:5px;align-items:center;"><input type="radio" name="xd-${id}" data-xd="${id}" value="include" ${dec === 'include' ? 'checked' : ''}> Print it — my view</label>
+          <label style="display:flex;gap:5px;align-items:center;"><input type="radio" name="xd-${id}" data-xd="${id}" value="leave" ${dec === 'leave' ? 'checked' : ''}> Leave it out of the write-up (saved for premium)</label>
+          <button type="button" data-x="resolve" data-id="${id}" ${S.busy ? 'disabled' : ''} style="${BTN}margin-left:auto;">💾 Save</button></div>
+        ${r.at ? `<div style="font-size:11.5px;color:${DONE};margin-top:5px;">✓ Saved · ${r.decision === 'leave' ? 'left out of the write-up · ★ saved for premium' : 'printed as your view'}${r.edited ? ' · your words updated' : ''}</div>` : ''}
+      </div>`;
+    }
+    async function resolve(id) {
+      const x = ((S.report || {}).items || []).find(i => i.id === id); if (!x) return;
+      const r0 = x.resolved || {}, loc = locOf(x);
+      const words = S.words[id] != null ? S.words[id] : loc ? loc.text : '', decision = S.dec[id] || r0.decision || 'include', response = S.resp[id] != null ? S.resp[id] : (r0.response || '');
+      if (cfg.beforeRun) { try { await cfg.beforeRun(); } catch (err) {} }   // unsaved answer edits land first
+      S.busy = 'Saving…'; S.err = ''; draw();
+      try { const r = await req(cfg.call, 'ivExpertResolve', { interviewId: cfg.interviewId, id, original: loc ? loc.text : '', q: loc ? loc.k : x.q, words, decision, response });
+        S.report = r.report; delete S.words[id]; delete S.resp[id]; delete S.dec[id]; if (r.premium) S.prem[id] = true;
+        changed(); if (cfg.onApplied) cfg.onApplied(r.answers || null, r); }
+      catch (err) { S.err = err.message; }
+      S.busy = ''; draw();
+    }
     function draw() {
       const R = S.report, items = (R && R.items) || [], nPick = Object.values(S.pick).filter(Boolean).length;
       el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -130,19 +185,20 @@
             return `<div style="border-top:1px solid ${C.line};padding:9px 0;">
               <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;background:${v[1]};color:${v[0]};text-transform:uppercase;letter-spacing:.03em;">${e(x.verdict)}</span>
                 <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:200px;">${questionOf(x.q) ? 'Q' + (x.q + 1) + ' · ' + e(questionOf(x.q)) : ''}</span></div>
-              <div data-xpv="${e(x.id)}">${x.applied ? inContext({ ...x, quote: x.appliedText || x.fix }, null) : inContext(x, x.fix && x.verdict !== 'opinion' ? (S.edits[x.id] != null ? S.edits[x.id] : x.fix) : null)}</div>
+              <div data-xpv="${e(x.id)}">${x.applied ? inContext({ ...x, quote: x.appliedText || x.fix }, null) : inPlace(locOf(x), S.words[x.id])}</div>
               ${x.expert_view && x.verdict !== 'opinion' ? `<div style="font-size:12px;color:${C.ink2};margin-top:4px;">${e(x.expert_view)}</div>` : ''}
               ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ Marketability: ${e(x.market)}</div>` : ''}
               ${x.level_up ? `<div style="font-size:12px;color:${C.acc};margin-top:4px;">★ A top practitioner would add: ${e(x.level_up)}</div>` : ''}
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
               ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
               ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
+                : canResolve ? (x.verdict === 'current' ? '' : resolveBox(x))
                 : x.fix && (x.skipped || !inAnswers(x.quote)) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ Skipped — its words aren't in your answer as written, so there's nothing to swap. Use it as a pointer if you want to edit your answer by hand.</div>`
                 : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
                   <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
                   <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea></span></label>` : ''}
             </div>`; }).join('')}
-          ${items.some(x => x.fix && !x.applied && !x.skipped && inAnswers(x.quote)) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
+          ${!canResolve && items.some(x => x.fix && !x.applied && !x.skipped && inAnswers(x.quote)) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;">Applying swaps only the quoted words in your answers; your own rewrites teach 🗣 Your voice.</span>
             <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTN}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}
           ${S.done ? `<div style="font-size:12.5px;color:${DONE};margin-top:9px;">${e(S.done)}</div>` : ''}
@@ -172,11 +228,17 @@
     async function premToggle(id) { const x = ((S.report || {}).items || []).find(i => i.id === id); if (!x) return; const on = !S.prem[id]; S.prem[id] = on; draw();
       try { await req(cfg.call, 'premiumBank', on ? { op: 'add', assetId: premAsset(), interviewId: cfg.interviewId, item: { ...x, question: questionOf(x.q) } } : { op: 'remove', assetId: premAsset(), id: id + ':' + cfg.interviewId }); }
       catch (err) { S.prem[id] = !on; S.err = 'Not saved for premium: ' + err.message; draw(); } }
-    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
-    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id);
+      else if (b.dataset.x === 'resolve') resolve(b.dataset.id);
+      else if (b.dataset.x === 'usefix') { const x = ((S.report || {}).items || []).find(i => i.id === b.dataset.id); if (x && x.fix) { S.words[x.id] = x.fix; draw(); } } });
+    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } if (t.dataset.xd) S.dec[t.dataset.xd] = t.value; });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value;
         const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xe), pv = el.querySelector(`[data-xpv="${t.dataset.xe}"]`);
-        if (x && pv) pv.innerHTML = inContext(x, t.value); } ev.stopPropagation(); });
+        if (x && pv) pv.innerHTML = inContext(x, t.value); }
+      if (t.dataset.xw) { S.words[t.dataset.xw] = t.value; const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xw), pv = el.querySelector(`[data-xpv="${t.dataset.xw}"]`);
+        if (x && pv) pv.innerHTML = inPlace(locOf(x), t.value); }
+      if (t.dataset.xr) S.resp[t.dataset.xr] = t.value;
+      ev.stopPropagation(); });
     draw(); load();
     return el;
   }

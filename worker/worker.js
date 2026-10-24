@@ -1513,6 +1513,31 @@ function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${S
 function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
 function ivPooled(iv,i){return (iv.reused||[]).some(r=>r.index===i)||/^♻ /.test(String((iv.answers||[])[i]||''));}   // a pooled answer is background, never this asset's own words
+// HELD BACK (operator 2026-10-24): an expert-check finding the operator chose to "leave out of the write-up" — its words stay in the
+// answer (nothing deleted) but every writer cuts them. Stored on the interview as JSON [{id, q, text}].
+function ivHeldOf(text) { try { const d = JSON.parse(String(text || '[]')); return Array.isArray(d) ? d.filter(h => h && Number.isInteger(h.q) && String(h.text || '').trim()) : []; } catch (e) { return []; } }
+function ivWriteAnswer(iv, i) {   // the words a WRITER may use: pooled answers are background only, Held Back spans are cut
+  if (ivPooled(iv, i)) return '';
+  let a = String((iv.answers || [])[i] || '');
+  for (const h of (iv.held || [])) if (h.q === i) { const t = String(h.text || '').trim(); if (!t) continue;
+    if (a.includes(t)) a = a.replace(t, ' '); else { const sp = ivQuoteSpan(a, t); if (sp) a = a.slice(0, sp[0]) + ' ' + a.slice(sp[1]); } }
+  return a.replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;!?])/g, '$1').trim();
+}
+async function ivHeldSchema(env) {
+  if (await env.TRADES.get('ivheld:schema:v1')) return;
+  const schema = await ivReuseNotion(env, 'databases/' + INTERVIEWS_DB);
+  if (schema.properties?.['Held Back'] && schema.properties['Held Back'].type !== 'rich_text') throw new Error('Held Back must be rich text');
+  if (!schema.properties?.['Held Back']) await ivReuseNotion(env, 'databases/' + INTERVIEWS_DB, { method: 'PATCH', body: JSON.stringify({ properties: { 'Held Back': { rich_text: {} } } }) });
+  await env.TRADES.put('ivheld:schema:v1', '1');
+}
+async function premiumBankUpsert(env, aid, interviewId, x) {   // one banked argument per finding per interview; a re-save updates it
+  const key = 'premiumbank:' + hubAssetId(aid), bank = (await env.TRADES.get(key, 'json').catch(() => null)) || [], id = String(x.id || '').slice(0, 80) + ':' + String(interviewId || '').slice(0, 32);
+  const row = { id, interviewId: String(interviewId || ''), question: String(x.question || '').slice(0, 400), quote: String(x.quote || '').slice(0, 800),
+    verdict: String(x.verdict || '').slice(0, 40), expertView: String(x.expert_view || '').slice(0, 1200), levelUp: String(x.level_up || '').slice(0, 600), response: String(x.response || '').slice(0, 3000),
+    sources: (Array.isArray(x.sources) ? x.sources : []).slice(0, 4).map(s => ({ title: String(s.title || '').slice(0, 120), url: String(s.url || '').slice(0, 400) })), savedAt: new Date().toISOString() };
+  const at = bank.findIndex(b => b.id === id); if (at >= 0) bank[at] = { ...bank[at], ...row, response: row.response || bank[at].response || '' }; else bank.push(row);
+  await env.TRADES.put(key, JSON.stringify(bank.slice(-60))); return bank;
+}
 function ivCleanFix(t) {   // 2026-10-24: three applied fixes pasted the reviewer's note into the operator's answers
   let x = String(t || '').trim();
   const m = /^["“]([\s\S]+?)["”](?:\s*(?:—|–|-|\(|\[|;)[\s\S]*)?$/.exec(x); if (m) x = m[1].trim();
@@ -1644,7 +1669,7 @@ function ivParse(pg) {
     titleId: ivRid(p, "Title"), productId: ivRid(p, "Product"), cid: ivRid(p, "Campaign"),
     created: pg.created_time, finishedAt: p["Finished At"]?.date?.start || null, url: pg.url,
     scope: p.Scope?.select?.name || (ivRid(p, "Product") ? "Product" : "Title"), forType: txt("For Asset Type"),
-    assetIds: (p.Asset?.relation || []).map(r => r.id.replace(/-/g, "")) };
+    assetIds: (p.Asset?.relation || []).map(r => r.id.replace(/-/g, "")), held: ivHeldOf(txt("Held Back")) };
 }
 async function ivList(filter) {
   const rows = await notionQuery(INTERVIEWS_DB, filter ? { filter, sorts: [{ timestamp: "created_time", direction: "ascending" }] } : { sorts: [{ timestamp: "created_time", direction: "ascending" }] });
@@ -1674,8 +1699,8 @@ async function ivBlock(env, titleId, assetType, assetId) {
       && (x.scope !== "Asset" || (assetId && x.assetIds.includes(String(assetId).replace(/-/g, ""))) || (parentId && x.assetIds.includes(parentId)) || (assetType && ivTypeMatch(x.forType, assetType))));
   if (!done.length) return { text: "", cid: "" };
   const tierOf = await ivTierFn(env);
-  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — REWRITE these answers for SEO: keep every fact, opinion and example, restructure them under keyword-targeted headings in search-friendly prose; never quote them verbatim" : (parentId && x.assetIds.includes(parentId) ? "the parent piece's interview" : "this asset's own interview")) : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
-    + x.qs.map((q, i) => x.answers[i] && !ivPooled(x, i) ? `Q: ${q}\nTHEIR ANSWER: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
+  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — keep every fact, opinion and example and place them under keyword-targeted headings; how much of their wording to keep follows the WRITE STYLE when one is given (otherwise rewrite them in search-friendly prose)" : (parentId && x.assetIds.includes(parentId) ? "the parent piece's interview" : "this asset's own interview")) : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
+    + x.qs.map((q, i) => ivWriteAnswer(x, i) ? `Q: ${q}\nTHEIR ANSWER: ${ivWriteAnswer(x, i)}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);   // Held Back spans cut
   return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS — first-hand material about this product (and, if marked, this specific asset): their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
 }
 async function ivClaudeInterviews(env, prompt, max, qmin = 5, qmax = 10, withOutline = false) {   // withOutline: structure first (2026-10-24)
@@ -1749,7 +1774,7 @@ async function ivRegenerateAsset(env, assetId, direction) {
   const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
   if (!titleId) throw new Error("this asset has no title");
   const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid));
-  const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, ivPooled(iv, i) ? "" : String(iv.answers[i] || "").trim()]).filter(x => x[1]));
+  const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, ivPooled(iv, i) ? "" : String(iv.answers[i] || "").trim(), (iv.held || []).filter(h => h.q === i)]).filter(x => x[1]));   // Held Back spans travel with their answer
   for (const iv of own) await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
   const made = await ivCreateForAsset(env, { assetId: aid, titleId, direction });
   const nu = (made.interviews || [])[0]; if (!nu) return { ok: false, error: "no interview came back", carried: carried.length };
@@ -1757,6 +1782,7 @@ async function ivRegenerateAsset(env, assetId, direction) {
     const qs = [...nu.qs, ...carried.map(x => "§ · Earlier answer — " + x[0].replace(/^§[^—]*—\s*/, ""))], answers = [...nu.answers, ...carried.map(x => x[1])];
     const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(nu.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
       Questions: { rich_text: ivRt(qs.map((q, i) => (i + 1) + ". " + q).join("\n")) }, Answers: { rich_text: ivRt(ivFormatAnswers(qs, answers)) },
+      ...(carried.some(x => x[2].length) ? { "Held Back": { rich_text: ivRt(JSON.stringify(carried.flatMap((x, j) => x[2].map(h => ({ ...h, q: nu.qs.length + j }))))) } } : {}),
       ...(own.some(iv => iv.status === "Finished") ? { Status: { select: { name: "Finished" } } } : {}) } }) });
     if (!r.ok) throw new Error("New interview made, but carrying the earlier answers failed — they are still on the superseded records");
   }
@@ -2031,7 +2057,7 @@ async function topicalWriteInputs(env, assetId, options = {}) {
     titleResearchBlock(env, state.titleId), extractPillarContent(ivHdr(), ivDash(state.titleId))
   ]);
   const interview = skipInterview ? '' : state.own.filter(iv => iv.answers.some(a => String(a || '').trim()))
-    .map(iv => { const k = iv.qs.map((q, i) => [q, ivPooled(iv, i) ? '' : String(iv.answers[i] || '').trim()]).filter(x => x[1]); return ivFormatAnswers(k.map(x => x[0]), k.map(x => x[1])); }).join('\n\n');   // answered questions only
+    .map(iv => { const k = iv.qs.map((q, i) => [q, ivWriteAnswer(iv, i)]).filter(x => x[1]); return ivFormatAnswers(k.map(x => x[0]), k.map(x => x[1])); }).join('\n\n');   // answered questions only
   return { state, skipInterview, cid, headline: (p['Asset Title']?.title || []).map(t => t.plain_text).join('').trim(),
     grounding: `${voice}\n${audience}\n${research}\nPRODUCT RESEARCH:\n${product}\nTITLE'S PILLAR:\n${pillar}\n`
       + (interview ? `\nTHE OPERATOR'S FINISHED INTERVIEW ANSWERS (use their facts, examples and opinions; rewrite, never invent experience):\n${interview}\n` : ''),
@@ -2224,7 +2250,7 @@ async function methodMappingReport(env) {
 // Q&A writer (2026-10-24) — the operator's answered questions, printed
 async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts,keywords,title}) {
   const aid=hubAssetId(page.id),own=titleId?(await ivForTitle(titleId)).filter(iv=>iv.scope==='Asset'&&(iv.assetIds||[]).includes(aid)):[];
-  const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),ivPooled(iv,i)?'':String(iv.answers[i]||'').trim()]).filter(x=>x[0]&&x[1]));   // own answers only
+  const pairs=own.flatMap(iv=>iv.qs.map((q,i)=>[String(q).replace(/^§[^—]*—\s*/,'').trim(),ivWriteAnswer(iv,i)]).filter(x=>x[0]&&x[1]));   // own answers only
   if(!pairs.length)return {error:'Q&A needs at least one answered interview question',needsInterview:true};
   // operator 2026-10-24: near-duplicate questions keep the longer answer; Q&A + SEO follows SEO structure where it can without touching the voice
   const tk=x=>new Set(String(x).toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(w=>w.length>3));
@@ -2290,16 +2316,22 @@ async function writeContractAsset(env,assetId) {
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
   if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
-  let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
+  // 2026-10-24: the SEO keywords the check scores are handed to the writer, and the ONE corrective pass covers every problem the checks
+  // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
+  const seoKws=style.purpose==='SEO'?kwSplit(String(packet.product?.properties?.Keywords||'')):[],seoList=seoCoverage(seoKws,'','').missing;
+  const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'');
+  let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
-  let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
-  if(keptPct!==null&&(keptPct<band[0]-15||keptPct>band[1]+15)){   // one corrective pass when the wording kept misses the chosen band
-    const again=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nYOUR PREVIOUS DRAFT kept '+keptPct+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%. Revise the same fields to hit the target, changing nothing else.\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
-    if(again){const f2=fieldsOf(again),k2=ivKeptPct(answersOnly,Object.values(f2).join('\n'));if(Math.abs((k2??keptPct)-(band[0]+band[1])/2)<Math.abs(keptPct-(band[0]+band[1])/2)){fields=f2;keptPct=k2;corrected=true;}}
+  const band=WRITE_KEEP[style.keep].band,mainOf=f=>f.Body||f['Offer Page']||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
+  const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=kept!==null&&(kept<band[0]-15||kept>band[1]+15);
+    const problems=[...violations,...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
+    return {kept,seo,violations,problems,score:violations.length*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
+  let fields=fieldsOf(generated),c=check(fields),corrected=false;
+  if(c.problems.length){
+    const again=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nYOUR PREVIOUS DRAFT has these problems — fix exactly these, changing nothing else:\n- '+c.problems.join('\n- ')+'\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
+    if(again){const f2=fieldsOf(again),c2=check(f2);if(c2.score<c.score){fields=f2;c=c2;corrected=true;}}
   }
-  const mainText=fields.Body||fields['Offer Page']||Object.values(fields).sort((a,b)=>b.length-a.length)[0]||'';
-  const seo=style.purpose==='SEO'?seoCoverage(kwSplit(String(packet.product?.properties?.Keywords||'')),mainText,fields['Platform Title']):null;
-  const violations=validateWritingContract(contract,fields);
+  const keptPct=c.kept,seo=c.seo,violations=c.violations;
   // Only contract properties and Method can be saved; operational metadata is never a writing field.
   const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
   if(contract.some(f=>protectedFields.has(ivNorm(f.name))))throw new Error('Contract contains protected status, routing or attribution fields');
@@ -22366,6 +22398,36 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           await env.TRADES.delete("ivfact:run:" + xid).catch(() => {});
         }
         return resp;
+      }
+      // ivExpertResolve {interviewId, id, original, q, words, decision: include | leave, response} (operator 2026-10-24: "sometimes it is a
+      // controversial viewpoint but I am ok with printing it. other times I want to leave it out because I don't know how to address the
+      // expert opinion in that pass"). The finding's words are edited in place; "include" prints them as the operator's view; "leave" keeps
+      // them in the answer but holds them out of every write-up (Held Back) and banks the argument + the operator's response for premium.
+      if (body.action === "ivExpertResolve") {
+        const id = String(body.interviewId || "").replace(/-/g, ""); let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}
+        const x = report && (report.items || []).find(i => i.id === body.id); if (!x) return json({ error: "That finding isn't on the current expert check" }, 400);
+        await ivHeldSchema(env);
+        const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
+        const original = String(body.original || ""), words = String(body.words || "").trim().slice(0, 3000), decision = body.decision === "leave" ? "leave" : "include", response = String(body.response || "").trim().slice(0, 3000);
+        let k = -1, edited = false;
+        if (original) for (const i of [Number.isInteger(body.q) ? body.q : x.q, ...answers.map((_, j) => j)]) if (String(answers[i] || "").includes(original)) { k = i; break; }
+        if (original && k < 0) return json({ error: "Those words aren't in your answer any more — reload the interview and try again." }, 409);
+        if (k >= 0 && words && words !== original.trim()) { answers[k] = answers[k].replace(original, () => words); edited = true; }
+        const held = (iv.held || []).filter(h => h.id !== x.id); if (decision === "leave" && k >= 0) held.push({ id: x.id, q: k, text: edited ? words : original.trim() });
+        const heldChanged = JSON.stringify(held) !== JSON.stringify(iv.held || []);
+        const activeReuse = ivActiveReuse(iv.reused, answers), decorated = answers.map((a, i) => activeReuse.some(r => r.index === i) ? "♻ " + a : a);
+        if (edited || heldChanged) {
+          const ur = await ivSaveAnswerPatch(env, id, { ...(edited ? { Answers: { rich_text: ivRt(ivFormatAnswers(iv.qs, decorated)) }, "Reused From": { rich_text: ivRt(JSON.stringify(activeReuse)) } } : {}), "Held Back": { rich_text: ivRt(JSON.stringify(held)) } }, answers);
+          if (!ur.id) return json({ error: "Notion: " + (ur.message || "save failed") }, 502);
+          if (edited) await ivInvalidateBank(env, iv.cid);
+          if (iv.status === "Finished") ctx.waitUntil(ivMarkDownstream(env, iv).catch(e => console.error("ivMarkDownstream", e.message)));   // what the writer may use changed
+        }
+        if (edited && words && original) ctx.waitUntil(voiceLogEdits(env, ctx, iv.cid, "interview expert-check", [{ field: "expert-check edit", before: original, after: words }]).catch(() => 0));
+        x.resolved = { decision, words: k >= 0 ? (edited ? words : original.trim()) : "", response, edited: edited || !!(x.resolved && x.resolved.edited), at: new Date().toISOString() };
+        await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
+        let premium = false; const aid = iv.scope === "Asset" ? (iv.assetIds || [])[0] : "";
+        if (aid && (decision === "leave" || response)) { await premiumBankUpsert(env, aid, id, { ...x, quote: x.resolved.words || x.quote, question: iv.qs[x.q] || "", response }); premium = true; }
+        return json({ ok: true, answers, report, held, premium });
       }
       if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
         const id = String(body.interviewId || "").replace(/-/g, "");
@@ -52742,11 +52804,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
         const key = "premiumbank:" + aid; let bank = (await env.TRADES.get(key, "json").catch(() => null)) || [];
         if (body.action === "premiumBank") {
-          if (body.op === "add" && body.item) { const x = body.item, id = String(x.id || "").slice(0, 80) + ":" + String(body.interviewId || "").slice(0, 32);
-            if (!bank.some(b => b.id === id)) bank.push({ id, interviewId: String(body.interviewId || ""), question: String(x.question || "").slice(0, 400), quote: String(x.quote || "").slice(0, 800),
-              verdict: String(x.verdict || "").slice(0, 40), expertView: String(x.expert_view || "").slice(0, 1200), levelUp: String(x.level_up || "").slice(0, 600),
-              sources: (Array.isArray(x.sources) ? x.sources : []).slice(0, 4).map(s => ({ title: String(s.title || "").slice(0, 120), url: String(s.url || "").slice(0, 400) })), savedAt: new Date().toISOString() });
-            await env.TRADES.put(key, JSON.stringify(bank.slice(-60))); }
+          if (body.op === "add" && body.item) bank = await premiumBankUpsert(env, aid, body.interviewId, body.item);
           if (body.op === "remove") { bank = bank.filter(b => b.id !== String(body.id || "") && !String(b.id).startsWith(String(body.id || "") + ":")); await env.TRADES.put(key, JSON.stringify(bank)); }
           return json({ ok: true, assetId: aid, bank, premiumTake: (await env.TRADES.get("premiumtake:" + aid)) || "" });
         }
@@ -52761,7 +52819,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
         const cj = await cr.json().catch(() => ({})); if (!cr.ok || !cj.id) return json({ error: "Could not create the Premium Take: " + (cj.message || cr.status) }, 502);
         const nid = hubAssetId(cj.id); await env.TRADES.put("premiumtake:" + aid, nid);
-        const args = bank.map((b, i) => `${i + 1}. CONTESTED POINT: "${b.quote}"${b.question ? " (from: " + b.question + ")" : ""}\n   WHAT THE EXPERT CHECK SAID (${b.verdict || "challenge"}): ${b.expertView}${b.levelUp ? "\n   WHAT A TOP PRACTITIONER WOULD ADD: " + b.levelUp : ""}${b.sources.length ? "\n   CITED: " + b.sources.map(s => s.title || s.url).join("; ") : ""}`).join("\n");
+        const args = bank.map((b, i) => `${i + 1}. CONTESTED POINT: "${b.quote}"${b.question ? " (from: " + b.question + ")" : ""}\n   WHAT THE EXPERT CHECK SAID (${b.verdict || "challenge"}): ${b.expertView}${b.levelUp ? "\n   WHAT A TOP PRACTITIONER WOULD ADD: " + b.levelUp : ""}${b.response ? "\n   THE OPERATOR'S FIRST RESPONSE (their own words — build on it, never contradict it): " + b.response : ""}${b.sources.length ? "\n   CITED: " + b.sources.map(s => s.title || s.url).join("; ") : ""}`).join("\n");
         const direction = "PREMIUM TAKE — the source material for premium PRODUCTS (it is packaged later into e-book chapters, workbooks, a paid newsletter take): the operator answers the arguments the expert check raised against them. Ask ONE question per argument below (in this order), each for the operator's OWN position: where they agree, where they push back, and what first-hand experience the cited sources miss. Name the counter-view fairly; never put words in the operator's mouth. ARGUMENTS:\n" + args;
         let iv = null; try { iv = await ivCreateForAsset(env, { assetId: nid, titleId, direction: direction.slice(0, 6000) }); } catch (e) { return json({ ok: true, assetId: nid, interviewError: e.message }); }
         return json({ ok: true, assetId: nid, arguments: bank.length, interview: ((iv && iv.interviews) || [])[0] || null, outline: iv && iv.outline });
