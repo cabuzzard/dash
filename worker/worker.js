@@ -75,6 +75,7 @@ async function reconcileHierarchy(env, campaignId, apply=false) {
   for(const [kind,pages] of [['title',titles],['asset',assets]]) for(const page of pages) {
     const p=page.properties || {}, key=kind==='asset'?'Asset Status':'Status', oldStatus=(p[key]?.select || p[key]?.status)?.name;
     if(page.archived||page.in_trash||!HIERARCHY_STATUSES.has(oldStatus)||hierarchy[kind](p)) continue;
+    if(kind==='asset'&&oldStatus==='Published'){records.push({id:hierarchyId(page.id),kind,name:hierarchyText(p['Asset Title']?.title),oldStatus,kept:'published — never demoted automatically (operator 2026-10-24)'});continue;}
     const entry={id:hierarchyId(page.id),kind,name:hierarchyText(p['Asset Title']?.title || p.Title?.title || p.Name?.title),oldStatus,newStatus:'Idea'};
     if(apply) {
       // Fresh check prevents a long-running audit from demoting an item placed in the meantime.
@@ -5091,7 +5092,7 @@ async function hubFeedEntries(rows, manifest, hub, env, model) {
   const entries = [], seen = new Set();
   for (const row of [...rows].sort((a,b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))) {
     const p = row.properties || {}, sec = hubSectionOf(p), aid = hubAssetId(row.id);
-    if (!hierarchy.asset(p) || row.archived || row.in_trash || p['Asset Status']?.select?.name !== 'Published' || !HUB_FEED_SECTIONS.has(sec)) continue;
+    if (row.archived || row.in_trash || p['Asset Status']?.select?.name !== 'Published' || !HUB_FEED_SECTIONS.has(sec)) continue;   // operator 2026-10-24: "nothing published should ever drop out unless I take it out" — Published lists, placed or not
     if (!(p.Campaign?.relation || []).some(c => hubAssetId(c.id) === hubAssetId(hub.campaignId))) continue;
     if (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug) continue;
     const path = offerBlogPath(p, hub.slug);
@@ -5113,7 +5114,7 @@ function hubRoutedState(a, expectedSlug, listingEntry) {
   const off = hubPublish => ({ hubPublish, hubLive: false, hubRoutedSection: '', hubSectionDisplay: label ? label + ' \u00b7 not on hub' : '' });
   if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return off('\u26a0 Different hub');
   if (!expectedSlug) return off('Not a content hub');
-  if (a.hierarchyPlaced === false) return off('Not in the Keywords hierarchy');
+  if (a.hierarchyPlaced === false && st !== 'Published') return off('Not in the Keywords hierarchy');   // a Published asset stays live (operator 2026-10-24)
   if (st !== 'Published') return off(st === 'Publish' ? 'Queued \u2014 not live' : st === 'Review' ? 'Review \u2014 not live' : 'Not published');
   if (!sec) return off(/^unlisted$/i.test(a.hubSection || '') ? 'Published \u00b7 unlisted' : '\u26a0 Published \u00b7 no section');
   if (sec === 'email') return off('Published \u00b7 email only');
@@ -5194,7 +5195,9 @@ function hubAssetSyncFields(asset, interviews = []) {
   const interviewDebt = asset.ivTier !== 'None' && own.some(iv=>iv.status!=='Finished');
   // operator 2026-10-23: a written post with an unanswered interview (or written without one) is publishable and stays on the hub —
   // it carries its ⚑ flag on the asset instead. Only an explicit "Out of Sync" (interview answered, rewrite pending) holds it back.
-  const assetSynced = !/^Out of Sync/i.test(assetSync);
+  // operator 2026-10-24: "nothing published should ever drop out unless I take it out" — a FINISHED interview no longer takes a
+  // published post off its hub; the live text stays up and the row shows "↻ rewrite due" until it is rewritten.
+  const assetSynced = true;
   return {assetSync,assetSynced,interviewDebt:interviewDebt||!!asset.writtenWithoutInterview};
 }
 async function hubSectionAssetRows(rows, manifest, hub, methodNames, tierOf, interviews, env) {
@@ -5468,12 +5471,9 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     }
     // Never turn an unrelated Published record into a placed asset. A suspended route is an explicit restoration ticket.
     if (!wasRouted) return { assetId: aid, skipped: 'not routed' };
+    // operator 2026-10-24: "nothing published should ever drop out unless I take it out" — a Published asset whose topic / product
+    // falls out of the Keywords hierarchy stays live (the dash shows it out of sync); only its own status / section / hub change removes it.
     const placement = await hierarchyPlacement(env, page, 'asset');
-    if (placement.applies && !placement.placed) {
-      await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), page));
-      await env.TRADES.put(key, JSON.stringify({...previous,hub:hub.slug,wasRouted:true,suspended:true,at:Date.now()}));
-      return {assetId:aid,pruned:true,reason:'not in Keywords hierarchy'};
-    }
     const blocks = await offerBlogBlocks(ivHdr(), page.id);
     const offerPage = hubRichText(p['Offer Page']?.rich_text);   // contract-written offers (only when present, so older hashes don't move)
     const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage, ctaLabel:hubRichText(p['CTA Label']?.rich_text) } : {}) };
@@ -5493,7 +5493,7 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     const afterInterview = own.every(iv => !iv.finishedAt || Date.parse(page.last_edited_time || '') >= Date.parse(iv.finishedAt));
     const clearRewrite = !!asset.writtenWithoutInterview && !!answered && !!rewritten && afterInterview;
     const sync = hubAssetSyncFields(clearRewrite ? { ...asset, ivSync: 'In Sync', writtenWithoutInterview: false } : asset, interviews);
-    if ((placement.applies && !placement.placed) || !sync.assetSynced) {
+    if (false && ((placement.applies && !placement.placed) || !sync.assetSynced)) {   // never prunes a Published asset (operator 2026-10-24)
       await hubPublicationTransaction(env, txEnv => removeHubAssetListings(txEnv, ivHdr(), page));
       await env.TRADES.put(key, JSON.stringify({ ...previous, hub: hub.slug, wasRouted: true, suspended: true, contentHash: previous?.contentHash || contentHash, bodyHash: previous?.bodyHash || bodyHash, at: Date.now() }));
       return { assetId: aid, pruned: true, reason: placement.applies && !placement.placed ? 'not in Keywords hierarchy' : 'out of sync' };
@@ -18823,18 +18823,20 @@ Return: {
           r.methodIvTier = r.titleId && r.methodName ? IV_TIER_LABEL[tierOf(r.methodName)] : "";
           r.research = researchOf(r.productId);
           r.keywordOutOfSync = !!(r.productId && productById[r.productId] && productById[r.productId].outOfSync);
-          const ivCount = list => { const x = { f: 0, d: 0 }; list.forEach(v => { if (v.status === "Finished") x.d++; else x.f++; }); return x.f || x.d ? x : null; };
+          const ivCount = list => { const x = { f: 0, d: 0, a: 0, q: 0 }; list.forEach(v => { if (v.status === "Finished") x.d++; else x.f++; x.q += (v.qs || []).length; x.a += (v.answers || []).filter(a => String(a || "").trim()).length; }); return x.f || x.d ? x : null; };   // a/q = answered / asked (operator 2026-10-24)
           const aid = r.assetId ? String(r.assetId).replace(/-/g, "") : "";
           const iv = r.kind === "asset" ? (r.assetStatus === "Idea" ? null : ivCount(ivRows.filter(v => v.scope === "Asset" && (v.assetIds || []).some(x => String(x).replace(/-/g, "") === aid))))
             : r.kind === "title" ? ivCount(ivRows.filter(v => v.scope === "Title" && v.titleId === r.titleId))
             : r.kind === "product" ? (r.productId ? ivSum["p:" + r.productId] || null : null) : null;
-          r.interviews = r.kind === "interview" || (r.kind === "asset" && r.assetStatus === "Idea") ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
+          r.interviews = r.kind === "interview" || (r.kind === "asset" && r.assetStatus === "Idea") ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : "", iv.q ? `${iv.a}/${iv.q} answered` : ""].filter(Boolean).join(" · ");
           const reuseInterviews=ivRows.filter(v=>r.kind==='asset'?(v.assetIds||[]).includes(aid):r.kind==='title'?v.scope==='Title'&&v.titleId===r.titleId:r.kind==='product'?v.scope==='Product'&&v.productId===r.productId:false);
           r.interviewReused=reuseInterviews.reduce((n,v)=>n+(v.reused||[]).length,0);r.interviewReuseSources=[...new Set(reuseInterviews.flatMap(v=>(v.reused||[]).map(x=>x.ivId)))];
           if(r.interviewReused)r.interviews+=' · ♻ '+r.interviewReused+' reused · sources '+r.interviewReuseSources.map(id=>id.slice(0,8)).join(', ');
           r.pillarStatus = r.titleId ? ((titleById[r.titleId] || {}).pillarStatus || "") : "";
           if(r.kind === "asset")Object.assign(r,hubAssetSyncFields(r,ivRows));else r.assetSync="";
-          r.nextStep = r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
+          // ↻ rewrite due: its own interview is finished but the live text predates it (Interview Sync Out of Sync, or written without one)
+          if (r.kind === "asset" && /✓/.test(r.interviews || "") && (/^Out of Sync/i.test(r.assetSync || "") || r.writtenWithoutInterview)) { r.rewriteDue = true; r.interviews = "↻ rewrite due · " + r.interviews; }
+          r.nextStep = r.rewriteDue ? "Rewrite with interview" : r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
             : (iv && iv.f && r.kind !== "product") ? "Do interview"
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
             : r.assetSync === "Out of Sync · Regenerate" ? "Regenerate asset" : r.assetSync === "Out of Sync · Review" ? "Review asset" : "✓ Ready";

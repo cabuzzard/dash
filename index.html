@@ -12071,7 +12071,7 @@ function hubCheckHubOf(r) {
   return HUB_SITES.find(h => String(h.campaignId || '').replace(/-/g, '') === cid) || HUB_SITES.find(h => h.slug === r.contentHub) || null;
 }
 function hubCheckData() {
-  const seen = new Set(), types = new Set(), cells = {}, dev = {}, flag = {};
+  const seen = new Set(), types = new Set(), cells = {}, dev = {}, flag = {}, rw = {};
   for (const r of (DEV2_ROWS || [])) {
     if (!r.assetId || seen.has(r.assetId)) continue; seen.add(r.assetId);
     const h = hubCheckHubOf(r); if (!h) continue;
@@ -12080,12 +12080,13 @@ function hubCheckData() {
     if (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic) continue;   // only assets on synced, live, placed titles + products
     types.add(t);
     const k = h.slug + '|' + t;
-    if (/⚑/.test(r.interviews || '') || (/^digest parent$/i.test(t) && r.assetStatus === 'Review')) (flag[k] = flag[k] || []).push(r);   // its own interview is waiting — or a digest at Review (the modal's Review box)
+    if (r.rewriteDue) (rw[k] = rw[k] || []).push(r);   // interview finished, live text not rewritten yet (blue ↻)
+    else if (/⚑/.test(r.interviews || '') || (/^digest parent$/i.test(t) && r.assetStatus === 'Review')) (flag[k] = flag[k] || []).push(r);   // its own interview is waiting — or a digest at Review (the modal's Review box)
     if (r.assetStatus === 'Published' || / parent$/i.test(t)) (cells[k] = cells[k] || []).push(r);   // published — a parent asset counts as published once it exists
     else (dev[k] = dev[k] || []).push(r);                                    // not yet published (Development / Review / Publish / Planning)
   }
   for (const t of HUBCHECK_ALWAYS) if (![...types].some(x => hubCheckNorm(x) === hubCheckNorm(t))) types.add(t);
-  return { types: [...types].sort((a, b) => a.localeCompare(b)), cells, dev, flag };
+  return { types: [...types].sort((a, b) => a.localeCompare(b)), cells, dev, flag, rw };
 }
 function hubCheckSave() { try { localStorage.setItem(HUBCHECK_KEY, JSON.stringify(HUBCHECK_COLS)); } catch (e) {} }
 function hubCheckCols(types, cells, dev) {
@@ -12192,7 +12193,9 @@ function renderHubChecklist() {
   const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
   if (!body) return;
   if (HUBCHECK_GOALS === null) { HUBCHECK_GOALS = false; hubCheckGoalsLoad(); }
-  const { types, cells, dev, flag } = hubCheckData(), cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
+  const { types, cells, dev, flag, rw } = hubCheckData(), cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
+  const nrw = (slug, t) => (rw[slug + '|' + t] || []).length;   // blue ↻ = interview finished, rewrite due (not the same as red ⚑ = no interview yet)
+  const rwBadge = (n, hi, ci) => n ? `<span style="color:var(--text3);"> · </span><span style="color:#3b82f6;font-weight:700;cursor:pointer;" onclick="hubCheckOpen(${hi},${ci},'flag')" title="Interview finished — the live text is waiting for a ↻ Rewrite">↻${n}</span>` : '';
   const nf = (slug, t) => (flag[slug + '|' + t] || []).length;
   const left = types.filter(t => !cols.includes(t));
   bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>`
@@ -12216,7 +12219,7 @@ function renderHubChecklist() {
     html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + cols.map((t, ci) => {
       const c = n(h.slug, t), d = nd(h.slug, t), fl = nf(h.slug, t); tot += c; totD += d; totF += fl;
       const at = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t;
-      return `<td style="${td}${at ? 'background:var(--surface2);' : ''}">${pair(c, d, c ? `hubCheckOpen(${hi},${ci},'live')` : '', d ? `hubCheckOpen(${hi},${ci},'dev')` : '', at && HUBCHECK_OPEN.kind === 'live', at && HUBCHECK_OPEN.kind === 'dev', hubCheckGoal(h.slug, t), fl, fl ? `hubCheckOpen(${hi},${ci},'flag')` : '', at && HUBCHECK_OPEN.kind === 'flag')}</td>`;
+      return `<td style="${td}${at ? 'background:var(--surface2);' : ''}">${pair(c, d, c ? `hubCheckOpen(${hi},${ci},'live')` : '', d ? `hubCheckOpen(${hi},${ci},'dev')` : '', at && HUBCHECK_OPEN.kind === 'live', at && HUBCHECK_OPEN.kind === 'dev', hubCheckGoal(h.slug, t), fl, fl ? `hubCheckOpen(${hi},${ci},'flag')` : '', at && HUBCHECK_OPEN.kind === 'flag')}${rwBadge(nrw(h.slug, t), hi, ci)}</td>`;
     }).join('') + `<td style="${td}">${pair(tot, totD, '', '', false, false, gsum(cols.map(t => hubCheckGoal(h.slug, t))), totF)}</td></tr>`;
   });
   html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td>${cols.map(t => `<td style="${td}">${pair(hubs.reduce((a, h) => a + n(h.slug, t), 0), hubs.reduce((a, h) => a + nd(h.slug, t), 0), '', '', false, false, gsum(hubs.map(h => hubCheckGoal(h.slug, t))), hubs.reduce((a, h) => a + nf(h.slug, t), 0))}</td>`).join('')}`
