@@ -17640,7 +17640,7 @@ async function hub2ProductResearchAll(slug, pid, btn) {
   const saved = await hub2ProductSave(slug, pid, true); if (saved !== true) { const m = document.getElementById('h2pMsg'); if (m) { m.style.color = '#f87171'; m.textContent = saved; } return; }
   const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('h2pMsg'), old = btn.textContent; btn.disabled = true;
   btn.textContent = 'Running all research…'; if (msg) msg.textContent = 'Generating and saving all research fields…';
-  try { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h && h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'Research failed'); if (msg) { msg.style.color = '#4ade80'; msg.textContent = '✓ All research fields generated and saved.'; } await hub2ContentLoad(slug, true); }
+  try { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h && h.campaignId, force: true }); if (!r || r.error) throw new Error((r && r.error) || 'Research failed'); if (msg) { msg.style.color = '#4ade80'; msg.textContent = '✓ All research fields generated and saved.'; } await hub2ContentLoad(slug, true); }
   catch (e) { if (msg) { msg.style.color = '#f87171'; msg.textContent = e.message; } }
   finally { btn.disabled = false; btn.textContent = old; }
 }
@@ -18995,7 +18995,7 @@ function hubTitleResApplied(R, r) { R.fields = r.fields || R.fields; R.oos = fal
 async function hubTitleResGenerate() {
   const R = _titleRes; if (!R) return; if (Object.keys(R.dirty).length && !confirm('Generating replaces your unsaved edits. Continue?')) return;
   R.busy = '⏳ Researching from its keyword topic…'; hubTitleResDraw();
-  try { const r = await call('generateTitleResearch', { titleId: R.tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); hubTitleResApplied(R, r); R.log = '✓ Generated and saved — in sync.'; }
+  try { const r = await call('generateTitleResearch', { titleId: R.tid, force: true }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); hubTitleResApplied(R, r); R.log = '✓ Generated and saved — in sync.'; }
   catch (e) { R.log = '✗ ' + e.message; }
   R.busy = ''; hubTitleResDraw();
 }

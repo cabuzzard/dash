@@ -1004,7 +1004,7 @@ async function runMainProductResearch(env, only) {
       if (!name) { try { const pg = await fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
         name = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
       if (/ - Main Offering$/.test(name)) { st.placeholders++; continue; }
-      if (p.researchState === "updated" && !force) { st.upToDate++; continue; }
+      // Section freshness, not only Keywords Version, is checked by researchGate below.
       targets.push({ pid, cid, name: name || pid, hub: hub.name || hub.slug, state: p.researchState || "empty" });
     }
   }
@@ -1012,7 +1012,8 @@ async function runMainProductResearch(env, only) {
   for (const t of targets) {
     st.current = `${t.name} (${t.hub})`; await save();
     const r = await call("regenerateAllStrategyFields", { productId: t.pid, campaignId: t.cid });
-    st.results.push({ name: t.name, hub: t.hub, was: t.state, ok: !!(r && r.success), error: r && r.error ? String(r.error).slice(0, 160) : undefined });
+    if(r?.gate==='reused')st.upToDate++;
+    st.results.push({ gate:r?.gateSummary, name: t.name, hub: t.hub, was: t.state, ok: !!(r && r.success), error: r && r.error ? String(r.error).slice(0, 160) : undefined });
     st.done++; await save();
   }
   st.running = false; st.current = ""; st.phase = "done"; st.finishedAt = new Date().toISOString(); await save();
@@ -3522,7 +3523,7 @@ const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 6, fram
 // "error code: 524" (HTML) and res.json() throws. Streaming keeps bytes flowing. Returns a
 // Response-like {ok, status, json()} so call sites read it exactly like a fetch() result.
 async function claudeStream(env, payload, extraHeaders) {
-  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+  const r = await (env.__researchRequest?researchModelFetch.bind(null,env):fetch)("https://api.anthropic.com/v1/messages", { method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(extraHeaders || {}) },
     body: JSON.stringify({ ...payload, stream: true }) });
   const res = (ok, status, data) => ({ ok, status, json: async () => data });
@@ -5847,6 +5848,235 @@ async function clearExistingPillarSection(hdr, titleId) {
     }
   } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
 }
+// RESEARCH GATE — read first, replace stale sections, never cache yesterday's news as today's context.
+function researchFingerprint(value) {
+  const text=typeof value==='string'?value:JSON.stringify(value);let hash=2166136261;
+  for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);
+  return text.length+':'+(hash>>>0).toString(16);
+}
+function researchClass(name,kind) {
+  if(/news|trends?|zeitgeist|current examples?|today|this week|schedule|time.stamp/i.test(name))return 'volatile';
+  if(/product facts|offer|pric(?:e|ing)|voice|positioning/i.test(name)||kind==='product'&&STRATEGY_FIELDS.includes(name))return 'stable';
+  return 'topical'; // Unknown audience-facing information refreshes; existence is not freshness.
+}
+function researchCadence(value) {
+  const text=String(value||'').toLowerCase(),number=Number((text.match(/\d+/)||[])[0]);
+  if(/hour/.test(text))return (number||1)*3600000;
+  if(/daily|day/.test(text))return (number||1)*86400000;
+  if(/month/.test(text))return (number||1)*30*86400000;
+  if(/quarter/.test(text))return 90*86400000;
+  return (number||1)*7*86400000; // Existing Worksheet weekly cadence when the campaign has none.
+}
+function researchPlan({kind,fields={},required=[],stamps={},keywordsVersion,upstream,cadence='Weekly',force=false,readError=false,verifiedFields=[],now=Date.now()}) {
+  const decisions=required.map(name=>{
+    const value=fields[name],stamp=stamps[name],className=researchClass(name,kind);let decision='REUSE',reason='fresh';
+    if(readError||typeof value!=='string'||!value.trim()){decision='MISSING';reason=readError?'record unavailable':'empty';}
+    else if(className==='stable'&&verifiedFields.includes(name)){reason='read directly from the current source';}
+    else if(force){decision='REFRESH';reason='explicit regeneration';}
+    else if(className==='volatile'){decision='REFRESH';reason='volatile information';}
+    else if(!stamp||stamp.hash!==researchFingerprint(value)){decision='REFRESH';reason='missing or mismatched provenance';}
+    else if(stamp.upstream!==upstream){decision='REFRESH';reason='upstream changed';}
+    else if(/claims|sources|evidence/i.test(name)&&!stamp.sources?.length){decision='REFRESH';reason='source evidence unavailable';}
+    else if(className==='topical'&&(!Number.isFinite(keywordsVersion)||!Number.isFinite(stamp.keywordsVersion)||keywordsVersion>stamp.keywordsVersion)){decision='REFRESH';reason='keywords version changed or unavailable';}
+    else if(className==='topical'&&(!Number.isFinite(Date.parse(stamp.at))||now-Date.parse(stamp.at)>=researchCadence(cadence))){decision='REFRESH';reason='research cadence elapsed';}
+    return {name,class:className,decision,reason};
+  });
+  const counts={reused:decisions.filter(x=>x.decision==='REUSE').length,refreshed:decisions.filter(x=>x.decision==='REFRESH').length,new:decisions.filter(x=>x.decision==='MISSING').length};
+  return {decisions,counts,gate:decisions.length&&counts.reused===decisions.length?'reused':'research',needed:decisions.filter(x=>x.decision!=='REUSE').map(x=>x.name),established:Object.fromEntries(decisions.filter(x=>x.decision==='REUSE').map(x=>[x.name,fields[x.name]]))};
+}
+async function researchGate(env,options) {
+  const key='research:gate:'+options.kind+':'+hubAssetId(options.id);let stored={};
+  try{stored=await env.TRADES.get(key,'json')||{};}catch(error){stored={};}
+  const stamps={...options.inheritedStamps,...stored.sections};for(const name of options.verifiedFields||[])stamps[name]={at:new Date().toISOString(),hash:researchFingerprint(options.fields[name]),upstream:options.upstream,keywordsVersion:options.keywordsVersion};
+  const plan=researchPlan({...options,stamps});
+  const summary=`gate: ${plan.counts.reused} reused, ${plan.counts.refreshed} refreshed, ${plan.counts.new} new — ${plan.gate==='reused'?1:0} ${options.searchOnly?'search':'Anthropic call'} skipped`;
+  const result={...plan,key,stored,provenance:stamps,summary,keywordsVersion:options.keywordsVersion,upstream:options.upstream,cadence:options.cadence,kind:options.kind,id:hubAssetId(options.id),required:options.required};
+  const entry={at:new Date().toISOString(),kind:options.kind,id:result.id,summary,gate:plan.gate,counts:plan.counts,decisions:plan.decisions,force:!!options.force};
+  const log=await env.TRADES.get('research:gate:log','json').catch(()=>[])||[];
+  await env.TRADES.put('research:gate:log',JSON.stringify([entry,...log].slice(0,200)));
+  await env.TRADES.put('research:gate:last:'+result.id,JSON.stringify(entry));
+  return result;
+}
+function researchGateBrief(gate) {
+  return '\nRESEARCH GATE\nESTABLISHED — do not re-derive or contradict:\n'+JSON.stringify(gate.established)+
+    '\nResearch ONLY these gaps / stale sections: '+gate.needed.join('; ')+
+    '\nNever present old news as current. Source every new factual finding; replace superseded sections, do not append competing versions.\n';
+}
+async function researchCommit(env,gate,fields,sources=[]) {
+  const current=await env.TRADES.get(gate.key,'json').catch(()=>null)||{},at=new Date().toISOString(),sections={...current.sections},saved={...current.fields};
+  for(const [name,value]of Object.entries({...gate.established,...fields})){
+    if(typeof value!=='string'||!value.trim())continue;
+    saved[name]=value;sections[name]=!Object.hasOwn(fields,name)&&gate.provenance?.[name]?gate.provenance[name]:{at,keywordsVersion:gate.keywordsVersion,upstream:gate.upstream,hash:researchFingerprint(value),sources:sources.filter(x=>x.url).slice(0,30)};
+  }
+  await env.TRADES.put(gate.key,JSON.stringify({at,fields:saved,sections}));
+}
+async function researchNotion(env,path,options={}) {
+  const response=await hubNotionFetch('https://api.notion.com/v1/'+path,{...options,headers:{Authorization:'Bearer '+(env.NOTION_TOKEN||'').trim(),'Notion-Version':NOTION_VERSION,'Content-Type':'application/json'}});
+  const data=await response.json();if(!response.ok||data.object==='error'||JSON.stringify(data).includes('APIResponseError'))throw new Error(data.message||'Research record unavailable');return data;
+}
+async function researchWorksheet(env,{titlePage,methodId,assetType}) {
+  const table=await env.TRADES.get('infoflow:table:currentmethods','json');if(!table?.rows||!table?.columns)throw new Error('Current Methods worksheet unavailable');
+  const columns=Object.fromEntries(table.columns.map(c=>[ivNorm(c.name),c.id]));
+  let name='';methodId=methodId||ivRid(titlePage?.properties,'method')||ivRid(titlePage?.properties,'Method');
+  if(methodId){const method=await researchNotion(env,'pages/'+kwDashId(methodId));name=hubRichText(method.properties?.Name?.title);}
+  const lookup=[name,assetType].filter(Boolean).map(ivNorm);
+  const row=lookup.length?(table.rows.find(r=>lookup.includes(ivNorm(r.cells?.cname01||r.cells?.cmuzq36hb77sq||r.cells?.c1)))||table.rows.find(r=>String(r.cells?.cmatch01||'').split(';').filter(a=>a.trim()).some(a=>lookup.includes(ivNorm(a))))):null;
+  if(!row)return {inputs:'',cadence:'Weekly',missing:'no Current Methods row'};
+  return {inputs:String(row.cells[columns.inputs||'cwinputs01']||''),cadence:String(row.cells[columns.cadence||'ccad01']||'Weekly'),name:row.cells.cname01};
+}
+function researchRequired(inputs,base=[]) {
+  const sections=[...base],text=String(inputs||'');
+  if(/claims?|sources?|evidence|research/i.test(text))sections.push('Key Claims / Sources');
+  if(/examples?/i.test(text))sections.push('Examples');
+  if(/zeitgeist|news|trends?|current examples/i.test(text))sections.push('News / Trends / Zeitgeist');
+  return [...new Set(sections)];
+}
+async function researchSnapshot(env,{titleId,productId,campaignId,methodId,assetType,kind='title'}) {
+  const title=titleId?await researchNotion(env,'pages/'+kwDashId(titleId)):null;
+  productId=productId||ivRid(title?.properties,'product')||ivRid(title?.properties,'Product');
+  let readError=false;const safe=async work=>{try{return await work();}catch(error){readError=true;return null;}};
+  const product=productId?await safe(()=>researchNotion(env,'pages/'+kwDashId(productId))):null;
+  campaignId=hubAssetId(campaignId||ivRid(title?.properties,'Campaign')||ivRid(product?.properties,'Campaigns'));
+  const campaign=campaignId?await safe(()=>researchNotion(env,'pages/'+kwDashId(campaignId))):null;
+  const rows=(campaignId?await safe(()=>notionQuery(RESEARCH_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(campaignId)}}})):[])||[];
+  const research=rows.slice().sort((a,b)=>hubRichText(b.properties?.Keywords?.rich_text).length-hubRichText(a.properties?.Keywords?.rich_text).length)[0];
+  const rp=research?.properties||{},isolated=!!product?.properties?.['Keywords Isolated']?.checkbox;
+  const version=isolated?0:research?(rp['Keywords Version']?.number||0):null;
+  const worksheet=kind==='product'?{cadence:'Weekly'}:(await safe(()=>researchWorksheet(env,{titlePage:title,methodId,assetType})))||{inputs:'',cadence:'Weekly',missing:'worksheet unreadable'};
+  const cadence=writingFieldValues(campaign?.properties||{})['Research Cadence']||writingFieldValues(rp)['Research Cadence']||worksheet.cadence||'Weekly';
+  const stableResearch=Object.fromEntries(['Statement','Key Message','Unique Opportunity','Pain Points'].map(k=>[k,hubRichText(rp[k]?.rich_text)]));
+  const titleSource=title?Object.fromEntries(['Title','seed idea','Topic ID','Notes','Core Idea','Keywords Updated At'].map(k=>[k,title.properties[k]||null])):null;
+  const upstream=researchFingerprint({title:titleSource,product:product?{id:product.id,at:product.last_edited_time}:null,campaign:!isolated&&campaign?{id:campaign.id,at:campaign.last_edited_time}:null,research:isolated?null:stableResearch});
+  return {title,product,campaign,research,worksheet,upstream,cadence,keywordsVersion:Number.isFinite(version)?version:null,campaignId,productId:hubAssetId(productId),titleId:hubAssetId(titleId),readError,isolated};
+}
+async function researchWriteTitle(env,snapshot,gate,fields) {
+  const props={};for(const name of TITLE_RES_FIELDS)if(Object.hasOwn(fields,name)){if(!snapshot.title.properties[name])throw new Error('Existing title research property missing: '+name);props[name]={rich_text:ivRt(String(fields[name]).slice(0,1990))};}
+  if(Object.keys(props).length){props['Keywords Out of Sync']={checkbox:false};await researchNotion(env,'pages/'+kwDashId(snapshot.titleId),{method:'PATCH',body:JSON.stringify({properties:props})});
+    const after=await researchNotion(env,'pages/'+kwDashId(snapshot.titleId));for(const name of TITLE_RES_FIELDS)if(props[name]&&hubRichText(after.properties[name]?.rich_text)!==String(fields[name]).slice(0,1990))throw new Error('Research readback differs: '+name);}
+  await researchCommit(env,gate,fields);
+}
+async function researchTitle(env,body) {
+  const s=await researchSnapshot(env,body),cached=await env.TRADES.get('research:gate:title:'+s.titleId,'json').catch(()=>null)||{};
+  const fields={...cached.fields,...Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,hubRichText(s.title.properties[f]?.rich_text)]))};
+  const required=researchRequired(s.worksheet.inputs,TITLE_RES_FIELDS),verifiedFields=[];
+  if(s.product){fields['Product Facts']=JSON.stringify(Object.fromEntries(['Name','Description','Price','Offer Structure'].map(k=>[k,writingFieldValues(s.product.properties)[k]||''])));required.push('Product Facts');verifiedFields.push('Product Facts');}
+  const gate=await researchGate(env,{...s,kind:'title',id:s.titleId,fields,required,verifiedFields,force:body.force===true});
+  const result=()=>({ok:true,titleId:s.titleId,name:hubRichText(s.title.properties.Title?.title||s.title.properties.Name?.title),fields:Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,fields[f]||''])),outOfSync:!!s.title.properties['Keywords Out of Sync']?.checkbox,gate:gate.gate,gateSummary:gate.summary,counts:gate.counts,decisions:gate.decisions,anthropicCalls:gate.gate==='reused'?0:1});
+  if(gate.gate==='reused')return result();
+  const topic=await titleTopicKeywords(env,newsletterHdr(env),s.title.properties),name=result().name;
+  const schema={type:'object',properties:{},required:[]},keys=gate.needed.map((field,i)=>'field_'+i);
+  gate.needed.forEach((field,i)=>{schema.properties[keys[i]]={type:'string',description:field};schema.required.push(keys[i]);});
+  const demand=await kwDemandBlock(env,[topic.keywords,hubRichText(s.title.properties['seed idea']?.rich_text),name].filter(Boolean).join(', '),{related:15}).catch(()=>'');
+  const prompt='Research ONE content title as an SEO piece, grounded in its topic and real search demand, not product marketing. Return only the requested sections by calling title_research. Title Intent: search intent, 1–2 sentences; Title Questions: 5–8 reader questions; Title Angle: a distinct relevant angle, 1–3 sentences; Title Audience: reader situation and level. Additional factual sections need actual source URLs found with web_search; never invent evidence. If evidence is unavailable, state that plainly.\nTITLE: '+name+'\nTOPIC: '+topic.keywords+'\nNOTES: '+hubRichText(s.title.properties.Notes?.rich_text).slice(0,1500)+'\n'+demand+researchGateBrief(gate);
+  const pendingKey='research:pending:title:'+s.titleId,pending=await env.TRADES.get(pendingKey,'json').catch(()=>null),resume=!body.force&&pending?.status==='held'&&pending.upstream===gate.upstream&&pending.keywordsVersion===gate.keywordsVersion&&gate.needed.every(f=>pending.fields[f]);
+  let usage,sources=[],changed={};
+  if(resume){changed=pending.fields;sources=pending.sources||[];usage=pending.usage;}
+  else{const generated=await hcClaude(env,prompt,'title_research',schema,2500,u=>{usage=u;},{search:gate.needed.some(f=>/claims|sources|examples|news|trends|zeitgeist/i.test(f)),onResponse:d=>{sources=researchEvidence(d);}});gate.needed.forEach((field,i)=>{const value=String(generated[keys[i]]||'').trim();if(!value)throw new Error('Research omitted section: '+field);changed[field]=TITLE_RES_FIELDS.includes(field)?value.slice(0,1990):value.slice(0,6000);});}
+  const recovery={at:new Date().toISOString(),status:'held',upstream:gate.upstream,keywordsVersion:gate.keywordsVersion,fields:changed,sources,usage};await env.TRADES.put(pendingKey,JSON.stringify(recovery));
+  try{await researchWriteTitle(env,s,gate,changed);await researchCommit(env,gate,changed,sources);await env.TRADES.put(pendingKey,JSON.stringify({...recovery,status:'applied'}));}catch(error){await env.TRADES.put('research:held:'+s.titleId+':'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:changed,sources}));throw error;}Object.assign(fields,changed);s.title.properties['Keywords Out of Sync']={checkbox:false};return {...result(),usage,anthropicCalls:resume?0:1,resumed:!!resume};
+}
+async function researchProductFields(env,body) {
+  const s=await researchSnapshot(env,{...body,kind:'product'}),records=await notionQuery(PRODUCT_RESEARCH_DB,{filter:{property:'Product',relation:{contains:kwDashId(body.productId)}}});
+  const filled=r=>STRATEGY_FIELDS.reduce((n,f)=>n+hubRichText(r.properties?.[f]?.rich_text).length,0),record=records.filter(r=>!r.archived&&!r.in_trash).sort((a,b)=>filled(b)-filled(a))[0],fields=Object.fromEntries(STRATEGY_FIELDS.map(f=>[f,hubRichText(record?.properties?.[f]?.rich_text)]));
+  const inheritedStamps={},recordAt=Date.parse(record?.last_edited_time),sourceAt=Math.max(Date.parse(s.product?.last_edited_time)||0,Date.parse(s.campaign?.last_edited_time)||0,Date.parse(s.research?.last_edited_time)||0);
+  if(recordAt>=sourceAt&&record?.properties?.['Keywords Version']?.number===s.keywordsVersion)for(const [name,value]of Object.entries(fields))if(value)inheritedStamps[name]={at:record.last_edited_time,hash:researchFingerprint(value),upstream:s.upstream,keywordsVersion:s.keywordsVersion};
+  const gate=await researchGate(env,{...s,kind:'product',id:body.productId,fields,required:STRATEGY_FIELDS,inheritedStamps,force:body.force===true});
+  if(gate.gate==='reused'){
+    if(record.properties?.['Keywords Version']?.type==='number'&&record.properties['Keywords Version'].number!==s.keywordsVersion){await researchNotion(env,'pages/'+kwDashId(record.id),{method:'PATCH',body:JSON.stringify({properties:{'Keywords Version':{number:s.keywordsVersion||0}}})});const after=await researchNotion(env,'pages/'+kwDashId(record.id));if(after.properties['Keywords Version'].number!==(s.keywordsVersion||0))throw new Error('Keywords Version readback differs');}
+    await researchCommit(env,gate,fields);return {success:true,strategyId:hubAssetId(record.id),url:record.url,fields,gate:'reused',gateSummary:gate.summary,counts:gate.counts,anthropicCalls:0};
+  }
+  const schema={type:'object',properties:{},required:[]},keys=gate.needed.map((f,i)=>'field_'+i);
+  gate.needed.forEach((f,i)=>{schema.properties[keys[i]]={type:'string',description:f+': '+STRATEGY_FIELD_HINTS[f]};schema.required.push(keys[i]);});
+  const facts=Object.fromEntries(['Name','Description','Produced Content','Keywords','Price'].map(k=>[k,writingFieldValues(s.product.properties)[k]?.slice(0,3000)||'']));
+  const generated=await hcClaude(env,researchGuidelinesBlock(body.researchGuidelines)+(body.__voice||'')+'Fill only missing or stale PRODUCT POSITIONING sections, 2–5 sentences each. Product facts are the source, not inventions.\n'+JSON.stringify({product:facts,campaign:s.isolated?{}:Object.fromEntries(['Statement','Unique Opportunity','Pain Points','Key Message'].map(k=>[k,hubRichText(s.research?.properties[k]?.rich_text).slice(0,1500)]))})+researchGateBrief(gate),'product_research',schema,3000);
+  const changed={},properties={};gate.needed.forEach((f,i)=>{const v=String(generated[keys[i]]||'').trim().slice(0,1990);if(!v)throw new Error('Research omitted section: '+f);changed[f]=v;properties[f]={rich_text:ivRt(v)};});
+  if(!record||record.properties?.['Keywords Version']?.type==='number')properties['Keywords Version']={number:s.keywordsVersion||0};
+  let saved=record;
+  const heldKey='research:held:product:'+hubAssetId(body.productId)+':'+Date.now();
+  try{
+  if(record)await researchNotion(env,'pages/'+kwDashId(record.id),{method:'PATCH',body:JSON.stringify({properties})});
+  else saved=await researchNotion(env,'pages',{method:'POST',body:JSON.stringify({parent:{database_id:PRODUCT_RESEARCH_DB},properties:{...properties,Name:{title:ivRt((facts.Name||'Product')+' — Research')},Product:{relation:[{id:kwDashId(body.productId)}]}}})});
+  const after=await researchNotion(env,'pages/'+kwDashId(saved.id));for(const [f,v]of Object.entries(changed))if(hubRichText(after.properties[f]?.rich_text)!==v)throw new Error('Research readback differs: '+f);
+  await promoteProductStatus(newsletterHdr(env),body.productId,'Planning');await kwClearOutOfSync(env,body.productId);await kwReviveProduct(env,body.productId);
+  const fresh=await researchSnapshot(env,{...body,kind:'product'});gate.upstream=fresh.upstream;
+  await researchCommit(env,gate,changed);Object.assign(fields,changed);
+  }catch(error){await env.TRADES.put(heldKey,JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:changed,productId:body.productId}));throw error;}
+  return {success:true,strategyId:hubAssetId(saved.id),url:saved.url,fields,gate:gate.gate,gateSummary:gate.summary,counts:gate.counts,anthropicCalls:1};
+}
+// END RESEARCH GATE
+
+// Search-equipped generation hook. This never adds a writing call or changes a writer's output schema.
+function researchEvidence(data) {
+  const out=[];
+  const walk=value=>{if(!value||typeof value!=='object')return;if((value.type==='web_search_result'||value.type==='web_search_result_location'||value.type==='web_search_result_citation')&&/^https?:\/\//.test(value.url||''))out.push({url:value.url,title:value.title||'',claim:value.cited_text||'',date:value.page_age||''});for(const v of Object.values(value))if(v&&typeof v==='object')Array.isArray(v)?v.forEach(walk):walk(v);};
+  walk(data);return [...new Map(out.map(x=>[x.url+'|'+x.claim,x])).values()].slice(0,30);
+}
+async function researchSearchPrepare(env,request) {
+  let titleId=hubAssetId(request.titleId);
+  if(!titleId&&request.assetId){const asset=await researchNotion(env,'pages/'+kwDashId(request.assetId));titleId=ivRid(asset.properties,'Content Strategy');request={...request,assetType:request.assetType||asset.properties?.['Asset Type']?.select?.name,methodId:request.methodId||ivRid(asset.properties,'Method')};}
+  if(!titleId)return null;
+  const s=await researchSnapshot(env,{...request,titleId}),stored=await env.TRADES.get('research:gate:title:'+titleId,'json').catch(()=>null)||{},fields={...stored.fields,...Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,hubRichText(s.title.properties[f]?.rich_text)]))};
+  let required=researchRequired(s.worksheet.inputs);
+  if(!required.length)required=['Key Claims / Sources'];
+  if(s.worksheet.missing)required.push('Unspecified worksheet research inputs');
+  // The worksheet controls the checklist. Concrete operator facts are read, never re-invented by search.
+  const verifiedFields=[];
+  if(/product (facts|research)|pricing|offer/i.test(s.worksheet.inputs||'')&&s.product){fields['Product Facts']=JSON.stringify(Object.fromEntries(['Name','Description','Price','Offer Structure'].map(k=>[k,writingFieldValues(s.product.properties)[k]||''])));required.push('Product Facts');verifiedFields.push('Product Facts');}
+  const gate=await researchGate(env,{...s,kind:'title',id:titleId,fields,required:[...new Set(required)],verifiedFields,searchOnly:true,force:request.force===true});
+  return {snapshot:s,gate};
+}
+async function researchModelFetch(env,url,options) {
+  const request=env.__researchRequest;
+  if(!request||!/^https:\/\/api\.anthropic\.com\/v1\/messages/.test(String(url))||!options?.body)return fetch(url,options);
+  let payload;try{payload=JSON.parse(options.body);}catch(error){return fetch(url,options);}
+  const searching=(payload.tools||[]).some(t=>t.name==='web_search');
+  // Verification checks, methodology, design research and explicit manual source lookup stay independent.
+  if(!searching||/factcheck|expertcheck|method|design|^(generateTitleResearch|researchProductStrategy|regenerateAllStrategyFields)$/i.test(request.action||'')||!request.titleId&&!request.assetId)return fetch(url,options);
+  let prepared;try{prepared=await researchSearchPrepare(env,request);}catch(error){
+    await env.TRADES.put('research:gate:last:'+hubAssetId(request.titleId||request.assetId),JSON.stringify({at:new Date().toISOString(),gate:'research',summary:'gate: 0 reused, 0 refreshed, 1 new — 0 calls skipped',reason:'Read failed: '+error.message}));
+    // Fail OPEN for audience freshness: the original search still runs; unverified context is never pinned.
+    return fetch(url,options);
+  }
+  if(!prepared)return fetch(url,options);
+  const {gate,snapshot}=prepared;
+  if(gate.gate==='reused')payload.tools=payload.tools.filter(t=>t.name!=='web_search');
+  payload.messages=[{role:'user',content:researchGateBrief(gate)},...(payload.messages||[])];
+  const response=await fetch(url,{...options,body:JSON.stringify(payload)});
+  if(!response.ok||gate.gate==='reused')return response;
+  const text=await response.clone().text();let data;
+  try{data=JSON.parse(text);}catch(error){data=[];for(const line of text.split('\n'))if(line.startsWith('data: ')){try{data.push(JSON.parse(line.slice(6)));}catch(error){}}}
+  const sources=researchEvidence(data);
+  if(sources.length){
+    const finding=sources.map(s=>(s.claim?s.claim+' — ':'')+(s.title||s.url)+' | '+s.url).join('\n');
+    // Only tool-returned sources/quoted evidence, never generated sales copy, enter the shared title research cache.
+    const changed={};for(const name of gate.needed)if(/claims|sources|evidence|examples|news|trends|zeitgeist/i.test(name))changed[name]=finding;
+    try{await researchWriteTitle(env,snapshot,gate,changed);}catch(error){await env.TRADES.put('research:held:'+snapshot.titleId+':'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:changed,sources}));throw error;}
+  }
+  return response;
+}
+async function researchDigestGate(env,job) {
+  const titleId=hubAssetId(job.titleId||await env.TRADES.get('digest:title:'+job.campaignId));if(!titleId)return null;
+  const s=await researchSnapshot(env,{titleId,campaignId:job.campaignId}),state=await env.TRADES.get('research:gate:title:'+titleId,'json').catch(()=>null)||{};
+  const fields={...state.fields},required=researchRequired(s.worksheet.inputs);
+  // A weekly digest is intrinsically volatile. Old findings are exclusion context, never proof that this week's work is done.
+  required.push('News / Trends / Zeitgeist');
+  const gate=await researchGate(env,{...s,kind:'title',id:titleId,fields,required:[...new Set(required)],searchOnly:true});
+  const claimed=(await env.TRADES.get('digest:sources:'+titleId,'json').catch(()=>null))?.sources||[];
+  const prior=Object.values(state.sections||{}).flatMap(x=>x.sources||[]);
+  return {snapshot:s,gate,known:[...new Map([...claimed,...prior].filter(x=>x.url).map(x=>[x.url,x])).values()].slice(0,30)};
+}
+async function researchReadContext(env,request) {
+  const prepared=await researchSearchPrepare(env,request);return prepared?researchGateBrief(prepared.gate):'';
+}
+async function researchDigestSave(env,campaignId,titleId,sources) {
+  const snapshot=await researchSnapshot(env,{campaignId,titleId}),gate=await researchGate(env,{...snapshot,kind:'title',id:titleId,fields:{},required:['News / Trends / Zeitgeist'],searchOnly:true});
+  const prior=await env.TRADES.get('digest:sources:'+hubAssetId(titleId),'json').catch(()=>null)||{};
+  const known=[...new Map([...(prior.sources||[]),...sources].filter(x=>x.url).map(x=>[x.url+'|'+(x.claim||''),x])).values()].slice(-100);
+  await researchCommit(env,gate,{'Key Claims / Sources':sources.map(x=>(x.claim||x.title||'')+' | '+x.url).join('\n'),'News / Trends / Zeitgeist':sources.map(x=>(x.date||'')+' '+(x.claim||x.title||'')).join('\n')},sources);
+  await env.TRADES.put('digest:sources:'+hubAssetId(titleId),JSON.stringify({...prior,at:new Date().toISOString(),sources:known}));
+}
+// END RESEARCH SEARCH HOOK
+
 // TITLE RESEARCH — a title's own research, built from its keyword topic (Topic ID; none → its product's topic).
 // Fields live on the title (Content Strategy): Title Intent / Title Questions / Title Angle / Title Audience, plus
 // "Keywords Out of Sync" (set when the title is placed / moved / its topic's keywords change; cleared when its research
@@ -6329,6 +6559,7 @@ async function buildAssetPrecedenceContext(hdr, env, { campaignId, productId, ti
     parts.push(`TITLE-LEVEL KEYWORDS & OVERRIDES (most specific layer — this generation call's own instructions; wins over anything above where it's more specific):\n${overrideLines.join("\n")}`);
   }
 
+  if(titleId){const context=await researchReadContext(env,{titleId,campaignId,productId}).catch(()=>'');if(context)parts.push(context);}
   return parts.join("\n\n");
 }
 
@@ -13178,11 +13409,11 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
 //   product; titles with assets stay (mismatches are only reported). Staged in KV hubclean:plan:<cid>.
 // kwHubCleanApply / kwHubCleanUndo: run / reverse the plan in chunks (KV hubclean:run:<cid> holds progress + undo).
 const HC_BRIDGE_SUFFIX = " — Introductory Call", HC_BRIDGE_TYPE = "Topic bridge", HC_UNCL = "Unclassified";
-async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage) {
-  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [{ name, description: "Return the result.", input_schema: schema }], tool_choice: { type: "tool", name },
+async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage, options = {}) {
+  const r = await (env.__researchRequest?researchModelFetch.bind(null,env):fetch)("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [...(options.search?[{type:"web_search_20250305",name:"web_search",max_uses:3}]:[]), { name, description: options.search?"Return the requested research sections after source search.":"Return the result.", input_schema: schema }], tool_choice: options.search?{type:"auto"}:{ type: "tool", name },
       messages: [{ role: "user", content: prompt }] }) });
-  const d = await r.json(); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  const d = await r.json(); if(options.onResponse)await options.onResponse(d); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
   return (((d.content || []).find(b => b.type === "tool_use") || {}).input) || {};
 }
 async function kwVolumes(env, keywords, market) {
@@ -14274,6 +14505,7 @@ async function adStep(env, cid, S, invoke) {
     const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
     S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
     const w = free ? await freeNewsDigest(env, S.name, S.freeKeywords || []) : await adPerplexityDigest(env, job, S.names);
+    await researchDigestSave(env,cid,S.titleId,w.sources||[]);
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
     const label = adPeriod().label;
     S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
@@ -14867,6 +15099,7 @@ export default {
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid JSON" }, 400); }
+    env={...env,__researchRequest:{action:body.action,titleId:body.titleId,assetId:body.assetId,methodId:body.methodId,campaignId:body.campaignId,assetType:body.assetType,force:body.force===true}};
     if (hubWriteScope.getStore()) hubWriteScope.getStore().action = body.action;
 
     // â"€â"€ auth  -  exchange PIN for a session token (public, no token required) â"€â"€
@@ -20483,40 +20716,27 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ ok: true, titleId, topicId, outOfSync: true });
       }
       // ── title research: get / save (operator edits) / generate (from its keyword topic) — saving or generating = in sync
+      if(body.action==='getResearchGate'){
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        const s=await researchSnapshot(env,body),stored=await env.TRADES.get('research:gate:title:'+s.titleId,'json').catch(()=>null)||{};
+        const fields={...stored.fields,...Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,hubRichText(s.title.properties[f]?.rich_text)]))};
+        const required=researchRequired(s.worksheet.inputs,TITLE_RES_FIELDS),verifiedFields=[];
+        if(s.product){fields['Product Facts']=JSON.stringify(Object.fromEntries(['Name','Description','Price','Offer Structure'].map(k=>[k,writingFieldValues(s.product.properties)[k]||''])));required.push('Product Facts');verifiedFields.push('Product Facts');}
+        const plan=researchPlan({...s,kind:'title',fields,required,verifiedFields,stamps:stored.sections||{}});
+        return json({ok:true,titleId:s.titleId,...plan,keywordsVersion:s.keywordsVersion,cadence:s.cadence,method:s.worksheet.name,inputs:s.worksheet.inputs,last:await env.TRADES.get('research:gate:last:'+s.titleId,'json')});
+      }
       if (body.action === "getTitleResearch" || body.action === "saveTitleResearch" || body.action === "generateTitleResearch") {
-        const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
-        try { await kwEnsureTitleProps(env); } catch (e) { return json({ error: e.message }, 500); }
-        const hdr = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const pg = await fetch(`https://api.notion.com/v1/pages/${kwDashId(titleId)}`, { headers: hdr }).then(r => r.json());
-        if (!pg || pg.object === "error") return json({ error: pg && pg.status === 429 ? "Notion rate limit — try again shortly" : "Title not found" + (pg && pg.message ? " (" + pg.message.slice(0, 120) + ")" : "") }, pg && pg.status === 429 ? 429 : 404);
-        const tp = pg.properties || {}, name = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
-        const cur = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, trRt(tp, f)]));
-        const topic = await titleTopicKeywords(env, hdr, tp);
-        if (body.action === "getTitleResearch") return json({ ok: true, titleId, name, fields: cur, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox, topicId: topic.topicId || "", topicKeywords: topic.keywords || "", ownTopic: trRt(tp, "Topic ID").trim() });
-        let fields = cur;
-        if (body.action === "saveTitleResearch") fields = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, String((body.fields || {})[f] ?? cur[f] ?? "").slice(0, 1990)]));
-        else {
-          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-          const seed = trRt(tp, "seed idea"), notes = trRt(tp, "Notes").slice(0, 1500);
-          const demand = await kwDemandBlock(env, [topic.keywords, seed, name].filter(Boolean).join(", "), { related: 15 }).catch(() => "");
-          const r = await hcClaude(env, `Research ONE content title as an SEO piece. Ground it in its keyword topic and the real search demand — not in any product.
-
-TITLE: ${name}
-KEYWORD TOPIC THIS TITLE LIVES IN: ${topic.keywords || "(none set — use the title and its keywords)"}
-TITLE'S OWN KEYWORDS: ${seed || "(none)"}
-${notes ? "OPERATOR NOTES: " + notes + "\n" : ""}${demand}
-Give:
-- intent: the search intent this piece serves (informational / commercial / transactional / local) and what the searcher wants to walk away with — 1-2 sentences
-- questions: the 5-8 real questions this piece must answer, one per line
-- angle: the angle that makes this piece better than what ranks now — 1-3 sentences
-- audience: who is searching this, their situation and level — 1-2 sentences`, "title_research",
-            { type: "object", required: ["intent", "questions", "angle", "audience"], properties: { intent: { type: "string" }, questions: { type: "string" }, angle: { type: "string" }, audience: { type: "string" } } }, 2000);
-          fields = { "Title Intent": String(r.intent || ""), "Title Questions": String(r.questions || ""), "Title Angle": String(r.angle || ""), "Title Audience": String(r.audience || "") };
+        const titleId=hubAssetId(body.titleId);if(!/^[a-f0-9]{32}$/i.test(titleId))return json({error:'titleId required'},400);
+        if(body.action==='generateTitleResearch')return json(await researchTitle(env,body));
+        const pg=await researchNotion(env,'pages/'+kwDashId(titleId)),tp=pg.properties,name=hubRichText(tp.Title?.title||tp.Name?.title);
+        let fields=Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,hubRichText(tp[f]?.rich_text)]));
+        const topic=await titleTopicKeywords(env,newsletterHdr(env),tp);
+        if(body.action==='saveTitleResearch'){
+          fields=Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,String(body.fields?.[f]??fields[f]).slice(0,1990)]));
+          const snapshot=await researchSnapshot(env,{titleId}),gate=await researchGate(env,{...snapshot,kind:'title',id:titleId,fields,required:TITLE_RES_FIELDS,force:true});
+          await researchWriteTitle(env,snapshot,gate,fields);
         }
-        const props = { "Keywords Out of Sync": { checkbox: false } };
-        TITLE_RES_FIELDS.forEach(f => { props[f] = { rich_text: fields[f] ? [{ type: "text", text: { content: String(fields[f]).slice(0, 1990) } }] : [] }; });
-        await kwNotionPatch(env, titleId, props);
-        return json({ ok: true, titleId, name, fields, outOfSync: false, topicId: topic.topicId || "", topicKeywords: topic.keywords || "" });
+        return json({ok:true,titleId,name,fields,outOfSync:body.action==='saveTitleResearch'?false:!!tp['Keywords Out of Sync']?.checkbox,topicId:topic.topicId||'',topicKeywords:topic.keywords||'',ownTopic:trRt(tp,'Topic ID').trim()});
       }
       if (body.action === "regenerateTitleKeywords") {
         const { titleId } = body;
@@ -26655,6 +26875,11 @@ Return ONLY this JSON, no other text, no fences:
         const keywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
         const buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(none on file)";
 
+        const ecosystemId=researchFingerprint([campaignId,ideaTitle,ideaDescription||'',seedType||'',!!excludeSeed]);
+        const ecosystemKey='research:gate:ecosystem:'+ecosystemId,oldEcosystem=await env.TRADES.get(ecosystemKey,'json').catch(()=>null)||{};
+        let validEcosystem=false;try{validEcosystem=Array.isArray(JSON.parse(oldEcosystem.fields?.['Product Ecosystem Positioning']));}catch(error){}
+        const ecosystemGate=await researchGate(env,{kind:'ecosystem',id:ecosystemId,fields:validEcosystem?oldEcosystem.fields:{},required:['Product Ecosystem Positioning'],upstream:researchFingerprint({campaign:campRaw.last_edited_time,keywords,buyerIntent}),keywordsVersion:0,force:body.force===true});
+        if(ecosystemGate.gate==='reused')return json({ecosystem:JSON.parse(oldEcosystem.fields['Product Ecosystem Positioning']),gate:'reused',gateSummary:ecosystemGate.summary,counts:ecosystemGate.counts,anthropicCalls:0});
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
 
 CAMPAIGN: ${campaignName}
@@ -26697,7 +26922,8 @@ Return ONLY a JSON array — no other text, no markdown fences:
         } catch(e) {
           return json({ error: "Failed to parse ecosystem JSON: " + e.message + " | RAW: " + (aiData.content?.[0]?.text || '').slice(0, 300) }, 500);
         }
-        return json({ ecosystem: ecosystem.slice(0, 5) });
+        await researchCommit(env,ecosystemGate,{'Product Ecosystem Positioning':JSON.stringify(ecosystem.slice(0,5))});
+        return json({ecosystem:ecosystem.slice(0,5),gate:ecosystemGate.gate,gateSummary:ecosystemGate.summary,counts:ecosystemGate.counts,anthropicCalls:1});
       }
 
       // ── createEcosystemProduct ──
@@ -27416,6 +27642,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
       // separate seed-keywords param here on purpose; whatever the operator
       // typed into Description at creation time IS the seed.
       if (body.action === "researchProductStrategy") {
+        if(body.force!==true)return json(await researchProductFields(env,body));
         const { productId, campaignId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -27649,101 +27876,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
       // upserting onto the single canonical Strategy record (via
       // findBestProductResearchRecord) instead of risking a new duplicate.
       if (body.action === "regenerateAllStrategyFields") {
-        const { productId, campaignId } = body;
-        if (!productId) return json({ error: "productId required" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-
-        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
-        const pp = productPage.properties || {};
-        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
-        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
-        const producedContent = (pp["Produced Content"]?.rich_text || []).map(t => t.plain_text).join("");
-        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
-        const isolated = !!pp["Keywords Isolated"]?.checkbox;   // 🔒 isolated: researched from its own fields + keywords only
-
-        let researchBlock = '';
-        let campaignKwVersion = 0;
-        if (campaignId && !isolated) {
-          const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
-          }).then(r => r.json()).catch(() => ({ results: [] }));
-          const rp = (researchRows.results || [])[0]?.properties;
-          if (rp) {
-            const rtR = key => (rp[key]?.rich_text || []).map(t => t.plain_text).join("");
-            const lines = [
-              rtR("Statement") && `Statement: ${rtR("Statement")}`,
-              rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
-              rtR("Key Message") && `Key Message: ${rtR("Key Message")}`,
-              rtR("Campaign Goal") && `Campaign Goal: ${rtR("Campaign Goal")}`,
-              rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
-            ].filter(Boolean);
-            if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
-            campaignKwVersion = rp["Keywords Version"]?.number || 0;
-          }
-        }
-
-        const fieldList = STRATEGY_FIELDS.map(f => `- ${f}: ${STRATEGY_FIELD_HINTS[f]}`).join("\n");
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist writing a product's complete core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform. This is a full re-run, replacing every field with a fresh pass — write the strongest possible version of each, don't hedge toward whatever may have been there before.
-
-PRODUCT: ${productName}
-DESCRIPTION: ${productDesc || "(none)"}
-PRODUCED CONTENT (the real, already-written product — ground everything in this over the Description when present): ${producedContent ? producedContent.slice(0, 3000) : "(none — no full product written yet)"}
-KEYWORDS: ${productKeywords || "(none)"}
-${researchBlock}
-Write ALL of these fields — each 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points):
-${fieldList}
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "Customer": "...", "Niche": "...", "Pain Points": "...", "Emotions": "...", "Solution": "...", "Benefits": "...", "Unique Opportunity": "...", "Transformation": "...", "Offer Structure": "...", "Proof Points": "...", "Objections": "..." }`;
-
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        const raw = aiData.content?.[0]?.text || "";
-        const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-        if (start === -1 || end === -1) return json({ error: "Failed to parse strategy JSON" }, 502);
-        let fields;
-        try { fields = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))); }
-        catch (e) { return json({ error: "Failed to parse strategy JSON: " + e.message }, 502); }
-
-        const props = { Status: { select: { name: "Current" } }, "Keywords Version": { number: campaignKwVersion } };
-        STRATEGY_FIELDS.forEach(f => {
-          const val = String(fields[f] || "").trim();
-          if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
-        });
-
-        await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
-        const existing = await findBestProductResearchRecord(hdr, productId);
-        let strategyId, strategyUrl;
-        if (existing) {
-          strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
-          await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: props }),
-          });
-        } else {
-          props.Name = { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] };
-          props.Product = { relation: [{ id: dash(productId) }] };
-          const createResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: PRODUCT_RESEARCH_DB }, properties: props }),
-          });
-          const created = await createResp.json();
-          if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
-          strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
-        }
-
-        await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
-        await kwClearOutOfSync(env, productId);   // product research re-ran → keyword group change absorbed
-        await kwReviveProduct(env, productId);   // researched → out of Idea
-        return json({ success: true, strategyId, url: strategyUrl, fields });
+        return json(await researchProductFields(env,body));
       }
 
       // ── regenerateStrategyField ──
@@ -35769,7 +35902,7 @@ Return ONLY a JSON object with these exact keys:
         const { query, keywords } = body;
         if (!query) return json({ error: "query required" }, 400);
         const searchQuery = keywords ? `${query} ${keywords}` : query;
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        const resp = await researchModelFetch(env,'https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01', 'anthropic-beta': 'web-search-2025-03-05' },
           body: JSON.stringify({
@@ -54755,16 +54888,20 @@ async function drGeminiPoll(env, g) {
 async function drPerplexity(env, job) {
   if (!env.PERPLEXITY_API_KEY) return { status: "skipped", error: "PERPLEXITY_API_KEY not set" };
   const capMsg = await spendCheck(env, "perplexity"); if (capMsg) return { status: "skipped", error: capMsg };
+  const prepared=await researchDigestGate(env,job).catch(()=>null);
+  const known=prepared?.known||[];
+  const focus=prepared?researchGateBrief(prepared.gate)+'\nALREADY RESEARCHED / CLAIMED (background only; do not re-research the same claims; find new developments, not old angles):\n'+JSON.stringify(known):'';
   const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
     headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ preset: "medium", input: drBrief(job) }) });
+    body: JSON.stringify({ preset: "medium", input: drBrief(job)+focus }) });
   const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
   if (!r.ok || !d) return { status: "failed", error: `Perplexity HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
   { const pc = pplxCost(d.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, d.usage).catch(e => console.error("spendAdd:", e.message)); }
   const results = [];
   (d.output || []).forEach(o => { if (o && o.type === "search_results") (o.results || []).forEach(x => results.push({ url: x.url, title: x.title, date: x.date || x.last_updated || "", snippet: (x.snippet || "").slice(0, 400) })); });
   const text = d.output_text || (d.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
-  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80),usage:d.usage||null };
+  if(prepared){const fields={'Key Claims / Sources':results.map(x=>x.title+' | '+x.url).join('\n'),'News / Trends / Zeitgeist':String(text||'').slice(0,12000)};await researchCommit(env,prepared.gate,fields,results);}
+  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80),usage:d.usage||null,gateSummary:prepared?.gate.summary };
 }
 
 async function drRank(env, job) {
