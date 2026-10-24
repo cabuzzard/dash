@@ -1628,7 +1628,7 @@ function ivParse(pg) {
 }
 async function ivList(filter) {
   const rows = await notionQuery(INTERVIEWS_DB, filter ? { filter, sorts: [{ timestamp: "created_time", direction: "ascending" }] } : { sorts: [{ timestamp: "created_time", direction: "ascending" }] });
-  return rows.filter(r => !r.archived && !r.in_trash).map(ivParse);
+  return rows.filter(r => !r.archived && !r.in_trash).map(ivParse).filter(iv => iv.status !== 'Superseded');   // superseded = merged into the asset's one interview (operator 2026-10-24)
 }
 const ivForTitle = titleId => ivList({ property: "Title", relation: { contains: ivDash(titleId) } });
 const ivForProduct = pid => ivList({ property: "Product", relation: { contains: ivDash(pid) } });
@@ -1707,6 +1707,34 @@ Write exactly 1 interview of 7-10 short, specific questions a busy owner can ans
     "Scope": { select: { name: "Product" } } } });
 }
 // An asset's OWN interview: {assetId} (requested from inside the asset) or {titleId, own: assetType} before the asset exists.
+// ONE INTERVIEW PER ASSET (operator 2026-10-24: "one interview should supersede preceding and be additive and non destructive").
+// An asset's interviews merge into its NEWEST one: every question from every earlier interview (oldest first, de-duplicated by
+// wording) with every answer carried over — a later answer to the same question wins, an empty one never erases. The earlier
+// records stay in Notion as Status "Superseded" (not deleted), so nothing is lost. Finished when any was Finished and an answer
+// exists; otherwise Flagged. Runs after any new asset interview is made and from ivMergeAssetInterviews / ivMergeAll.
+async function ivMergeAssetInterviews(env, assetId) {
+  const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
+  if (!titleId) return { merged: false, reason: "no title" };
+  const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid))
+    .sort((a, b) => Date.parse(a.created || 0) - Date.parse(b.created || 0));
+  if (own.length < 2) return { merged: false, count: own.length };
+  const keep = own[own.length - 1], order = [], ans = new Map();
+  for (const iv of own) iv.qs.forEach((q, i) => { const k = ivNorm(q); if (!ans.has(k)) { order.push(q); ans.set(k, ""); } const a = String(iv.answers[i] || "").trim(); if (a) ans.set(k, a); });
+  const answers = order.map(q => ans.get(ivNorm(q)) || ""), finished = own.some(iv => iv.status === "Finished") && answers.some(a => a);
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(keep.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+    Questions: { rich_text: ivRt(order.map((q, i) => (i + 1) + ". " + q).join("\n")) }, Answers: { rich_text: ivRt(ivFormatAnswers(order, answers)) },
+    Status: { select: { name: finished ? "Finished" : "Flagged" } } } }) });
+  if (!r.ok) throw new Error("Could not merge the interviews: " + ((await r.json().catch(() => ({}))).message || r.status));
+  const back = ivParse(await ivPage(keep.id));
+  if (back.qs.length !== order.length || back.answers.filter(a => String(a || "").trim()).length !== answers.filter(Boolean).length) throw new Error("Merged interview read-back differs — earlier interviews left as they were");
+  const superseded = [];
+  for (const iv of own.slice(0, -1)) {
+    const x = await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
+    if (x.ok) superseded.push(iv.id);
+  }
+  await ivInvalidateBank(env, back.cid).catch(() => {});
+  return { merged: true, keep: keep.id, superseded, questions: order.length, answered: answers.filter(Boolean).length, status: back.status };
+}
 async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
   let atype = own || "", aname = "", parentType = "";
   if (assetId) { const ap = await ivPage(assetId); const A = ap.properties;
@@ -1730,10 +1758,15 @@ ${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentT
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
   const isNewsIv = /\bnews\b/i.test(atype);
-  return ivAccumulate(env,{cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:isNewsIv ? 2 : short ? 3 : 5,qmax:isNewsIv ? 3 : short ? 5 : 10,base:{   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
+  const ivMade = await ivAccumulate(env,{cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:isNewsIv ? 2 : short ? 3 : 5,qmax:isNewsIv ? 3 : short ? 5 : 10,base:{   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) } });
+  if (assetId) {   // one interview per asset: fold this into the asset's existing interview (additive; earlier records → Superseded)
+    const m = await ivMergeAssetInterviews(env, assetId).catch(e => ({ merged: false, error: e.message }));
+    if (m.merged) return { ...ivMade, interviews: [ivParse(await ivPage(m.keep))], merged: m };
+  }
+  return ivMade;
 }
 // The title's interview feeds its pillar; asset production keeps its explicit own/asset branch.
 async function ivCreateForTitle(env, titleId, opts = {}) {
@@ -22304,6 +22337,19 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           : (body.assetId || body.own) ? await ivCreateForAsset(env, { assetId: body.assetId || "", titleId: body.titleId ? String(body.titleId).replace(/-/g, "") : "", own: body.own || "", direction: body.direction })
           : await ivCreateForTitle(env, String(body.titleId).replace(/-/g, ""), { force: true, another: true, direction: body.direction });
         return json({ ok: true, ...r });
+      }
+      // ivMergeAll {apply?} — every asset with more than one interview → merged into its newest (dry run unless apply)
+      if (body.action === "ivMergeAll" || body.action === "ivMergeAsset") {
+        if (body.action === "ivMergeAsset") return json(await ivMergeAssetInterviews(env, body.assetId));
+        const all = await ivList({ property: "Scope", select: { equals: "Asset" } }), by = {};
+        for (const iv of all) for (const a of iv.assetIds || []) (by[a] = by[a] || []).push(iv);
+        const multi = Object.entries(by).filter(([, l]) => l.length > 1), out = [];
+        for (const [aid, l] of multi) {
+          if (!body.apply) { out.push({ assetId: aid, interviews: l.length, statuses: l.map(x => x.status) }); continue; }
+          try { out.push({ assetId: aid, ...(await ivMergeAssetInterviews(env, aid)) }); } catch (e) { out.push({ assetId: aid, error: e.message }); }
+          await new Promise(r => setTimeout(r, 300));
+        }
+        return json({ ok: true, apply: !!body.apply, assets: multi.length, results: out });
       }
       if (body.action === "saveInterview") {
         const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
