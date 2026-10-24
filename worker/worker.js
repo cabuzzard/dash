@@ -1350,6 +1350,16 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   const g = await selfAction(env, "generateTitleAssets", { titleId: t.titleId, campaignId: cid, productId: product.id, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1 });
   const assetId = g && ((g.assets || [])[0] || {}).id;
   if (!assetId) return { error: "article: " + ((g && g.error) || "no asset"), hub: hub.name, headline: t.headline };
+  // a news post must NAME the story it was built on (operator 2026-10-23: "if the content is garbage then leave it"): if the article never mentions the publisher or the source's site, it's an explainer dressed as news → Planning, not published
+  if (storyUsed) {
+    const pg = await ivPage(assetId).catch(() => null), bodyTxt = ((pg && pg.properties?.Body?.rich_text) || []).map(x => x.plain_text).join(" ");
+    const full = (bodyTxt + " " + ((await selfAction(env, "getAssetFullText", { assetId }).catch(() => ({}))).text || "")).toLowerCase();
+    const pub = String(storyUsed.publisher || "").toLowerCase().trim(), host = (() => { try { return new URL(storyUsed.url).hostname.replace(/^www\./, "").split(".")[0]; } catch (e) { return ""; } })();
+    if (!((pub.length > 3 && full.includes(pub)) || (host.length > 3 && full.includes(host)))) {
+      await selfAction(env, "updateAllOutputField", { kind: "asset", field: "status", assetId, value: "Planning" }).catch(() => {});
+      return { skipped: true, reason: "the article never named its news source — moved to Planning, not published", hub: hub.name, headline: t.headline, assetId };
+    }
+  }
   await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
   // generateTitleAssets pushed the page while the asset was still at Development, and its own hub refresh pulled it straight back
   // off (2026-10-23: 19 news posts Published but 404). Route it explicitly now it is Published + News; already-live is fine.
