@@ -22436,7 +22436,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           // a marker with no report and no error after 10 min = the run was killed mid-flight (e.g. the request was dropped)
           const lastError = err && (!report || err.at > report.at) ? err.error
             : pending && age >= 10 * 60 * 1000 ? "The expert check stopped before finishing (no result after 10 minutes) — run it again." : "";
-          if (report && !pending && await ivAutoHold(env, id, report).catch(e => { console.error("ivAutoHold", e.message); return false; })) await env.TRADES.put("ivfact:" + id, JSON.stringify(report));   // older reports too
+          if (report && !pending && !report.autoHeld) { await ivAutoHold(env, id, report).catch(e => console.error("ivAutoHold", e.message)); report.autoHeld = true; await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); }   // older reports, once
           return json({ ok: true, report, running: pending && age < 10 * 60 * 1000, lastError }); }
         if (!report) return json({ error: "Run the expert check first" }, 400);
         const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
@@ -22490,9 +22490,10 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
       }
       // ivProductsNeeding → hub main offerings with no interview yet (the per-offering backfill list)
       if (body.action === "ivProductsNeeding") return json({ ok: true, products: await ivProductsNeeding(env) });
+      // an interview ALWAYS loads, written or not (operator 2026-10-24) — a Notion rate limit used to come back as "interview not found"
       if (body.action === "getInterview") {
-        const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
-        if (!pg || !pg.properties) return json({ error: "interview not found" }, 404);
+        let pg = null, perr = ""; try { pg = await ivPage(body.interviewId); } catch (e) { perr = e.message; }
+        if (!pg) return json({ error: /rate limited/i.test(perr) ? "Notion is busy — try again in a moment (nothing is lost)" : "Couldn't load that interview: " + perr }, /rate limited/i.test(perr) ? 503 : 404);
         return json({ ok: true, interview: ivParse(pg) });
       }
       if (body.action === "createInterviews") {
@@ -22538,8 +22539,8 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         return json({ ok: true, apply: !!body.apply, assets: multi.length, results: out });
       }
       if (body.action === "saveInterview") {
-        const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
-        if (!pg || !pg.properties) return json({ error: "interview not found" }, 404);
+        let pg = null, perr = ""; try { pg = await ivPage(body.interviewId); } catch (e) { perr = e.message; }
+        if (!pg) return json({ error: /rate limited/i.test(perr) ? "Notion is busy — not saved yet; your answers are kept in this browser, it will retry" : "Couldn't save: " + perr }, /rate limited/i.test(perr) ? 503 : 404);
         const iv = ivParse(pg), answers = (Array.isArray(body.answers) ? body.answers : iv.answers).map(a => String(a || "").slice(0, 4000));
         const finish = !!body.finish && answers.some(a => a.trim());
         const wasFinished = iv.status === "Finished", changedAnswers = JSON.stringify(answers.map(a => a.trim())) !== JSON.stringify(iv.answers.map(a => a.trim()));

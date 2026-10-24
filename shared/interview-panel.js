@@ -264,7 +264,9 @@
         try { await req(cfg.call, 'removeInterview', { interviewId: S.iv.id }); S.dirty = false; changed(); if (cfg.onDone) cfg.onDone(null); close(); } catch (err) { S.err = err.message; S.busy = ''; draw(); } }
     });
     draw();
-    req(cfg.call, 'getInterview', { interviewId: cfg.interviewId }).then(r => { S.iv = r.interview; S.answers = r.interview.answers.slice(); S.busy = '';
+    // a busy moment at Notion never stops the interview from opening: retry the load a few times (2026-10-24)
+    const loadIv = n => req(cfg.call, 'getInterview', { interviewId: cfg.interviewId }).catch(err => { if (n >= 3) throw err; S.busy = 'Loading… (Notion is busy, retrying)'; draw(); return new Promise(ok => setTimeout(ok, 2000 * (n + 1))).then(() => loadIv(n + 1)); });
+    loadIv(0).then(r => { S.iv = r.interview; S.answers = r.interview.answers.slice(); S.busy = '';
         let d = null; try { d = JSON.parse(localStorage.getItem(dKey()) || 'null'); } catch (e) {}
         if (d && Array.isArray(d.answers) && JSON.stringify(d.answers) !== JSON.stringify(S.answers) && d.answers.some((a, i) => String(a || '').trim() && String(a || '') !== String(S.answers[i] || ''))) {
           S.answers = S.iv.qs.map((q, i) => String(d.answers[i] || '').trim() ? d.answers[i] : (S.answers[i] || '')); S.dirty = true; S.saved = '↺ Restored unsaved answers from this browser — saving…'; setTimeout(autosave, 500); }
