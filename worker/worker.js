@@ -2253,6 +2253,8 @@ async function writeContractAsset(env,assetId) {
   const properties=await assetMethodProp(methodId,p['Asset Type']?.select?.name);
   for(const [key,value] of Object.entries(fields)){const type=db.properties?.[key]?.type||'rich_text';if(value.length>190000)throw new Error(`${key}: exceeds Notion text capacity`);properties[key]=type==='select'?{select:value?{name:value}:null}:{[type]:ivRt(value)};}
   try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){console.error('write style props:',e.message);}
+  // a write that used the interview answers brings the asset back In Sync (clears ↻ rewrite due / 'written without interview') — 2026-10-24
+  if(answersOnly.trim()){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
   await saveExistingAssetWriting(page,properties,[]);
   const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString()};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
