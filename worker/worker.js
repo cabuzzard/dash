@@ -1650,7 +1650,7 @@ async function ivBlock(env, titleId, assetType, assetId) {
   const parentId = PILLAR_SOURCE.get(String(titleId).replace(/-/g, "")) || "";
   const ttl = await ivForTitle(titleId).catch(() => []);
   const done = ttl.filter((x, i, a) => a.findIndex(y => y.id === x.id) === i)
-    .filter(x => x.status === "Finished" && x.answers.some(a => a.trim()) && x.scope !== "Product"
+    .filter(x => x.answers.some(a => String(a || "").trim()) && x.scope !== "Product"   // answered questions count, finished or not (2026-10-24)
       && (x.scope !== "Asset" || (assetId && x.assetIds.includes(String(assetId).replace(/-/g, ""))) || (parentId && x.assetIds.includes(parentId)) || (assetType && ivTypeMatch(x.forType, assetType))));
   if (!done.length) return { text: "", cid: "" };
   const tierOf = await ivTierFn(env);
@@ -1942,7 +1942,7 @@ async function topicalPublishState(env, assetId) {
   }
   return { eligible: true, assetId: aid, kind: ivNorm(method) === ivNorm('Topical - SEO Post') ? 'blog' : 'youtube', type, titleId,
     hasFinishedInterview: own.some(iv => iv.status === 'Finished'),
-    hasAnsweredInterview: own.some(iv => iv.status === 'Finished' && iv.answers.some(a => a.trim())),
+    hasAnsweredInterview: own.some(iv => iv.answers.some(a => String(a || '').trim())),   // any answered question lets it write (2026-10-24)
     writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox, published: p['Asset Status']?.select?.name === 'Published',
     hasWriting: (await assetWritingState(page)).hasWriting, page, own };
 }
@@ -1967,7 +1967,7 @@ async function topicalWriteInputs(env, assetId, options = {}) {
   if (!skipInterview && !state.hasAnsweredInterview) {
     const created = !state.own.length;
     const interviews = created ? ((await ivCreateForAsset(env, { assetId: state.assetId, titleId: state.titleId, own: state.type })).interviews || []) : state.own;
-    if(!interviews.some(iv=>iv.status==='Finished'&&(iv.answers||[]).some(a=>a.trim())))return { needsInterview: true, created, interviews: interviews.map(iv => ({ id: iv.id })) };
+    if(!interviews.some(iv=>(iv.answers||[]).some(a=>String(a||'').trim())))return { needsInterview: true, created, interviews: interviews.map(iv => ({ id: iv.id })) };
     state.own=interviews;state.hasFinishedInterview=true;state.hasAnsweredInterview=true;
   }
   const p = state.page.properties, cid = ivRid(p, 'Campaign'), pid = ivRid(p, 'Product');
@@ -1975,8 +1975,8 @@ async function topicalWriteInputs(env, assetId, options = {}) {
     cid ? voiceBlock(env, cid) : '', cid ? hubAudienceBlock(env, cid) : '', pid ? ivProdResearch(pid) : '',
     titleResearchBlock(env, state.titleId), extractPillarContent(ivHdr(), ivDash(state.titleId))
   ]);
-  const interview = skipInterview ? '' : state.own.filter(iv => iv.status === 'Finished' && iv.answers.some(a => a.trim()))
-    .map(iv => ivFormatAnswers(iv.qs, iv.answers)).join('\n\n');
+  const interview = skipInterview ? '' : state.own.filter(iv => iv.answers.some(a => String(a || '').trim()))
+    .map(iv => { const k = iv.qs.map((q, i) => [q, String(iv.answers[i] || '').trim()]).filter(x => x[1]); return ivFormatAnswers(k.map(x => x[0]), k.map(x => x[1])); }).join('\n\n');   // answered questions only
   return { state, skipInterview, cid, headline: (p['Asset Title']?.title || []).map(t => t.plain_text).join('').trim(),
     grounding: `${voice}\n${audience}\n${research}\nPRODUCT RESEARCH:\n${product}\nTITLE'S PILLAR:\n${pillar}\n`
       + (interview ? `\nTHE OPERATOR'S FINISHED INTERVIEW ANSWERS (use their facts, examples and opinions; rewrite, never invent experience):\n${interview}\n` : ''),
@@ -2302,7 +2302,7 @@ async function writeTopicalYouTube(env, assetId, options = {}) {
   if (!r.ok || segments.length < 3) return { error: d.error?.message || 'No complete video script came back' };
   let old = {}; try { old = JSON.parse(lfReadRich(input.state.page.properties['Video Spec']) || '{}'); } catch (e) {}
   const spec = { v: 1, question: input.headline, format: 'explainer', title: out.title || input.headline, segments, tags: out.tags || [],
-    interview: input.skipInterview ? [] : input.state.own.filter(iv => iv.status === 'Finished').flatMap(iv => iv.qs.map((q, i) => ({ q, a: iv.answers[i] || '' })).filter(x => x.a)),
+    interview: input.skipInterview ? [] : input.state.own.flatMap(iv => iv.qs.map((q, i) => ({ q, a: iv.answers[i] || '' })).filter(x => x.a)),
     render: old.render || { character: 'mountain-man', voice: LF_DEFAULT_VOICE, layout: 'stage' } };
   const text = '# ' + spec.title + '\n\n' + segments.map(s => (s.name ? '## ' + s.name + '\n\n' : '') + s.text).join('\n\n');
   return topicalSaveWriting(env, input, text, { 'Video Spec': { rich_text: ivRt(JSON.stringify(spec)) }, 'Platform Title': { rich_text: ivRt(spec.title) },
@@ -13574,7 +13574,7 @@ async function writeParentAsset(env, assetId) {
   if (ivOwnTier(tier)) {
     let ivs = ((await ivForTitle(titleId).catch(() => [])) || []).filter(x => x.scope === "Asset" && x.assetIds.includes(String(assetId).replace(/-/g, "")));
     if (!ivs.length) ivs = ((await ivCreateForAsset(env, { assetId })) || {}).interviews || [];
-    if (!ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim()))) return { needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle, status: x.status })) };
+    if (!ivs.some(x => x.answers.some(a => String(a || "").trim()))) return { needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle, status: x.status })) };
   }
   const tp = await ivPage(titleId), T = tp.properties || {}, titleText = (T.Title?.title || []).map(t => t.plain_text).join("").trim();
   const cid = ivRid(T, "Campaign") || ivRid(A, "Campaign"), pid = ivRid(T, "product") || ivRid(A, "Product");
@@ -32966,7 +32966,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             if (heldAssetId && ivs) for (const iv of ivs) if (!(iv.assetIds || []).includes(heldAssetId)) await kwNotionPatch(env, iv.id, { Asset: { relation: [...(iv.assetIds || []), heldAssetId].map(x => ({ id: dashH(x) })) } }).catch(() => {});
           } catch (e) { console.error("held asset", e.message); }
           if (ivs && !ivs.length) ivs = ((await ivCreateForTitle(env, titleId, { force: true, own: assetType, assetId: heldAssetId || undefined }).catch(() => null)) || {}).interviews || [];
-          if (ivs && ivs.length && !ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim())))
+          if (ivs && ivs.length && !ivs.some(x => x.answers.some(a => String(a || "").trim())))
             return json({ error: holdTier === "short" ? `This ${assetType} is written from a short 5-question interview (rewritten for SEO) — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.` : `A ${assetType} is built from its OWN interview — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.`,
               needsInterview: true, heldAssetId, interviews: ivs.map(x => ({ id: x.id, angle: x.angle })) }, 409);
         }
