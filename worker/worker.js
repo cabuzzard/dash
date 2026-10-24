@@ -1530,6 +1530,20 @@ async function ivHeldSchema(env) {
   if (!schema.properties?.['Held Back']) await ivReuseNotion(env, 'databases/' + INTERVIEWS_DB, { method: 'PATCH', body: JSON.stringify({ properties: { 'Held Back': { rich_text: {} } } }) });
   await env.TRADES.put('ivheld:schema:v1', '1');
 }
+// operator 2026-10-24: "auto toggle leave out as on for skipped" — a fix whose words aren't in any answer holds its whole question out of
+// the write-up by default; ⊘ "put it back" (heldOut === false) is the operator's call and is never overridden.
+async function ivAutoHold(env, id, report) {
+  const open = ((report && report.items) || []).filter(x => x.fix && !x.applied && x.verdict !== 'opinion' && x.heldOut === undefined && Number.isInteger(x.q));
+  if (!open.length) return false;
+  const iv = ivParse(await ivPage(id)), found = q => q && iv.answers.some(a => String(a || '').includes(q) || ivQuoteSpan(a, q));
+  const want = open.filter(x => x.skipped || !found(x.quote)); if (!want.length) return false;
+  await ivHeldSchema(env);
+  const held = (iv.held || []).slice();
+  for (const x of want) { x.skipped = true; x.heldOut = true; if (!held.some(h => h.id === x.id)) held.push({ id: x.id, q: x.q, whole: true, text: '(whole answer)' }); }
+  const ur = await ivSaveAnswerPatch(env, id, { 'Held Back': { rich_text: ivRt(JSON.stringify(held)) } }, iv.answers);
+  if (!ur.id) throw new Error('Notion: ' + (ur.message || 'save failed'));
+  return true;
+}
 async function premiumBankUpsert(env, aid, interviewId, x) {   // one banked argument per finding per interview; a re-save updates it
   const key = 'premiumbank:' + hubAssetId(aid), bank = (await env.TRADES.get(key, 'json').catch(() => null)) || [], id = String(x.id || '').slice(0, 80) + ':' + String(interviewId || '').slice(0, 32);
   const row = { id, interviewId: String(interviewId || ''), question: String(x.question || '').slice(0, 400), quote: String(x.quote || '').slice(0, 800),
@@ -22388,7 +22402,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
               sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: ivCleanFix(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || ""), carried: !!byId[c.id]?.carried });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), pass, field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
-        if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); await env.TRADES.delete("ivfact:err:" + id).catch(() => {}); }
+        if (!body.sample) { await ivAutoHold(env, id, report).catch(e => console.error("ivAutoHold", e.message)); await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); await env.TRADES.delete("ivfact:err:" + id).catch(() => {}); }
         return json({ ok: true, report });
         })(); } catch (e) { console.error("ivExpertCheck", xid, e); resp = json({ error: "Expert check failed: " + (e.message || e) }, 500); }
         if (!body.sample && xid && resp.status >= 400) {
@@ -22422,6 +22436,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           // a marker with no report and no error after 10 min = the run was killed mid-flight (e.g. the request was dropped)
           const lastError = err && (!report || err.at > report.at) ? err.error
             : pending && age >= 10 * 60 * 1000 ? "The expert check stopped before finishing (no result after 10 minutes) — run it again." : "";
+          if (report && !pending && await ivAutoHold(env, id, report).catch(e => { console.error("ivAutoHold", e.message); return false; })) await env.TRADES.put("ivfact:" + id, JSON.stringify(report));   // older reports too
           return json({ ok: true, report, running: pending && age < 10 * 60 * 1000, lastError }); }
         if (!report) return json({ error: "Run the expert check first" }, 400);
         const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
@@ -22442,6 +22457,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           await ivInvalidateBank(env,iv.cid);
           if (iv.status === "Finished") ctx.waitUntil(ivMarkDownstream(env, iv).catch(e => console.error("ivMarkDownstream", e.message)));   // the answers changed → downstream out of sync
         }
+        await ivAutoHold(env, id, report).catch(e => console.error("ivAutoHold", e.message));
         await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
         const learned = voiceEdits.length ? await voiceLogEdits(env, ctx, iv.cid, "interview expert-check", voiceEdits).catch(() => 0) : 0;
         return json({ ok: true, applied, missed, learned, answers, report });
