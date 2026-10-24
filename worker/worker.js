@@ -1513,13 +1513,13 @@ function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${S
 function ivAnswerHash(text) {text=String(text||'');let h=2166136261;for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);return text.length+':'+(h>>>0).toString(16);}
 function ivReuseMeta(text) {try{const data=JSON.parse(String(text||'[]'));return Array.isArray(data)?data.filter(x=>Number.isInteger(x.index)&&x.ivId&&x.answerHash):[];}catch(error){return [];}}
 function ivPooled(iv,i){return (iv.reused||[]).some(r=>r.index===i)||/^♻ /.test(String((iv.answers||[])[i]||''));}   // a pooled answer is background, never this asset's own words
-// HELD BACK (operator 2026-10-24): an expert-check finding the operator chose to "leave out of the write-up" — its words stay in the
-// answer (nothing deleted) but every writer cuts them. Stored on the interview as JSON [{id, q, text}].
+// HELD BACK (operator 2026-10-24): a question the operator chose to leave out of the write-up from the expert check (⊘ on a skipped
+// finding) — the answer stays (nothing deleted) but every writer skips it. Stored on the interview as JSON [{id, q, whole, text}].
 function ivHeldOf(text) { try { const d = JSON.parse(String(text || '[]')); return Array.isArray(d) ? d.filter(h => h && Number.isInteger(h.q) && String(h.text || '').trim()) : []; } catch (e) { return []; } }
 function ivWriteAnswer(iv, i) {   // the words a WRITER may use: pooled answers are background only, Held Back spans are cut
   if (ivPooled(iv, i)) return '';
   let a = String((iv.answers || [])[i] || '');
-  for (const h of (iv.held || [])) if (h.q === i) { const t = String(h.text || '').trim(); if (!t) continue;
+  for (const h of (iv.held || [])) if (h.q === i) { if (h.whole) return ''; const t = String(h.text || '').trim(); if (!t) continue;
     if (a.includes(t)) a = a.replace(t, ' '); else { const sp = ivQuoteSpan(a, t); if (sp) a = a.slice(0, sp[0]) + ' ' + a.slice(sp[1]); } }
   return a.replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;!?])/g, '$1').trim();
 }
@@ -22399,35 +22399,19 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         }
         return resp;
       }
-      // ivExpertResolve {interviewId, id, original, q, words, decision: include | leave, response} (operator 2026-10-24: "sometimes it is a
-      // controversial viewpoint but I am ok with printing it. other times I want to leave it out because I don't know how to address the
-      // expert opinion in that pass"). The finding's words are edited in place; "include" prints them as the operator's view; "leave" keeps
-      // them in the answer but holds them out of every write-up (Held Back) and banks the argument + the operator's response for premium.
-      if (body.action === "ivExpertResolve") {
+      // ivExpertHoldQuestion {interviewId, id, on} (operator 2026-10-24: "if the recommendation was skipped, there just needs to be a 'leave
+      // this whole question out' button"): the finding's whole question is held out of every write-up (Held Back, whole) — the answer is kept.
+      if (body.action === "ivExpertHoldQuestion") {
         const id = String(body.interviewId || "").replace(/-/g, ""); let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}
         const x = report && (report.items || []).find(i => i.id === body.id); if (!x) return json({ error: "That finding isn't on the current expert check" }, 400);
         await ivHeldSchema(env);
-        const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
-        const original = String(body.original || ""), words = String(body.words || "").trim().slice(0, 3000), decision = body.decision === "leave" ? "leave" : "include", response = String(body.response || "").trim().slice(0, 3000);
-        let k = -1, edited = false;
-        if (original) for (const i of [Number.isInteger(body.q) ? body.q : x.q, ...answers.map((_, j) => j)]) if (String(answers[i] || "").includes(original)) { k = i; break; }
-        if (original && k < 0) return json({ error: "Those words aren't in your answer any more — reload the interview and try again." }, 409);
-        if (k >= 0 && words && words !== original.trim()) { answers[k] = answers[k].replace(original, () => words); edited = true; }
-        const held = (iv.held || []).filter(h => h.id !== x.id); if (decision === "leave" && k >= 0) held.push({ id: x.id, q: k, text: edited ? words : original.trim() });
-        const heldChanged = JSON.stringify(held) !== JSON.stringify(iv.held || []);
-        const activeReuse = ivActiveReuse(iv.reused, answers), decorated = answers.map((a, i) => activeReuse.some(r => r.index === i) ? "♻ " + a : a);
-        if (edited || heldChanged) {
-          const ur = await ivSaveAnswerPatch(env, id, { ...(edited ? { Answers: { rich_text: ivRt(ivFormatAnswers(iv.qs, decorated)) }, "Reused From": { rich_text: ivRt(JSON.stringify(activeReuse)) } } : {}), "Held Back": { rich_text: ivRt(JSON.stringify(held)) } }, answers);
-          if (!ur.id) return json({ error: "Notion: " + (ur.message || "save failed") }, 502);
-          if (edited) await ivInvalidateBank(env, iv.cid);
-          if (iv.status === "Finished") ctx.waitUntil(ivMarkDownstream(env, iv).catch(e => console.error("ivMarkDownstream", e.message)));   // what the writer may use changed
-        }
-        if (edited && words && original) ctx.waitUntil(voiceLogEdits(env, ctx, iv.cid, "interview expert-check", [{ field: "expert-check edit", before: original, after: words }]).catch(() => 0));
-        x.resolved = { decision, words: k >= 0 ? (edited ? words : original.trim()) : "", response, edited: edited || !!(x.resolved && x.resolved.edited), at: new Date().toISOString() };
-        await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
-        let premium = false; const aid = iv.scope === "Asset" ? (iv.assetIds || [])[0] : "";
-        if (aid && (decision === "leave" || response)) { await premiumBankUpsert(env, aid, id, { ...x, quote: x.resolved.words || x.quote, question: iv.qs[x.q] || "", response }); premium = true; }
-        return json({ ok: true, answers, report, held, premium });
+        const iv = ivParse(await ivPage(id)), on = body.on !== false;
+        const held = (iv.held || []).filter(h => h.id !== x.id); if (on) held.push({ id: x.id, q: x.q, whole: true, text: "(whole answer)" });
+        const ur = await ivSaveAnswerPatch(env, id, { "Held Back": { rich_text: ivRt(JSON.stringify(held)) } }, iv.answers);
+        if (!ur.id) return json({ error: "Notion: " + (ur.message || "save failed") }, 502);
+        if (iv.status === "Finished") ctx.waitUntil(ivMarkDownstream(env, iv).catch(e => console.error("ivMarkDownstream", e.message)));   // what the writer may use changed
+        x.heldOut = on; await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
+        return json({ ok: true, report, held });
       }
       if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
         const id = String(body.interviewId || "").replace(/-/g, "");
