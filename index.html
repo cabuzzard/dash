@@ -12707,7 +12707,8 @@ function renderDev2() {
     const compactBtn = (label, tip) => `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(tip)}" style="padding:0;border:0;background:transparent;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">${esc(label)}</button>`;
     // Title column: the asset's Platform Title (else the title's name) on ONE line, clipped by the next column — never
     // wrapped; the full text on hover. Asset rows link straight into that asset's publish modal (care-gap-v2).
-    const realT = v => /^[s.…–—-]*$/.test(String(v || '')) ? '' : String(v), titleText = realT(r.platformTitle) || realT(r.title) || realT(r.assetName) || '',   // a placeholder '…' title falls back (2026-10-24) titleClip = 'display:inline-block;min-width:200px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;';
+    // a placeholder '…' title falls back to the title / asset name (2026-10-24)
+    const realT = v => /^[\s.…–—-]*$/.test(String(v || '')) ? '' : String(v), titleText = realT(r.platformTitle) || realT(r.title) || realT(r.assetName) || '', titleClip ='display:inline-block;min-width:200px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;';
     const titleCell = !r.titleId && !r.assetId ? dash : r.assetId
       ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(r.assetId)}" target="_blank" rel="noopener" title="${esc(titleText || r.assetName || 'Untitled')} — open in the publish modal" style="${titleClip}padding:3px 0;color:var(--accent);text-decoration:none;">${esc(titleText || r.assetName || 'Open asset')}</a>`
       : `<span title="${esc(titleText || 'Untitled')}" style="${titleClip}">${esc(titleText || 'Untitled')}</span>`;
