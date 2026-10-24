@@ -6174,7 +6174,8 @@ async function researchDigestGate(env,job) {
   return {snapshot:s,gate,known:[...new Map([...claimed,...prior].filter(x=>x.url).map(x=>[x.url,x])).values()].slice(0,30)};
 }
 async function researchReadContext(env,request) {
-  const prepared=await researchSearchPrepare(env,request);return prepared?researchGateBrief(prepared.gate):'';
+  const prepared=await researchSearchPrepare(env,request);
+  return prepared&&Object.keys(prepared.gate.established).length?'\nESTABLISHED TITLE RESEARCH — sourced context, do not re-derive or contradict:\n'+JSON.stringify(prepared.gate.established):'';
 }
 async function researchDigestSave(env,campaignId,titleId,sources) {
   const snapshot=await researchSnapshot(env,{campaignId,titleId}),gate=await researchGate(env,{...snapshot,kind:'title',id:titleId,fields:{},required:['News / Trends / Zeitgeist'],searchOnly:true});
