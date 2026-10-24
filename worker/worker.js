@@ -1284,9 +1284,14 @@ async function hubNewsTopicCandidates(env, cid, mains) {
     const own = prods.find(p => hierarchyText(p.properties?.["Topic ID"]?.rich_text) === tid && model.productIds.has(hierarchyId(p.id)) && !mainIds.has(hierarchyId(p.id))
       && !["Idea", "Archived"].includes(p.properties?.Status?.select?.name || "") && !p.properties?.Archived?.checkbox);
     const base = own ? { id: hierarchyId(own.id), name: txt(own, "Name"), desc: txt(own, "Description") } : mains[0];
-    out.push({ ...base, kw: [name, ...kw], topic: name });
+    out.push({ ...base, kw: [name, name.split(/\s+/).slice(0, 2).join(" "), ...kw], topic: name, topicKw: kw });
   }
   for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }   // a different order each run
+  // the hub's CORE words (in 2+ topic names, else the most frequent): broad one-word searches ("aquarium", "guitar") that find news
+  // when the topic phrases don't, and every lateral story must mention one of them so a broad search can't wander off-niche
+  const cnt = {}; out.forEach(c => new Set(String(c.topic + " " + (c.topicKw || []).join(" ")).toLowerCase().replace(/[^a-z\s]/g, " ").split(/\s+/).filter(w => w.length >= 4 && !FN_SERVICE_WORDS.has(w) && !(typeof KW_STOP !== "undefined" && KW_STOP.has(w)))).forEach(w => { cnt[w] = (cnt[w] || 0) + 1; }));
+  const ranked = Object.entries(cnt).sort((a, b) => b[1] - a[1]), core = (ranked.filter(x => x[1] >= 2).length ? ranked.filter(x => x[1] >= 2) : ranked).slice(0, 4).map(x => x[0]);
+  if (core.length) { out.forEach(c => { c.core = core; }); out.push({ ...mains[0], kw: core, topic: "", core }); }
   return out.slice(0, 12);
 }
 async function writeHubNewsPost(env, cid, opts = {}) {
@@ -1328,7 +1333,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
     let story = null;
     for (const x of (await freeNewsSearch(env, fnNewsQueries([...(product.kw || []), ...hubKw, product.name]), { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
-      const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
+      const text = await fnArticleText(x.url); if (text.length >= 600 && (!product.core || product.core.some(w => (String(x.title || "") + " " + text).toLowerCase().includes(w)))) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone; a lateral one must mention a hub core word
     if (!story && opts.requireStory) {
       if (k === cands.length - 1 && !lateral && opts.lateral !== false) { lateral = true; cands.push(...await hubNewsTopicCandidates(env, cid, mains)); }   // go wider: the hub's other topics
       if (k === cands.length - 1) return { skipped: true, reason: "no readable news story this week" + (lateral ? " (main products + " + (cands.length - nMain) + " keyword topics tried)" : ""), hub: hub.name };
