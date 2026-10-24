@@ -13,6 +13,12 @@ test('edited answers win over older copies and source dates cannot be laundered 
  const c=context(),old=pair(1,{q:'Natural planted aquarium?',a:'Older natural aquarium answer.',finishedAt:new Date(Date.now()-864e5).toISOString()}),fresh={...old,a:'Fresh natural aquarium answer.',finishedAt:new Date().toISOString(),titleId:'other'};
  assert.equal(c.ivReuse([old,fresh],{text:'Natural planted aquarium',titleId:'title',cid:'hub'})[0].a,fresh.a);
  const meta={index:0,ivId:'old-source',finishedAt:old.finishedAt,answerHash:c.ivAnswerHash(old.a)};assert.equal(c.ivActiveReuse([meta],[old.a]).length,1);assert.equal(c.ivActiveReuse([meta],['Fresh replacement']).length,0);
+ assert.notEqual(c.ivAnswerHash('The aquarium works 👍'),c.ivAnswerHash('The aquarium works 👎'),'emoji edits also replace reuse attribution');
+});
+test('a newly completed reused interview passes the existing write gate in the same request',async()=>{
+ const ready={status:'Finished',qs:['Question?'],answers:['Reused actual answer'],reused:[{index:0,ivId:'source'}]},state={eligible:true,titleId:'title',assetId:'asset',type:'Topical Post',hasFinishedInterview:false,hasAnsweredInterview:false,own:[],page:{properties:{}}};
+ const c=context({TOPICAL_MODAL_WRITE:Symbol(),topicalPublishState:async()=>state,requireHierarchyPlacement:async()=>{},ivCreateForAsset:async()=>({interviews:[ready]}),ivRid:()=>'',titleResearchBlock:async()=>'',extractPillarContent:async()=>'',ivHdr:()=>({})});vm.runInContext(fn('topicalWriteInputs'),c);
+ const result=await c.topicalWriteInputs({TRADES:kv()},'asset');assert.equal(result.needsInterview,undefined);assert.equal(result.state.hasFinishedInterview,true);assert.match(result.interview,/Reused actual answer/);
 });
 test('hub answer bank accepts only finished answers, caches ten minutes, and never mixes client/operator banks',async()=>{
  const store=kv();let reads=0;const rows=[{id:'iv',cid:'hub',status:'Finished',qs:['Natural aquarium?'],answers:['A natural aquarium answer.'],scope:'Title',titleId:'t',finishedAt:new Date().toISOString()},{id:'pending',cid:'hub',status:'Flagged',qs:['Pending?'],answers:['Not finished']},{id:'other',cid:'other',status:'Finished',qs:['Other?'],answers:['Other answer']}];
