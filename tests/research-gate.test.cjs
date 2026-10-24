@@ -56,6 +56,9 @@ test('generation search removes only its search tool when fresh and pins establi
  await c.researchModelFetch({__researchRequest:{action:'generateAsset',titleId:'t'}},'https://api.anthropic.com/v1/messages',{body:JSON.stringify({tools:[{name:'web_search'},{name:'write_asset'}],messages:[{role:'user',content:'write'}]})});
  assert.deepEqual(sent.tools,[{name:'write_asset'}]);assert.match(sent.messages[0].content,/known/);assert.equal(sent.messages[1].content,'write');
 });
+test('a writer without a search tool receives established context only, never instructions to invent gap research',async()=>{
+ const c=context();c.researchSearchPrepare=async()=>({gate:{established:{Facts:'known'},needed:['new sources']}});const text=await c.researchReadContext({},{});assert.match(text,/known/);assert.doesNotMatch(text,/Research ONLY|new sources/);
+});
 test('search write-back contains tool-returned evidence, never the generated asset copy',async()=>{
  const store=kv();let saved;const c=context({fetch:async()=>Response.json({content:[{type:'web_search_tool_result',content:[{type:'web_search_result',title:'Primary source',url:'https://source.example/report'}]},{type:'text',text:'Sales copy must not become research'}]})});
  c.researchSearchPrepare=async()=>({snapshot:{titleId:'t'},gate:{gate:'research',needed:['Key Claims / Sources'],established:{}}});c.researchWriteTitle=async(e,s,g,fields)=>{saved=fields;};

@@ -80,7 +80,7 @@ textarea:focus, input[type=text]:focus { outline: 2px solid var(--accent); outli
 <body>
 <div class="wrap" id="app"><div class="busy"><div class="spin"></div>Loading…</div></div>
 <div class="sticky hidden" id="foot"><div class="in" id="footIn"></div></div>
-<script src="../../shared/interview-panel.js?v=2026101201"></script>
+<script src="../../shared/interview-panel.js?v=2026102301"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const KEY = new URLSearchParams(location.search).get("k") || "";
@@ -186,7 +186,7 @@ async function viewInterview(d) {
     <div id="err" class="msg err hidden"></div>
     ${it.generating ? `<div class="msg info">Your script is being written. Reload in a minute or two.</div>` : ""}
     ${it.qs.map((q, i) => `<div class="card"><label class="q" for="a${i}"><span class="qn">${i + 1}.</span>${esc(q)}</label>
-      <textarea id="a${i}" rows="5" oninput="answerChanged()">${esc(it.answers[i] || "")}</textarea></div>`).join("")}
+      ${(it.reused||[]).some(x=>x.index===i)?`<div class="lede" style="font-size:13px;color:var(--ok);">♻ Reused from <a href="#/s/${encodeURIComponent(String(it.reused.find(x=>x.index===i).ivId).replace(/^studio:/,''))}">your earlier interview</a>. Edit it to give a fresh answer.</div>`:''}<textarea id="a${i}" rows="5" oninput="answerChanged()">${esc(it.answers[i] || "")}</textarea></div>`).join("")}
     <div id="expertHost"></div>
     ${it.status === "new" ? `<button class="link" style="color:var(--warn);" onclick="deleteInterview()">Delete this interview</button>` : ""}`;
   updateFoot();
