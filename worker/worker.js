@@ -1267,6 +1267,29 @@ async function hubNewsCount(env, cid) {
   return rows.filter(r => { const t = r.properties?.["Asset Type"]?.select?.name || "", st = r.properties?.["Asset Status"]?.select?.name || "";
     return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^(publish|review)/i.test(st); }).length;
 }
+// Lateral news search (operator 2026-10-23: "expand laterally through the hub keywords"): when no main product finds a readable
+// story, try the hub's OTHER placed keyword topics, each with its own name + Cluster Keywords. The post goes on the topic's own
+// placed, live product when it has one, else on the main product (still placed), and names the topic it covers.
+async function hubNewsTopicCandidates(env, cid, mains) {
+  const dc = kwDashId(cid), model = await hierarchyForHub(env, cid).catch(() => null); if (!model) return [];
+  const [topics, prods] = await Promise.all([
+    notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dc } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }).catch(() => [])]);
+  const txt = (p, k) => (p.properties?.[k]?.rich_text || p.properties?.[k]?.title || []).map(t => t.plain_text).join("").trim();
+  const mainIds = new Set(mains.map(m => hierarchyId(m.id))), out = [];
+  for (const t of topics) {
+    const tid = hierarchyId(t.id); if (!model.topic(tid)) continue;   // only topics placed in a cluster
+    const name = txt(t, "Name"); if (!name) continue;
+    const kw = txt(t, "Cluster Keywords").split(/[,
+]/).map(x => x.trim()).filter(x => x && x.length < 60).slice(0, 4);
+    const own = prods.find(p => hierarchyText(p.properties?.["Topic ID"]?.rich_text) === tid && model.productIds.has(hierarchyId(p.id)) && !mainIds.has(hierarchyId(p.id))
+      && !["Idea", "Archived"].includes(p.properties?.Status?.select?.name || "") && !p.properties?.Archived?.checkbox);
+    const base = own ? { id: hierarchyId(own.id), name: txt(own, "Name"), desc: txt(own, "Description") } : mains[0];
+    out.push({ ...base, kw: [name, ...kw], topic: name });
+  }
+  for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }   // a different order each run
+  return out.slice(0, 12);
+}
 async function writeHubNewsPost(env, cid, opts = {}) {
   if(opts.assetId){const page=await ivPage(opts.assetId);return writeExistingGeneratedAsset(env,page,await assetWriterInfo(env,page));}
   await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
@@ -1297,19 +1320,25 @@ async function writeHubNewsPost(env, cid, opts = {}) {
       if (txt) digestBlock = `\n\nTHIS PERIOD'S PREMIUM DIGEST (one source among others — it is premium content: you may use at most one or two of its facts, naming the publisher; never reproduce or summarise its analysis; the article stays an original SEO piece):\n${txt.slice(0, 3500)}`; }
   } catch (e) {}
   let t = null, product = null, storyUsed = null;
-  for (let k = 0; k < mains.length && !t; k++) {
-    product = mains[(have + k) % mains.length];
+  const cands = mains.slice(), nMain = mains.length; let lateral = false;
+  for (let k = 0; k < cands.length && !t; k++) {
+    product = k < nMain ? mains[(have + k) % nMain] : cands[k];
+    const topicLine = product.topic ? `\nKeyword topic this post covers: ${product.topic} — write it for that topic's searchers; tie back to ${product.name} only where it genuinely fits.` : "";
     const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.${digestBlock}`;
     // free news tier (2026-10-23): ground the post in one real article from this week (Google News RSS + GDELT, no model call)
     const usedK = "hubnews:used:" + cid, used = (await env.TRADES.get(usedK, "json").catch(() => null)) || [];
     let story = null;
     for (const x of (await freeNewsSearch(env, fnNewsQueries([...(product.kw || []), ...hubKw, product.name]), { days: 7, max: 15 }).catch(() => [])).filter(x => !used.includes(x.url))) {
       const text = await fnArticleText(x.url); if (text.length >= 600) { story = { ...x, text }; break; } }   // a story we can't read is skipped — never written from a headline alone
-    if (!story && opts.requireStory) { if (k === mains.length - 1) return { skipped: true, reason: "no readable news story this week", hub: hub.name }; continue; }
+    if (!story && opts.requireStory) {
+      if (k === cands.length - 1 && !lateral && opts.lateral !== false) { lateral = true; cands.push(...await hubNewsTopicCandidates(env, cid, mains)); }   // go wider: the hub's other topics
+      if (k === cands.length - 1) return { skipped: true, reason: "no readable news story this week" + (lateral ? " (main products + " + (cands.length - nMain) + " keyword topics tried)" : ""), hub: hub.name };
+      continue;
+    }
     if (story) { await env.TRADES.put(usedK, JSON.stringify([...used, story.url].slice(-200))).catch(() => {}); storyUsed = story; }
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: story ? story.title : product.name,
-      newsBody: story ? lead + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; report ONLY what the article text below says; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}\n\nSOURCE ARTICLE TEXT (the only source of facts):\n${story.text}` : lead,
-      ...(story ? { newsSource: [story.publisher, story.url].filter(Boolean).join(" "), newsDate: story.date || "" } : {}), allowDuplicate: k === mains.length - 1 });
+      newsBody: story ? lead + topicLine + `\n\nTHIS WEEK'S REAL NEWS ITEM — build the post on it (name the publisher; report ONLY what the article text below says; never invent beyond it): ${story.title} — ${story.publisher || "source"}${story.date ? " (" + story.date + ")" : ""} ${story.url}\n\nSOURCE ARTICLE TEXT (the only source of facts):\n${story.text}` : lead + topicLine,
+      ...(story ? { newsSource: [story.publisher, story.url].filter(Boolean).join(" "), newsDate: story.date || "" } : {}), allowDuplicate: k === cands.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
   }
@@ -1336,7 +1365,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
   const issue = opts.noIssue ? { skipped: true } : await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "", digest: digestBlock }).catch(e => ({ error: e.message }));
-  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, story: storyUsed ? { title: storyUsed.title, publisher: storyUsed.publisher, url: storyUsed.url, date: storyUsed.date, via: storyUsed.via } : null, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
+  return { ok: true, hub: hub.name, product: product.name, topic: product.topic || "", headline: t.headline, titleId: t.titleId, assetId, liveUrl, story: storyUsed ? { title: storyUsed.title, publisher: storyUsed.publisher, url: storyUsed.url, date: storyUsed.date, via: storyUsed.via } : null, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
 }
 // rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
 // → the title renamed + its pillar rewritten (grounded) → refreshBlogAssetFromPillar republishes under the existing slug →
