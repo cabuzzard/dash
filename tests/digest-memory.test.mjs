@@ -42,3 +42,13 @@ test('successful paid provider responses are checkpointed, so a retry makes zero
 test('existing findings seed the bank without researching again and retain the actual earlier run date',async()=>{
  const store=kv(),c=context(),env={TRADES:store};await store.put('digest:title:hub','title');await store.put('digest:sources:title',JSON.stringify({at:'2026-10-16T05:00:00Z',sources:[{claim:'Earlier finding',url:'https://example.org/old'}]}));await c.digestMemorySeed(env,'hub');await c.digestMemorySeed(env,'hub');const m=await c.digestMemory(env,'hub');assert.equal(m.items.length,1);assert.equal(m.lastRun.at,'2026-10-16T05:00:00Z');
 });
+test('actual Pacific period carries minutes and Monday remains in Sunday research window',()=>{
+ const start=source.indexOf('function adPeriod('),fn=source.slice(start,source.indexOf('\n}',start)+2);
+ for(const [iso,hour,minute,open]of [['2026-10-26T03:45:00Z',20,45,true],['2026-10-26T12:30:00Z',5,30,true],['2026-10-26T13:00:00Z',6,0,false]]){class Clock extends Date{constructor(...args){super(...(args.length?args:[iso]));}}const c=vm.createContext({Date:Clock,Intl,Object});vm.runInContext(fn,c);const p=c.adPeriod();assert.equal(p.key,'2026-10-25');assert.equal(p.hour,hour);assert.equal(p.minute,minute);assert.equal(p.open,open);}
+});
+test('Current notes are never rewritten, and absent marketplace evidence is held with payload and reason',async()=>{
+ const store=kv(),c=context(),env={TRADES:store};let writes=0;c.productNotesDb=async()=> 'db';c.productNotesRead=async()=>[{id:'prior',topicId:'topic',form:'Checklist',status:'Current',staleAfter:'2027-01-01'}];c.newsletterNotion=async()=>{writes++;throw Error('Unexpected write');};
+ const plan={topics:[{id:'topic',name:'Housing'}],gaps:[],evidence:[]},note={topicId:'topic',form:'Checklist',tier:'Reformat',platform:'Etsy',trend:'Steady'};
+ let result=await c.productNotesSave(env,'hub',plan,[note],'run');assert.equal(result.saved[0].skipped,'Current');assert.equal(writes,0);
+ result=await c.productNotesSave(env,'hub',plan,[{...note,form:'Workbook'}],'run');assert.equal(result.errors.length,1);assert.equal(writes,0);const held=[...store.data.entries()].find(([k])=>k.startsWith('product:marketnotes:held:'));assert.ok(held);assert.match(JSON.parse(held[1]).reason,/No fetched listing evidence/);assert.equal(JSON.parse(held[1]).payload.form,'Workbook');
+});
