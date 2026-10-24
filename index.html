@@ -11855,9 +11855,15 @@ const DEV2_COLS = [
   { key: 'ivTier',       label: 'Interview tier' },
   { key: 'assetSync',    label: 'Asset sync' },
   { key: 'nextStep',     label: 'Next step' },
+  { key: 'notion',       label: 'Notion' },   // every row's own Notion record (operator 2026-10-24)
 ];
 // colour for a status-vector value: green = done/ok, orange = needs you, red = rebuild, grey = none / n/a
 // Interviews cell: red ⚑ = no answers yet · count only = answered, not rewritten yet · green ⚑ = interviewed and rewritten from it
+// Notion column: the row's own record — interview / asset / title / product
+function dev2NotionCell(r) {
+  const id = r.kind === 'interview' ? r.interviewId : r.kind === 'asset' ? r.assetId : r.kind === 'title' ? r.titleId : r.kind === 'product' ? r.productId : (r.assetId || r.titleId || r.productId);
+  return id ? `<a href="https://www.notion.so/${esc(String(id).replace(/-/g, ''))}" target="_blank" rel="noopener" title="Open this ${esc(r.kind || 'record')} in Notion" style="font-size:11px;color:var(--text3);text-decoration:none;">↗</a>` : '<span style="color:var(--text3);">—</span>';
+}
 function dev2IvCell(r) {
   const v = r.interviews; if (!v || !r.ivState) return dev2VecCell(v);
   const c = r.ivState === 'flag' ? '#e5534b' : r.ivState === 'done' ? '#4ade80' : 'var(--text)';
@@ -12732,6 +12738,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${appCell(r.inputApp)}</td>
       <td style="padding:6px 10px;">${dev2HubPublishCell(r)}</td>
       ${['research', 'interviews', 'pillarStatus', 'ivTier', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${k === 'interviews' ? dev2IvCell(r) : dev2VecCell(r[k])}</td>`).join('')}
+      <td style="padding:6px 8px;text-align:center;">${dev2NotionCell(r)}</td>
     </tr>`;
   };
   let tbody = '';
