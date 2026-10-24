@@ -1251,7 +1251,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
         <select id="pubBufferType" class="finput" style="display:none;width:auto;" title="Instagram/Facebook post type — Auto = Reel for videos, Post for images/carousels"><option value="">Auto</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option></select>
         <select id="pubBufferChannel" onchange="pubBufferTypeVis()" class="finput" style="display:none;width:auto;max-width:200px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
-        <button class="btn" type="button" onclick="requestAssetInterview(this)" title="Request this asset's OWN interview — for a piece that needs your first-hand answers beyond its main offering's interview">🎤 Request interview</button>
+        <button class="btn" type="button" id="pubOpenIvBtn" style="display:none;" onclick="pubOpenInterview()" title="Open this asset's current interview — your saved answers, nothing regenerated">🎤 Open interview</button>
+        <button class="btn" type="button" onclick="requestAssetInterview(this)" title="Request a NEW structure-first interview for this asset — regenerates it: fresh outline + questions, your answered questions carried over, the old one superseded">🎤 Request interview</button>
         <button class="btn" type="button" id="pubPremiumBtn" style="display:none;" onclick="pubCreatePremiumTake(this)" title="A new Premium Take asset on this same title — its interview is built from the arguments you saved for premium in this asset's expert check">★ Premium Take</button>
         <button class="btn" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save, then create a DRAFT in this campaign's Buffer queue — review and schedule it in Buffer">📤 Send to Buffer</button>
         <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
@@ -6474,7 +6475,7 @@ function openPublishAssetModal(assetId) {
   const myToken = ++PUB_OPEN_TOKEN;
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
   { const nl = document.getElementById('pubNotionLink'); if (nl) nl.href = 'https://www.notion.so/' + String(assetId).replace(/-/g, ''); }
-  pubPremiumLoad(assetId);
+  pubPremiumLoad(assetId); pubOpenIvLoad(assetId);
   { const bs = document.getElementById('pubBodySave'); if (bs) bs.disabled = true; const bm = document.getElementById('pubBodyMsg'); if (bm) bm.textContent = ''; }
   document.getElementById('pubStatus').value = data.status || 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
@@ -6681,6 +6682,13 @@ async function pubSaveBody(btn){
   catch(e){msg.textContent='Not saved: '+e.message;btn.disabled=false;}
 }
 // ★ Premium Take (2026-10-24): this asset's premium argument bank → a new asset on the same title with its own argument-led interview
+// 🎤 Open interview (2026-10-24): the asset's current interview, opened as it is (Request interview regenerates)
+let PUB_IV_ID='';
+async function pubOpenIvLoad(aid){const b=document.getElementById('pubOpenIvBtn');if(!b)return;b.style.display='none';PUB_IV_ID='';
+  try{const r=await w('getInterviews',{assetId:aid});if(pubAssetId!==aid)return;const L=(r.interviews||r.list||[]).filter(x=>x&&x.id&&(x.assetIds||[]).map(i=>String(i).replace(/-/g,'')).includes(String(aid).replace(/-/g,'')));
+    if(!L.length)return;const iv=L.sort((a,b)=>String(b.created||'').localeCompare(String(a.created||'')))[0];PUB_IV_ID=iv.id;
+    const a=(iv.answers||[]).filter(x=>String(x||'').trim()).length,q=(iv.qs||[]).length;b.textContent='🎤 Open interview'+(q?' ('+a+'/'+q+')':'');b.style.display='';}catch(e){}}
+function pubOpenInterview(){if(!PUB_IV_ID||!window.InterviewPanel)return;const aid=pubAssetId;window.InterviewPanel.open({call:(a,b)=>w(a,b).catch(e=>({error:e.message})),interviewId:PUB_IV_ID,onDone:()=>pubOpenIvLoad(aid)});}
 async function pubPremiumLoad(aid){const b=document.getElementById('pubPremiumBtn');if(!b)return;b.style.display='none';
   try{const r=await w('premiumBank',{op:'list',assetId:aid});if(pubAssetId!==aid)return;const n=(r.bank||[]).length;if(!n)return;b.style.display='';b.textContent='★ Premium Take ('+n+' argument'+(n===1?'':'s')+')'+(r.premiumTake?' · made':'');b.dataset.made=r.premiumTake||'';}catch(e){}}
 async function pubCreatePremiumTake(btn){const aid=pubAssetId;

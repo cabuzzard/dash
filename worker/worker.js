@@ -22261,7 +22261,8 @@ Give a YouTube title in that format. Call submit_questions.`;
       if(body.action==='ivReuseTest'){if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);return json(await ivReuseDiagnostic(env,body));}
       if (body.action === "getInterviews") {
         const f = [];
-        if (body.productId) f.push({ property: "Product", relation: { contains: ivDash(body.productId) } });
+        if (body.assetId) f.push({ property: "Asset", relation: { contains: ivDash(body.assetId) } });   // one asset's own interview (publish modal 🎤 Open interview)
+        else if (body.productId) f.push({ property: "Product", relation: { contains: ivDash(body.productId) } });
         else if (body.titleId) f.push({ property: "Title", relation: { contains: ivDash(body.titleId) } });
         else if (body.campaignId) f.push({ property: "Campaign", relation: { contains: ivDash(body.campaignId) } });
         if (body.status) f.push({ property: "Status", select: { equals: String(body.status) } });
