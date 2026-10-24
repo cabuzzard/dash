@@ -12077,7 +12077,8 @@ function hubCheckGoal(slug, t) { const g = HUBCHECK_GOALS && (HUBCHECK_GOALS.goa
 // offered on every hub even with nothing deployed yet (operator 2026-10-23): the Client Studio app, the listing types (Fiverr gigs are
 // "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
 // + 'Profile parent' (2026-10-23): the Profile collector (Pillar Type "Profile") — one platform profile (Fiverr, Upwork…) per hub
-const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
+// + 'Premium parent' (2026-10-24): a Premium Take — the Product parent built from an asset's banked expert-check arguments
+const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent', 'Premium parent'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
