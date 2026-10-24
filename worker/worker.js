@@ -1105,9 +1105,22 @@ async function studioLinkFromKey(env, key) {
   const link = await env.TRADES.get("client:link:" + id, "json").catch(() => null);
   return link && !link.revoked ? link : null;
 }
+// A working title per studio interview (operator 2026-10-23: "its title to relate back to the entry question topic"): written at
+// New script from the client's focus (else from the questions), shown in the studio + dash until the script's own title exists,
+// and handed to the script writer so the final title stays on that subject. One short Claude call.
+async function studioWorkingTitle(env, topic, direction, qs) {
+  try {
+    const o = await hcClaude(env, `Write a short working title (max 70 characters) for ONE interview episode.
+SERIES / OFFER it belongs to (context only — don't make it the title): ${topic}
+${direction ? "THE CLIENT'S ENTRY TOPIC — the title must be about exactly this:\n" + direction : "No topic was given — title it for what these interview questions cover:\n- " + (qs || []).slice(0, 6).join("\n- ")}
+Plain and specific, in the audience's own words: a question or a clear statement. No quotation marks, no colon subtitle.`,
+      "submit_title", { type: "object", required: ["title"], properties: { title: { type: "string" } } }, 200);
+    return String(o.title || "").replace(/^["'“]+|["'”]+$/g, "").trim().slice(0, 90);
+  } catch (e) { console.error("studioWorkingTitle:", e.message); return ""; }
+}
 function studioPublicItem(x) {
   const answered = (x.answers || []).filter(a => String(a || "").trim()).length;
-  return { d: x.d, topic: x.topic, direction: x.direction || "", qs: x.qs || [], answers: x.answers || [], answered, assetId: x.assetId || "", title: x.title || "", minutes: x.minutes || 0,
+  return { d: x.d, topic: x.topic, workingTitle: x.workingTitle || "", direction: x.direction || "", qs: x.qs || [], answers: x.answers || [], answered, assetId: x.assetId || "", title: x.title || "", minutes: x.minutes || 0,
     at: x.at, updatedAt: x.updatedAt || x.at, generating: !!(x.generating && Date.now() - x.generating < 10 * 60000),
     status: x.assetId ? "script" : answered ? "answering" : "new" };
 }
@@ -1135,6 +1148,7 @@ async function handleStudio(env, body) {
     const r = await studioInner(env, "longformInterview", { question: topic, format: "interview", campaignId: link.campaignId, productId: link.productId, count: 12, fresh: true, existing, direction });
     if (!r || r.error || !(r.questions || []).length) return { error: (r && r.error) || "No questions came back. Try again." };
     const it = { d: Math.random().toString(36).slice(2, 10), topic, direction, qs: r.questions.map(q => String(q).slice(0, 400)).slice(0, 40), answers: [], at: Date.now() };
+    it.workingTitle = await studioWorkingTitle(env, topic, direction, it.qs);
     items.push(it); await saveItems();
     return { ok: true, item: studioPublicItem(it) };
   }
@@ -1185,7 +1199,8 @@ async function handleStudio(env, body) {
     const r = await studioInner(env, "generateLongformScript", { titleId: link.titleId, campaignId: link.campaignId, productId: link.productId, methodId: STUDIO_INTERVIEW_METHOD_ID,
       question: it.topic, format: "interview", layout: "stage", interview,
       // the script's title follows the client's entry topic (their focus), else what their answers actually cover — not the link's title (2026-10-23)
-      titleFocus: it.direction ? `the client's chosen focus — "${it.direction}"` : "the specific subject the interview answers below actually cover (no focus was given)" });
+      titleFocus: [it.workingTitle ? `the episode's working title "${it.workingTitle}"` : "", it.direction ? `the client's chosen focus — "${it.direction}"` : ""].filter(Boolean).join("; ")
+        || "the specific subject the interview answers below actually cover (no focus was given)" });
     items = (await env.TRADES.get(KI, "json").catch(() => null)) || items;   // re-read: answers may have autosaved meanwhile
     const cur = items.find(x => x.d === it.d) || it; delete cur.generating;
     if (!r || r.error || !r.assetId) { await saveItems(); return { error: (r && r.error) || "The script didn't come back. Try again." }; }
@@ -32025,8 +32040,22 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const its = (await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || [];
         return json({ ok: true, link: { id: l.id, label: l.label, hubName: l.hubName, campaignId: l.campaignId, productName: l.productName, titleName: l.titleName, revoked: !!l.revoked, at: l.at,
           url: l.revoked ? "" : `https://cabuzzard.github.io/dash/web/studio/?k=${l.id}.${(await hmacHex(HMAC_SECRET, "cl:" + l.id)).slice(0, 32)}` },
-          items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title, topic: p.topic, status: p.status, generating: p.generating,
+          items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title || p.workingTitle, topic: p.topic, status: p.status, generating: p.generating,
             answered: p.answered, questions: p.qs.length, assetId: p.assetId, minutes: p.minutes, updatedAt: p.updatedAt, expert: !!x.expert }; }) });
+      }
+      // studioWorkingTitles {force?} — every studio interview without a script title gets a working title (force: rewrite existing ones)
+      if (body.action === "studioWorkingTitles") {
+        const out = [];
+        for (const k of (await env.TRADES.list({ prefix: "client:items:" })).keys) {
+          const items = (await env.TRADES.get(k.name, "json").catch(() => null)) || []; let changed = false;
+          for (const x of items) {
+            if (x.title || (x.workingTitle && !body.force)) continue;
+            const wt = await studioWorkingTitle(env, x.topic, x.direction || "", x.qs || []);
+            if (wt) { x.workingTitle = wt; changed = true; out.push({ d: x.d, workingTitle: wt }); }
+          }
+          if (changed) await env.TRADES.put(k.name, JSON.stringify(items));
+        }
+        return json({ ok: true, titled: out });
       }
       // studioAssetBackfill {dryRun?} — every studio link made before 2026-10-23 gets its Client Studio asset
       if (body.action === "studioAssetBackfill") {
@@ -32122,7 +32151,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         return json({ ok: true, links: await Promise.all(links.reverse().map(async l => {
           const its = (await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || [];
           return { ...l, url: l.revoked ? "" : await urlFor(l.id), count: its.length,
-            ...(body.withItems ? { items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title, topic: p.topic, direction: p.direction, status: p.status,
+            ...(body.withItems ? { items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title || p.workingTitle, topic: p.topic, direction: p.direction, status: p.status,
               generating: p.generating, answered: p.answered, questions: p.qs.length, assetId: p.assetId, minutes: p.minutes, updatedAt: p.updatedAt }; }) } : {}) };
         })) });
       }

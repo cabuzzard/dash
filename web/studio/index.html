@@ -145,7 +145,7 @@ async function viewList() {
     <div id="err" class="msg err hidden"></div>
     <button class="primary" style="width:100%;margin:0 0 18px;font-size:17px;padding:16px;" onclick="go('#/new')">+ New script</button>
     ${items.length ? `<div class="eyebrow" style="margin:0 0 8px;">Your scripts</div>` + items.map(x => `<button class="card item" onclick="go('${x.assetId ? "#/s/" : "#/i/"}${x.d}')">
-        <div class="t">${esc(x.title || x.direction || x.topic)}</div>
+        <div class="t">${esc(x.title || x.workingTitle || x.direction || x.topic)}</div>
         <div class="meta"><span class="pill ${x.status}">${x.generating ? "Writing script…" : STATUS[x.status]}</span>
           ${x.status !== "script" ? `<span>${x.answered} of ${x.qs.length} answered</span>` : x.minutes ? `<span>about ${x.minutes} min</span>` : ""}
           <span>· ${when(x.updatedAt)}</span></div></button>`).join("")
@@ -180,7 +180,7 @@ async function viewInterview(d) {
   if (it.assetId) return go("#/s/" + d);
   CUR = it; dirty = false;
   app.innerHTML = header() + `<div class="back"><button class="link" onclick="go('#/')">← All scripts</button></div>
-    <h2>${esc(it.topic)}</h2>
+    <h2>${esc(it.workingTitle || it.topic)}</h2>
     ${it.direction ? `<p style="margin:0 0 8px;color:var(--text3);font-size:14px;">Focus: ${esc(it.direction)}</p>` : ""}
     <p class="lede">Answer in your own words, the way you'd explain it to a client. Full paragraphs work best: stories, examples, what you've seen. Skip any question you don't want to answer. Your answers save as you type.</p>
     <div id="err" class="msg err hidden"></div>
