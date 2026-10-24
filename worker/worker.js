@@ -2345,6 +2345,10 @@ async function writeContractAsset(env,assetId) {
     const again=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nYOUR PREVIOUS DRAFT has these problems — fix exactly these, changing nothing else:\n- '+c.problems.join('\n- ')+'\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
     if(again){const f2=fieldsOf(again),c2=check(f2);if(c2.score<c.score){fields=f2;c=c2;corrected=true;}}
   }
+  // a short field over its "≤ N characters" rule (a meta Description) is trimmed at a sentence, else a word, boundary — 2026-10-24
+  let trimmed=false;for(const {name:fn,rule} of contract){const m=/≤\s*(\d+)\s+characters/i.exec(rule),v=fields[fn];if(!m||typeof v!=='string'||Array.from(v).length<=+m[1]||v.length>600)continue;
+    const lim=+m[1],cut=v.slice(0,lim),sent=cut.match(/^[\s\S]*[.!?](?=\s|$)/);fields[fn]=sent&&sent[0].length>=lim*0.6?sent[0].trim():cut.replace(/\s+\S*$/,'').replace(/[\s,;:—–-]+$/,'')+'.';if(Array.from(fields[fn]).length>lim)fields[fn]=Array.from(fields[fn]).slice(0,lim).join('');trimmed=true;}
+  if(trimmed)c=check(fields);
   const keptPct=c.kept,seo=c.seo,violations=c.violations;
   // Only contract properties and Method can be saved; operational metadata is never a writing field.
   const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
@@ -52834,6 +52838,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if(Object.keys(props).length)await kwNotionPatch(env,body.assetId,props);
         const page=await ivPage(body.assetId),row=(await writingMethod(env,page).catch(()=>({}))).row,ws=writeStyleOf(page,row);
         return json({ok:true,keep:ws.keep,purpose:ws.purpose,default:ws.default,own:ws.own,keptPct:page.properties?.['Interview Kept %']?.number??null});
+      }
+      // writeAssetLast {assetId, since?} → the latest write-log entry for this asset (the modal's fallback when a long write's reply is lost)
+      if (body.action === "writeAssetLast") {
+        const aid = hubAssetId(body.assetId || ""), since = String(body.since || ""), log = (await env.TRADES.get("writeasset:log", "json").catch(() => null)) || [];
+        const run = log.find(r => hubAssetId(r.assetId || "") === aid && (!since || String(r.timestamp || "") > since)) || null;
+        return json({ ok: true, run });
       }
       if (body.action === "writeAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);

@@ -6699,19 +6699,27 @@ async function pubCreatePremiumTake(btn){const aid=pubAssetId;
     if(r.interview&&window.InterviewPanel)window.InterviewPanel.open({call:(a,b)=>w(a,b).catch(e=>({error:e.message})),interviewId:r.interview.id});}
   catch(e){document.getElementById('pubAssetStatus').textContent='Premium Take not made: '+e.message;}
   btn.disabled=false;btn.textContent=t;}
+// a long write can outlive its reply (two writing passes + hub republish): on a lost reply, ask the server's write log (2026-10-24)
+async function pubWriteCall(aid){const since=new Date(Date.now()-15000).toISOString();
+  try{return await w('writeAsset',{assetId:aid});}
+  catch(e){if(!/unexpected response|failed to fetch|networkerror|load failed/i.test(e.message))throw e;
+    const result=document.getElementById('pubWriteResult');
+    for(let i=0;i<24;i++){if(result&&pubAssetId===aid)result.textContent='Still writing on the server — checking… ('+(i*10)+'s)';await new Promise(r=>setTimeout(r,10000));
+      const r=await w('writeAssetLast',{assetId:aid,since}).catch(()=>null);if(r&&r.run)return {ok:true,violations:r.run.violations||[],written:r.run.written,recovered:true};}
+    throw new Error('The write is taking unusually long — reopen the asset in a few minutes to see it.');}}
 async function pubWriteAssetNow(button){
   const aid=pubAssetId,result=document.getElementById('pubWriteResult');
   if(button.dataset.rewrite==='yes'&&!confirm('Rewrite this asset? The current text is replaced (a published post stays published at the same address and is republished).'))return;
   button.disabled=true;result.textContent='Writing…';
   try{
-    const written=await w('writeAsset',{assetId:aid});if(pubAssetId!==aid)return;
+    const written=await pubWriteCall(aid);if(pubAssetId!==aid)return;
     if(written.needsInterview){result.textContent="This asset's interview isn't answered yet";return;}
     if(written.error==='unmapped'){button.title=written.reason;button.dataset.unmapped='yes';result.textContent=written.reason;return;}
     if(written.error)throw new Error(written.reason||written.error);
     const fresh=await w('getAsset',{assetId:aid});if(pubAssetId!==aid)return;
     Object.assign(PUB_ASSET_CACHE[aid]||={},fresh);openPublishAssetModal(aid);
     const st=written.style,styleNote=st?' · '+st.keep+' + '+st.purpose+(st.keptPct!=null?' · kept '+st.keptPct+'% of your words (target '+st.band[0]+'–'+st.band[1]+'%)'+(st.corrected?' after one correction pass':''):'')+(st.seo?' · keywords '+st.seo.placed+'/'+st.seo.total+' placed'+(st.seo.missing.length?' (missing: '+st.seo.missing.join(', ')+')':''):''):'';
-    document.getElementById('pubAssetStatus').textContent=(written.violations?.length?'Saved with violations: '+written.violations.join('; '):written.skipped?'Already written.':'✓ Asset written · '+fresh.status)+styleNote;
+    document.getElementById('pubAssetStatus').textContent=(written.violations?.length?'Saved with violations: '+written.violations.join('; '):written.skipped?'Already written.':'✓ Asset written · '+fresh.status)+styleNote+(written.recovered?' · (the reply was lost — confirmed from the server log)':'');
     parent.postMessage({type:'hubAssetListingChanged',assetId:aid},location.origin);
   }catch(error){if(pubAssetId===aid)result.textContent=error.message;}
   finally{if(pubAssetId===aid)button.disabled=button.dataset.unmapped==='yes';}
