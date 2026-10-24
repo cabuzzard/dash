@@ -2122,7 +2122,7 @@ function writeStyleOf(page, row) {
 }
 function ivOutlineBlock(outline, keep) {   // structure first (2026-10-24): the outline planned with the interview is the fixed frame
   if (!String(outline || '').trim()) return '';
-  return '\nSTRUCTURE — this piece\'s OUTLINE was planned before the interview and is its fixed frame: write these sections in this order as its headings; write each one mainly from the interview answers marked §<n> for it; ' + (keep === 'Verbatim' ? 'leave out a section that has no answer' : 'a section with no answer is written from the research') + '; a strong answer may rename its section.\nOUTLINE:\n' + String(outline).slice(0, 1500);
+  return '\nSTRUCTURE — this piece\'s OUTLINE was planned before the interview and is its fixed frame: write these sections in this order as its headings; write each one mainly from the interview answers marked §<n> for it (answers marked "§ · Earlier answer" are not mapped yet: place each one in the section it fits best); ' + (keep === 'Verbatim' ? 'leave out a section that has no answer' : 'a section with no answer is written from the research') + '; a strong answer may rename its section.\nOUTLINE:\n' + String(outline).slice(0, 1500);
 }
 function writeStyleBlock(style, hasInterview) {
   return 'WRITE STYLE — KEEP MY WORDS: ' + style.keep + '. ' + (hasInterview ? WRITE_KEEP[style.keep].rule : "(No interview answers for this piece — write research-led.)") + ' Opinions stay attributed as the operator\'s; never invent experience.\n' + WRITE_PURPOSE[style.purpose];
