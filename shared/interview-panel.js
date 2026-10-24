@@ -107,7 +107,7 @@
       const ids = Object.keys(S.pick).filter(k => S.pick[k]); if (!ids.length) return;
       const ov = {}; ids.forEach(k => { if (S.edits[k] != null) ov[k] = S.edits[k]; });
       S.busy = 'Applying the fixes to your answers…'; draw();
-      try { const r = await req(cfg.call, 'ivExpertApply', { interviewId: cfg.interviewId, ids, overrides: ov }); S.report = r.report; S.edits = {}; init();
+      try { const r = await req(cfg.call, 'ivExpertApply', { interviewId: cfg.interviewId, ids, overrides: ov }); S.report = r.report; S.edits = {}; init(); (r.missed || []).forEach(id => { S.pick[id] = false; const it = ((S.report || {}).items || []).find(i => i.id === id); if (it) it.skipped = true; });
         S.err = '';   // operator 2026-10-24: no 'couldn't be matched' warning — a fix that can't find its words is simply skipped
         changed(); if (cfg.onApplied) cfg.onApplied(r.answers || null, r); }
       catch (err) { S.err = err.message; }
@@ -137,12 +137,12 @@
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
               ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
               ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
-                : x.fix && !inAnswers(x.quote) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ This quotes the question, not your answer — nothing in your answer to change. Use it as a pointer if you want to add to your answer.</div>`
+                : x.fix && (x.skipped || !inAnswers(x.quote)) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ Skipped — its words aren't in your answer as written, so there's nothing to swap. Use it as a pointer if you want to edit your answer by hand.</div>`
                 : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
                   <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
                   <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea></span></label>` : ''}
             </div>`; }).join('')}
-          ${items.some(x => x.fix && !x.applied) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
+          ${items.some(x => x.fix && !x.applied && !x.skipped && inAnswers(x.quote)) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;">Applying swaps only the quoted words in your answers; your own rewrites teach 🗣 Your voice.</span>
             <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTN}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}
           ${S.done ? `<div style="font-size:12.5px;color:${DONE};margin-top:9px;">${e(S.done)}</div>` : ''}

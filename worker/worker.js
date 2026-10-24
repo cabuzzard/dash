@@ -1181,7 +1181,7 @@ async function handleStudio(env, body) {
       const own = String(ov[x.id] || "").trim().slice(0, 1500), replacement = own || x.fix;
       if (!replacement) continue;
       const clean = ivCleanFix(replacement), k = clean ? ivQuoteSwap(answers, x, clean) : -1;
-      if (k < 0) { missed.push(x.id); continue; }
+      if (k < 0) { missed.push(x.id); x.skipped = true; continue; }
       x.applied = true; x.appliedText = clean; applied++;
     }
     it.answers = answers; it.updatedAt = Date.now(); await saveItems();
@@ -22385,7 +22385,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           if (!want.has(x.id)) continue;
           const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix; if (!text) continue;
           const clean = ivCleanFix(text), k = clean ? ivQuoteSwap(answers, x, clean) : -1;
-          if (k < 0) { missed.push(x.id); continue; }
+          if (k < 0) { missed.push(x.id); x.skipped = true; continue; }
           x.applied = true; x.appliedText = clean; applied++;
           if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "expert-check fix", before: x.fix, after: own });
         }
@@ -23271,7 +23271,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
             const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix;
             if (!text) continue;
             let k = spec.segments[x.seg] && String(spec.segments[x.seg].text || "").includes(x.quote) ? x.seg : spec.segments.findIndex(sg => String(sg.text || "").includes(x.quote));
-            if (k < 0) { missed.push(x.id); continue; }
+            if (k < 0) { missed.push(x.id); x.skipped = true; continue; }
             spec.segments[k].text = spec.segments[k].text.replace(x.quote, text);
             x.applied = true; x.appliedText = text; x.byOperator = !!own; applied++;
             if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "fact-check fix", before: x.fix, after: own });
