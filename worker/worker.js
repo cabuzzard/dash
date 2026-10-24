@@ -1579,16 +1579,16 @@ function ivReusePrompt(reused,min,max) {
   return '\nALREADY ANSWERED (do not ask again; ask only what these do not cover):\n'+JSON.stringify(reused.map(p=>({q:p.q,a:p.a,source:p.ivId})))+
     '\nThe earlier question counts describe the whole interview. Ask ONLY '+min+'–'+max+' NEW questions for gaps, in addition to these already-filled answers. You may return zero new questions if these answers cover the piece. Never invent an answer.\n';
 }
-async function ivAccumulate(env,{cid,subject,prompt,qmin,qmax,base}) {
+async function ivAccumulate(env,{cid,subject,prompt,qmin,qmax,base,outline}) {
   const bank=await ivAnswerBank(env,cid),reused=ivReuse(bank,{...subject,cid},{max:Math.min(8,qmax)}),minimum=Math.max(0,qmin-reused.length),maximum=Math.max(0,qmax-reused.length);
   let proposals,modelCalls=0;
-  if(reused.length>=qmin)proposals=[{angle:'Existing knowledge',why:'Covered by finished answers from earlier interviews.',questions:[]}];
-  else{modelCalls=1;const table=await env.TRADES.get('infoflow:table:currentmethods','json'),doctrine=String(table?.rows?.find(r=>r.id==='rinterviewint01')?.cells?.c2||'').split('\n\nACCUMULATIVE')[0].slice(0,2200);proposals=await ivClaudeInterviews(env,prompt+'\nWORKSHEET INTERVIEW DOCTRINE:\n'+doctrine+ivReusePrompt(reused,minimum,maximum),1,minimum,maximum);}
+  if(reused.length>=qmin&&!outline)proposals=[{angle:'Existing knowledge',why:'Covered by finished answers from earlier interviews.',questions:[]}];
+  else{modelCalls=1;const table=await env.TRADES.get('infoflow:table:currentmethods','json'),doctrine=String(table?.rows?.find(r=>r.id==='rinterviewint01')?.cells?.c2||'').split('\n\nACCUMULATIVE')[0].slice(0,2200);proposals=await ivClaudeInterviews(env,prompt+'\nWORKSHEET INTERVIEW DOCTRINE:\n'+doctrine+ivReusePrompt(reused,minimum,maximum),1,minimum,maximum,!!outline);}
   if(!proposals.length&&reused.length)proposals=[{angle:'Existing knowledge',questions:[]}];
   if(!proposals.length)throw new Error('No questions or relevant existing answers were returned');
-  const finished=reused.length>=qmin||proposals.every(x=>!x.questions?.length)&&reused.length>0;
+  const finished=(reused.length>=qmin&&!outline)||proposals.every(x=>!x.questions?.length)&&reused.length>0;
   const made=await ivSavePages(proposals,base,{env,reused,finished});
-  return {interviews:made,reused:reused.length,modelCalls,questionsBefore:{min:qmin,max:qmax},questionsNow:finished?{min:0,max:0}:{min:minimum,max:maximum}};
+  return {interviews:made,outline:(proposals[0]&&proposals[0].outline)||null,reused:reused.length,modelCalls,questionsBefore:{min:qmin,max:qmax},questionsNow:finished?{min:0,max:0}:{min:minimum,max:maximum}};
 }
 async function ivReuseDiagnostic(env,{assetId,titleId,direction}) {
   let asset=null;if(assetId){asset=await ivPage(assetId);titleId=titleId||ivRid(asset.properties,'Content Strategy');}
@@ -1658,16 +1658,17 @@ async function ivBlock(env, titleId, assetType, assetId) {
     + x.qs.map((q, i) => x.answers[i] ? `Q: ${q}\nTHEIR ANSWER${x.reused?.some(r=>r.index===i)?" (reused from an earlier interview)":""}: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
   return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS — first-hand material about this product (and, if marked, this specific asset): their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
 }
-async function ivClaudeInterviews(env, prompt, max, qmin = 5, qmax = 10) {
+async function ivClaudeInterviews(env, prompt, max, qmin = 5, qmax = 10, withOutline = false) {   // withOutline: structure first (2026-10-24)
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }],
-      tools: [{ name: "submit_interviews", description: "The interviews.", input_schema: { type: "object", required: ["interviews"], properties: { interviews: { type: "array", minItems: 1, maxItems: max, items: { type: "object", required: ["angle", "why", "questions"], properties: {
+      tools: [{ name: "submit_interviews", description: "The interviews.", input_schema: { type: "object", required: ["interviews"], properties: { interviews: { type: "array", minItems: 1, maxItems: max, items: { type: "object", required: withOutline ? ["angle", "why", "outline", "questions"] : ["angle", "why", "questions"], properties: {
         angle: { type: "string", description: "2-5 word angle name" }, why: { type: "string", description: "one line: what these answers will add to the content" },
-        questions: { type: "array", minItems: qmin, maxItems: qmax, items: { type: "string" } } } } } } } }],
+        ...(withOutline ? { outline: { type: "array", minItems: 3, maxItems: 7, description: "The piece's sections in order, planned BEFORE the questions", items: { type: "object", required: ["heading", "purpose"], properties: { heading: { type: "string" }, purpose: { type: "string", description: "one line: what this section must deliver" } } } } } : {}),
+        questions: { type: "array", minItems: qmin, maxItems: qmax, items: { type: "string", ...(withOutline ? { description: "Begin with the section it feeds: '§<n> · <section heading> — ' then the question" } : {}) } } }, ...(withOutline ? {} : {}) } } } } }],
       tool_choice: { type: "tool", name: "submit_interviews" } }) });
   const d = await r.json();
   if (!r.ok) throw new Error(d.error?.message || "Claude error");
-  return ((((d.content || []).find(b => b.type === "tool_use") || {}).input || {}).interviews || []).filter(x => x && Array.isArray(x.questions)).slice(0, max);
+  return ((((d.content || []).find(b => b.type === "tool_use") || {}).input || {}).interviews || []).filter(x => x && Array.isArray(x.questions)).slice(0, max);   // items carry .outline when withOutline
 }
 async function ivSavePages(ivs, base, options={}) {
   const made=[],env=options.env,reused=options.reused||[];
@@ -1712,6 +1713,36 @@ Write exactly 1 interview of 7-10 short, specific questions a busy owner can ans
 // wording) with every answer carried over — a later answer to the same question wins, an empty one never erases. The earlier
 // records stay in Notion as Status "Superseded" (not deleted), so nothing is lost. Finished when any was Finished and an answer
 // exists; otherwise Flagged. Runs after any new asset interview is made and from ivMergeAssetInterviews / ivMergeAll.
+// The asset's OUTLINE (Assets "Outline", one line per section: "<n>. <heading> — <purpose>") — the fixed frame its writer keeps.
+async function ivSaveOutline(env, assetId, outline) {
+  if (!(await env.TRADES.get("assets:outline:prop"))) {
+    const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Outline: { rich_text: {} } } }) });
+    if (!r.ok) throw new Error("Could not add Outline to Assets"); await env.TRADES.put("assets:outline:prop", "1");
+  }
+  const text = outline.map((x, i) => (i + 1) + ". " + String(x.heading || "").trim() + (x.purpose ? " — " + String(x.purpose).trim() : "")).join("\n");
+  await kwNotionPatch(env, assetId, { Outline: { rich_text: ivRt(text) } });
+  return text;
+}
+// ivRegenerateAsset: a fresh, structure-first interview for an asset. Earlier interviews → Superseded (kept); every earlier ANSWERED
+// question is carried into the new interview (under "§ · Earlier answer"), so no answer is lost. One model call.
+async function ivRegenerateAsset(env, assetId) {
+  const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
+  if (!titleId) throw new Error("this asset has no title");
+  const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid));
+  const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, String(iv.answers[i] || "").trim()]).filter(x => x[1]));
+  for (const iv of own) await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
+  const made = await ivCreateForAsset(env, { assetId: aid, titleId });
+  const nu = (made.interviews || [])[0]; if (!nu) return { ok: false, error: "no interview came back", carried: carried.length };
+  if (carried.length) {
+    const qs = [...nu.qs, ...carried.map(x => "§ · Earlier answer — " + x[0].replace(/^§[^—]*—\s*/, ""))], answers = [...nu.answers, ...carried.map(x => x[1])];
+    const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(nu.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+      Questions: { rich_text: ivRt(qs.map((q, i) => (i + 1) + ". " + q).join("\n")) }, Answers: { rich_text: ivRt(ivFormatAnswers(qs, answers)) },
+      ...(own.some(iv => iv.status === "Finished") ? { Status: { select: { name: "Finished" } } } : {}) } }) });
+    if (!r.ok) throw new Error("New interview made, but carrying the earlier answers failed — they are still on the superseded records");
+  }
+  const back = ivParse(await ivPage(nu.id));
+  return { ok: true, interview: back.id, questions: back.qs.length, answered: back.answers.filter(a => String(a || "").trim()).length, carried: carried.length, superseded: own.length, outline: made.outline || null, status: back.status };
+}
 async function ivMergeAssetInterviews(env, assetId) {
   const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
   if (!titleId) return { merged: false, reason: "no title" };
@@ -1747,7 +1778,10 @@ async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
   const [audience, prodRes, pillar] = await Promise.all([cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid) : "", extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "")]);
   const tierA = (await ivTierFn(env))(atype), dep = tierA === "depends", short = tierA === "short";
   if(tierA==='none')return {interviews:[],skipped:true,reason:'This method has no interview requirement',modelCalls:0};
-  const prompt = `You prepare ONE INTERVIEW of a business owner for a single piece of content.
+  // STRUCTURE FIRST (operator 2026-10-24): plan the piece's outline for its Purpose, then tie every question to one section
+  const apS = assetId ? await ivPage(assetId).catch(() => null) : null, wsS = apS ? writeStyleOf(apS, (await writingMethod(env, apS).catch(() => ({}))).row) : null;
+  const outlineOn = !!assetId && !parentType, outlineBlock = outlineOn ? `\nSTRUCTURE FIRST — before writing any question, plan this piece's OUTLINE: its sections in order (3-7), shaped by its PURPOSE (${wsS ? wsS.purpose : "SEO"}): SEO → section headings that match what searchers actually ask (use the title research and pillar); Engagement → a hook then the story beats; Information → the steps or parts a reader needs. Then write the questions so EVERY question feeds exactly ONE section, and begin each question with "§<n> · <section heading> — ". Leave a section without a question when the research alone covers it; the operator sees the headings, so they know where each answer lands.\n` : "";
+  const prompt = `You prepare ONE INTERVIEW of a business owner for a single piece of content.${outlineBlock}
 
 PIECE: ${aname || tname} (${atype})
 TITLE IT BELONGS TO: ${tname}
@@ -1758,10 +1792,11 @@ ${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentT
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
   const isNewsIv = /\bnews\b/i.test(atype);
-  const ivMade = await ivAccumulate(env,{cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:isNewsIv ? 2 : short ? 3 : 5,qmax:isNewsIv ? 3 : short ? 5 : 10,base:{   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
+  const ivMade = await ivAccumulate(env,{outline:outlineOn,cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:isNewsIv ? 2 : short ? 3 : 5,qmax:isNewsIv ? 3 : short ? 5 : 10,base:{   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) } });
+  if (assetId && ivMade.outline && ivMade.outline.length) await ivSaveOutline(env, assetId, ivMade.outline).catch(e => console.error("ivSaveOutline:", e.message));
   if (assetId) {   // one interview per asset: fold this into the asset's existing interview (additive; earlier records → Superseded)
     const m = await ivMergeAssetInterviews(env, assetId).catch(e => ({ merged: false, error: e.message }));
     if (m.merged) return { ...ivMade, interviews: [ivParse(await ivPage(m.keep))], merged: m };
@@ -2085,6 +2120,10 @@ function writeStyleOf(page, row) {
   const d = writeStyleDefault(p['Asset Type']?.select?.name || '', row);
   return { keep: WRITE_KEEP[k] ? k : d.keep, purpose: WRITE_PURPOSE[u] ? u : d.purpose, default: { keep: d.keep, purpose: d.purpose, from: d.from }, own: { keep: WRITE_KEEP[k] ? k : '', purpose: WRITE_PURPOSE[u] ? u : '' } };
 }
+function ivOutlineBlock(outline, keep) {   // structure first (2026-10-24): the outline planned with the interview is the fixed frame
+  if (!String(outline || '').trim()) return '';
+  return '\nSTRUCTURE — this piece\'s OUTLINE was planned before the interview and is its fixed frame: write these sections in this order as its headings; write each one mainly from the interview answers marked §<n> for it; ' + (keep === 'Verbatim' ? 'leave out a section that has no answer' : 'a section with no answer is written from the research') + '; a strong answer may rename its section.\nOUTLINE:\n' + String(outline).slice(0, 1500);
+}
 function writeStyleBlock(style, hasInterview) {
   return 'WRITE STYLE — KEEP MY WORDS: ' + style.keep + '. ' + (hasInterview ? WRITE_KEEP[style.keep].rule : "(No interview answers for this piece — write research-led.)") + ' Opinions stay attributed as the operator\'s; never invent experience.\n' + WRITE_PURPOSE[style.purpose];
 }
@@ -2194,7 +2233,7 @@ async function writeContractAsset(env,assetId) {
   // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
-  const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim());
+  const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
   let generated=await hcClaude(env,instruction+'\n\n'+styleText+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   let fields=fieldsOf(generated),keptPct=ivKeptPct(answersOnly,Object.values(fields).join('\n')),band=WRITE_KEEP[style.keep].band,corrected=false;
@@ -2274,7 +2313,7 @@ async function writeTopicalPost(env, assetId, options = {}) {
   if (input.needsInterview) return input;
   if (input.state.kind !== 'blog') return { error: 'Use the topical YouTube writer for this asset' };
   const notes = lfReadRich(input.state.page.properties.Notes);
-  const tStyle = writeStyleOf(input.state.page, (await writingMethod(env, input.state.page).catch(() => ({}))).row), tStyleText = writeStyleBlock(tStyle, !!String(input.interview || '').trim());
+  const tStyle = writeStyleOf(input.state.page, (await writingMethod(env, input.state.page).catch(() => ({}))).row), tStyleText = writeStyleBlock(tStyle, !!String(input.interview || '').trim()) + ivOutlineBlock(hubRichText(input.state.page.properties.Outline?.rich_text), tStyle.keep);
   const prompt = `${input.grounding}\n${tStyleText}\nTODAY: ${new Date().toISOString().slice(0, 10)}. Write ONE complete, publish-ready SEO article in Markdown.
 HEADLINE (use as the H1): ${input.headline}
 ASSET'S KEYWORD / TOPIC / INTENT / ANGLE NOTES: ${notes}
@@ -22339,6 +22378,20 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         return json({ ok: true, ...r });
       }
       // ivMergeAll {apply?} — every asset with more than one interview → merged into its newest (dry run unless apply)
+      // ivRegenerateAll {apply?, limit?} / ivRegenerateAsset {assetId} — structure-first interviews for assets that have one (dry run unless apply)
+      if (body.action === "ivRegenerateAsset") return json(await ivRegenerateAsset(env, body.assetId));
+      if (body.action === "ivRegenerateAll") {
+        const all = await ivList({ property: "Scope", select: { equals: "Asset" } }), ids = [...new Set(all.flatMap(iv => iv.assetIds || []))], list = [];
+        for (const aid of ids) { const pg = await ivPage(aid).catch(() => null); const st = pg?.properties?.["Asset Status"]?.select?.name || "";
+          if (!pg || pg.archived || pg.in_trash || ["Idea", "Planning", "Delete"].includes(st) || pg.properties?.["Asset Class"]?.select?.name === "Pillar") continue;
+          const mine = all.filter(iv => (iv.assetIds || []).includes(aid));
+          list.push({ assetId: aid, name: hubRichText(pg.properties?.["Asset Title"]?.title).slice(0, 80), status: st, answered: mine.reduce((n, iv) => n + iv.answers.filter(a => String(a || "").trim()).length, 0), hasOutline: !!hubRichText(pg.properties?.Outline?.rich_text) }); }
+        const todo = list.filter(x => !x.hasOutline);
+        if (!body.apply) return json({ ok: true, apply: false, assets: todo.length, answeredCarried: todo.reduce((n, x) => n + x.answered, 0), list: todo });
+        const out = [];
+        for (const x of todo.slice(0, Math.max(1, Math.min(40, parseInt(body.limit) || 40)))) { try { out.push({ ...x, ...(await ivRegenerateAsset(env, x.assetId)) }); } catch (e) { out.push({ ...x, error: e.message }); } }
+        return json({ ok: true, apply: true, done: out.length, remaining: Math.max(0, todo.length - out.length), results: out });
+      }
       if (body.action === "ivMergeAll" || body.action === "ivMergeAsset") {
         if (body.action === "ivMergeAsset") return json(await ivMergeAssetInterviews(env, body.assetId));
         const all = await ivList({ property: "Scope", select: { equals: "Asset" } }), by = {};
