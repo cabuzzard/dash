@@ -6,6 +6,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
 import { NEWSLETTER_FIELDS, NEWSLETTER_DEPTHS, newsletterIssueType, newsletterDepth, newsletterSetting, newsletterSteering, newsletterSchema, newsletterBody, newsletterInPeriod, newsletterVerifyUrl } from './newsletter-methodology.mjs';
+import { MARKET_FORMS, memoryUrl, memoryKey, memoryPlan, marketFresh, marketGaps, marketStaleAfter, weeklySlot } from './digest-memory.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -2569,7 +2570,7 @@ async function addReviewFlag(env, flag) {
 }
 // the current period's key in Pacific time for a cadence (Weekly = Saturday 00:00 → Friday night)
 function hubNewsPeriodKey(cadence) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute:"2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
   const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
   if (cadence === "Monthly") d.setUTCDate(1);
   else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
@@ -14306,7 +14307,8 @@ async function newsletterUsage(env,job,phase,result,countCall=true) {
   const previous=run.providers[phase]||{},calls=(previous.calls||0)+(countCall&&result?.status!=='skipped'?1:0),usageHistory=previous.usageHistory||[];
   if(countCall&&result?.status!=='skipped')usageHistory.push({at:new Date().toISOString(),usage:result?.usage??null});
   else if(result?.usage&&usageHistory.length)usageHistory[usageHistory.length-1].usage=result.usage;
-  run.providers[phase]={status:result?.status||'done',calls,usage:result?.usage??previous.usage??null,usageHistory,usageReported:!!(result?.usage||previous.usage),error:result?.error||'',updatedAt:new Date().toISOString()};
+  const usage=result?.usage??previous.usage??null,priced=phase.startsWith('perplexity')&&usage?pplxCost(usage):null;
+  run.providers[phase]={status:result?.status||'done',calls,usage,usageHistory,usageReported:!!usage,promptChars:result?.promptChars??previous.promptChars??null,costUsd:priced&&!priced.estimated?priced.cost:null,estimatedCostUsd:priced?.estimated?priced.cost:null,error:result?.error||'',updatedAt:new Date().toISOString()};
   await env.TRADES.put(key,JSON.stringify(log.slice(0,20)));
 }
 async function newsletterSeed(env,campaignId) {
@@ -14363,7 +14365,7 @@ async function digestItemsSave(env, assetId, sources, options={}) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
   const periodStart=options.preserveTimestamp&&prev.periodStart||hubCheckPeriodStart('Weekly'),periodEnd=options.preserveTimestamp&&prev.periodEnd||new Date().toISOString().slice(0,10),items=[];
   const sourceList=(sources||[]).filter(s=>s&&s.claim),results=new Array(sourceList.length);let index=0;
-  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
+  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',topicId:s.topicId||'',memoryKind:s.memoryKind||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
   items.push(...results);
   await env.TRADES.put(key, JSON.stringify({ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items,periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} }));
 }
@@ -14384,11 +14386,12 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
   const methodId=ivRid(page.properties,'Method')||await resolveMethodIdByName('digest');if(!methodId)throw new Error('Existing Digest method record is missing; no issue was written');
   const [voice,audience,interviews]=await Promise.all([voiceBlock(env,campaignId),hubAudienceBlock(env,campaignId),ivForTitle(titleId)]);
   const finished=interviews.filter(x=>x.status==='Finished'&&x.answers.some(a=>a.trim())&&(x.scope==='Title'||x.scope==='Asset'&&x.assetIds.includes(hubAssetId(digestId)))).map(x=>({questions:x.questions,answers:x.answers}));
-  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,finishedInterviews:finished};
+  const productAngles=(await productNotesRead(env,campaignId)).filter(n=>marketFresh(n)&&items.some(i=>i.topicId===n.topicId));
+  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,productAngles,finishedInterviews:finished};
   let usage=null;
   const instructions='Method instructs; the process executes. Return exactly the worksheet contract fields as strings. Text only. '+
     'Frame the issue for the Subscriber Benefit, Value Proposition and Customer, in the operator voice. '+
-    'Use only ticked findings and finished interviews. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
+    'Use only ticked findings and finished interviews. PRODUCT ANGLES are read-only product opportunities, not evidence of news. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
     'Unverified or out-of-period findings must never be presented as verified current developments. Data & Signals may use numbers ONLY from verified findings and must cite them. '+
     'Omit unsupported sections instead of padding; Feature Analysis and Subscriber Extra can be empty. Never invent news, statistics, sources or research. '+
     (kind==='premium'?'Target 1,000–1,800 words across the sections, shorter when credible material is thin. ':'Target 300–500 words across Executive Summary and Call to Action. ')+
@@ -14416,12 +14419,155 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
 // from the ranked sources → a Digest PARENT asset, written and left UNPUBLISHED (Review) so it shows in the checklist
 // counts. Topical material is the operator's. KV digest:auto:state:<cid> (resumable), digest:auto:done = {cid: period}.
 const AD_DIGEST_STYLE = "PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).";
+// WEEKLY RESEARCH MEMORY — worksheet sync 2026-10-23. Never expires, never deletes findings.
+async function digestMemory(env,cid) {
+  const memory=await env.TRADES.get('digest:memory:'+hubAssetId(cid),'json')||{version:1,items:[],runs:{},lastRun:null};
+  if(!Array.isArray(memory.items)||!memory.runs)throw new Error('Hub research memory is unreadable; retained for recovery');return memory;
+}
+async function digestMemorySeed(env,cid) {
+  const key='digest:memory:seed:'+cid;if(await env.TRADES.get(key))return;
+  const titleId=await env.TRADES.get('digest:title:'+cid),assetId=await env.TRADES.get('digest:asset:'+cid),prior=titleId?await env.TRADES.get('digest:sources:'+titleId,'json'):null,findings=assetId?await env.TRADES.get('digest:items:'+assetId,'json'):null;
+  const sources=[...(prior?.sources||[]),...(findings?.items||[])];
+  if(sources.length){await digestMemoryCommit(env,cid,'legacy:'+(prior?.jobId||prior?.at||findings?.at||titleId),sources);const memory=await digestMemory(env,cid),at=prior?.at||findings?.at;if(at&&Number.isFinite(Date.parse(at))){memory.lastRun.at=at;await env.TRADES.put('digest:memory:'+cid,JSON.stringify(memory));}}
+  await env.TRADES.put(key,JSON.stringify({at:new Date().toISOString(),sources:sources.length}));
+}
+async function digestMemoryBrief(env,cid) {
+  const memory=await digestMemory(env,cid);
+  // Token budget: newest 80 claims, all exact URL exclusions. Full memory stays in KV for dedupe.
+  const claims=memory.items.slice(-80).map(x=>({id:x.id,claim:x.claim,url:x.url,date:x.date,topicId:x.topicId}));
+  return 'ALREADY KNOWN — do not repeat. Report only what is NEW since '+(memory.lastRun?.at||'the first run')+', or explicitly CHANGES / CONTRADICTS these. Historical facts are context, never fresh news. Full history is deduplicated mechanically after research.\n'+JSON.stringify(claims)+'\nKNOWN SOURCE URLS — exclude from repeat discovery; revisit only to substantiate a changed or contradicted claim (most recent 300):\n'+[...new Set(memory.items.map(x=>x.url))].slice(-300).join('\n');
+}
+async function digestMemoryCommit(env,cid,runId,findings) {
+  const memory=await digestMemory(env,cid);if(memory.runs[runId])return memory.runs[runId];
+  const plan=memoryPlan(memory,findings,runId),at=new Date().toISOString();
+  for(const item of [...plan.new,...plan.changed]) {
+    const id='f'+await governanceHash(memoryKey(item));item.id=id;
+    // Immutable original finding, including provenance; subsequent confirmations are events.
+    const key='digest:memory:finding:'+hubAssetId(cid)+':'+id;
+    if(!await env.TRADES.get(key))await env.TRADES.put(key,JSON.stringify(item));
+    memory.items.push(item);
+  }
+  for(const item of plan.confirmed){const old=memory.items.find(x=>x.id===item.id);if(old)old.lastConfirmedRun=runId;}
+  const summary={runId,at,...plan.counts,newIds:plan.new.map(x=>x.id),changedIds:plan.changed.map(x=>x.id),confirmedIds:plan.confirmed.map(x=>x.id),invalid:plan.invalid.length};
+  memory.runs[runId]=summary;memory.lastRun={runId,at};
+  await env.TRADES.put('digest:memory:run:'+hubAssetId(cid)+':'+runId,JSON.stringify({summary,confirmed:plan.confirmed.map(x=>x.id),changes:plan.changed.map(x=>({id:x.id,previous:x.supersedes,relationship:x.relationship}))}));
+  await env.TRADES.put('digest:memory:'+hubAssetId(cid),JSON.stringify(memory));return summary;
+}
+const MARKET_NOTES_FIELDS={'Name':'title','Topic':'rich_text','Topic Name':'rich_text','Hub':'rich_text','Form':'rich_text','Tier':'select','Platform':'select','Price Band':'rich_text','Saturation':'rich_text','White Space':'rich_text','Review Pain Points':'rich_text','Built-On Keywords':'rich_text','Example Listings':'rich_text','Trend':'select','Scanned On':'date','Stale After':'date','Status':'select'};
+async function productNotesDb(env,create=false) {
+  const key='product:marketnotes:database',prior=await env.TRADES.get(key);if(prior)return prior;if(!create)return null;
+  const search=await newsletterNotion(env,'search',{method:'POST',body:JSON.stringify({query:'Product Market Notes',filter:{property:'object',value:'database'},page_size:100})});
+  const matches=(search.results||[]).filter(x=>hubAssetId(x.parent?.page_id)==='3431f7d3a4bb80378e64ce26578d007f'&&hubRichText(x.title)==='Product Market Notes');
+  if(matches.length>1)throw new Error('Multiple Product Market Notes databases under Home; no duplicate created');
+  if(matches.length){for(const [name,type]of Object.entries(MARKET_NOTES_FIELDS))if(matches[0].properties?.[name]?.type!==type)throw new Error('Existing Product Market Notes schema missing '+name);await env.TRADES.put(key,matches[0].id);return matches[0].id;}
+  // Created through the Worker's own integration under Home: shared and linked by inheritance.
+  const properties=Object.fromEntries(Object.entries(MARKET_NOTES_FIELDS).map(([k,type])=>[k,{[type]:type==='select'?{options:(k==='Tier'?['Reformat','Functional','New form']:k==='Platform'?['Etsy','KDP','Both']:k==='Trend'?['Rising','Steady','Fading']:['Current','Stale','Retired']).map(name=>({name}))}:{}}]));
+  const db=await newsletterNotion(env,'databases',{method:'POST',body:JSON.stringify({parent:{type:'page_id',page_id:kwDashId('3431f7d3a4bb80378e64ce26578d007f')},title:[{type:'text',text:{content:'Product Market Notes'}}],properties})});
+  const check=await newsletterNotion(env,'databases/'+db.id);for(const [name,type]of Object.entries(MARKET_NOTES_FIELDS))if(check.properties?.[name]?.type!==type)throw new Error('Product Market Notes schema readback: '+name);
+  await env.TRADES.put(key,db.id);return db.id;
+}
+function productNoteParse(page) {
+  const p=page.properties||{},v=writingFieldValues(p);
+  return {id:page.id,topicId:v.Topic||'',topicName:v['Topic Name']||'',hub:v.Hub||'',form:v.Form||'',tier:p.Tier?.select?.name||'',platform:p.Platform?.select?.name||'',priceBand:v['Price Band']||'',saturation:v.Saturation||'',whiteSpace:v['White Space']||'',reviewPainPoints:v['Review Pain Points']||'',keywords:v['Built-On Keywords']||'',examples:v['Example Listings']||'',trend:p.Trend?.select?.name||'',scannedOn:p['Scanned On']?.date?.start||'',staleAfter:p['Stale After']?.date?.start||'',status:p.Status?.select?.name||''};
+}
+async function productNotesRead(env,cid) {
+  const db=await productNotesDb(env);if(!db)return [];
+  const rows=[];let cursor;
+  do{const result=await newsletterNotion(env,'databases/'+db+'/query',{method:'POST',body:JSON.stringify({filter:{property:'Hub',rich_text:{equals:hubAssetId(cid)}},page_size:100,...(cursor?{start_cursor:cursor}:{})})});rows.push(...result.results.filter(x=>!x.archived&&!x.in_trash).map(productNoteParse));cursor=result.has_more?result.next_cursor:null;}while(cursor);
+  return rows;
+}
+async function productNotesTopics(env,cid) {
+  const structure=await env.TRADES.get('hub:structure:'+cid,'json');let topics,tc;
+  if(structure){const view=hubStructureView(structure);topics=[...view.committed,...view.staged];tc=view.topicClusters;}
+  else {const rows=await notionQuery(SEO_KEYWORD_CLUSTERS_DB,{filter:{and:[{property:'Campaign',relation:{contains:kwDashId(cid)}},{property:'Status',select:{equals:'Active'}}]}});topics=[...rows.map(r=>({id:hubAssetId(r.id),name:kwTitleOf(r),keywords:kwRt(r,'Cluster Keywords')})),...await env.TRADES.get('seoclusters:staged:'+cid,'json')||[]];tc=await env.TRADES.get('seotopicclusters:'+cid,'json')||{};}
+  return topics.filter(t=>!t.archived&&(tc.clusters||[]).includes(tc.assign?.[t.id])).map(t=>({id:hubAssetId(t.id),name:t.name,keywords:Array.isArray(t.keywords)?t.keywords.join(', '):String(t.keywords||'')}));
+}
+async function productNotesPrepare(env,cid) {
+  const [topics,notes]=await Promise.all([productNotesTopics(env,cid),productNotesRead(env,cid)]);
+  return {topics,gaps:marketGaps(topics,notes),current:notes.filter(n=>marketFresh(n)),at:new Date().toISOString(),evidence:[],errors:[],cursor:0};
+}
+async function productNotesScanTopic(topic) {
+  // Free search + public pages only; no Apify, paid Etsy service or additional model call.
+  const evidence=[],errors=[];
+  for(const site of ['etsy.com/listing','amazon.com']) {
+    try{
+      const query='site:'+site+' '+topic.name+' '+topic.forms.join(' OR '),response=await fetch('https://www.bing.com/search?format=rss&q='+encodeURIComponent(query),{signal:AbortSignal.timeout(8000),headers:{'User-Agent':'Mozilla/5.0'}});
+      if(!response.ok)throw new Error('Search HTTP '+response.status);const xml=await response.text();
+      const hits=[...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m=>({title:fnDecode((m[1].match(/<title>([\s\S]*?)<\/title>/)||[])[1]),url:fnDecode((m[1].match(/<link>([\s\S]*?)<\/link>/)||[])[1]),snippet:fnDecode((m[1].match(/<description>([\s\S]*?)<\/description>/)||[])[1])})).filter(x=>{try{return new URL(x.url).hostname.endsWith(site.split('/')[0]);}catch{return false;}}).slice(0,2);
+      for(const hit of hits){const url=newsletterPublicMarketUrl(hit.url);if(!url)continue;try{const page=await fetch(url,{signal:AbortSignal.timeout(8000),headers:{'User-Agent':'Mozilla/5.0'},redirect:'error'});const html=page.ok?(await page.text()).slice(0,180000):'';const text=fnDecode(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ')).replace(/\s+/g,' ').slice(0,1800);evidence.push({topicId:topic.id,...hit,text,httpStatus:page.status});}catch(error){evidence.push({topicId:topic.id,...hit,text:'',error:error.message});}}
+      if(!hits.length)errors.push(topic.name+': no '+site+' listings found');
+    }catch(error){errors.push(topic.name+': '+error.message);}
+  }
+  return {evidence,errors};
+}
+function newsletterPublicMarketUrl(value){try{const u=new URL(value);return u.protocol==='https:'&&/^(www\.)?(etsy\.com|amazon\.com)$/.test(u.hostname)?u.href:null;}catch{return null;}}
+function productNotesBrief(plan) {
+  if(!plan)return '';
+  const current=plan.current.map(n=>({topicId:n.topicId,form:n.form,whiteSpace:n.whiteSpace?.slice(0,300),reviewPainPoints:n.reviewPainPoints?.slice(0,300)}));
+  return '\nPRODUCT-FORM RESEARCH — by-product of this same run, not another scan. NEW product forms only; no issue reprints or straight compilations. Read these CURRENT notes as established PRODUCT ANGLES; never rescan them:\n'+JSON.stringify(current)+'\nOnly these missing/stale topic × forms need evidence:\n'+JSON.stringify(plan.gaps)+'\nFREE SEARCH / PAGE EVIDENCE (HTTP failures are not evidence; review pain points need actual review text):\n'+JSON.stringify(plan.evidence)+'\nFor gaps only, identify evidenced reformats, functional conversions or new forms. Use exact form names from the gap list; a genuinely new form must use Tier New form. Cite listing URLs. Never invent price, saturation, trend or review complaints. If evidence is absent, omit the note and report the gap. Return productNotes in final JSON: [{topicId,form,tier:"Reformat|Functional|New form",platform:"Etsy|KDP|Both",priceBand,saturation,whiteSpace,reviewPainPoints,keywords,exampleListings:[URLs],trend:"Rising|Steady|Fading",evidenceUrls:[URLs]}]. Current notes are not a request to regenerate them.';
+}
+async function productNotesSave(env,cid,plan,proposed,runId) {
+  const db=await productNotesDb(env,true),out=[],errors=[];
+  for(const note of Array.isArray(proposed)?proposed:[]) {
+    let payload;
+    try{
+      const topic=plan.topics.find(t=>t.id===note.topicId);if(!topic)throw new Error('Unknown topic ID');
+      if(!note.form||/single.issue|reprint|compilation/i.test(note.form))throw new Error('Not a new product form');
+      if(note.tier!=='New form'&&!MARKET_FORMS.includes(note.form))throw new Error('Use the exact supplied form name');
+      if(!['Reformat','Functional','New form'].includes(note.tier)||!['Etsy','KDP','Both'].includes(note.platform)||!['Rising','Steady','Fading'].includes(note.trend))throw new Error('Invalid form classifications');
+      const existing=await productNotesRead(env,cid),prior=existing.find(n=>n.topicId===topic.id&&n.form.toLowerCase()===note.form.toLowerCase());
+      if(prior&&marketFresh(prior)){out.push({id:prior.id,skipped:'Current'});continue;}
+      const evidence=(note.evidenceUrls||[]).filter(url=>plan.evidence.some(e=>e.topicId===topic.id&&e.url===url&&e.httpStatus===200&&e.text));if(!evidence.length)throw new Error('No fetched listing evidence for '+topic.name+' / '+note.form);
+      const date=new Date().toISOString().slice(0,10),rt=x=>({rich_text:ivRt(String(x||''))});
+      const properties={Name:{title:ivRt(topic.name+' — '+note.form)},Topic:rt(topic.id),'Topic Name':rt(topic.name),Hub:rt(cid),Form:rt(note.form),Tier:{select:{name:note.tier}},Platform:{select:{name:note.platform}},'Price Band':rt(note.priceBand),Saturation:rt(note.saturation),'White Space':rt(note.whiteSpace),'Review Pain Points':rt(note.reviewPainPoints),'Built-On Keywords':rt(topic.keywords),'Example Listings':rt((note.exampleListings||[]).filter(url=>evidence.includes(url)).join('\n')),Trend:{select:{name:note.trend}},'Scanned On':{date:{start:date}},'Stale After':{date:{start:marketStaleAfter(date,note.trend)}},Status:{select:{name:'Current'}}};
+      payload={...(prior?{}:{parent:{database_id:db}}),properties};
+      // Keep the previous note snapshot before refreshing its mutable Notion row.
+      if(prior)await env.TRADES.put('product:marketnotes:history:'+hubAssetId(prior.id)+':'+runId,JSON.stringify(prior));
+      const saved=await newsletterNotion(env,prior?'pages/'+prior.id:'pages',{method:prior?'PATCH':'POST',body:JSON.stringify(payload)}),read=await newsletterNotion(env,'pages/'+saved.id),actual=productNoteParse(read);
+      for(const [name,value]of Object.entries(properties)) {
+        const prop=read.properties?.[name],expected=value.rich_text||value.title;
+        if(expected){const text=runs=>(runs||[]).map(x=>x.plain_text??x.text?.content??'').join('');if(text(prop?.rich_text||prop?.title)!==text(expected))throw new Error('Product Market Notes readback differs: '+name);}
+        else if(value.select&&prop?.select?.name!==value.select.name||value.date&&prop?.date?.start!==value.date.start)throw new Error('Product Market Notes readback differs: '+name);
+      }
+      out.push({id:saved.id,topicId:topic.id,form:note.form});
+    }catch(error){errors.push({topicId:note.topicId,form:note.form,reason:error.message});await env.TRADES.put('product:marketnotes:held:'+cid+':'+runId+':'+await governanceHash(JSON.stringify(note)),JSON.stringify({at:new Date().toISOString(),payload:payload||note,reason:error.message}));}
+  }
+  return {saved:out,errors,gaps:plan.gaps};
+}
+async function weeklyResearchPrepare(env,cids) {
+  await productNotesDb(env,true);
+  for(const cid of cids){const key='digest:depth-migration:'+cid;if(await env.TRADES.get(key))continue;const context=await newsletterContext(env,cid),raw=writingFieldValues(context.record.properties)['Research Depth']||'';if(!raw||raw==='Free')await newsletterSaveSetting(env,{...context,field:'Research Depth',value:'Standard'});await env.TRADES.put(key,JSON.stringify({at:new Date().toISOString(),before:raw,after:!raw||raw==='Free'?'Standard':raw}));}
+}
+async function digestMemoryTest(env,cid) {const m=await digestMemory(env,cid);return {campaignId:cid,memorySize:m.items.length,lastRun:m.lastRun,excludeUrls:[...new Set(m.items.map(x=>x.url))],knownFindings:m.items.map(x=>({id:x.id,claim:x.claim,topicId:x.topicId})),runs:Object.values(m.runs).slice(-20)};}
+async function productNotesTest(env,cid) {const [topics,notes]=await Promise.all([productNotesTopics(env,cid),productNotesRead(env,cid)]);return {campaignId:cid,databaseId:await productNotesDb(env),topics:topics.map(t=>({...t,notes:notes.filter(n=>n.topicId===t.id)})),staleCount:notes.filter(n=>!marketFresh(n)&&n.status!=='Retired').length,gaps:marketGaps(topics,notes)};}
+async function productFromMarketNote(env,cid,noteId) {
+  const note=(await productNotesRead(env,cid)).find(n=>hubAssetId(n.id)===hubAssetId(noteId));if(!note||!marketFresh(note))throw new Error('A Current market note belonging to this hub is required');
+  const topic=(await productNotesTopics(env,cid)).find(t=>t.id===note.topicId);if(!topic)throw new Error('Market-note topic is not placed in this hub');
+  const marker='Product Market Note: '+hubAssetId(note.id),existing=await notionQuery(PRODUCTS_DB,{filter:{property:'Campaigns',relation:{contains:kwDashId(cid)}}});
+  const prior=existing.find(p=>kwRt(p,'Notes').includes(marker));if(prior)return {ok:true,productId:prior.id,reused:true};
+  const properties={Name:{title:ivRt(topic.name+' — '+note.form)},Campaigns:{relation:[{id:kwDashId(cid)}]},'Topic ID':{rich_text:ivRt(topic.id)},Storefront:{select:{name:'Etsy'}},Status:{select:{name:'Idea'}},Keywords:{rich_text:ivRt(note.keywords)},Description:{rich_text:ivRt(note.whiteSpace)},Notes:{rich_text:ivRt(marker+'\nPRODUCT REQUIREMENTS — verbatim review pain points:\n'+note.reviewPainPoints+'\nSource listings:\n'+note.examples+'\nKDP handoff: print-ready PDF + listing copy for operator upload. Etsy: publishListingToEtsy after explicit approval.')}};
+  const payload={parent:{database_id:PRODUCTS_DB},properties};
+  try{const created=await newsletterNotion(env,'pages',{method:'POST',body:JSON.stringify(payload)}),read=await newsletterNotion(env,'pages/'+created.id);
+    for(const [name,value]of Object.entries(properties)){const actual=read.properties?.[name];if(value.title||value.rich_text){if(hubRichText(actual?.title||actual?.rich_text)!==hubRichText(value.title||value.rich_text))throw new Error('Product readback differs: '+name);}else if(value.select&&actual?.select?.name!==value.select.name||value.relation&&!actual?.relation?.some(x=>hubAssetId(x.id)===cid))throw new Error('Product readback differs: '+name);}
+    return {ok:true,productId:created.id,topicId:topic.id,storefront:'Etsy',requirements:note.reviewPainPoints,kdp:'Print-ready PDF + listing copy; operator upload',etsy:'publishListingToEtsy'};
+  }catch(error){await env.TRADES.put('product:marketnotes:held:product:'+hubAssetId(note.id),JSON.stringify({at:new Date().toISOString(),payload,reason:error.message}));throw error;}
+}
+// Save successful paid provider responses before parsing/writing downstream state.
+async function digestProviderFetch(env,job,phase,input) {
+  const key='digest:provider-result:'+job.id+':'+phase,cached=await env.TRADES.get(key,'json');
+  if(cached)return {response:new Response(JSON.stringify(cached.data),{status:200}),replayed:true};
+  const response=await fetch('https://api.perplexity.ai/v1/agent',{method:'POST',headers:{Authorization:'Bearer '+env.PERPLEXITY_API_KEY.trim(),'Content-Type':'application/json'},body:JSON.stringify({preset:'medium',input})});
+  const text=await response.text();let data;try{data=JSON.parse(text);}catch{}
+  if(response.ok&&data)await env.TRADES.put(key,JSON.stringify({at:new Date().toISOString(),data}));
+  return {response:new Response(text,{status:response.status}),replayed:false};
+}
+// END WEEKLY RESEARCH MEMORY
 function adPeriod() {   // WEEKLY (operator 2026-10-16): the week keyed by its Sunday; runs start Sunday 20:00 → Monday 06:00 Pacific
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
   const dd = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday), hour = +p.hour;
   dd.setUTCDate(dd.getUTCDate() - wd);   // this week's Sunday
   const mon = new Date(dd.getTime() + 864e5);
-  return { key: dd.toISOString().slice(0, 10), hour, open: (wd === 0 && hour >= 20) || (wd === 1 && hour < 6),
+  return { key: dd.toISOString().slice(0, 10), hour, minute:+p.minute, open: (wd === 0 && hour >= 20) || (wd === 1 && hour < 6),
     label: mon.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };   // titled for the Monday it's read
 }
 // Perplexity writes the digest (operator 2026-10-16, API cost — no Claude): from the week's Gemini + Perplexity research it
@@ -14430,8 +14576,14 @@ async function adPerplexityDigest(env, job, names) {
   if (!env.PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY not set");
   const capMsg = await spendCheck(env, "perplexity"); if (capMsg) throw new Error(capMsg);
   const today = new Date().toISOString().slice(0, 10);
+  const memory=await digestMemory(env,job.campaignId),raw=drJson(job.perplexity?.text||'[]'),reported=Array.isArray(raw)?raw:(raw?.sources||[]);
+  const fresh=memoryPlan(memory,reported,job.id);
   const input = `You are the editor of a weekly industry digest for one website hub. Its main offerings: ${names.join("; ")}.
-TODAY: ${today}. Use the research below (search more only if it is thin).
+TODAY: ${today}. Use the research below. No new searches in synthesis; do not repeat established findings as news.
+${await digestMemoryBrief(env,job.campaignId)}
+MECHANICALLY DEDUPED NEW / CHANGED FINDINGS (the issue's factual base; known findings only if needed as labelled historical context):
+${JSON.stringify([...fresh.new,...fresh.changed])}
+${productNotesBrief(job.marketPlan)}
 NEWSLETTER FRAMING (from its Product Research):
 ${newsletterSteering(job.newsletter?.fields)}
 THIS DIGEST PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${today}. Mark older context as historical.
@@ -14444,22 +14596,22 @@ ${(job.perplexity?.text || "(not available)").slice(0, 12000)}
 ${(job.perplexity?.results || []).map(x => `- ${x.title} | ${x.url} | ${x.date}`).join("\n").slice(0, 6000)}
 
 Do two things:
-1. A ranked list of this week's most important items (8-20): each with url (only real URLs from the research), publisher, date, claim (one sentence: what happened), tier (1 primary/regulator/original data · 2 trade press/named expert · 3 general), split ("premium" if it needs synthesis, real numbers, rule or price changes, or a how-to; otherwise "free").
+1. A ranked list of this week's most important items (8-20): each with topicId (use a supplied topic ID), changes or contradicts (prior finding ID only if explicitly established), url (only real URLs from the research), publisher, date, claim (one sentence: what happened), tier (1 primary/regulator/original data · 2 trade press/named expert · 3 general), split ("premium" if it needs synthesis, real numbers, rule or price changes, or a how-to; otherwise "free").
 2. The digest itself, in markdown: a short intro, then ## sections; each item = what happened, why it matters to this audience, what to do. Cite publishers by name. Premium items are only teased (no full analysis). 600-1200 words.
 
-Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","claim","tier","split"}],"whatChanged":"one line","digest":"<markdown>"}`;
-  await newsletterUsage(env,job,'perplexityDigest',{status:'running'});
-  let r;try{r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
-    headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" }, body: JSON.stringify({ preset: "medium", input }) });
+Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","claim","tier","split"}],"whatChanged":"one line","digest":"<markdown>","productNotes":[] }`;
+  const cached=await env.TRADES.get('digest:provider-result:'+job.id+':perplexityDigest','json');
+  await newsletterUsage(env,job,'perplexityDigest',{status:'running',promptChars:input.length},!cached);
+  let r,replayed=false;try{const fetched=await digestProviderFetch(env,job,'perplexityDigest',input);r=fetched.response;replayed=fetched.replayed;
   }catch(error){await newsletterUsage(env,job,'perplexityDigest',{status:'failed',error:error.message},false);throw error;}
   const t = await r.text(); let dd = null; try { dd = JSON.parse(t); } catch (e) {}
   if (!r.ok || !dd) {await newsletterUsage(env,job,'perplexityDigest',{status:'failed',usage:dd?.usage||null,error:'Perplexity HTTP '+r.status},false);throw new Error(`Perplexity HTTP ${r.status}: ${(dd?.error?.message || t).slice(0, 300)}`);}
-  { const pc = pplxCost(dd.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, dd.usage).catch(() => {}); }
+  { const pc = pplxCost(dd.usage); if(!replayed)await spendAdd(env, "perplexity", pc.cost, pc.estimated, dd.usage).catch(() => {}); }
   const text = dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
   const out = drJson(text);
   if (!out || !String(out.digest || "").trim()){await newsletterUsage(env,job,'perplexityDigest',{status:'failed',usage:dd.usage||null,error:'Perplexity returned no digest'},false);throw new Error("Perplexity returned no digest");}
   await newsletterUsage(env,job,'perplexityDigest',{status:'done',usage:dd.usage||null},false);
-  return { sources: Array.isArray(out.sources) ? out.sources : [], whatChanged: out.whatChanged || "", digest: String(out.digest) };
+  return { productNotes:Array.isArray(out.productNotes)?out.productNotes:[], memoryFindings:reported, sources: Array.isArray(out.sources) ? out.sources : [], whatChanged: out.whatChanged || "", digest: String(out.digest) };
 }
 // put already-written text on a title as its pillar (same "Pillar Content" section the Claude writer makes)
 async function adSavePillar(env, titleId, text) {
@@ -14473,7 +14625,11 @@ async function adSavePillar(env, titleId, text) {
     const rr = await fetch(`https://api.notion.com/v1/blocks/${kwDashId(titleId)}/children`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ children: children.slice(i, i + 90) }) });
     if (!rr.ok) { const x = await rr.json().catch(() => ({})); throw new Error(x.message || "could not write the pillar"); }
   }
-  await kwNotionPatch(env, titleId, { "Pillar Status": { select: { name: "Written" } } }).catch(() => {});
+  const saved=await offerBlogBlocks(hdr,kwDashId(titleId)),start=saved.findLastIndex(b=>b.type==='heading_3'&&hubRichText(b.heading_3.rich_text)==='Pillar Content');
+  const actual=saved.slice(start+1).map(b=>hubRichText(b[b.type]?.rich_text)).join(' ').replace(/\s+/g,' ').trim(),expected=text.replace(/\s+/g,' ').trim();
+  if(start<0||actual!==expected)throw new Error('Digest pillar readback differs; generated copy retained for retry');
+  const page=await newsletterNotion(env,'pages/'+kwDashId(titleId));
+  if(page.properties?.['Pillar Status']){await kwNotionPatch(env,titleId,{'Pillar Status':{select:{name:'Written'}}});const check=await newsletterNotion(env,'pages/'+kwDashId(titleId));if(check.properties?.['Pillar Status']?.select?.name!=='Written')throw new Error('Pillar Status readback differs');}
 }
 function adSourcesBlock(R) {
   const list = (R && R.sources) || []; if (!list.length) return "";
@@ -14516,8 +14672,7 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
 }
 // ── FREE NEWS TIER (operator 2026-10-23: "anything free should be in that tier … premium doesn't even run unless I get sign ups").
 // Free sources only — Google News RSS search (no key) + GDELT DOC 2.0 (open API) — last 7 days, English, deduped, ranked by keyword
-// overlap + recency. Zero model calls. Used by: the weekly digest when Research Depth is Free (or when Deep/Standard is gated off for a
-// hub with no newsletter sign-ups), and the hub news cron, which now builds each News SEO post on one real, current article.
+// overlap + recency. Zero model calls. Used by: the weekly digest when Research Depth is Free (or when explicitly selected by the operator), and the hub news cron, which now builds each News SEO post on one real, current article.
 // the linked article's own words — the ONLY source of facts for a free-tier news post (a plain fetch, no model call)
 const NEWS_POST_FALLBACK = "Sections: The news in brief (2–3 sentences: who, what, when, where); What happened (verified facts, attributed); Why it matters (for this hub's customer); Our perspective (research-based interpretation, clearly marked as such); What happens next (deadlines, decisions, uncertainties). About 500–900 words; shorter for a small story.";
 async function fnArticleText(url) {
@@ -14584,12 +14739,11 @@ async function hubListSubscribers(env, cid) {
   return n;
 }
 async function adStep(env, cid, S, invoke) {
-  if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};
-    // operator 2026-10-23: premium research doesn't run until the hub has sign-ups — Deep / Standard drop to Free for this run
-    const set=S.newsletter.fields['Research Depth'];if(set==='Deep'||set==='Standard'){const subs=await hubListSubscribers(env,cid);S.subscribers=subs;if(!(subs>0)){S.newsletter.fields['Research Depth']='Free';S.depthNote=`${set} set, but the newsletter list has no sign-ups yet — ran on the Free news tier`;}}}
+  if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};}
   if(S.newsletter.fields['Research Depth']==='Off'){const prior=S.jobId?await env.TRADES.get('digres:'+S.jobId,'json'):null;await newsletterUsage(env,{...(prior||{}),id:prior?.id||'off:'+cid+':'+S.period,campaignId:cid,newsletter:S.newsletter},'research',{status:'skipped',error:'Research Depth Off: no further provider calls'},false);S.step='skip';S.note='Research Depth Off: no further provider calls; operator inputs and last good digest retained.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
+    await digestMemorySeed(env,cid);
     const mains = await hubMainList(env, cid); if (!mains.length) { S.step = "skip"; S.note = "no ★ main offerings"; return; }
     const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
     const prods = []; for (const id of mains.slice(0, 15)) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: hdr }).then(r => r.json()).catch(() => null);
@@ -14598,12 +14752,16 @@ async function adStep(env, cid, S, invoke) {
     const kws = hcUniq([...prods.flatMap(p => [kwNorm(p.name), ...p.keywords])]).slice(0, 30);
     S.mainIds = prods.map(p => p.id); S.names = prods.map(p => p.name);
     if (S.newsletter.fields['Research Depth'] === 'Free') { S.freeKeywords = kws; S.step = 'write'; return; }   // free news tier: no paid research job
-    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords: kws,runKind:S.manual?'manual':'weekly',periodKey:S.period,
+    S.keywords=kws;S.marketPlan=await productNotesPrepare(env,cid);S.step='market';return;
+  }
+  if(S.step==='market') {
+    if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
+    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,
       guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
   }
-  if (S.step === "perplexity") { await invoke({ action: "digestResearch", op: "perplexity", jobId: S.jobId }).catch(() => {}); S.step = "wait"; S.waitFrom = Date.now(); return; }
+  if (S.step === "perplexity") { const r=ok(await invoke({ action: "digestResearch", op: "perplexity", jobId: S.jobId }),"Perplexity");if(r.job?.perplexity?.status!=="done")throw new Error(r.job?.perplexity?.error||"Perplexity research did not finish"); S.step = "wait"; S.waitFrom = Date.now(); return; }
   if (S.step === "wait") {   // Gemini deep research runs on Google's side — poll until done (or 25 min, then use what finished)
     const r = await invoke({ action: "digestResearch", op: "status", jobId: S.jobId }); const g = r && r.job && r.job.gemini && r.job.gemini.status;
     if (S.newsletter.fields['Research Depth']==='Deep' && g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
@@ -14614,19 +14772,28 @@ async function adStep(env, cid, S, invoke) {
     const free = S.newsletter && S.newsletter.fields['Research Depth'] === 'Free';
     const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
     S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
-    const w = free ? await freeNewsDigest(env, S.name, S.freeKeywords || []) : await adPerplexityDigest(env, job, S.names);
+    const runId=job.id||S.period,pendingKey='digest:pending:'+cid+':'+runId;
+    let w=await env.TRADES.get(pendingKey,'json');
+    if(!w){w=free?await freeNewsDigest(env,S.name,S.freeKeywords||[]):await adPerplexityDigest(env,job,S.names);await env.TRADES.put(pendingKey,JSON.stringify(w));}
+    S.memory=await digestMemoryCommit(env,cid,runId,[...(w.memoryFindings||[]),...w.sources]);
+    const memory=await digestMemory(env,cid),newKeys=new Set(memory.items.filter(x=>x.firstSeenRun===runId).map(memoryKey));
+    w.sources=w.sources.filter(x=>newKeys.has(memoryKey(x))).map(x=>({...x,memoryKind:memory.items.find(i=>memoryKey(i)===memoryKey(x))?.relationship||'new'}));
+    if(!w.sources.length)w.digest='## This week\n\nNo new verified developments were identified. Earlier findings remain in the hub research memory; they have not been recast as new news.';
+    if(S.marketPlan)S.productNotes=await productNotesSave(env,cid,S.marketPlan,w.productNotes,runId);
+    const usage=await env.TRADES.get('digest:usage:'+cid,'json')||[],entry=usage.find(x=>x.runId===job.id);if(entry){entry.memory=S.memory;entry.productNotes=S.productNotes;await env.TRADES.put('digest:usage:'+cid,JSON.stringify(usage));}
     await researchDigestSave(env,cid,S.titleId,w.sources||[]);
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
     const label = adPeriod().label;
     S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
-    await digestItemsSave(env, S.assetId, w.sources).catch(e => console.error("digestItemsSave:", e.message));   // its findings, premium / free, for the Digest section
+    await digestItemsSave(env, S.assetId, w.sources);   // its findings, premium / free, for the Digest section
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
       "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
+    const read=await newsletterNotion(env,'pages/'+kwDashId(S.assetId));if(kwTitleOf(read)!==`Weekly Digest — ${label} (${S.name})`||read.properties?.['Asset Status']?.select?.name!=='Review')throw new Error('Digest asset readback differs');
     S.items = w.sources.length; S.step = "done"; return;
   }
 }
@@ -14638,6 +14805,8 @@ async function autoDigestRun(env, invoke) {
   let manual = (await env.TRADES.get("digest:manual", "json")) || [];   // hand runs (digestRunNow / ticking 📰 Digest parent)
   try {
     const cids = [...new Set(HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(c => c.length === 32))];
+    await weeklyResearchPrepare(env,cids);
+    const weeklyEnabled=(await env.TRADES.get("digest:weekly:activation","json"))?.enabled===true;
     for (const cid of cids.slice()) {   // the permanent Weekly Digest title, set up any time (cheap, no Claude)
       if (Date.now() - t0 > 60000) break;
       if ((await env.TRADES.get("digest:title:" + cid)) && (await env.TRADES.get("digest:asset:" + cid))) continue;
@@ -14653,9 +14822,10 @@ async function autoDigestRun(env, invoke) {
         if (manual.includes(cid)) { S = { period: "m" + Date.now(), manual: true, name: nm, step: "start", startedAt: Date.now(), tries: 0 };   // a hand run — same pipeline
           await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });   // saved BEFORE it leaves the queue — an interrupted tick resumes it
           manual = manual.filter(x => x !== cid); await env.TRADES.put("digest:manual", JSON.stringify(manual)); }
-        else { if (done[cid] === per.key) continue; if (!per.open) continue;   // new runs start Sunday 20:00 → Monday 06:00 Pacific
+        else { if (done[cid] === per.key) continue; if (!weeklyEnabled||!weeklySlot(per,cids.indexOf(cid),cids.length)) continue;   // measured pilot first, then stagger Sunday starts
           S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
-      if (S.step === "done" || S.step === "skip" || S.step === "error") { done[cid] = per.key; continue; }
+      if (S.step === "done" || S.step === "skip" || S.step === "error") { if(!S.manual)done[cid] = per.key; continue; }
+      if(!S.manual&&!weeklyEnabled)continue; // also hold old in-flight weekly states until pilot cost is measured
       const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
       while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
         const before = S.step;
@@ -20128,6 +20298,16 @@ ${JSON.stringify(products)}`;
         return json({ ok: true, digests, run: run && !["done", "skip", "error"].includes(run.step) ? { step: run.step, startedAt: run.startedAt } : queued ? { step: "queued" } : null,
           last: run && ["done", "skip", "error"].includes(run.step) ? { step: run.step, note: run.note || run.error || "", at: run.finishedAt || 0 } : null,
           republicationHeld: await hubRepublicationHeld(env, cid) });
+      }
+      if(['digestMemoryTest','productNotesTest'].includes(body.action)) {
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        const cid=hubAssetId(body.campaignId);if(!/^[a-f0-9]{32}$/i.test(cid))return json({error:'campaignId required'},400);
+        return json(body.action==='digestMemoryTest'?await digestMemoryTest(env,cid):await productNotesTest(env,cid));
+      }
+      if(body.action==='createProductFromMarketNote'){
+        if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
+        const cid=hubAssetId(body.campaignId);if(!/^[a-f0-9]{32}$/i.test(cid)||!body.noteId)return json({error:'campaignId and noteId required'},400);
+        return json(await productFromMarketNote(env,cid,body.noteId));
       }
       // digestRunNow {campaignId} — a hand run: the SAME research + write as the weekly cron (queued; the */30 cron and this call drive it)
       if (body.action === "digestRunNow") {
@@ -54960,6 +55140,8 @@ NEWSLETTER FRAMING (authoritative Product Research):
 ${newsletterSteering(job.newsletter?.fields)}
 PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${new Date().toISOString().slice(0,10)}. Distinguish older background from this period's developments.
 TOPIC KEYWORDS: ${kw}
+${job.memoryBrief||""}
+${productNotesBrief(job.marketPlan?{...job.marketPlan,evidence:[]}:null)}
 ${job.hubName ? `AUDIENCE / HUB: ${job.hubName}\n` : ""}${job.guidance ? `FOCUS: ${job.guidance}\n` : ""}
 Prioritise, in this order:
 1. Primary sources: industry associations and their journals / reports, government and regulator data, company filings, original datasets and studies.
@@ -54968,7 +55150,7 @@ Prioritise, in this order:
 Prefer items from the last 30 days; include older items only if they are the definitive source.
 Look for things a paid subscriber would value: real numbers, changes in rules or prices, patterns across several sources, and practical how-to.
 ${cr ? `\nCheck recent posts from these creators:\n${cr}\n` : ""}${as ? `\nCheck these professional associations and their publications:\n${as}\n` : ""}${urls ? `\nAlso check these pages:\n${urls}\n` : ""}
-Write a concise findings report. Then END with a fenced \`\`\`json block: an array of every source you used, each {"url","title","publisher","date":"YYYY-MM-DD or empty","claim":"the one key fact or finding, max 40 words"}.`;
+Write a concise findings report. Then END with a fenced \`\`\`json block: an array of every source you used, each {"url","title","publisher","date":"YYYY-MM-DD or empty","claim":"the one key fact or finding, max 40 words","topicId":"supplied topic ID","changes":"prior finding ID if changed","contradicts":"prior finding ID if contradicted"}.`;
 }
 
 async function drGeminiStart(env, job) {
@@ -55011,17 +55193,15 @@ async function drPerplexity(env, job) {
   const prepared=await researchDigestGate(env,job).catch(()=>null);
   const known=prepared?.known||[];
   const focus=prepared?researchGateBrief(prepared.gate)+'\nALREADY RESEARCHED / CLAIMED (background only; do not re-research the same claims; find new developments, not old angles):\n'+JSON.stringify(known):'';
-  const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
-    headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ preset: "medium", input: drBrief(job)+focus }) });
+  const fetched=await digestProviderFetch(env,job,'perplexityResearch',drBrief(job)+focus),r=fetched.response;
   const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
   if (!r.ok || !d) return { status: "failed", error: `Perplexity HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
-  { const pc = pplxCost(d.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, d.usage).catch(e => console.error("spendAdd:", e.message)); }
+  { const pc = pplxCost(d.usage); if(!fetched.replayed)await spendAdd(env, "perplexity", pc.cost, pc.estimated, d.usage).catch(e => console.error("spendAdd:", e.message)); }
   const results = [];
   (d.output || []).forEach(o => { if (o && o.type === "search_results") (o.results || []).forEach(x => results.push({ url: x.url, title: x.title, date: x.date || x.last_updated || "", snippet: (x.snippet || "").slice(0, 400) })); });
   const text = d.output_text || (d.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
   if(prepared){const fields={'Key Claims / Sources':results.map(x=>x.title+' | '+x.url).join('\n'),'News / Trends / Zeitgeist':String(text||'').slice(0,12000)};await researchCommit(env,prepared.gate,fields,results);}
-  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80),usage:d.usage||null,gateSummary:prepared?.gate.summary };
+  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80),usage:d.usage||null,gateSummary:prepared?.gate.summary,promptChars:(drBrief(job)+focus).length,replayed:fetched.replayed };
 }
 
 async function drRank(env, job) {
@@ -55099,9 +55279,10 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     if (!keywords.length) return { error: "Enter at least one keyword" };
     const job = { id: "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), campaignId: cid, hubName: body.hubName || "",
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
-      notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
+      marketPlan:body.marketPlan||null,notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
     const newsletter=await newsletterContext(env,cid);
     job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=hubCheckPeriodStart('Weekly');
+    await digestMemorySeed(env,cid);job.memoryBrief=await digestMemoryBrief(env,cid);
     job.standing = await drStandingSources(env, cid);
     const depth=newsletter.fields['Research Depth'];
     job.gemini = depth==='Deep'?await drGeminiStart(env, job).catch(e => ({ status: "failed", error: e.message })):{status:'skipped',error:'Research Depth '+depth};
@@ -55123,7 +55304,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
   if (op === "perplexity") {   // long synchronous call — the modal fires it right after start and waits
     if (job.perplexity?.status === "done") return { success: true, job: drPublic(job) };
     job.perplexity = await drPerplexity(env, job).catch(e => ({ status: "failed", error: e.message }));
-    await newsletterUsage(env,job,'perplexityResearch',job.perplexity);
+    await newsletterUsage(env,job,'perplexityResearch',job.perplexity,!job.perplexity.replayed);
     const fresh = await env.TRADES.get(key, "json"); if (fresh) { fresh.perplexity = job.perplexity; Object.assign(job, fresh); }
     await save(); return { success: true, job: drPublic(job) };
   }

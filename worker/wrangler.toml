@@ -4,7 +4,7 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_als"]
 no_bundle = true
 find_additional_modules = true   # uploads kw-hub-ops.mjs (hub keyword rules, also loaded by the dash page)
-rules = [{ type = "ESModule", globs = ["kw-hub-ops.mjs", "hub-structure-*.mjs", "newsletter-methodology.mjs"] }]
+rules = [{ type = "ESModule", globs = ["kw-hub-ops.mjs", "hub-structure-*.mjs", "newsletter-methodology.mjs", "digest-memory.mjs"] }]
 
 [vars]
 # Secrets: NOTION_TOKEN, SESSION_TOKEN, ANTHROPIC_API_KEY (set via: npx wrangler secret put ANTHROPIC_API_KEY)
