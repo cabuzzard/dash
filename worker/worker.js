@@ -1280,8 +1280,7 @@ async function hubNewsTopicCandidates(env, cid, mains) {
   for (const t of topics) {
     const tid = hierarchyId(t.id); if (!model.topic(tid)) continue;   // only topics placed in a cluster
     const name = txt(t, "Name"); if (!name) continue;
-    const kw = txt(t, "Cluster Keywords").split(/[,
-]/).map(x => x.trim()).filter(x => x && x.length < 60).slice(0, 4);
+    const kw = txt(t, "Cluster Keywords").split(/[,\n]/).map(x => x.trim()).filter(x => x && x.length < 60).slice(0, 4);
     const own = prods.find(p => hierarchyText(p.properties?.["Topic ID"]?.rich_text) === tid && model.productIds.has(hierarchyId(p.id)) && !mainIds.has(hierarchyId(p.id))
       && !["Idea", "Archived"].includes(p.properties?.Status?.select?.name || "") && !p.properties?.Archived?.checkbox);
     const base = own ? { id: hierarchyId(own.id), name: txt(own, "Name"), desc: txt(own, "Description") } : mains[0];
