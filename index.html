@@ -16259,6 +16259,10 @@ function renderHubs2() {
           <summary title="Content"><span title="Content">Content</span><span id="hub2Outside-${slug}" style="font-size:10px;color:var(--text3);"></span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
         </details>
+        <details class="hub-sec" ontoggle="if(this.open)hubWgLoad('${slug}')">
+          <summary title="Writing guide"><span title="Writing guide">✍ Writing guide</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">how this hub writes · steers research, every writer and design</span></summary>
+          <div id="hub2WgBody-${slug}" style="padding:10px 14px;">${hubWgBody(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2CodexAttach('${slug}')">
           <summary title="Codex Design"><span title="Codex Design">Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
           <div style="padding:10px 12px;"><div id="hub2CdpHost-${slug}"></div></div>
@@ -17890,7 +17894,7 @@ async function hubWgLoad(slug, force) {
   catch (e) { _hubWg[slug] = { error: e.message }; }
   hubWgPaint(slug);
 }
-function hubWgPaint(slug) { const el = document.getElementById('hubWgBody-' + slug); if (el) el.innerHTML = hubWgBody(slug); }
+function hubWgPaint(slug) { ['hubWgBody-', 'hub2WgBody-'].forEach(p => { const el = document.getElementById(p + slug); if (el) el.innerHTML = hubWgBody(slug); }); }   // Content Hubs + Content Hubs 2 cards
 function hubWgBody(slug) {
   const W = _hubWg[slug]; if (!W) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   if (W.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
