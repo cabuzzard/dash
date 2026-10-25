@@ -6327,7 +6327,8 @@ async function researchTitle(env,body) {
   const fields={...cached.fields,...Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,hubRichText(s.title.properties[f]?.rich_text)]))};
   const required=researchRequired(s.worksheet.inputs,TITLE_RES_FIELDS),verifiedFields=[];
   if(s.product){fields['Product Facts']=JSON.stringify(Object.fromEntries(['Name','Description','Price','Offer Structure'].map(k=>[k,writingFieldValues(s.product.properties)[k]||''])));required.push('Product Facts');verifiedFields.push('Product Facts');}
-  const gate=await researchGate(env,{...s,kind:'title',id:s.titleId,fields,required,verifiedFields,force:body.force===true});
+  const guide=String(body.guidance||'').trim().slice(0,2000);   // operator guidance shapes this run (2026-10-25) — and always forces a fresh run
+  const gate=await researchGate(env,{...s,kind:'title',id:s.titleId,fields,required,verifiedFields,force:body.force===true||!!guide});
   const result=()=>({ok:true,titleId:s.titleId,name:hubRichText(s.title.properties.Title?.title||s.title.properties.Name?.title),fields:Object.fromEntries(TITLE_RES_FIELDS.map(f=>[f,fields[f]||''])),outOfSync:!!s.title.properties['Keywords Out of Sync']?.checkbox,gate:gate.gate,gateSummary:gate.summary,counts:gate.counts,decisions:gate.decisions,anthropicCalls:gate.gate==='reused'?0:1});
   if(gate.gate==='reused')return result();
   const topic=await titleTopicKeywords(env,newsletterHdr(env),s.title.properties),name=result().name;
@@ -6338,7 +6339,7 @@ async function researchTitle(env,body) {
   const pendingKey='research:pending:title:'+s.titleId,pending=await env.TRADES.get(pendingKey,'json').catch(()=>null),resume=!body.force&&pending?.status==='held'&&pending.upstream===gate.upstream&&pending.keywordsVersion===gate.keywordsVersion&&gate.needed.every(f=>pending.fields[f]);
   let usage,sources=[],changed={};
   if(resume){changed=pending.fields;sources=pending.sources||[];usage=pending.usage;}
-  else{const generated=await hcClaude(env,prompt,'title_research',schema,2500,u=>{usage=u;},{search:gate.needed.some(f=>/claims|sources|examples|news|trends|zeitgeist/i.test(f)),onResponse:d=>{sources=researchEvidence(d);}});gate.needed.forEach((field,i)=>{const value=String(generated[keys[i]]||'').trim();if(!value)throw new Error('Research omitted section: '+field);changed[field]=TITLE_RES_FIELDS.includes(field)?value.slice(0,1990):value.slice(0,6000);});}
+  else{const generated=await hcClaude(env,prompt+(guide?'\n\nOPERATOR GUIDANCE for this run (follow it; it shapes every section, but never invent facts): '+guide:''),'title_research',schema,2500,u=>{usage=u;},{search:gate.needed.some(f=>/claims|sources|examples|news|trends|zeitgeist/i.test(f)),onResponse:d=>{sources=researchEvidence(d);}});gate.needed.forEach((field,i)=>{const value=String(generated[keys[i]]||'').trim();if(!value)throw new Error('Research omitted section: '+field);changed[field]=TITLE_RES_FIELDS.includes(field)?value.slice(0,1990):value.slice(0,6000);});}
   const recovery={at:new Date().toISOString(),status:'held',upstream:gate.upstream,keywordsVersion:gate.keywordsVersion,fields:changed,sources,usage};await env.TRADES.put(pendingKey,JSON.stringify(recovery));
   try{await researchWriteTitle(env,s,gate,changed);await researchCommit(env,gate,changed,sources);await env.TRADES.put(pendingKey,JSON.stringify({...recovery,status:'applied'}));}catch(error){await env.TRADES.put('research:held:'+s.titleId+':'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:changed,sources}));throw error;}Object.assign(fields,changed);s.title.properties['Keywords Out of Sync']={checkbox:false};return {...result(),usage,anthropicCalls:resume?0:1,resumed:!!resume};
 }
@@ -14461,7 +14462,7 @@ async function titleJobsRun(env, invoke) {
             S.titleId = String(c.id).replace(/-/g, "");
             await invoke({ action: "setTitleTopic", titleId: S.titleId, topicId: "__main" }).catch(() => {});
           } else if (step.action === "pfield") {   // product research: one field — regenerate, then save (saving clears the product's out-of-sync)
-            const g = await invoke({ action: "regenerateStrategyField", productId: S.productId, campaignId: S.campaignId || undefined, field: step.field });
+            const g = await invoke({ action: "regenerateStrategyField", productId: S.productId, campaignId: S.campaignId || undefined, field: step.field, ...(S.guidance ? { instructions: S.guidance } : {}) });   // the run's guidance (2026-10-25)
             if (!g || g.error) throw new Error((g && g.error) || "no response");
             const u = await invoke({ action: "updateProductStrategyField", productId: S.productId, field: step.field, value: g.text || "" });
             if (!u || u.error) throw new Error((u && u.error) || "not saved");
@@ -20211,7 +20212,7 @@ ${JSON.stringify(products)}`;
         const productId = String(body.productId || "").replace(/-/g, ""); if (productId.length !== 32) return json({ error: "productId required" }, 400);
         const fields = (Array.isArray(body.fields) && body.fields.length ? body.fields : STRATEGY_FIELDS).filter(f => STRATEGY_FIELDS.includes(f));
         const id = "pr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ kind: "product", productId, campaignId: String(body.campaignId || "").replace(/-/g, ""), name: "📦 " + String(body.name || "Product").slice(0, 200), slug: String(body.slug || ""),
+        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ kind: "product", productId, campaignId: String(body.campaignId || "").replace(/-/g, ""), name: "📦 " + String(body.name || "Product").slice(0, 200), slug: String(body.slug || ""), guidance: String(body.guidance || "").trim().slice(0, 2000),
           steps: fields.map(f => ({ action: "pfield", field: f, label: f })), i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
         await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
         return json({ ok: true, id });

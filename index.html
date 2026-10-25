@@ -12355,7 +12355,7 @@ async function dev2BulkPublishHub(button,ids){
 
 const DEV2_BULK = {
   a: { label: 'Assets', acts: { publishHub: { label: 'Publish to hub' }, edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Review', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
-  t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
+  t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
   k: { label: 'Keyword topics', acts: { propose: { label: 'Propose products' } } },
   p: { label: 'Products', acts: { research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
 };
@@ -12396,7 +12396,17 @@ async function dev2BulkApply(btn) {
   }
   // ── queue it: snapshot the batch, clear the selection (pick the next set while this runs), return at once.
   // All batches share one pool of DEV2_BULK_CONC; each item has a live line in the jobs panel.
-  if (act === 'research' || act === 'pillar' || act === 'propose') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (up to ${DEV2_BULK_CONC} at a time across all batches).`)) return; }
+  // 🔬 Run all research (products / titles): a guidance form first — it shapes every item in the batch (operator 2026-10-25)
+  if (act === 'research' && DEV2_BULK_GUIDE === null) {
+    hcModal(`<h3 style="margin:0 0 4px;">Run all research — ${ids.length} ${esc(label)}</h3>
+      <div style="font-size:11.5px;color:var(--text3);margin-bottom:8px;">Runs Claude for each one (up to ${DEV2_BULK_CONC} at a time). Your guidance shapes every result in this batch.</div>
+      <textarea id="dev2BkGuide" rows="4" placeholder="Guidance — angle, audience, what to include or leave out, sources to favour… (optional)" style="${HC_IN}"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="modal-btn" onclick="document.getElementById('hcModal').classList.remove('open')">Cancel</button>
+      <button class="modal-btn" style="border-color:var(--accent);" onclick="DEV2_BULK_GUIDE=document.getElementById('dev2BkGuide').value.trim();document.getElementById('hcModal').classList.remove('open');dev2BulkApply(this)">🔬 Run research</button></div>`);
+    return;
+  }
+  const bulkGuide = act === 'research' ? (DEV2_BULK_GUIDE || '') : ''; DEV2_BULK_GUIDE = null;
+  if (act === 'pillar' || act === 'propose') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (up to ${DEV2_BULK_CONC} at a time across all batches).`)) return; }
   if (act === 'del' && !confirm(`Delete (archive in Notion) ${ids.length} ${label}?`)) return;
   const b = ++DEV2_JOBS.n, jobs = document.getElementById('dev2BkJobs');
   const rows = ids.map(id => ({ id, row: rowOf(t, id), name: nameOf(id) }));
@@ -12405,13 +12415,14 @@ async function dev2BulkApply(btn) {
   jobs.style.display = '';
   jobs.insertAdjacentHTML('afterbegin', `<div id="dev2Jb${b}" style="margin-bottom:8px;"><div style="display:flex;gap:8px;align-items:center;font-weight:600;color:var(--text);"><span>Batch ${b}: ${esc(head)}</span><span class="bs" style="font-weight:400;color:var(--text3);"></span><button onclick="this.closest('[id^=dev2Jb]').remove();dev2JobsTidy()" style="margin-left:auto;font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;" title="Hide this batch's lines (does not stop it)">✕</button></div>
     ${rows.map((x, n) => `<div id="dev2Jb${b}i${n}" style="display:flex;gap:8px;padding:2px 0 2px 10px;border-bottom:1px solid var(--border);"><span class="st" style="width:84px;flex-shrink:0;color:var(--text3);">queued</span><b style="flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.name)}</b><span class="ln" style="color:var(--text2);"></span></div>`).join('')}</div>`);
-  const batch = { b, t, act, val, valLabel, total: rows.length, ok: 0, bad: 0, skipped: 0 };
+  const batch = { b, t, act, val, valLabel, guidance: bulkGuide, total: rows.length, ok: 0, bad: 0, skipped: 0 };
   rows.forEach((x, n) => DEV2_JOBS.q.push({ batch, n, ...x }));
   if (t === 't') DEV2_SEL_T.clear(); if (t === 'p') DEV2_SEL_P.clear(); if (t === 'a') DEV2_SELECTED.clear();
   msg.textContent = `Batch ${b} queued (${rows.length}) — select the next set any time.`;
   renderDev2();
   dev2JobsPump();
 }
+let DEV2_BULK_GUIDE = null;   // the Run all research guidance, set by its form then consumed by the next dev2BulkApply
 // ── shared bulk job pool ──
 const DEV2_JOBS = { n: 0, q: [], running: 0 };
 function dev2JobLine(it, st, txt, col) {
@@ -12453,10 +12464,11 @@ async function dev2JobRun(it) {
   if (act === 'product') { const r = await call('updateTitleStrategy', { titleId: id, productId: val }); if (r && r.error) throw new Error(r.error); return val === '__none__' ? 'product removed' : 'product → ' + it.batch.valLabel.replace(/ · .*$/, ''); }
   if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); return r.keywords || ''; }
   if (act === 'pillar') { step('writing pillar…'); const r = await call('writeTitlePillar', { titleId: id }); if (r.error) throw new Error(r.error); return `pillar written (${r.wordCount || '?'} words)`; }
+  if (act === 'research' && t === 't') { step('researching…'); const r = await call('generateTitleResearch', { titleId: id, force: true, guidance: it.batch.guidance || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); return 'title research generated and saved'; }
   if (act === 'research') {   // every strategy field, regenerated then saved (same as the Content Hubs product research modal)
     const fails = [];
     for (let f = 0; f < HUB_STRATEGY_FIELDS.length; f++) { const fld = HUB_STRATEGY_FIELDS[f]; step(`${fld} (${f + 1}/${HUB_STRATEGY_FIELDS.length})`);
-      try { const r = await call('regenerateStrategyField', { productId: id, campaignId: row.campId, field: fld }); if (r.error) throw new Error(r.error);
+      try { const r = await call('regenerateStrategyField', { productId: id, campaignId: row.campId, field: fld, ...(it.batch.guidance ? { instructions: it.batch.guidance } : {}) }); if (r.error) throw new Error(r.error);
         const u = await call('updateProductStrategyField', { productId: id, field: fld, value: r.text }); if (u && u.error) throw new Error(u.error); } catch (e) { fails.push(fld); } }
     if (fails.length === HUB_STRATEGY_FIELDS.length) throw new Error('every field failed');
     return fails.length ? `done — ${fails.length} field(s) failed: ${fails.join(', ')}` : `all ${HUB_STRATEGY_FIELDS.length} research fields refreshed`;
@@ -18995,6 +19007,8 @@ function hubTitleResDraw() {
     <div style="font-size:11.5px;margin-bottom:10px;">${R.fields ? (empty ? '<span style="color:#ff7a00;">✗ no research yet</span>' : R.oos ? '<span style="color:#ff7a00;">✗ out of sync with its keyword topic</span>' : '<span style="color:#4ade80;">✓ in sync with its keyword topic</span>') : ''} · <a href="https://www.notion.so/${esc(String(R.tid).replace(/-/g, ''))}" target="_blank" rel="noopener" style="color:var(--accent);">Notion ↗</a></div>
     <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic it is built from</div>
     <div style="font-size:12px;margin:2px 0 10px;color:var(--text2);">${R.topicKeywords ? esc(R.topicKeywords) : '<span style="color:var(--text3);">none — put the title in a topic (drag it in Keywords, or ✎ edit)</span>'}</div>
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Guidance — shapes this run (optional)</div>
+    <textarea id="titleResGuide" rows="2" oninput="_titleRes.guidance=this.value" placeholder="Angle, audience, what to include or leave out, sources to favour…" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;margin:3px 0 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${esc(R.guidance || '')}</textarea>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><button ${dis} onclick="hubTitleResGenerate()" style="${B}border-color:var(--accent);">↻ Generate from its topic</button><span style="font-size:11px;color:var(--text3);">one Claude call · replaces the fields below</span></div>
     <div style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:6px;">${esc(R.busy || R.log || '')}</div>
     ${R.fields ? TITLE_RES_FIELDS.map(([f, l], i) => `<div style="margin:8px 0;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${l}${R.dirty[f] ? ' <span style="color:#f6ad55;text-transform:none;letter-spacing:0;">· edited</span>' : ''}</div><textarea ${dis} rows="${f === 'Title Questions' ? 7 : 3}" oninput="hubTitleResEdit(${i},this.value)" placeholder="(empty)" style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.45;padding:6px 8px;margin-top:3px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;font-family:inherit;">${esc(R.fields[f] || '')}</textarea></div>`).join('') : ''}
@@ -19014,7 +19028,7 @@ function hubTitleResApplied(R, r) { R.fields = r.fields || R.fields; R.oos = fal
 async function hubTitleResGenerate() {
   const R = _titleRes; if (!R) return; if (Object.keys(R.dirty).length && !confirm('Generating replaces your unsaved edits. Continue?')) return;
   R.busy = '⏳ Researching from its keyword topic…'; hubTitleResDraw();
-  try { const r = await call('generateTitleResearch', { titleId: R.tid, force: true }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); hubTitleResApplied(R, r); R.log = '✓ Generated and saved — in sync.'; }
+  try { const r = await call('generateTitleResearch', { titleId: R.tid, force: true, guidance: String(R.guidance || '').trim() }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); hubTitleResApplied(R, r); R.log = '✓ Generated and saved — in sync.'; }
   catch (e) { R.log = '✗ ' + e.message; }
   R.busy = ''; hubTitleResDraw();
 }
@@ -19753,6 +19767,8 @@ function hubResDraw() {
       <button ${dis} onclick="hubResKwRefresh()" style="${B}">↻ Refresh keywords from its keyword group</button>
       <button ${dis} onclick="hubResKwSave()" style="${B}">💾 Save keywords</button>
     </div>
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Guidance — shapes this run (optional)</div>
+    <textarea id="hubResGuide" rows="2" oninput="_hubRes.guidance=this.value" placeholder="Angle, audience, what to include or leave out, sources to favour…" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;margin:3px 0 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${esc(R.guidance || '')}</textarea>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <button ${dis} onclick="hubResRun()" style="${B}border-color:var(--accent);">↻ Re-run research from keywords</button>
       <span style="font-size:11px;color:var(--text3);">${R.fields ? filled + ' / ' + HUB_STRATEGY_FIELDS.length + ' fields filled' : ''}</span>
@@ -19807,7 +19823,7 @@ async function hubResRun() {   // runs on the server (⚙ Background jobs) — c
   const R = _hubRes, h = HUB_SITES.find(x => x.slug === R.slug);
   if (R.kwDirty) { await hubResKwSave(); if (R.kwDirty) return; }
   R.busy = 'Queuing…'; hubResDraw();
-  const q = await call('queueProductResearch', { productId: R.pid, campaignId: h && h.campaignId, name: R.name, slug: R.slug, fields: HUB_STRATEGY_FIELDS }).catch(e => ({ error: e.message }));
+  const q = await call('queueProductResearch', { productId: R.pid, campaignId: h && h.campaignId, name: R.name, slug: R.slug, fields: HUB_STRATEGY_FIELDS, guidance: String(R.guidance || '').trim() }).catch(e => ({ error: e.message }));
   R.busy = '';
   if (!q || q.error) { R.log = '✗ Not started: ' + ((q && q.error) || 'no response'); return hubResDraw(); }
   if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
