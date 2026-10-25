@@ -14,14 +14,23 @@ export function isStructureCardAction(body) {
 }
 export function structureRuntime(env,deps) {
  const io=makeStructureIO(env,deps),hubs=deps.hubs;
- async function lock(cid,operation) {
+ // operator 2026-10-25: a short lease the holder keeps renewing (a dead request frees the hub in ~90s, not 15 min), and an edit that
+ // finds the hub busy waits its turn (up to options.wait ms) instead of failing at once.
+ const LEASE_MS=90000,RENEW_MS=30000;
+ async function lock(cid,operation,options={}) {
   if(!env.KWDB)throw Error('Structure serialization requires the existing KWDB binding');
   await env.KWDB.prepare('CREATE TABLE IF NOT EXISTS hub_structure_leases (campaign TEXT PRIMARY KEY, owner TEXT NOT NULL, expires INTEGER NOT NULL)').run();
-  const owner=crypto.randomUUID(),now=Date.now();
-  const result=await env.KWDB.prepare('INSERT INTO hub_structure_leases(campaign,owner,expires) VALUES(?,?,?) ON CONFLICT(campaign) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE hub_structure_leases.expires < ?').bind(cid,owner,now+900000,now).run();
-  if(!result.meta?.changes){const error=Error('Hub structure sync is in progress; your change was not written. Retry shortly.');error.busy=true;throw error;}
-  try{return await operation();}finally{await env.KWDB.prepare('UPDATE hub_structure_leases SET expires=0, owner=? WHERE campaign=? AND owner=?').bind('',cid,owner).run();}
+  const owner=crypto.randomUUID(),until=Date.now()+(options.wait||0);
+  for(;;){
+   const now=Date.now(),result=await env.KWDB.prepare('INSERT INTO hub_structure_leases(campaign,owner,expires) VALUES(?,?,?) ON CONFLICT(campaign) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE hub_structure_leases.expires < ?').bind(cid,owner,now+LEASE_MS,now).run();
+   if(result.meta?.changes)break;
+   if(Date.now()+2000>until){const error=Error('Hub structure sync is in progress; your change was not written. Retry shortly.');error.busy=true;throw error;}
+   await new Promise(r=>setTimeout(r,2000));
+  }
+  const renew=setInterval(()=>{env.KWDB.prepare('UPDATE hub_structure_leases SET expires=? WHERE campaign=? AND owner=?').bind(Date.now()+LEASE_MS,cid,owner).run().catch(()=>{});},RENEW_MS);
+  try{return await operation();}finally{clearInterval(renew);await env.KWDB.prepare('UPDATE hub_structure_leases SET expires=0, owner=? WHERE campaign=? AND owner=?').bind('',cid,owner).run();}
  }
+ const lockWait=(cid,operation)=>lock(cid,operation,{wait:30000});   // card edits wait their turn
  const known=cid=>hubs.some(h=>norm(h.campaignId)===cid);
  async function campaignFor(body) {
   const explicit=norm(body.campaignId||body.campId);if(known(explicit))return explicit;
@@ -44,7 +53,7 @@ export function structureRuntime(env,deps) {
   // Long legacy actions are forwarded to SELF by the existing handler; only their actual inner execution is observed.
   if(!body.__inner&&/^(generate|regenerate)/.test(body.action))return operation(request);
   const cid=await campaignFor(body);if(!cid)return operation(request);
-  const response=await lock(cid,async()=>{
+  const response=await lockWait(cid,async()=>{
    let doc=await migrateStructure(io,cid),response;
    const topicId=norm(body.clusterId),key='topic:'+topicId;
    if(doc.items[key]&&['commitKeywordCluster','removeStagedKeywordCluster','archiveKeywordCluster'].includes(body.action)) {
