@@ -3798,7 +3798,35 @@ Return ONLY a JSON object: {"global":"- ...\\n- ...","campaign":"- ...\\n- ..."}
   if (cid && typeof j.campaign === "string") await env.TRADES.put("voice:profile:" + cid, JSON.stringify({ text: j.campaign.trim().slice(0, 3000), updatedAt: now, fromEdits: (mine || []).length }));
 }
 // Prompt block for copy writers: the learned voice, stated as overriding defaults.
+// ✍ HUB WRITING GUIDE (operator 2026-10-25): the operator's STATED rules for how this hub writes — distinct from the design spec and
+// from the learned 🗣 voice. KV writeguide:<campaignId>. It reaches every writer (through voiceBlock) and every research run, where its
+// research direction overrides default research choices; a run's own guidance is the most specific and wins where they clash.
+const WRITE_GUIDE_FIELDS = [
+  ['tone', 'Tone & personality'], ['pov', 'Point of view'], ['reader', 'Reader & reading level'], ['use', 'Words & phrases to use'],
+  ['avoid', 'Never say / avoid'], ['product', 'How to talk about the offering'], ['format', 'Formatting habits'], ['examples', 'Lines that sound right'],
+  ['research', 'Research direction (what research should emphasise, trust, avoid or override)'],
+];
+async function writingGuideGet(env, campaignId) {
+  const cid = String(campaignId || '').replace(/-/g, ''); if (!cid || !env.TRADES) return null;
+  try { return await env.TRADES.get('writeguide:' + cid, 'json'); } catch (e) { return null; }
+}
+async function writingGuideBlock(env, campaignId, mode) {   // mode 'write' → every rule; 'research' → research direction first, then the rest as framing
+  const g = await writingGuideGet(env, campaignId), f = (g && g.fields) || {};
+  const lines = WRITE_GUIDE_FIELDS.filter(([k]) => String(f[k] || '').trim()).map(([k, label]) => [k, label + ': ' + String(f[k]).trim()]);
+  if (!lines.length) return '';
+  if (mode === 'design') return 'HUB WRITING GUIDE (upstream of design — the voice, reader and offering the visual system must express; it informs mood, typography character and imagery but never sets a visual value by itself):\n' + lines.filter(([k]) => k !== 'research').map(x => '- ' + x[1]).join('\n');
+  if (mode === 'research') {
+    const dir = lines.find(([k]) => k === 'research'), rest = lines.filter(([k]) => k !== 'research');
+    return '\n\nHUB WRITING GUIDE — the operator\'s standing rules for this hub. ' + (dir ? 'Its RESEARCH DIRECTION overrides your default research choices (what to emphasise, trust, leave out): ' + dir[1].replace(/^[^:]+:\s*/, '') + '\n' : '')
+      + (rest.length ? 'Shape the research so the writing can follow these rules:\n' + rest.map(x => '- ' + x[1]).join('\n') + '\n' : '') + 'A run\'s own guidance (if given) is more specific and wins where they clash. Never invent facts to fit the guide.\n';
+  }
+  return 'HUB WRITING GUIDE — the operator\'s stated rules for how this hub writes. Follow them; they override default style guidance:\n' + lines.filter(([k]) => k !== 'research').map(x => '- ' + x[1]).join('\n') + '\n\n';
+}
 async function voiceBlock(env, campaignId) {
+  const guide = await writingGuideBlock(env, campaignId, 'write').catch(() => '');
+  return guide + await voiceBlockLearned(env, campaignId);
+}
+async function voiceBlockLearned(env, campaignId) {
   if (!env.TRADES) return "";
   const cid = String(campaignId || "").replace(/-/g, "");
   let g = null, c = null;
@@ -6339,7 +6367,7 @@ async function researchTitle(env,body) {
   const pendingKey='research:pending:title:'+s.titleId,pending=await env.TRADES.get(pendingKey,'json').catch(()=>null),resume=!body.force&&pending?.status==='held'&&pending.upstream===gate.upstream&&pending.keywordsVersion===gate.keywordsVersion&&gate.needed.every(f=>pending.fields[f]);
   let usage,sources=[],changed={};
   if(resume){changed=pending.fields;sources=pending.sources||[];usage=pending.usage;}
-  else{const generated=await hcClaude(env,prompt+(guide?'\n\nOPERATOR GUIDANCE for this run (follow it; it shapes every section, but never invent facts): '+guide:''),'title_research',schema,2500,u=>{usage=u;},{search:gate.needed.some(f=>/claims|sources|examples|news|trends|zeitgeist/i.test(f)),onResponse:d=>{sources=researchEvidence(d);}});gate.needed.forEach((field,i)=>{const value=String(generated[keys[i]]||'').trim();if(!value)throw new Error('Research omitted section: '+field);changed[field]=TITLE_RES_FIELDS.includes(field)?value.slice(0,1990):value.slice(0,6000);});}
+  else{const wgT=await writingGuideBlock(env,ivRid(s.title.properties,'Campaign'),'research').catch(()=>'');const generated=await hcClaude(env,prompt+wgT+(guide?'\n\nOPERATOR GUIDANCE for this run (follow it; it shapes every section, but never invent facts): '+guide:''),'title_research',schema,2500,u=>{usage=u;},{search:gate.needed.some(f=>/claims|sources|examples|news|trends|zeitgeist/i.test(f)),onResponse:d=>{sources=researchEvidence(d);}});gate.needed.forEach((field,i)=>{const value=String(generated[keys[i]]||'').trim();if(!value)throw new Error('Research omitted section: '+field);changed[field]=TITLE_RES_FIELDS.includes(field)?value.slice(0,1990):value.slice(0,6000);});}
   const recovery={at:new Date().toISOString(),status:'held',upstream:gate.upstream,keywordsVersion:gate.keywordsVersion,fields:changed,sources,usage};await env.TRADES.put(pendingKey,JSON.stringify(recovery));
   try{await researchWriteTitle(env,s,gate,changed);await researchCommit(env,gate,changed,sources);await env.TRADES.put(pendingKey,JSON.stringify({...recovery,status:'applied'}));}catch(error){await env.TRADES.put('research:held:'+s.titleId+':'+Date.now(),JSON.stringify({at:new Date().toISOString(),reason:error.message,payload:changed,sources}));throw error;}Object.assign(fields,changed);s.title.properties['Keywords Out of Sync']={checkbox:false};return {...result(),usage,anthropicCalls:resume?0:1,resumed:!!resume};
 }
@@ -28535,6 +28563,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
       // updateProductStrategyField (below) to commit it verbatim.
       if (body.action === "regenerateStrategyField") {
         const { productId, campaignId, field, instructions, omit } = body;
+        const wgResearch = await writingGuideBlock(env, campaignId, 'research').catch(() => '');   // ✍ hub writing guide (2026-10-25)
         if (!productId || !field) return json({ error: "productId and field required" }, 400);
         if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -28589,7 +28618,7 @@ PRODUCED CONTENT (the real, already-written product — ground everything in thi
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}
 FIELD TO WRITE: ${field} — ${STRATEGY_FIELD_HINTS[field]}
-${currentVal ? `\nCURRENT VALUE (refine or rework it, don't just restate):\n${currentVal}\n` : ""}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
+${currentVal ? `\nCURRENT VALUE (refine or rework it, don't just restate):\n${currentVal}\n` : ""}${wgResearch}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
 Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points). Output ONLY the field's text — no field name, no preamble, no markdown fences.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -37498,6 +37527,15 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
       }
 
       // -- getVoiceProfile / saveVoiceProfile {campaignId, global?, campaign?}
+      // writingGuide {campaignId, op: get | save, fields?} — the hub's ✍ Writing guide (stated rules; the learned voice stays in getVoiceProfile)
+      if (body.action === "writingGuide") {
+        const cid = String(body.campaignId || "").replace(/-/g, ""); if (!/^[a-f0-9]{32}$/i.test(cid)) return json({ error: "campaignId required" }, 400);
+        if (body.op === "save") { const f = body.fields && typeof body.fields === "object" ? body.fields : {};
+          const fields = Object.fromEntries(WRITE_GUIDE_FIELDS.map(([k]) => [k, String(f[k] || "").slice(0, 2000)]));
+          await env.TRADES.put("writeguide:" + cid, JSON.stringify({ fields, updatedAt: Date.now() })); }
+        const g = await writingGuideGet(env, cid);
+        return json({ ok: true, fields: (g && g.fields) || {}, updatedAt: (g && g.updatedAt) || null, schema: WRITE_GUIDE_FIELDS });
+      }
       if (body.action === "getVoiceProfile" || body.action === "saveVoiceProfile") {
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (body.action === "saveVoiceProfile") {
@@ -56173,7 +56211,7 @@ ${pick(/^img\.(medium|line|fill|shading|texture|people|cast|palette_use|mood)$/)
 AVOID
 ${pick(/^avoid\.(visual|colors|stock_ai)$/)}`.slice(0, 4900);
 }
-function dsInputsBlock(inp, fallbackKeywords) {
+function dsInputsBlock(inp, fallbackKeywords, writingGuide) {   // writingGuide: the hub's ✍ Writing guide text (design is downstream of it, 2026-10-25)
   inp = inp || {};
   const kw = String(inp.keywords || fallbackKeywords || "").trim(), r = inp.ranked || {}, ph = inp.photo || {};
   const out = [`ESTABLISHED INPUTS (the sources) — in order. A later input wins over an earlier one where they conflict.`];
@@ -56183,6 +56221,7 @@ function dsInputsBlock(inp, fallbackKeywords) {
   out.push(`3. TEXT OVERRIDE (the operator's own words — beats 1 and 2 on anything it mentions): ${String(inp.override || "").trim() || "(none)"}`);
   const lib = (inp.mediaLibrary || []).filter(x => x && x.url);
   if (lib.length) out.push(`4. SAVED HUB BRAND GUIDES + IMAGE CATALOG (consult automatically; use each according to its role):\n${lib.slice(0, 20).map(x => `   - ${x.role || "site-image"}: ${x.name || "Untitled"}${x.notes ? ` — ${x.notes}` : ""} — ${x.url}`).join("\n")}`);
+  if (String(writingGuide || "").trim()) out.push(`${out.length}. ${String(writingGuide).trim()}`);
   return out.join("\n");
 }
 function dsClean(fields, defaultSrc, allowSrc) {
@@ -56317,7 +56356,7 @@ Translate the uploaded visual references into production VALUES, preserving thei
 IMAGES${opts.inApp ? "" : " (copied text contains links and observed descriptions, not automatic image attachments)"}:
 ${imgs.join("\n") || "- (none yet — derive the look from the keywords and research)"}
 
-${dsInputsBlock(inp)}
+${dsInputsBlock(inp, undefined, (opts || {}).writingGuide)}
 ${opts.demand ? `\nKEYWORD RESEARCH (real Google demand — volumes, bids, intent):\n${String(opts.demand).slice(0, 4000)}\n` : ""}
 THE CAMPAIGN (research + main products):
 ${String(facts || "").slice(0, 6000)}
@@ -56466,6 +56505,7 @@ async function handleDesignSpec(body, env, ctx) {
   const [saved, staged0, inputs0, job, research] = await Promise.all([kvj(K.saved), kvj(K.stage), kvj(K.inputs), kvj(K.job), kvj('design:research:' + cid)]);
   let staged = staged0 || (saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {});
   const inputs = inputs0 || {};
+  const wgDesign = await writingGuideBlock(env, cid, 'design').catch(() => '');   // ✍ the hub's writing guide reaches every design build prompt
   const op = body.op || "get";
   const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, structure: [...DS_STRUCTURE], saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, research, ...extra });
 
@@ -56673,7 +56713,7 @@ async function handleDesignSpec(body, env, ctx) {
     const promptSpec = Array.isArray(body.only) && body.only.length ? { ...((saved && saved.spec) || {}) } : staged;
     if (promptSpec !== staged) for (const k of body.only) { if (DS_KEYS.has(k) && Object.prototype.hasOwnProperty.call(staged, k)) promptSpec[k] = staged[k]; }
     const draftNote=staged.__draftSpec?.text?'\nDRAFT SPEC AWAITING REVIEW (proposal only; map relevant evidence to requested fields, never auto-commit):\n'+staged.__draftSpec.text:'';
-    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, promptSpec, facts, { only: body.only, note: body.note, draft:draftNote, demand }) });
+    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, promptSpec, facts, { only: body.only, note: body.note, draft:draftNote, demand, writingGuide: wgDesign }) });
   }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "couldn't find any spec fields in that text (looking for lines like \"color.bg\": {\"v\": \"#FBFAF7\"}) — paste ChatGPT's whole reply" };
@@ -56835,7 +56875,7 @@ Reply with the HTML only, in one \`\`\`html block.`;
       kwDemandBlock(env, inp.keywords || "").catch(() => "")]);
     const text = `You are the lead web + brand designer for "${campName || "this campaign"}". Build its whole visual system as a FIELD → VALUE spec.
 
-${dsInputsBlock(inp)}
+${dsInputsBlock(inp, undefined, wgDesign)}
 ${scaf ? `
 THE HUB SCAFFOLD (the site's sections + current copy — design for THIS structure):
 ${JSON.stringify(scaf).slice(0, 4000)}
@@ -56877,7 +56917,7 @@ Reply with ONE JSON object only:
     const text = `Apply the operator's TEXT OVERRIDE to this design spec. Change every field the override affects — directly or by consequence (e.g. a new primary color also changes badges and how the palette shows in images) — and nothing else.
 ${RULES}
 
-${dsInputsBlock(inputs, kwFallback)}
+${dsInputsBlock(inputs, kwFallback, wgDesign)}
 
 FIELDS:
 ${dsSchemaText()}
@@ -56935,7 +56975,7 @@ Reply with ONE \`\`\`css block only.`;
     const who = body.reviewer === "grok" ? "grok" : "claude";
     const only = Array.isArray(body.only) && body.only.length ? body.only.map(String).filter(k => DS_KEYS.has(k)) : null;
     const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
-    const ptext = dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, staged, facts, { only, note: body.note, demand, inApp: true });
+    const ptext = dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, staged, facts, { only, note: body.note, demand, inApp: true, writingGuide: wgDesign });
     const photo = inputs.photo && inputs.photo.url;
     const refs = [...new Set([photo, plateUrl, ((inputs.cards || [])[0] || {}).url, ((inputs.renders || {}).hero || {}).url].filter(u => /^https:\/\//.test(u || "")))].slice(0, 4);
     let raw = "";
@@ -56966,7 +57006,7 @@ Reply with ONE \`\`\`css block only.`;
     const prompt = `Search the web and X for what is working visually right now for: ${inputs.keywords || kwFallback}. Then review the design spec below (built by another designer) and give YOUR value for EVERY field — change anything you would do differently, keep a value only if you agree, fill anything empty. Return every key. Never contradict the seed photo or the text override.
 ${RULES}
 
-${dsInputsBlock(inputs, kwFallback)}
+${dsInputsBlock(inputs, kwFallback, wgDesign)}
 
 FIELDS:
 ${dsSchemaText()}
