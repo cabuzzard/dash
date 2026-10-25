@@ -53790,7 +53790,6 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if(event.cron==='0 0 * * *')cw('hubStructureNightly',hubStructureNightly(env));
     if (event.cron === "*/4 * * * *") {
-      cw('hubStructureQueue',hubStructureDrain(env));
       cw("kwHubProposeTick", kwHubProposeTick(env));
       cw("kwHubAutoTick", kwHubAutoTick(env));
       cw("kwHubRestructureTick", kwHubRestructureTick(env));
