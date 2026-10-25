@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae",
+    "slug": "strategy-intensive",
+    "name": "Business Coaching for Owners: Overcoming Blind Spots and Better Decisions",
+    "promise": "For founders over 40 who are executing well but building toward something that no longer feels right. One session. You leave knowing what the actual problem is — not a symptom of it.",
+    "url": "../blog/strategy-intensive/",
+    "contentHash": "c5dc364c0aa3e79c49ad4910ff5ca242bc45758394dc268be3dcd0569ef31f6d",
+    "contentEditedAt": "2026-10-25T19:41:00.000Z",
+    "refreshedAt": "2026-10-25T19:41:45.487Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
     "slug": "field-sessions",
     "name": "Break the Decision Loop — One Session, One Working Answer",
@@ -18,15 +28,5 @@
     "contentHash": "edf0651213d825131b7c95cc3c4ed363a2aca4ffefe1ad3ad9ec874b84674dc3",
     "contentEditedAt": "2026-10-25T19:33:00.000Z",
     "refreshedAt": "2026-10-25T19:33:39.940Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae",
-    "slug": "strategy-intensive",
-    "name": "Business Coaching for Owners: Overcoming Blind Spots and Better Decisions",
-    "promise": "For founders over 40 who are executing well but building toward something that no longer feels right. One session. You leave knowing what the actual problem is — not a symptom of it.",
-    "url": "../blog/strategy-intensive/",
-    "contentHash": "3b27bfab50fa3a540de83e9189a50eee83b84e081644e4c5bc4588219277e161",
-    "contentEditedAt": "2026-10-22T23:02:00.000Z",
-    "refreshedAt": "2026-10-22T23:02:54.548Z"
   }
 ]
