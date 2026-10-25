@@ -71,7 +71,8 @@ export function structureRuntime(env,deps) {
    if(response.ok)await enqueue(cid);
    return response;
   }).catch(async error=>{await io.hold({action:body.action,reason:error.message,payload:structureHeldPayload(body)});throw error;});
-  if(response.ok&&await io.get('sync:enabled:v1'))ctx.waitUntil(deps.kick(cid).catch(async error=>{await io.put('sync:report:'+cid,{success:false,queued:true,error:error.message,at:io.now()});}));
+  // Successful card edits stay queued for the nightly structure sync. Avoid
+  // starting a sync in the same request path that just saved the edit.
   return response;
  }
  async function action(body) {
