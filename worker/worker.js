@@ -18882,10 +18882,10 @@ Return: {
           (ivByTitle[titleId] || []).filter(iv => iv.scope !== "Asset" || !(iv.assetIds || []).length || iv.assetIds.some(x => liveA.has(String(x).replace(/-/g, "")))).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
             assetName: "🎤 " + (iv.scope === "Asset" ? `[own · ${iv.forType}] ` : "") + (iv.angle || "Interview"), assetType: iv.scope === "Asset" ? "Interview (own)" : "Interview (title)", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
           const assets = assetsByTitle[titleId] || [];
-          if (!assets.length) {
-            rows.push({ ...base, kind: "title", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
-            return;
-          }
+          // operator 2026-10-25: "All Output is supposed to be ALL ROWS — anything that references the hub": every title has its OWN row
+          // (title status), whether or not it has assets — its asset rows follow it
+          rows.push({ ...base, kind: "title", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+          if (!assets.length) return;
           assets.forEach(a => {
             rows.push({
               ...base,
