@@ -11979,6 +11979,20 @@ async function dev2MainToggle(productId, campId, btn) {
   rows.forEach(x => { x.main = on ? '★' : ''; }); _devTblLast = null; renderDev2();
   showToast(on ? '★ Set as a main offering' : 'Removed from main offerings', 'success');
 }
+// Kind = Title (operator 2026-10-25: "saw no titles as development status … there are development titles"): a title with assets only
+// had ASSET rows (asset status), so the filter missed it. With a Kind = Title filter every title shows once, as a title row with the
+// TITLE's own status — its asset rows stand in for it when it has no title row of its own.
+function dev2Base() {
+  if (![DEV2_F[0], DEV2_F[1]].some(f => f.col === 'kind' && f.val === 'Title' && !f.neg)) return DEV2_ROWS;
+  const seen = new Set(), own = new Set(DEV2_ROWS.filter(r => r.kind === 'title' && r.titleId).map(r => r.titleId)), out = [];
+  for (const r of DEV2_ROWS) {
+    if (!r.titleId) { out.push(r); continue; }
+    if (own.has(r.titleId) ? r.kind !== 'title' : seen.has(r.titleId)) continue;
+    seen.add(r.titleId);
+    out.push(r.kind === 'title' ? r : { ...r, kind: 'title', assetId: null, assetName: '', assetType: '', rawAssetType: '', assetStatus: '', interviewId: null, interviews: '', ivState: '', hubSectionDisplay: '', status: r.titleStatus || '' });
+  }
+  return out;
+}
 function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
 function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2TogglePanel() { const p = document.getElementById('dev2Panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; dev2DrawPanel(); }
@@ -11987,7 +12001,7 @@ function dev2DrawPanel() {
   for (const k of [0, 1]) {
     const cEl = document.getElementById('dev2F' + k + 'c'), vEl = document.getElementById('dev2F' + k + 'v'); if (!cEl) return;
     cEl.innerHTML = colOpts(DEV2_F[k].col, true);
-    const base = k === 0 ? DEV2_ROWS : DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]));
+    const base = k === 0 ? DEV2_ROWS : dev2Base().filter(r => dev2Pass(r, DEV2_F[0]));
     const vals = DEV2_F[k].col ? [...new Set(base.map(r => dev2Val(r, DEV2_F[k].col)))].sort((a, b) => a.localeCompare(b)) : [];
     vEl.innerHTML = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${DEV2_BLANK}">(blank)</option>`).join('');
     vEl.value = DEV2_F[k].val; vEl.disabled = !DEV2_F[k].col;
@@ -12060,7 +12074,7 @@ function dev2HeadDrag(e, handle) {
 function dev2ToggleGroup(k) { const o = dev2OpenMap(); if (o[k]) delete o[k]; else o[k] = 1; dev2SaveOpen(o); renderDev2(); }
 function dev2CollapseAll(close) {
   const o = dev2OpenMap(), L = Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS);
-  const rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  const rows = dev2Base().filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
   rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) delete o[k]; else o[k] = 1; } });
   dev2SaveOpen(o); renderDev2();
 }
@@ -12673,7 +12687,7 @@ function renderDev2() {
   // Comma-separated terms, OR'd together — "care gap, owners rep" shows
   // rows matching EITHER, same idea as filtering to a set of values rather
   // than narrowing with every extra word.
-  let rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  let rows = dev2Base().filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
   const chips = document.getElementById('dev2Chips');
   if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)} ${f.neg ? '≠' : '='} ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
     + (DEV2_SORT.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${DEV2_SORT.map(x => ((DEV2_COLS.find(c => c.key === x.col) || {}).label || x.col) + (x.asc ? ' ▲' : ' ▼')).join(', then ')}</span>` : '');
