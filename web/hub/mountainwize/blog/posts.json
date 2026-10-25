@@ -1,5 +1,15 @@
 [
   {
+    "slug": "field-sessions",
+    "title": "Break the Decision Loop — One Session, One Working Answer",
+    "intro": "You've made harder calls than this. You've been in harder rooms, under real pressure, with real money on the line. So why is this particular decision — the one you keep re-approaching from the same angle — not moving?\n\nThe honest answer isn't that you lack information. You have more than enough info",
+    "date": "2026-10-25",
+    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
+    "contentHash": "8972745d18551f86b729464485244c1da68e1372da39bc09c6d55deca638e546",
+    "contentEditedAt": "2026-10-25T19:38:00.000Z",
+    "refreshedAt": "2026-10-25T19:38:33.835Z"
+  },
+  {
     "slug": "inner-edge",
     "title": "The Energy Session — Find the Pattern Running the Gap",
     "intro": "You have optimized everything the leaderboard measures. The career, the income, the status — all of it is there. And still, something is running underneath that does not match the life you built on the outside. You can feel it. A specific kind of tired that success is not supposed to produce. Compet",
@@ -75,15 +85,5 @@
     "contentHash": "3b27bfab50fa3a540de83e9189a50eee83b84e081644e4c5bc4588219277e161",
     "contentEditedAt": "2026-10-22T23:02:00.000Z",
     "refreshedAt": "2026-10-22T23:02:54.548Z"
-  },
-  {
-    "slug": "field-sessions",
-    "title": "Break the Decision Loop — One Session, One Working Answer",
-    "intro": "You've made harder calls than this. You've been in harder rooms, under real pressure, with real money on the line. So why is this particular decision — the one you keep re-approaching from the same angle — not moving?\n\nThe honest answer isn't that you lack information. You have more than enough info",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
-    "contentHash": "f0b0e4a4cc65997108441e89a7a1c04d09ae69acacf6a6b40184542230dbdf92",
-    "contentEditedAt": "2026-10-22T22:56:00.000Z",
-    "refreshedAt": "2026-10-22T22:56:41.718Z"
   }
 ]

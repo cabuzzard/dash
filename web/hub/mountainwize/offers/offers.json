@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
+    "slug": "field-sessions",
+    "name": "Break the Decision Loop — One Session, One Working Answer",
+    "promise": "For founders who are competent, performing, and privately stuck. One focused session breaks the loop — walk out with a named corrective and a working inner process that's yours to keep.",
+    "url": "../blog/field-sessions/",
+    "contentHash": "8972745d18551f86b729464485244c1da68e1372da39bc09c6d55deca638e546",
+    "contentEditedAt": "2026-10-25T19:38:00.000Z",
+    "refreshedAt": "2026-10-25T19:38:33.835Z"
+  },
+  {
     "assetId": "4001f7d3a4bb81478f64fe0019ec63fb",
     "slug": "inner-edge",
     "name": "The Energy Session — Find the Pattern Running the Gap",
@@ -18,15 +28,5 @@
     "contentHash": "3b27bfab50fa3a540de83e9189a50eee83b84e081644e4c5bc4588219277e161",
     "contentEditedAt": "2026-10-22T23:02:00.000Z",
     "refreshedAt": "2026-10-22T23:02:54.548Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
-    "slug": "field-sessions",
-    "name": "Break the Decision Loop — One Session, One Working Answer",
-    "promise": "For founders who are competent, performing, and privately stuck. One focused session breaks the loop — walk out with a named corrective and a working inner process that's yours to keep.",
-    "url": "../blog/field-sessions/",
-    "contentHash": "f0b0e4a4cc65997108441e89a7a1c04d09ae69acacf6a6b40184542230dbdf92",
-    "contentEditedAt": "2026-10-22T22:56:00.000Z",
-    "refreshedAt": "2026-10-22T22:56:41.718Z"
   }
 ]
