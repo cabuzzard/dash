@@ -12310,6 +12310,11 @@ function dev2ClearSelection() {
 }
 // ── bulk actions for any record type ──
 const DEV2_SEL_T = new Set(), DEV2_SEL_P = new Set(), DEV2_BULK_CONC = 20;   // bulk actions run up to 20 at once (operator, 2026-10-08)
+let DEV2_VIEW = [];   // the rows the table last rendered (after filters) — a group header's ☑ selects these
+function dev2SelectGroup(k, d, on) {
+  DEV2_VIEW.filter(r => dev2GKey(r, d) === k).forEach(r => { const key = dev2RowKey(r); if (on) DEV2_SELECTED.add(key); else DEV2_SELECTED.delete(key); });
+  dev2UpdateBulkBar(); renderDev2();
+}
 function dev2ToggleRec(t, id, on) { const S = t === 't' ? DEV2_SEL_T : DEV2_SEL_P; if (on) S.add(id); else S.delete(id); dev2UpdateBulkBar(); }
 // the record ids each type acts on: assets = checked asset rows; titles / products = their own boxes + checked title-only / product-only rows
 function dev2BulkIds() {
@@ -12695,6 +12700,9 @@ function renderDev2() {
   rows = rows.slice().sort(dev2Cmp);
   const gOn = DEV2_GROUP && DEV2_SORT.length > 0, L = gOn ? Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS) : 0, closedMap = dev2Closed();
   const isHidden = r => { for (let d = 0; d < L; d++) if (closedMap[dev2GKey(r, d)]) return true; return false; };
+  // ☑ on each group header selects every row in that group (operator 2026-10-25) — counts per group: [rows, selected]
+  DEV2_VIEW = rows; const gSel = {};
+  if (gOn) rows.forEach(r => { const on = DEV2_SELECTED.has(dev2RowKey(r)); for (let d = 0; d < L; d++) { const g = gSel[dev2GKey(r, d)] || (gSel[dev2GKey(r, d)] = [0, 0]); g[0]++; if (on) g[1]++; } });
   const visibleRows = gOn ? rows.filter(r => !isHidden(r)) : rows;
   DEV2_VISIBLE_ROWS = visibleRows;
   const gb = document.getElementById('dev2GroupBtn'); if (gb) gb.textContent = '☰ Group by sort: ' + (DEV2_GROUP ? 'on' : 'off');
@@ -12787,7 +12795,7 @@ function renderDev2() {
         if (parentClosed) continue;
         const col = DEV2_SORT[d].col, v = dev2Val(r, col), lab = (DEV2_COLS.find(c => c.key === col) || {}).label || col, closed = !!closedMap[k];
         tbody += `<tr data-k="${esc(k)}" data-d="${d}" data-pk="${esc(d ? dev2GKey(r, d - 1) : '')}" data-col="${esc(col)}" data-v="${esc(v)}" onclick="dev2ToggleGroup(this.dataset.k)" style="cursor:pointer;background:rgba(127,127,127,${(0.16 - d * 0.025).toFixed(3)});border-bottom:1px solid var(--border);">
-          <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};"><span title="Drag to reorder (sets a custom order for this column, everywhere)" onclick="event.stopPropagation()" onpointerdown="dev2HeadDrag(event, this)" style="cursor:grab;color:var(--text3);padding:0 6px 0 0;touch-action:none;">⠿</span><span style="display:inline-block;width:14px;">${closed ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${countTxt(k, d)})</span></td></tr>`;
+          <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};"><span title="Drag to reorder (sets a custom order for this column, everywhere)" onclick="event.stopPropagation()" onpointerdown="dev2HeadDrag(event, this)" style="cursor:grab;color:var(--text3);padding:0 6px 0 0;touch-action:none;">⠿</span><input type="checkbox" title="Select every row in this group" onclick="event.stopPropagation();dev2SelectGroup(this.closest('tr').dataset.k, ${d}, this.checked)" ${gSel[k] && gSel[k][1] === gSel[k][0] ? 'checked' : ''} style="margin:0 6px 0 0;vertical-align:middle;cursor:pointer;"><span style="display:inline-block;width:14px;">${closed ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${countTxt(k, d)})</span></td></tr>`;
       }
       if (!isHidden(r)) tbody += rowHtml(r);
     });
