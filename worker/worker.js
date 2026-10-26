@@ -9869,6 +9869,53 @@ async function tradePollOne(t) {
   return up;
 }
 
+// ── FIRST-TOUCH ("WHEN") TRACKER ──────────────────────────────────────────
+// Logs, per trade, the first time each stop/target threshold is crossed, so
+// the stop-first vs target-first verdict is decided by observed order, not
+// by highs/lows. LOGGING ONLY: this never closes, stops, or alters a trade.
+// Contract thresholds are position-relative (contract_pct). Underlying
+// thresholds are direction-adjusted: for puts, "positive" means the
+// underlying moved in the put's favor (current_pct is price-relative, so it
+// is negated for puts). Resolution is one poll tick (~5-min bars).
+const FIRST_TOUCH_CONTRACT = [['c_m20', -20], ['c_m10', -10], ['c_p10', 10], ['c_p20', 20], ['c_p25', 25]];
+const FIRST_TOUCH_UNDERLYING = [['u_m20', -20], ['u_m10', -10], ['u_p10', 10], ['u_p20', 20]];
+
+// Returns { firstTouch, firstTouchBackfilled } to merge into the record, or
+// null when nothing changed. Expired trades are never stamped: closed trades
+// must not be backfilled from extremes, and a trade expiring on this poll
+// keeps whatever map it already had. A trade seen for the first time (no map
+// yet) gets already-crossed thresholds stamped as backfilled — the true
+// crossing time predates observation, so it is honestly "on or before now";
+// a first-seen trade with nothing crossed gets an empty map so later polls
+// stamp live instead of backfilling.
+function stampFirstTouch(prev, merged) {
+  if (merged.expired) return null;
+  const isPut = /^P/i.test(merged.direction || 'C');
+  const cPct = merged.contract_pct;
+  const uPct = merged.current_pct == null ? null : (isPut ? -merged.current_pct : merged.current_pct);
+  const prevMap = (prev.firstTouch && typeof prev.firstTouch === 'object') ? prev.firstTouch : null;
+  const isFirstSight = prevMap == null;
+  const map = { ...(prevMap || {}) };
+  let changed = false;
+  let backfilled = !!prev.firstTouchBackfilled;
+  const nowIso = new Date().toISOString();
+  const check = (list, pct) => {
+    if (pct == null) return;
+    for (const [key, th] of list) {
+      if (map[key] != null) continue;
+      if ((th < 0 && pct <= th) || (th > 0 && pct >= th)) {
+        map[key] = nowIso;
+        changed = true;
+        if (isFirstSight) backfilled = true;
+      }
+    }
+  };
+  check(FIRST_TOUCH_CONTRACT, cPct);
+  check(FIRST_TOUCH_UNDERLYING, uPct);
+  if (!changed) return isFirstSight ? { firstTouch: {}, firstTouchBackfilled: false } : null;
+  return { firstTouch: map, firstTouchBackfilled: backfilled };
+}
+
 async function runTradePoll(env, { force = false, limit = TRADE_POLL_BATCH } = {}) {
   const et = orbNowET();
   const marketOpen = !et.isWeekend && et.minutes >= 9 * 60 + 30 && et.minutes <= 16 * 60 + 15;
@@ -9888,8 +9935,11 @@ async function runTradePoll(env, { force = false, limit = TRADE_POLL_BATCH } = {
     try {
       const up = await tradePollOne(t);
       const merged = { ...t, ...up };
-      if (tradeIsExpired(t)) {
-        merged.expired = true;
+      if (tradeIsExpired(t)) merged.expired = true;
+      // First-touch ("when") tracker: logging only — never closes or stops a trade.
+      const ft = stampFirstTouch(t, merged);
+      if (ft) Object.assign(merged, ft);
+      if (merged.expired) {
         await env.TRADES.put(`trades:${t.id}`, JSON.stringify(merged));
         await archiveExpiredTrade(env, t.id, merged);
         expired++;
@@ -9920,6 +9970,13 @@ async function archiveExpiredTrade(env, id, updated) {
   const name = `${updated.ticker} ${updated.strike}${updated.direction || "C"} ${updated.expiry}`;
   let archiveOk = false;
   let archiveError = null;
+  // First-touch ("when") tracker: carry the firstTouch map in the archive's
+  // meta block (no Notion schema change — the block is free-form JSON).
+  const archiveMeta = { ...(updated.meta || {}) };
+  if (updated.firstTouch) {
+    archiveMeta.firstTouch = updated.firstTouch;
+    archiveMeta.firstTouchBackfilled = !!updated.firstTouchBackfilled;
+  }
   try {
     const notionResp = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
@@ -9953,9 +10010,9 @@ async function archiveExpiredTrade(env, id, updated) {
           "Contract Max Low":       { number: updated.contract_max_low ?? null },
           "Contract Max Low Time":  rt(updated.contract_max_low_time || ""),
         },
-        ...(updated.meta ? { children: [
+        ...(Object.keys(archiveMeta).length ? { children: [
           { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `${updated.strategy || "Strategy"} signal metadata` } }] } },
-          { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(updated.meta, null, 2).slice(0, 1900) } }] } },
+          { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(archiveMeta, null, 2).slice(0, 1900) } }] } },
         ] } : {}),
       }),
     });
