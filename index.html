@@ -16254,7 +16254,7 @@ function renderHubs2() {
     if (i >= 0) { HUB2_IDX = i; _hub2Restored = true; } else if (!s || _hubExtraDone) _hub2Restored = true; } catch (e) { _hub2Restored = true; } }
   if (HUB2_IDX >= HUB_SITES.length) HUB2_IDX = 0;
   if (_hub2Restored) { try { localStorage.setItem('hub2Slug', HUB_SITES[HUB2_IDX].slug); } catch (e) {} }   // (a hub that loads late — KV-registered — is not overwritten before it arrives)
-  const h = HUB_SITES[HUB2_IDX], slug = h.slug, url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
+  const h = HUB_SITES[HUB2_IDX], slug = h.slug, url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', liveUrl = h.routing === 'ok' && h.domain ? 'https://' + h.domain + '/' : url;
   const B = 'font-size:10px;padding:4px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;';
   el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
       <div style="display:flex;gap:5px;flex-wrap:wrap;">${HUB_SITES.map((x, i) => `<button onclick="hub2Jump(${i})" style="${B}border-color:${i === HUB2_IDX ? 'var(--accent)' : 'var(--border2)'};color:${i === HUB2_IDX ? 'var(--text)' : 'var(--text3)'};background:${i === HUB2_IDX ? 'var(--surface2)' : 'transparent'};">${esc(x.name)}</button>`).join('')}</div>
@@ -16301,6 +16301,11 @@ function renderHubs2() {
       </div>
       <div class="hub-rail">
         <div class="hub-rail-head" id="hub2RailHead-${slug}">${hub2RailHeadHtml(slug)}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;padding:10px 13px;border:1px solid var(--accent);border-radius:8px;background:var(--surface);">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent);white-space:nowrap;">LIVE HUB URL</span>
+          <a href="${esc(liveUrl)}" target="_blank" rel="noopener" title="Open ${esc(h.name)} live hub" style="font-size:14px;font-weight:650;color:var(--text);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere;">${esc(liveUrl.replace(/^https?:\/\//, '').replace(/\/$/, ''))} <span style="color:var(--accent);">↗</span></a>
+          <span style="margin-left:auto;font-size:10px;color:var(--text3);">${h.routing === 'ok' && h.domain ? 'Custom domain' : 'GitHub Pages'}</span>
+        </div>
         <div class="hub-rail-frame" id="hub2Wrap-${slug}" style="height:600px;">
           <iframe id="hub2Frame-${slug}" src="${url}?v=${Date.now()}" title="${esc(h.name)} preview" onload="hub2PreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
         </div>
@@ -17785,7 +17790,7 @@ function hub2CodexAttach(slug) {
 // ✎ hover-to-edit (the old tap-to-edit fields, outlined only on hover), 🖼 Hero images (Codex design) ──
 const _hub2Mode = {}, _hub2HeroCand = {}, HUB2_EDIT = {};
 function hub2RailHeadHtml(slug) {
-  const h = HUB_SITES.find(x => x.slug === slug) || {}, url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', st = _hub2Mode[slug] === 'staged', ed = HUB2_EDIT[slug] !== false;
+  const h = HUB_SITES.find(x => x.slug === slug) || {}, url = h.routing === 'ok' && h.domain ? 'https://' + h.domain + '/' : 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', st = _hub2Mode[slug] === 'staged', ed = HUB2_EDIT[slug] !== false;
   const seg = (on, mode, label) => `<button onclick="hub2RailMode('${slug}','${mode}')" style="font-size:10px;padding:3px 8px;border:none;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;">${label}</button>`;
   const B = 'font-size:10px;padding:3px 9px;border-radius:5px;background:transparent;cursor:pointer;';
   return `<b style="font-size:12px;">${esc(h.name || slug)} preview</b>
