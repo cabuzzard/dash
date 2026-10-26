@@ -1,0 +1,1 @@
+- 2026-10-26 **accumulation** `window=20, vol_ratio=1.2, range_max_pct=0.15, entry=backup, exit_sma=10` — failed C1 Sharpe >= max(0.8, SPY), C3 2x costs: CAGR>0, Sharpe >= 0.6, C4 no year > 50% of profit, C5 neighbours >= 0.7x in-sample Sharpe · validation CAGR -0.8% · Sharpe -0.24 · MaxDD -10.3% · exposure 15% · trades 126

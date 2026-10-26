@@ -1,0 +1,824 @@
+{
+  "run_at": "2026-10-26T04:49:51.672824",
+  "grids": {
+    "setup": [
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15
+      }
+    ],
+    "canonical": {
+      "window": 20,
+      "vol_ratio": 1.2,
+      "range_max_pct": 0.15
+    },
+    "stage2": [
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 20,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.2,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.1,
+        "entry": "backup",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "sos",
+        "exit_sma": 10
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 5
+      },
+      {
+        "window": 40,
+        "vol_ratio": 1.5,
+        "range_max_pct": 0.15,
+        "entry": "backup",
+        "exit_sma": 10
+      }
+    ]
+  },
+  "stage1": {
+    "canonical": {
+      "window": 20,
+      "vol_ratio": 1.2,
+      "range_max_pct": 0.15
+    },
+    "arms": {
+      "closed": {
+        "confirmed": null,
+        "unconfirmed": {
+          "n": 9,
+          "win_contract": 0.4444444444444444,
+          "avg_contract": -7.784588888888887,
+          "win_underlying": 0.6666666666666666,
+          "avg_underlying": 6.237255555555554
+        },
+        "all": {
+          "n": 9,
+          "win_contract": 0.4444444444444444,
+          "avg_contract": -7.784588888888887,
+          "win_underlying": 0.2222222222222222,
+          "avg_underlying": -16.703877777777777
+        }
+      },
+      "open_interim": {
+        "confirmed": null,
+        "unconfirmed": {
+          "n": 60,
+          "win_contract": 0.5833333333333334,
+          "avg_contract": 35.61753333333333,
+          "win_underlying": 0.65,
+          "avg_underlying": 5.452861666666666
+        },
+        "all": {
+          "n": 60,
+          "win_contract": 0.5833333333333334,
+          "avg_contract": 35.61753333333333,
+          "win_underlying": 0.3,
+          "avg_underlying": -6.907858333333333
+        }
+      }
+    }
+  },
+  "stage2": {
+    "best": {
+      "window": 20,
+      "vol_ratio": 1.2,
+      "range_max_pct": 0.15,
+      "entry": "backup",
+      "exit_sma": 10
+    },
+    "passed": false,
+    "val": {
+      "cagr": -0.008432585449794416,
+      "sharpe": -0.24424518718411278,
+      "maxdd": -0.10255312882838252,
+      "exposure": 0.14701986754966886,
+      "turnover_yr": 8.41112582781457,
+      "entries": 126,
+      "rebalances": 126,
+      "top_year_share": Infinity,
+      "top_year": 2019
+    },
+    "checks": [
+      [
+        "C1 Sharpe >= max(0.8, SPY)",
+        "False",
+        "-0.24 vs 0.80"
+      ],
+      [
+        "C2 MaxDD <= 25% and <= SPY",
+        "True",
+        "-10.3% vs SPY -32.0%"
+      ],
+      [
+        "C3 2x costs: CAGR>0, Sharpe >= 0.6",
+        "False",
+        "CAGR -1.3%, Sharpe -0.37"
+      ],
+      [
+        "C4 no year > 50% of profit",
+        false,
+        "no net profit"
+      ],
+      [
+        "C5 neighbours >= 0.7x in-sample Sharpe",
+        "False",
+        "median -0.21 vs -0.09"
+      ],
+      [
+        "C6 >= 30 rebalances/trades",
+        true,
+        "126"
+      ]
+    ],
+    "is_grid": [
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.15, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.004493037495428731,
+          "sharpe": -0.13540142867928684,
+          "maxdd": -0.11861832263488092,
+          "exposure": 0.14611055941741144,
+          "turnover_yr": 8.441708043694142,
+          "entries": 253,
+          "rebalances": 253,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.1, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.004152915149108538,
+          "sharpe": -0.13904906577348683,
+          "maxdd": -0.09475277879972321,
+          "exposure": 0.13704071499503476,
+          "turnover_yr": 7.9078450844091375,
+          "entries": 237,
+          "rebalances": 237,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.15, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.004699696294002242,
+          "sharpe": -0.1399769979205834,
+          "maxdd": -0.12080925282718846,
+          "exposure": 0.14816285998013903,
+          "turnover_yr": 8.54180734856008,
+          "entries": 256,
+          "rebalances": 256,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.1, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.004518673106982618,
+          "sharpe": -0.15335072747312278,
+          "maxdd": -0.09873057335875202,
+          "exposure": 0.13578285335981463,
+          "turnover_yr": 7.874478649453824,
+          "entries": 236,
+          "rebalances": 236,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.1, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.002765981160553488,
+          "sharpe": -0.15814199448101748,
+          "maxdd": -0.06897170942143671,
+          "exposure": 0.0706388613042039,
+          "turnover_yr": 4.120754716981133,
+          "entries": 123,
+          "rebalances": 123,
+          "top_year_share": Infinity,
+          "top_year": 2016
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.1, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.002765981160553488,
+          "sharpe": -0.15814199448101748,
+          "maxdd": -0.06897170942143671,
+          "exposure": 0.0706388613042039,
+          "turnover_yr": 4.120754716981133,
+          "entries": 123,
+          "rebalances": 123,
+          "top_year_share": Infinity,
+          "top_year": 2016
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.1, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.00444021588341037,
+          "sharpe": -0.167524260099377,
+          "maxdd": -0.09715202326153294,
+          "exposure": 0.113670969877524,
+          "turnover_yr": 6.673286991062563,
+          "entries": 200,
+          "rebalances": 200,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.1, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.004806703501932241,
+          "sharpe": -0.1832741768697774,
+          "maxdd": -0.10112831839724012,
+          "exposure": 0.11241310824230388,
+          "turnover_yr": 6.63992055610725,
+          "entries": 199,
+          "rebalances": 199,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.15, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.004621776236567676,
+          "sharpe": -0.19883868915475966,
+          "maxdd": -0.10040352863631197,
+          "exposure": 0.10162197947699438,
+          "turnover_yr": 5.905858987090369,
+          "entries": 177,
+          "rebalances": 177,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.15, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.004750593702673833,
+          "sharpe": -0.20833851446947535,
+          "maxdd": -0.10179821250511012,
+          "exposure": 0.09963588215822575,
+          "turnover_yr": 5.80575968222443,
+          "entries": 174,
+          "rebalances": 174,
+          "top_year_share": Infinity,
+          "top_year": 2016
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.15, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.00595194330639881,
+          "sharpe": -0.21066178543459266,
+          "maxdd": -0.1316663284126266,
+          "exposure": 0.11896722939424031,
+          "turnover_yr": 7.073684210526317,
+          "entries": 212,
+          "rebalances": 212,
+          "top_year_share": Infinity,
+          "top_year": 2016
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.15, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.006158321441811054,
+          "sharpe": -0.21425195495046084,
+          "maxdd": -0.13382505587484128,
+          "exposure": 0.1210195299569679,
+          "turnover_yr": 7.1737835153922545,
+          "entries": 215,
+          "rebalances": 215,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.1, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.0028934284374598773,
+          "sharpe": -0.24422120820332593,
+          "maxdd": -0.06128444923384391,
+          "exposure": 0.04124462098642833,
+          "turnover_yr": 2.6359483614697123,
+          "entries": 79,
+          "rebalances": 79,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.1, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.0028934284374598773,
+          "sharpe": -0.24422120820332593,
+          "maxdd": -0.06128444923384391,
+          "exposure": 0.04124462098642833,
+          "turnover_yr": 2.6359483614697123,
+          "entries": 79,
+          "rebalances": 79,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.15, entry=backup, exit_sma=10",
+        {
+          "cagr": -0.005891072225077454,
+          "sharpe": -0.3749066937291037,
+          "maxdd": -0.0903946528407753,
+          "exposure": 0.058987090367428004,
+          "turnover_yr": 3.7537239324726914,
+          "entries": 113,
+          "rebalances": 113,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.15, entry=sos, exit_sma=10",
+        {
+          "cagr": -0.006396843627322957,
+          "sharpe": -0.39790113678544303,
+          "maxdd": -0.09592700611976623,
+          "exposure": 0.05905329361138695,
+          "turnover_yr": 3.7870903674280045,
+          "entries": 114,
+          "rebalances": 114,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.1, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.005887169946322768,
+          "sharpe": -0.501438412678457,
+          "maxdd": -0.07737485969267521,
+          "exposure": 0.038728897715988087,
+          "turnover_yr": 4.371002979145979,
+          "entries": 131,
+          "rebalances": 131,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.1, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.005887169946322768,
+          "sharpe": -0.501438412678457,
+          "maxdd": -0.07737485969267521,
+          "exposure": 0.038728897715988087,
+          "turnover_yr": 4.371002979145979,
+          "entries": 131,
+          "rebalances": 131,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.15, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.009865099534706712,
+          "sharpe": -0.5138668244231112,
+          "maxdd": -0.14083045214778755,
+          "exposure": 0.06686527639854353,
+          "turnover_yr": 7.657596822244291,
+          "entries": 230,
+          "rebalances": 230,
+          "top_year_share": Infinity,
+          "top_year": 2005
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.15, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.011290016699004535,
+          "sharpe": -0.5201988215894339,
+          "maxdd": -0.15678509146027886,
+          "exposure": 0.08023833167825224,
+          "turnover_yr": 9.159086395233368,
+          "entries": 275,
+          "rebalances": 275,
+          "top_year_share": Infinity,
+          "top_year": 2005
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.15, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.010389193747676662,
+          "sharpe": -0.5359402924183481,
+          "maxdd": -0.14626647756725197,
+          "exposure": 0.06752730883813307,
+          "turnover_yr": 7.757696127110229,
+          "entries": 233,
+          "rebalances": 233,
+          "top_year_share": Infinity,
+          "top_year": 2005
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.15, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.011813205738288146,
+          "sharpe": -0.54046457697031,
+          "maxdd": -0.16211863648984925,
+          "exposure": 0.08090036411784178,
+          "turnover_yr": 9.259185700099305,
+          "entries": 278,
+          "rebalances": 278,
+          "top_year_share": Infinity,
+          "top_year": 2005
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.1, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.0043979595424170626,
+          "sharpe": -0.5494866250099215,
+          "maxdd": -0.05770821489253164,
+          "exposure": 0.022244289970208542,
+          "turnover_yr": 2.702681231380338,
+          "entries": 81,
+          "rebalances": 81,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.1, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.0043979595424170626,
+          "sharpe": -0.5494866250099215,
+          "maxdd": -0.05770821489253164,
+          "exposure": 0.022244289970208542,
+          "turnover_yr": 2.702681231380338,
+          "entries": 81,
+          "rebalances": 81,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.15, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.006501180178490995,
+          "sharpe": -0.5995804008518868,
+          "maxdd": -0.08327829973304557,
+          "exposure": 0.0323733862959285,
+          "turnover_yr": 3.887189672293943,
+          "entries": 117,
+          "rebalances": 117,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.1, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.010905472402841454,
+          "sharpe": -0.6136255689537237,
+          "maxdd": -0.13542668494892196,
+          "exposure": 0.06262826878517049,
+          "turnover_yr": 7.223833167825224,
+          "entries": 217,
+          "rebalances": 217,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.15, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.009140963983175765,
+          "sharpe": -0.6138515295085077,
+          "maxdd": -0.12183849071889385,
+          "exposure": 0.05388944058258855,
+          "turnover_yr": 6.2228401191658405,
+          "entries": 187,
+          "rebalances": 187,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.5, range_max_pct=0.1, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.010921318754397169,
+          "sharpe": -0.614577246960093,
+          "maxdd": -0.13559272209984552,
+          "exposure": 0.06236345580933466,
+          "turnover_yr": 7.190466732869911,
+          "entries": 216,
+          "rebalances": 216,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.2, range_max_pct=0.15, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.009360198765826944,
+          "sharpe": -0.6183371446146839,
+          "maxdd": -0.12416494384430776,
+          "exposure": 0.05488248924197286,
+          "turnover_yr": 6.3229394240317776,
+          "entries": 190,
+          "rebalances": 190,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=40, vol_ratio=1.5, range_max_pct=0.15, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.007004211501747126,
+          "sharpe": -0.6280898073499992,
+          "maxdd": -0.08882720898154994,
+          "exposure": 0.03243958953988745,
+          "turnover_yr": 3.9205561072492556,
+          "entries": 118,
+          "rebalances": 118,
+          "top_year_share": Infinity,
+          "top_year": 2006
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.1, entry=sos, exit_sma=5",
+        {
+          "cagr": -0.012631067912341476,
+          "sharpe": -0.6480862245033874,
+          "maxdd": -0.15434577629665602,
+          "exposure": 0.07361800728235683,
+          "turnover_yr": 8.558490566037737,
+          "entries": 257,
+          "rebalances": 257,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ],
+      [
+        "window=20, vol_ratio=1.2, range_max_pct=0.1, entry=backup, exit_sma=5",
+        {
+          "cagr": -0.012646890670302557,
+          "sharpe": -0.6489454347283639,
+          "maxdd": -0.15450822172644152,
+          "exposure": 0.07335319430652103,
+          "turnover_yr": 8.525124131082423,
+          "entries": 256,
+          "rebalances": 256,
+          "top_year_share": Infinity,
+          "top_year": 2013
+        }
+      ]
+    ]
+  }
+}
