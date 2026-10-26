@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Caregiver Tracker — demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f3ee;
+        --surface: #ffffff;
+        --surface-2: #edeae2;
+        --ink: #20241f;
+        --ink-2: #4e574d;
+        --ink-3: #7e877c;
+        --line: #d9d4c6;
+        --brand: #145750;
+        --brand-ink: #ffffff;
+        --accent: #b85c38;
+        --due: #8a5a00;
+        --due-bg: #f7e8c3;
+        --done: #145750;
+        --done-bg: #d7eae2;
+        --focus: #145750;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #151714;
+          --surface: #1f231f;
+          --surface-2: #272c27;
+          --ink: #eceee8;
+          --ink-2: #b8beb4;
+          --ink-3: #8d9489;
+          --line: #3a4038;
+          --brand: #2e7d6e;
+          --brand-ink: #f2f7f4;
+          --accent: #e08a5f;
+          --due: #e8c46a;
+          --due-bg: #3d3319;
+          --done: #7fc7ab;
+          --done-bg: #1d3a30;
+          --focus: #7fc7ab;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 Georgia, "Times New Roman", serif;
+        padding: 0 16px 56px;
+      }
+      .sans { font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif; }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      header.top { padding: 28px 0 0; }
+      .kicker {
+        font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+        font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--accent); margin: 0 0 6px;
+      }
+      h1 { font-size: 34px; line-height: 1.12; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; }
+      .lede { color: var(--ink-2); font-size: 16.5px; margin: 0 0 14px; max-width: 58ch; }
+      .demo-note {
+        background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 14px; font-size: 14.5px; color: var(--ink-2); margin: 0 0 14px;
+        font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+      }
+      .demo-note b { color: var(--ink); }
+      .specbar {
+        display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0 0 22px;
+        font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 14px; color: var(--ink-2);
+      }
+      .specbar b { color: var(--ink); }
+
+      .tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--line); margin-bottom: 24px; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+      .tab {
+        appearance: none; border: 0; background: none; cursor: pointer;
+        font: inherit; font-weight: 700; font-size: 16px; color: var(--ink-2);
+        padding: 10px 16px; border-bottom: 3px solid transparent; margin-bottom: -2px;
+      }
+      .tab[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
+      .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+      .panel { display: none; }
+      .panel.active { display: block; }
+      .panel h2 { font-size: 21px; margin: 0 0 6px; }
+      .panel .lede2 { color: var(--ink-2); margin: 0 0 20px; font-size: 15.5px; max-width: 58ch; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+
+      form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+      .field { margin-bottom: 16px; }
+      .field:last-of-type { margin-bottom: 20px; }
+      label { display: block; font-weight: 700; font-size: 14.5px; margin-bottom: 6px; }
+      input, select, textarea {
+        width: 100%; font: inherit; color: var(--ink);
+        background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+        padding: 11px 12px;
+      }
+      input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
+      textarea { min-height: 72px; resize: vertical; }
+      .submit {
+        appearance: none; border: 0; cursor: pointer; width: 100%;
+        background: var(--brand); color: var(--brand-ink);
+        font: inherit; font-weight: 700; font-size: 16.5px;
+        padding: 13px 18px; border-radius: 10px;
+      }
+      .submit:active { transform: translateY(1px); }
+
+      #preview { margin-top: 22px; display: none; }
+      #preview.show { display: block; }
+      .preview-label { font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+      }
+      .card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+      .card .task { font-size: 19px; font-weight: 700; margin: 0; }
+      .card .meta { color: var(--ink-2); font-size: 15px; margin-top: 4px; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+      .card .notes { color: var(--ink-2); font-size: 15px; margin: 10px 0 0; white-space: pre-wrap; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+      .pill {
+        flex: none; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+        font-size: 12.5px; font-weight: 700; letter-spacing: .03em;
+        padding: 3px 11px; border-radius: 999px;
+      }
+      .pill.due { color: var(--due); background: var(--due-bg); }
+      .pill.done { color: var(--done); background: var(--done-bg); }
+      .type {
+        display: inline-block; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+        font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+        color: var(--ink-3); margin-bottom: 2px;
+      }
+      .fineprint { font-size: 14px; color: var(--ink-2); margin: 12px 2px 0; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+
+      .tasks { display: grid; gap: 12px; }
+      .tasks .card { padding: 16px 20px; }
+      .tasks .card.is-done .task { color: var(--ink-2); }
+
+      .links { margin-top: 30px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+      .links h2 { font-size: 18px; margin: 0 0 6px; font-family: Georgia, "Times New Roman", serif; }
+      .links p { color: var(--ink-2); font-size: 15px; margin: 0 0 12px; }
+      .links a {
+        display: block; color: var(--brand); font-weight: 700; text-decoration: none;
+        padding: 9px 0; border-top: 1px solid var(--line); font-size: 15.5px;
+      }
+      .links a span { color: var(--ink-3); font-weight: 400; font-size: 13.5px; display: block; word-break: break-all; }
+      .links a:hover { text-decoration: underline; }
+      footer { margin-top: 34px; color: var(--ink-3); font-size: 13.5px; text-align: center; font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <p class="kicker">Deliverable demo · Caregiver Tracker</p>
+        <h1>Care for one person, in one place</h1>
+        <p class="lede">Medications, appointments, and care tasks for one person, tracked in one place with a clear done state — for family caregivers coordinating care for an aging parent or loved one.</p>
+        <p class="demo-note"><b>Demo</b> — the care tasks below are fictional samples for a fictional person, not real care records.</p>
+        <p class="specbar"><span>Industry <b>Caregiving / Healthcare</b></span><span>Build <b>4 days</b></span><span>Project cost <b>$150</b></span></p>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Caregiver tracker views">
+        <button class="tab" role="tab" id="tab-add" aria-controls="panel-add" aria-selected="true">Add a care task</button>
+        <button class="tab" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false">Care tasks</button>
+      </div>
+
+      <section class="panel active" id="panel-add" role="tabpanel" aria-labelledby="tab-add">
+        <h2>Add a care task</h2>
+        <p class="lede2">One row per item. Set the task type — medication, appointment, or task — the person it's for, and the due date. It lands on the care tasks list as not done; the unchecked list is the day's work.</p>
+        <form id="careForm" novalidate>
+          <div class="field">
+            <label for="f-task">Task</label>
+            <input id="f-task" name="task" type="text" placeholder="e.g. Morning blood pressure medication" required />
+          </div>
+          <div class="field">
+            <label for="f-type">Task type</label>
+            <select id="f-type" name="type" required>
+              <option value="Medication">Medication</option>
+              <option value="Appointment">Appointment</option>
+              <option value="Task">Task</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-person">Person</label>
+            <input id="f-person" name="person" type="text" placeholder="e.g. Jordan Sample" required />
+          </div>
+          <div class="field">
+            <label for="f-due">Due</label>
+            <input id="f-due" name="due" type="date" required />
+          </div>
+          <div class="field">
+            <label for="f-notes">Notes <span style="font-weight:400;color:var(--ink-3);">(optional)</span></label>
+            <textarea id="f-notes" name="notes" placeholder="Anything the caregiver should know — timing, what to bring, where it is…"></textarea>
+          </div>
+          <div class="field">
+            <label for="f-done">Done</label>
+            <select id="f-done" name="done">
+              <option value="No" selected>No — still to do</option>
+              <option value="Yes">Yes — already done</option>
+            </select>
+          </div>
+          <button class="submit" type="submit">Add this care task</button>
+        </form>
+
+        <div id="preview" aria-live="polite">
+          <p class="preview-label">Care task that would be created</p>
+          <div class="card">
+            <span class="type" id="p-type"></span>
+            <div class="row">
+              <p class="task" id="p-task"></p>
+              <span class="pill due" id="p-pill">Not done</span>
+            </div>
+            <p class="meta" id="p-meta"></p>
+            <p class="notes" id="p-notes"></p>
+          </div>
+          <p class="fineprint">Demo: this preview is local only — nothing is saved, nothing is sent, and it is not visible to the owner. The real client version writes to the Care Tasks database in Notion; a saving portal would need a backend.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list">
+        <h2>Care tasks</h2>
+        <p class="lede2">The readout the caregiver works from. Check Done when an item is complete — what's still unchecked is the day's work. All four samples below are fictional, for the fictional person Jordan Sample.</p>
+        <div class="tasks">
+          <div class="card">
+            <span class="type">Medication</span>
+            <div class="row">
+              <p class="task">Morning blood pressure medication</p>
+              <span class="pill due">Not done</span>
+            </div>
+            <p class="meta">Jordan Sample · Due Nov 2, 2026</p>
+            <p class="notes">With breakfast</p>
+          </div>
+          <div class="card">
+            <span class="type">Appointment</span>
+            <div class="row">
+              <p class="task">Doctor appointment – annual checkup</p>
+              <span class="pill due">Not done</span>
+            </div>
+            <p class="meta">Jordan Sample · Due Nov 3, 2026</p>
+            <p class="notes">Bring medication list</p>
+          </div>
+          <div class="card is-done">
+            <span class="type">Task</span>
+            <div class="row">
+              <p class="task">Pick up prescription refill</p>
+              <span class="pill done">Done</span>
+            </div>
+            <p class="meta">Jordan Sample · Due Oct 30, 2026</p>
+            <p class="notes">Refill ready</p>
+          </div>
+          <div class="card is-done">
+            <span class="type">Medication</span>
+            <div class="row">
+              <p class="task">Evening vitamin D</p>
+              <span class="pill done">Done</span>
+            </div>
+            <p class="meta">Jordan Sample · Due Oct 28, 2026</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="links">
+        <h2>The working version lives in Notion</h2>
+        <p>This page is the demo front door. The sellable deliverable is the Notion system behind it — one Care Tasks database (Task, Task type, Person, Due, Notes, Done) that the whole family can check from anywhere.</p>
+        <a href="https://www.notion.so/4051f7d3a4bb8139b4a6e144d141cd00" target="_blank" rel="noopener">Caregiver Tracker — app page <span>notion.so/4051f7d3a4bb8139b4a6e144d141cd00</span></a>
+      </section>
+
+      <footer>Caregiver Tracker demo · Webguy Business Services deliverable</footer>
+    </div>
+
+    <script>
+      var tabs = document.querySelectorAll('.tab');
+      var panels = { 'tab-add': document.getElementById('panel-add'), 'tab-list': document.getElementById('panel-list') };
+      function activate(tab) {
+        tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+        Object.keys(panels).forEach(function (k) { panels[k].classList.toggle('active', k === tab.id); });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { activate(t); }); });
+
+      var form = document.getElementById('careForm');
+      var preview = document.getElementById('preview');
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var task = document.getElementById('f-task').value.trim();
+        var type = document.getElementById('f-type').value;
+        var person = document.getElementById('f-person').value.trim();
+        var dueVal = document.getElementById('f-due').value;
+        var notes = document.getElementById('f-notes').value.trim();
+        var done = document.getElementById('f-done').value;
+        if (!task || !person || !dueVal) {
+          preview.classList.remove('show');
+          var missing = !task ? document.getElementById('f-task') : (!person ? document.getElementById('f-person') : document.getElementById('f-due'));
+          missing.focus();
+          return;
+        }
+        var d = new Date(dueVal + 'T12:00:00');
+        var pretty = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        document.getElementById('p-type').textContent = type;
+        document.getElementById('p-task').textContent = task;
+        document.getElementById('p-meta').textContent = person + ' · Due ' + pretty;
+        var pill = document.getElementById('p-pill');
+        var isDone = done === 'Yes';
+        pill.textContent = isDone ? 'Done' : 'Not done';
+        pill.className = 'pill ' + (isDone ? 'done' : 'due');
+        var notesEl = document.getElementById('p-notes');
+        notesEl.textContent = notes;
+        notesEl.style.display = notes ? '' : 'none';
+        preview.classList.add('show');
+        preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    </script>
+  </body>
+</html>

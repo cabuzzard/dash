@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Content Capture — Summit Home Services demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f2ec;
+        --surface: #ffffff;
+        --surface-2: #eceae2;
+        --ink: #1c2321;
+        --ink-2: #4c5751;
+        --ink-3: #7d877f;
+        --line: #d8d4c8;
+        --brand: #17594a;
+        --brand-ink: #ffffff;
+        --accent: #c2620a;
+        --inbox: #5c5648;
+        --inbox-bg: #e8e4d8;
+        --matched: #8a5a00;
+        --matched-bg: #f7e8c3;
+        --scheduled: #1d5f8a;
+        --scheduled-bg: #d9e9f4;
+        --published: #17594a;
+        --published-bg: #d7eae2;
+        --focus: #17594a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141816;
+          --surface: #1e2421;
+          --surface-2: #262d29;
+          --ink: #eceee9;
+          --ink-2: #b7beb8;
+          --ink-3: #8b948c;
+          --line: #39423c;
+          --brand: #2e7d64;
+          --brand-ink: #f2f7f4;
+          --accent: #e08a3c;
+          --inbox: #cfc8b4;
+          --inbox-bg: #35322a;
+          --matched: #e8c46a;
+          --matched-bg: #3d3319;
+          --scheduled: #93c6e8;
+          --scheduled-bg: #1d3345;
+          --published: #7fc7ab;
+          --published-bg: #1d3a30;
+          --focus: #7fc7ab;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+        padding: 0 16px 56px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      header.top { padding: 28px 0 0; }
+      .kicker {
+        font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--accent); margin: 0 0 6px;
+      }
+      h1 { font-size: 34px; line-height: 1.12; margin: 0 0 10px; font-weight: 800; letter-spacing: -0.01em; }
+      .demo-note {
+        background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 14px; font-size: 14.5px; color: var(--ink-2); margin: 0 0 22px;
+      }
+      .demo-note b { color: var(--ink); }
+
+      .tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--line); margin-bottom: 24px; flex-wrap: wrap; }
+      .tab {
+        appearance: none; border: 0; background: none; cursor: pointer;
+        font: inherit; font-weight: 700; font-size: 16px; color: var(--ink-2);
+        padding: 10px 16px; border-bottom: 3px solid transparent; margin-bottom: -2px;
+      }
+      .tab[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
+      .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+      .panel { display: none; }
+      .panel.active { display: block; }
+      .panel h2 { font-size: 21px; margin: 0 0 6px; }
+      .panel .lede { color: var(--ink-2); margin: 0 0 20px; font-size: 15.5px; max-width: 56ch; }
+
+      form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+      .field { margin-bottom: 16px; }
+      .field:last-of-type { margin-bottom: 20px; }
+      label { display: block; font-weight: 700; font-size: 14.5px; margin-bottom: 6px; }
+      input, select, textarea {
+        width: 100%; font: inherit; color: var(--ink);
+        background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+        padding: 11px 12px;
+      }
+      input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
+      textarea { min-height: 72px; resize: vertical; }
+      .submit {
+        appearance: none; border: 0; cursor: pointer; width: 100%;
+        background: var(--brand); color: var(--brand-ink);
+        font: inherit; font-weight: 700; font-size: 16.5px;
+        padding: 13px 18px; border-radius: 10px;
+      }
+      .submit:active { transform: translateY(1px); }
+
+      #preview { margin-top: 22px; display: none; }
+      #preview.show { display: block; }
+      .preview-label { font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+      }
+      .card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+      .card .idea { font-size: 19px; font-weight: 800; margin: 0; }
+      .card .meta { color: var(--ink-2); font-size: 15px; margin-top: 4px; }
+      .pill {
+        flex: none; font-size: 12.5px; font-weight: 700; letter-spacing: .03em;
+        padding: 3px 11px; border-radius: 999px;
+      }
+      .pill.inbox { color: var(--inbox); background: var(--inbox-bg); }
+      .pill.matched { color: var(--matched); background: var(--matched-bg); }
+      .pill.scheduled { color: var(--scheduled); background: var(--scheduled-bg); }
+      .pill.published { color: var(--published); background: var(--published-bg); }
+      .fineprint { font-size: 14px; color: var(--ink-2); margin: 12px 2px 0; }
+
+      .ideas { display: grid; gap: 12px; }
+      .ideas .card { padding: 16px 20px; }
+
+      .links { margin-top: 30px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+      .links h2 { font-size: 18px; margin: 0 0 6px; }
+      .links p { color: var(--ink-2); font-size: 15px; margin: 0 0 12px; }
+      .links a {
+        display: block; color: var(--brand); font-weight: 700; text-decoration: none;
+        padding: 9px 0; border-top: 1px solid var(--line); font-size: 15.5px;
+      }
+      .links a span { color: var(--ink-3); font-weight: 400; font-size: 13.5px; display: block; word-break: break-all; }
+      .links a:hover { text-decoration: underline; }
+      footer { margin-top: 34px; color: var(--ink-3); font-size: 13.5px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <p class="kicker">Deliverable demo · Content Capture</p>
+        <h1>Capture an idea in 30 seconds</h1>
+        <p class="demo-note"><b>Demo</b> — Summit Home Services is a fictional business. The ideas below are fictional samples, not real. Inputs on this page preview locally only: nothing is saved and nothing is visible to the owner. The real client version writes to Notion — a saving portal needs a backend.</p>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Content capture views">
+        <button class="tab" role="tab" id="tab-capture" aria-controls="panel-capture" aria-selected="true">Capture an idea</button>
+        <button class="tab" role="tab" id="tab-ideas" aria-controls="panel-ideas" aria-selected="false">Ideas</button>
+      </div>
+
+      <section class="panel active" id="panel-capture" role="tabpanel" aria-labelledby="tab-capture">
+        <h2>Drop an idea in</h2>
+        <p class="lede">Capture first, organize later. Every idea lands with its source; match it to a product and it moves out of the inbox. An idea with no product stays in the inbox until it earns one.</p>
+        <form id="captureForm" novalidate>
+          <div class="field">
+            <label for="f-idea">Idea</label>
+            <textarea id="f-idea" name="idea" placeholder="e.g. A short post on what a home water test actually shows" required></textarea>
+          </div>
+          <div class="field">
+            <label for="f-source">Source</label>
+            <select id="f-source" name="source" required>
+              <option value="Customer question">Customer question</option>
+              <option value="Job photo">Job photo</option>
+              <option value="Notebook">Notebook</option>
+              <option value="Conversation">Conversation</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-product">Matched product</label>
+            <select id="f-product" name="product">
+              <option value="">None yet — stays in the inbox</option>
+              <option value="Faucet install">Faucet install</option>
+              <option value="Drain cleaning">Drain cleaning</option>
+              <option value="Water heater flush">Water heater flush</option>
+              <option value="Disposal replacement">Disposal replacement</option>
+              <option value="Quote Calculator">Quote Calculator</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-status">Status</label>
+            <select id="f-status" name="status">
+              <option value="Inbox" selected>Inbox</option>
+              <option value="Matched">Matched</option>
+              <option value="Scheduled">Scheduled</option>
+              <option value="Published">Published</option>
+            </select>
+          </div>
+          <button class="submit" type="submit">Capture this idea</button>
+        </form>
+
+        <div id="preview" aria-live="polite">
+          <p class="preview-label">Idea that would be filed</p>
+          <div class="card">
+            <div class="row">
+              <p class="idea" id="p-idea"></p>
+              <span class="pill inbox" id="p-pill">Inbox</span>
+            </div>
+            <p class="meta" id="p-meta"></p>
+          </div>
+          <p class="fineprint">Demo: this preview is local only — nothing is saved or sent anywhere, and it is not visible to the owner. The client version writes to the Captured Ideas database in Notion.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-ideas" role="tabpanel" aria-labelledby="tab-ideas">
+        <h2>Ideas</h2>
+        <p class="lede">The output side — the pipeline the owner works from. Every idea moves through the same path: <b>Inbox → Matched → Scheduled → Published</b>. These four are fictional samples.</p>
+        <div class="ideas">
+          <div class="card">
+            <div class="row">
+              <p class="idea">How often should you service your water heater?</p>
+              <span class="pill inbox">Inbox</span>
+            </div>
+            <p class="meta">Source: Customer question · Matched product: none yet</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="idea">Before-and-after: a kitchen faucet swap</p>
+              <span class="pill matched">Matched</span>
+            </div>
+            <p class="meta">Source: Job photo · Matched product: Faucet install</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="idea">What a seasonal drain check covers</p>
+              <span class="pill scheduled">Scheduled</span>
+            </div>
+            <p class="meta">Source: Notebook · Matched product: Drain cleaning</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="idea">Why estimates beat hourly billing</p>
+              <span class="pill published">Published</span>
+            </div>
+            <p class="meta">Source: Conversation · Matched product: Quote Calculator</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="links">
+        <h2>The working version lives in Notion</h2>
+        <p>This page is the demo front door. The sellable deliverable is the Notion system behind it — the app page is the owner's home base, and the Captured Ideas database holds every idea with its source, matched product, and status.</p>
+        <a href="https://www.notion.so/4051f7d3a4bb81a39b16f4734dbaa8fa" target="_blank" rel="noopener">Content Capture — app page <span>notion.so/4051f7d3a4bb81a39b16f4734dbaa8fa</span></a>
+      </section>
+
+      <footer>Content Capture demo · Webguy Business Services deliverable</footer>
+    </div>
+
+    <script>
+      var tabs = document.querySelectorAll('.tab');
+      var panels = { 'tab-capture': document.getElementById('panel-capture'), 'tab-ideas': document.getElementById('panel-ideas') };
+      function activate(tab) {
+        tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+        Object.keys(panels).forEach(function (k) { panels[k].classList.toggle('active', k === tab.id); });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { activate(t); }); });
+
+      var form = document.getElementById('captureForm');
+      var preview = document.getElementById('preview');
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var idea = document.getElementById('f-idea').value.trim();
+        var source = document.getElementById('f-source').value;
+        var product = document.getElementById('f-product').value;
+        var status = document.getElementById('f-status').value;
+        if (!idea) {
+          preview.classList.remove('show');
+          document.getElementById('f-idea').focus();
+          return;
+        }
+        document.getElementById('p-idea').textContent = idea;
+        document.getElementById('p-meta').textContent =
+          'Source: ' + source + ' · Matched product: ' + (product !== '' ? product : 'none yet');
+        var pill = document.getElementById('p-pill');
+        pill.textContent = status;
+        pill.className = 'pill ' + status.toLowerCase();
+        preview.classList.add('show');
+        preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    </script>
+  </body>
+</html>

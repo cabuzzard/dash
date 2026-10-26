@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>Lead Tracker — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#f2f0e9; --surface:#fffdf8; --surface2:#ebe7db; --ink:#1a2226; --ink2:#4a565c; --ink3:#7c888e;
+    --line:#d6d0bf; --accent:#0f4c5c; --accent-ink:#0f4c5c; --accent-soft:#e0eef0;
+    --new:#2563eb; --new-bg:#dbeafe;
+    --contacted:#92400e; --contacted-bg:#fef3c7;
+    --qualified:#0e7490; --qualified-bg:#cffafe;
+    --won:#15803d; --won-bg:#dcfce7;
+    --lost:#6b7280; --lost-bg:#e5e7eb;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#12181a; --surface:#1c2427; --surface2:#262f33; --ink:#edf2f3; --ink2:#b6c2c6; --ink3:#8a989d;
+      --line:#364248; --accent:#5ec2d6; --accent-ink:#7dd3e8; --accent-soft:#1a343c;
+      --new:#93c5fd; --new-bg:#1e3358;
+      --contacted:#fcd34d; --contacted-bg:#3d2f0f;
+      --qualified:#67e8f9; --qualified-bg:#16404d;
+      --won:#86efac; --won-bg:#143620;
+      --lost:#d1d5db; --lost-bg:#2f3338;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.55}
+  h1,h2,h3{font-family:"Archivo",system-ui,sans-serif;line-height:1.15;margin:0}
+  a{color:var(--accent-ink)}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 20px 64px}
+  .top{padding:30px 0 0}
+  .brandrow{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:baseline;justify-content:space-between}
+  .brandrow h1{font-size:clamp(30px,5vw,42px);font-weight:800;letter-spacing:-.02em}
+  .brandrow .for{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2)}
+  .lede{color:var(--ink2);font-size:17.5px;line-height:1.5;max-width:64ch;margin:12px 0 0}
+  .lede strong{color:var(--ink)}
+  .demo-note{margin:18px 0 0;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--radius);padding:13px 16px;font-size:14.5px;line-height:1.5}
+  .demo-note strong{font-family:"Archivo",sans-serif}
+  /* How it works strip */
+  .how{margin:18px 0 0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+  .how h2{font-size:15px;letter-spacing:.01em;margin-bottom:8px}
+  .how p{margin:0;color:var(--ink2);font-size:15px;max-width:70ch}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+  .flow-step{font-family:"IBM Plex Mono",monospace;font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);white-space:nowrap}
+  .flow-arrow{color:var(--ink3);font-weight:700}
+  .flow-step.alt{border-style:dashed}
+  /* Tabs */
+  .tabs{display:flex;gap:8px;margin:24px 0 0;flex-wrap:wrap;border-bottom:2px solid var(--line)}
+  .tab-btn{appearance:none;border:1px solid var(--line);border-bottom:none;background:var(--surface2);color:var(--ink2);font-family:"Archivo",sans-serif;font-weight:700;font-size:15.5px;padding:12px 20px;border-radius:12px 12px 0 0;cursor:pointer}
+  .tab-btn[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:inset 0 3px 0 var(--accent)}
+  button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:26px}
+  .panel[hidden]{display:none}
+  @media(max-width:640px){.panel{padding:18px}.wrap{padding:0 14px 48px}}
+  .panel-head h2{font-size:22px;margin-bottom:6px}
+  .panel-head p{color:var(--ink2);margin:0 0 22px;max-width:64ch;font-size:15.5px}
+  /* Form */
+  .grid{display:grid;grid-template-columns:1.4fr .8fr;gap:24px;align-items:start}
+  @media(max-width:780px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-weight:700;font-size:14px;margin:0 0 6px}
+  .field{margin-bottom:17px}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:520px){.field-row{grid-template-columns:1fr}}
+  input[type="text"],select,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+  textarea{min-height:72px;resize:vertical}
+  .hint{font-size:13px;color:var(--ink3);margin-top:5px;line-height:1.45}
+  .btn{appearance:none;border:none;background:var(--accent);color:#fff;font-family:"Archivo",sans-serif;font-weight:700;font-size:16px;padding:13px 22px;border-radius:10px;cursor:pointer;width:100%}
+  @media(prefers-color-scheme:dark){.btn{color:#0b1e24}}
+  .btn:hover{filter:brightness(1.08)}
+  .sidebox{border:1px solid var(--line);border-radius:var(--radius);padding:20px;background:var(--surface2)}
+  .sidebox h3{font-size:16px;margin-bottom:10px}
+  .sidebox ul{margin:0;padding:0;list-style:none;font-size:14.5px}
+  .sidebox li{padding:9px 0;border-top:1px dashed var(--line)}
+  .sidebox li:first-child{border-top:none;padding-top:2px}
+  .sidebox li b{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);display:block;margin-bottom:2px}
+  .honesty{font-size:13.5px;color:var(--ink2);background:var(--accent-soft);border-radius:10px;padding:11px 13px;margin-top:16px;line-height:1.5}
+  /* Preview */
+  .preview{margin-top:24px;border:1.5px solid var(--won);border-radius:var(--radius);padding:18px 20px;display:none}
+  .preview.show{display:block}
+  .preview h3{font-size:17px;margin-bottom:12px}
+  .preview dl{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;margin:0;font-size:15px}
+  .preview dt{font-weight:700;color:var(--ink2)}
+  .preview dd{margin:0;word-break:break-word}
+  @media(max-width:480px){.preview dl{grid-template-columns:1fr}.preview dt{margin-top:6px}}
+  /* Pills */
+  .pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .pill.new{color:var(--new);background:var(--new-bg)}
+  .pill.contacted{color:var(--contacted);background:var(--contacted-bg)}
+  .pill.qualified{color:var(--qualified);background:var(--qualified-bg)}
+  .pill.won{color:var(--won);background:var(--won-bg)}
+  .pill.lost{color:var(--lost);background:var(--lost-bg)}
+  /* Leads tab */
+  .summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+  .stat{flex:1 1 110px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+  .stat b{font-family:"Archivo",sans-serif;font-size:22px;display:block;line-height:1.1}
+  .stat span{font-size:13px;color:var(--ink2)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:var(--bg);display:flex;flex-direction:column;gap:7px}
+  .card .toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  .card h3{font-size:17px}
+  .card .meta{font-size:14px;color:var(--ink2);line-height:1.5}
+  .card .meta b{color:var(--ink)}
+  .card .next{margin-top:auto;padding-top:10px;border-top:1px dashed var(--line);font-size:14.5px}
+  .card .next b{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);display:block;margin-bottom:3px;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:24px;font-size:15px}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:"Archivo",sans-serif;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2)}
+  @media(max-width:680px){
+    table,thead,tbody,tr,th,td{display:block}
+    thead{display:none}
+    tr{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;padding:6px 4px;background:var(--bg)}
+    td{border:none;padding:5px 12px}
+    td::before{content:attr(data-l);display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}
+  }
+  .links{margin-top:24px;border-top:1px solid var(--line);padding-top:20px}
+  .linkbtn{display:inline-block;border:1.5px solid var(--accent);color:var(--accent-ink);text-decoration:none;font-family:"Archivo",sans-serif;font-weight:700;font-size:14.5px;padding:10px 16px;border-radius:10px}
+  .linkbtn:hover{background:var(--accent-soft)}
+  .links p{font-size:13.5px;color:var(--ink3);margin:10px 0 0;max-width:66ch}
+  footer{margin-top:28px;color:var(--ink3);font-size:13.5px;text-align:center;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <h1>Lead Tracker</h1>
+      <span class="for">For owners &amp; small teams</span>
+    </div>
+    <p class="lede">One list for every inquiry — with an <strong>owner</strong>, a <strong>status</strong>, and a <strong>next step</strong> on every row. No lead dies in the inbox, even when inquiries come in from more than one place.</p>
+    <p class="demo-note"><strong>Demo — read this first:</strong> Anything you type in “Add a lead” previews locally on this page only. It saves nothing, sends nothing, and is not visible to the owner. The real client version writes to Notion — a version where this page itself saves leads would need a backend.</p>
+
+    <div class="how">
+      <h2>How to use it</h2>
+      <p>One row per inquiry. Set the source and owner when the lead comes in, and always fill in the next step — that one field is what keeps a lead from stalling. Move the status forward as you work it:</p>
+      <div class="flow" aria-label="Status flow">
+        <span class="flow-step">New</span><span class="flow-arrow">→</span>
+        <span class="flow-step">Contacted</span><span class="flow-arrow">→</span>
+        <span class="flow-step">Qualified</span><span class="flow-arrow">→</span>
+        <span class="flow-step">Won</span><span class="flow-arrow">or</span>
+        <span class="flow-step alt">Lost</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Lead Tracker">
+    <button class="tab-btn" role="tab" id="tab-add" aria-selected="true" aria-controls="panel-add" data-tab="add">Add a lead</button>
+    <button class="tab-btn" role="tab" id="tab-leads" aria-selected="false" aria-controls="panel-leads" data-tab="leads">Leads</button>
+  </nav>
+
+  <!-- ============ TAB 1: ADD A LEAD ============ -->
+  <section class="panel" id="panel-add" role="tabpanel" aria-labelledby="tab-add">
+    <div class="panel-head">
+      <h2>Add a lead</h2>
+      <p>This form mirrors the Leads database in Notion — Name, Source, Owner, Status, and Next step. Try it: submitting shows you the exact record that would be created.</p>
+    </div>
+    <div class="grid">
+      <form id="leadForm" novalidate>
+        <div class="field">
+          <label for="fName">Name</label>
+          <input type="text" id="fName" name="name" autocomplete="off" placeholder="Who is inquiring?">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="fSource">Source</label>
+            <select id="fSource" name="source">
+              <option value="Website">Website</option>
+              <option value="Referral">Referral</option>
+              <option value="Instagram">Instagram</option>
+              <option value="Google">Google</option>
+            </select>
+            <p class="hint">Where this inquiry came from.</p>
+          </div>
+          <div class="field">
+            <label for="fOwner">Owner</label>
+            <select id="fOwner" name="owner">
+              <option value="Sam">Sam</option>
+              <option value="Alex">Alex</option>
+            </select>
+            <p class="hint">Who owns the follow-up.</p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="fStatus">Status</label>
+          <select id="fStatus" name="status">
+            <option value="New" selected>New</option>
+            <option value="Contacted">Contacted</option>
+            <option value="Qualified">Qualified</option>
+            <option value="Won">Won</option>
+            <option value="Lost">Lost</option>
+          </select>
+          <p class="hint">New leads start at New. Move it forward as you work it.</p>
+        </div>
+        <div class="field">
+          <label for="fNext">Next step</label>
+          <textarea id="fNext" name="next" placeholder="e.g. Reply with intro and pricing"></textarea>
+          <p class="hint">Always fill this in — a lead without a next step is a lead that stalls.</p>
+        </div>
+        <button class="btn" type="submit">Preview this lead →</button>
+        <p class="honesty">Demo only: this preview stays on this page. Nothing is saved or sent, and the owner does not see it. In the client version, this writes a row to the Leads database in Notion.</p>
+      </form>
+
+      <aside class="sidebox" aria-label="What a complete lead looks like">
+        <h3>What a complete row has</h3>
+        <ul>
+          <li><b>Name</b>The person or business inquiring — one row per inquiry.</li>
+          <li><b>Source</b>Website, Referral, Instagram, Google — so you can see which channels actually produce work.</li>
+          <li><b>Owner</b>One named person responsible for the next move. No shared “someone should reply.”</li>
+          <li><b>Status</b>New → Contacted → Qualified → Won or Lost.</li>
+          <li><b>Next step</b>The single next action, written plainly enough to act on without re-reading the whole thread.</li>
+        </ul>
+      </aside>
+    </div>
+
+    <div class="preview" id="preview" aria-live="polite">
+      <h3>✓ Here’s the lead that would be created</h3>
+      <dl>
+        <dt>Name</dt><dd id="pName">—</dd>
+        <dt>Source</dt><dd id="pSource">—</dd>
+        <dt>Owner</dt><dd id="pOwner">—</dd>
+        <dt>Status</dt><dd id="pStatusWrap"><span class="pill new" id="pStatus">New</span></dd>
+        <dt>Next step</dt><dd id="pNext">—</dd>
+      </dl>
+      <p class="honesty">Demo preview only — nothing was saved. Switch to the Leads tab to see how this row would sit alongside the others in the working list.</p>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2: LEADS ============ -->
+  <section class="panel" id="panel-leads" role="tabpanel" aria-labelledby="tab-leads" hidden>
+    <div class="panel-head">
+      <h2>Leads — the working list</h2>
+      <p>Every inquiry in one place, whatever channel it came through. The four leads below are <strong>fictional samples</strong> — they show one lead at each stage of the flow, not real people or real inquiries.</p>
+    </div>
+
+    <div class="summary" aria-label="Sample lead counts">
+      <div class="stat"><b>4</b><span>fictional sample leads</span></div>
+      <div class="stat"><b>1</b><span>New</span></div>
+      <div class="stat"><b>1</b><span>Contacted</span></div>
+      <div class="stat"><b>1</b><span>Qualified</span></div>
+      <div class="stat"><b>1</b><span>Won</span></div>
+      <div class="stat"><b>0</b><span>Lost in samples</span></div>
+    </div>
+
+    <div class="cards">
+      <article class="card">
+        <div class="toprow"><h3>Alex Example</h3><span class="pill new">New</span></div>
+        <p class="meta">Source: <b>Website</b> · Owner: <b>Sam</b></p>
+        <div class="next"><b>Next step</b>Reply with intro and pricing</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Jordan Sample</h3><span class="pill contacted">Contacted</span></div>
+        <p class="meta">Source: <b>Referral</b> · Owner: <b>Sam</b></p>
+        <div class="next"><b>Next step</b>Send follow-up and book a call</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Taylor Demo</h3><span class="pill qualified">Qualified</span></div>
+        <p class="meta">Source: <b>Instagram</b> · Owner: <b>Alex</b></p>
+        <div class="next"><b>Next step</b>Send proposal</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Casey Test</h3><span class="pill won">Won</span></div>
+        <p class="meta">Source: <b>Google</b> · Owner: <b>Alex</b></p>
+        <div class="next"><b>Next step</b>Kick off onboarding</div>
+      </article>
+    </div>
+
+    <table aria-label="Fictional sample leads">
+      <thead><tr><th>Name</th><th>Source</th><th>Owner</th><th>Status</th><th>Next step</th></tr></thead>
+      <tbody>
+        <tr><td data-l="Name">Alex Example</td><td data-l="Source">Website</td><td data-l="Owner">Sam</td><td data-l="Status"><span class="pill new">New</span></td><td data-l="Next step">Reply with intro and pricing</td></tr>
+        <tr><td data-l="Name">Jordan Sample</td><td data-l="Source">Referral</td><td data-l="Owner">Sam</td><td data-l="Status"><span class="pill contacted">Contacted</span></td><td data-l="Next step">Send follow-up and book a call</td></tr>
+        <tr><td data-l="Name">Taylor Demo</td><td data-l="Source">Instagram</td><td data-l="Owner">Alex</td><td data-l="Status"><span class="pill qualified">Qualified</span></td><td data-l="Next step">Send proposal</td></tr>
+        <tr><td data-l="Name">Casey Test</td><td data-l="Source">Google</td><td data-l="Owner">Alex</td><td data-l="Status"><span class="pill won">Won</span></td><td data-l="Next step">Kick off onboarding</td></tr>
+      </tbody>
+    </table>
+
+    <div class="links">
+      <a class="linkbtn" href="https://www.notion.so/4051f7d3a4bb81a1b6d9d29050901dc3" target="_blank" rel="noopener">Open the Notion app page ↗</a>
+      <p>In Notion, this same list is the Leads database — the owner works it there day to day. This page is the demo front door; it previews locally and saves nothing.</p>
+    </div>
+  </section>
+
+  <footer>Lead Tracker demo · All sample leads on this page are fictional and labeled as such.</footer>
+</div>
+
+<script>
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  function show(key){
+    tabs.forEach(function(b){
+      var on = b.getAttribute('data-tab') === key;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      document.getElementById('panel-' + b.getAttribute('data-tab')).hidden = !on;
+    });
+  }
+  tabs.forEach(function(b){ b.addEventListener('click', function(){ show(b.getAttribute('data-tab')); }); });
+
+  var statusClass = { 'New':'new', 'Contacted':'contacted', 'Qualified':'qualified', 'Won':'won', 'Lost':'lost' };
+
+  document.getElementById('leadForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = document.getElementById('fName').value.trim();
+    var source = document.getElementById('fSource').value;
+    var owner = document.getElementById('fOwner').value;
+    var status = document.getElementById('fStatus').value;
+    var next = document.getElementById('fNext').value.trim();
+
+    document.getElementById('pName').textContent = name || '(no name given)';
+    document.getElementById('pSource').textContent = source;
+    document.getElementById('pOwner').textContent = owner;
+    var pill = document.getElementById('pStatus');
+    pill.textContent = status;
+    pill.className = 'pill ' + (statusClass[status] || 'new');
+    document.getElementById('pNext').textContent = next || '— (add a next step so this lead doesn’t stall)';
+
+    var pv = document.getElementById('preview');
+    pv.classList.add('show');
+    pv.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  });
+})();
+</script>
+</body>
+</html>
