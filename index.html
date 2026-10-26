@@ -795,9 +795,13 @@
       <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
     </div>
     <div id="dev2Panel" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
+      <div id="dev2FilterRows" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div style="margin:8px 0;display:flex;gap:6px;align-items:center;">
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2FilterAdd()">＋ Add filter</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button>
+        <span style="color:var(--text3);font-size:11px;">Filter rows narrow results together; each row’s values reflect the filters above it.</span>
+      </div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
-        <span style="color:var(--text2);">Filter 1</span><span><select id="dev2F0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(0)"></select> <select id="dev2F0n" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterNeg(0)" title="is = keep only these rows · is not = remove these rows"><option value="">is</option><option value="not">is not</option></select> <select id="dev2F0v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(0)"></select></span>
-        <span style="color:var(--text2);">then Filter 2</span><span><select id="dev2F1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(1)"></select> <select id="dev2F1n" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterNeg(1)" title="is = keep only these rows · is not = remove these rows"><option value="">is</option><option value="not">is not</option></select> <select id="dev2F1v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(1)"></select></span>
         <span style="color:var(--text2);">Sort by</span><span><select id="dev2S0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S0d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option><option value="custom">Custom (dragged)</option></select></span>
         <span style="color:var(--text2);">then by</span><span><select id="dev2S1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S1d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option><option value="custom">Custom (dragged)</option></select></span>
         <span style="color:var(--text2);">then by</span><span><select id="dev2S2c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S2d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option><option value="custom">Custom (dragged)</option></select></span>
@@ -806,7 +810,7 @@
         <span style="color:var(--text2);">then by</span><span><select id="dev2S5c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S5d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option><option value="custom">Custom (dragged)</option></select></span>
         <span style="color:var(--text2);">then by</span><span><select id="dev2S6c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S6d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option><option value="custom">Custom (dragged)</option></select></span>
       </div>
-      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Up to 7 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (Ctrl- or Shift-click adds a level).</span></div>
+      <div style="margin-top:8px;color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (Ctrl- or Shift-click adds a level).</div>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div></div>
@@ -11885,7 +11889,7 @@ function dev2HubPublishCell(r) {
   return good && r.hubLiveUrl ? `<a href="${esc(r.hubLiveUrl)}" target="_blank" rel="noopener" title="Open the published page" style="text-decoration:none;">${inner}</a>` : inner;
 }
 // two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
-let DEV2_F = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); if (Array.isArray(v) && v.length === 2) return v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })); } catch (e) {} return [{ col: '', val: '' }, { col: '', val: '' }]; })();
+let DEV2_F = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); if (Array.isArray(v) && v.length) return v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })); } catch (e) {} return [{ col: '', val: '' }]; })();
 const DEV2_BLANK = '__blank__';
 // ── Row editor: a modal built from DEV2_COLS, so a new column shows up here too. DEV2_EDIT says how a column is
 // edited and which record it saves to (worker updateAllOutputField); a column without an entry shows read-only.
@@ -11984,7 +11988,7 @@ async function dev2MainToggle(productId, campId, btn) {
 // had ASSET rows (asset status), so the filter missed it. With a Kind = Title filter every title shows once, as a title row with the
 // TITLE's own status — its asset rows stand in for it when it has no title row of its own.
 function dev2Base() {
-  if (![DEV2_F[0], DEV2_F[1]].some(f => f.col === 'kind' && f.val === 'Title' && !f.neg)) return DEV2_ROWS;
+  if (!DEV2_F.some(f => f.col === 'kind' && f.val === 'Title' && !f.neg)) return DEV2_ROWS;
   const seen = new Set(), own = new Set(DEV2_ROWS.filter(r => r.kind === 'title' && r.titleId).map(r => r.titleId)), out = [];
   for (const r of DEV2_ROWS) {
     if (!r.titleId) { out.push(r); continue; }
@@ -11995,27 +11999,31 @@ function dev2Base() {
   return out;
 }
 function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
-function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; DEV2_F.slice(k + 1).forEach(f => { f.val = ''; }); dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2TogglePanel() { const p = document.getElementById('dev2Panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; dev2DrawPanel(); }
 function dev2DrawPanel() {
   const colOpts = (sel, withNone) => (withNone ? '<option value="">(none)</option>' : '') + DEV2_COLS.map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.label}</option>`).join('');
-  for (const k of [0, 1]) {
-    const cEl = document.getElementById('dev2F' + k + 'c'), vEl = document.getElementById('dev2F' + k + 'v'); if (!cEl) return;
-    cEl.innerHTML = colOpts(DEV2_F[k].col, true);
-    const base = k === 0 ? DEV2_ROWS : dev2Base().filter(r => dev2Pass(r, DEV2_F[0]));
-    const vals = DEV2_F[k].col ? [...new Set(base.map(r => dev2Val(r, DEV2_F[k].col)))].sort((a, b) => a.localeCompare(b)) : [];
-    vEl.innerHTML = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${DEV2_BLANK}">(blank)</option>`).join('');
-    vEl.value = DEV2_F[k].val; vEl.disabled = !DEV2_F[k].col;
-    const nEl = document.getElementById('dev2F' + k + 'n'); if (nEl) { nEl.value = DEV2_F[k].neg ? 'not' : ''; nEl.disabled = !DEV2_F[k].col; }
+  const filterRows = document.getElementById('dev2FilterRows');
+  if (filterRows) {
+    if (!DEV2_F.length) DEV2_F = [{ col: '', val: '' }];
+    filterRows.innerHTML = DEV2_F.map((f, k) => {
+      const base = dev2Base().filter(r => DEV2_F.slice(0, k).every(prev => dev2Pass(r, prev)));
+      const vals = f.col ? [...new Set(base.map(r => dev2Val(r, f.col)))].sort((a, b) => a.localeCompare(b)) : [];
+      const valueOpts = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${DEV2_BLANK}">(blank)</option>`).join('');
+      return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="width:78px;color:var(--text2);">${k ? 'then Filter ' + (k + 1) : 'Filter 1'}</span><select id="dev2F${k}c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(${k})">${colOpts(f.col, true)}</select> <select id="dev2F${k}n" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterNeg(${k})" title="is = keep only these rows · is not = remove these rows" ${f.col ? '' : 'disabled'}><option value="" ${f.neg ? '' : 'selected'}>is</option><option value="not" ${f.neg ? 'selected' : ''}>is not</option></select> <select id="dev2F${k}v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(${k})" ${f.col ? '' : 'disabled'}>${valueOpts}</select><button onclick="dev2FilterRemove(${k})" title="Remove this filter" aria-label="Remove filter ${k + 1}" style="width:26px;height:26px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">×</button></div>`;
+    }).join('');
+    DEV2_F.forEach((f, k) => { const vEl = document.getElementById('dev2F' + k + 'v'); if (vEl) vEl.value = f.val; });
   }
   for (let k = 0; k < DEV2_MAX_LEVELS; k++) {
     const cEl = document.getElementById('dev2S' + k + 'c'), dEl = document.getElementById('dev2S' + k + 'd'), s0 = DEV2_SORT[k]; if (!cEl) continue;
     cEl.innerHTML = colOpts(s0 ? s0.col : '', k > 0); dEl.value = s0 && s0.custom ? 'custom' : s0 && !s0.asc ? 'desc' : 'asc';
   }
 }
-function dev2FilterCol(k) { DEV2_F[k] = { col: document.getElementById('dev2F' + k + 'c').value, val: '', neg: !!DEV2_F[k].neg }; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
-function dev2FilterVal(k) { DEV2_F[k].val = document.getElementById('dev2F' + k + 'v').value; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
-function dev2ClearFilters() { DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }]; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterCol(k) { DEV2_F[k] = { col: document.getElementById('dev2F' + k + 'c').value, val: '', neg: !!DEV2_F[k].neg }; DEV2_F.slice(k + 1).forEach(f => { f.val = ''; }); dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterVal(k) { DEV2_F[k].val = document.getElementById('dev2F' + k + 'v').value; DEV2_F.slice(k + 1).forEach(f => { f.val = ''; }); dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterAdd() { DEV2_F.push({ col: '', val: '' }); dev2DrawPanel(); }
+function dev2FilterRemove(k) { DEV2_F.splice(k, 1); if (!DEV2_F.length) DEV2_F.push({ col: '', val: '' }); dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2ClearFilters() { DEV2_F = [{ col: '', val: '' }]; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2SortSel() {
   const out = [];
   for (let k = 0; k < DEV2_MAX_LEVELS; k++) {
@@ -12075,7 +12083,7 @@ function dev2HeadDrag(e, handle) {
 function dev2ToggleGroup(k) { const o = dev2OpenMap(); if (o[k]) delete o[k]; else o[k] = 1; dev2SaveOpen(o); renderDev2(); }
 function dev2CollapseAll(close) {
   const o = dev2OpenMap(), L = Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS);
-  const rows = dev2Base().filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  const rows = dev2Base().filter(r => DEV2_F.every(f => dev2Pass(r, f)));
   rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) delete o[k]; else o[k] = 1; } });
   dev2SaveOpen(o); renderDev2();
 }
@@ -12659,7 +12667,7 @@ async function dev2Normalize(btn) {
 function dev2SaveState() { try { localStorage.setItem('dev2Sort', JSON.stringify(DEV2_SORT)); localStorage.setItem('dev2Filters', JSON.stringify(DEV2_F)); } catch (e) {} }
 function dev2LoadSaved() {
   try { const v = JSON.parse(localStorage.getItem('dev2Sort') || 'null'); DEV2_SORT = (Array.isArray(v) && v.length) ? v.slice(0, 7) : [{ col: 'campaign', asc: true }]; } catch (e) {}
-  try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); DEV2_F = (Array.isArray(v) && v.length === 2) ? v : [{ col: '', val: '' }, { col: '', val: '' }]; } catch (e) {}
+  try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); DEV2_F = (Array.isArray(v) && v.length) ? v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })) : [{ col: '', val: '' }]; } catch (e) { DEV2_F = [{ col: '', val: '' }]; }
   DEV2_SELECTED.clear(); dev2DrawPanel(); renderDev2();
 }
 function dev2SaveClick(btn) { dev2SaveState(); const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); }
@@ -12693,7 +12701,7 @@ function renderDev2() {
   // Comma-separated terms, OR'd together — "care gap, owners rep" shows
   // rows matching EITHER, same idea as filtering to a set of values rather
   // than narrowing with every extra word.
-  let rows = dev2Base().filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  let rows = dev2Base().filter(r => DEV2_F.every(f => dev2Pass(r, f)));
   const chips = document.getElementById('dev2Chips');
   if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)} ${f.neg ? '≠' : '='} ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
     + (DEV2_SORT.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${DEV2_SORT.map(x => ((DEV2_COLS.find(c => c.key === x.col) || {}).label || x.col) + (x.asc ? ' ▲' : ' ▼')).join(', then ')}</span>` : '');
