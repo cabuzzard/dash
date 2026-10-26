@@ -30,6 +30,23 @@ python tools/backtest/run.py --refresh   # re-download the price cache first
   {RSI(2) < 5, RSI(2) < 10, RSI(20) < 35, RSI(20) < 40} × fear filter
   {VIX ≥ 1.10 × its 20-day SMA ("spike"), VIX > 20 ("level")}; exit SMA 5,
   5 slots. Compared against `meanrev` to see whether the filter adds value.
+- **rangefade** — range trading / range fade (operator idea 2026-10-25):
+  buy support / sell resistance inside a range. Levels are mechanical:
+  support = lowest Low of the prior N days, resistance = highest High of
+  the prior N days; a touch counts within a 1% band of the level. Two
+  entry styles, everything else identical (apples-to-apples):
+  `rejection` (touch the level AND close back inside the range, filled at
+  the next open) and `limit` (buy/sell limit placed at the level at the
+  close, filled during the next day if touched, at the level price — the
+  engine books that first interval via `simulate`'s entry-price stub).
+  Stop: beyond the level by an ATR(14) buffer, frozen at entry. Target:
+  the opposite edge of the range, or 2× entry-to-stop risk. Regime filter
+  (non-negotiable): ADX(14) < 25, or the level already held ≥ 2 times in
+  the prior window. Time stop: 20 trading days. 5 slots, one position per
+  symbol, long wins a same-day double signal. Shorts use the engine's
+  linear return approximation. Grid (fixed 2026-10-25, before any results):
+  window {20, 60} × ATR buffer {0.5, 1.0, 2.0} × regime {adx25, held2} ×
+  target {opposite, 2R} × entry {rejection, limit} = 48 configs.
 
 ## Protocol — fixed BEFORE any results were seen
 
