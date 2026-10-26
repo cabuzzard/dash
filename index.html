@@ -1902,6 +1902,7 @@
           <button class="tr-add-btn" onclick="openNewTradeModal()">+ New Trade</button>
         </div>
       </div>
+      <div id="firstTouchSummary" style="font-size:11px;color:var(--text3);padding:2px 4px 8px;"></div>
       <div class="tr-table-wrap">
         <table class="tr-table">
           <thead>
@@ -26146,6 +26147,7 @@ async function loadTrades() {
     const data = await call('getTrades');
     tradesCache = data.trades || [];
     renderTradeTable();
+    ftRenderSummary();
     tbRender();
     const syncEl = document.getElementById('tradesLastSync');
     if (syncEl) {
@@ -26576,6 +26578,54 @@ function renderTradeTable() {
   }).join('');
 }
 
+// ── FIRST-TOUCH ("WHEN") TRACKER ──
+// Verdict for the primary −20/+20 pair, from observed first-crossing times.
+// Backfilled trades (firstTouchBackfilled) show ≤ dates: their true crossing
+// times predate observation, so the order is approximate, not proven.
+function ftFmt(ts, backfilled) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const s = isNaN(d) ? ts : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return backfilled ? '≤ ' + s + ' (backfilled)' : s;
+}
+function ftVerdict(t, stopKey, targetKey) {
+  const ft = t.firstTouch || {};
+  const s = ft[stopKey], p = ft[targetKey];
+  if (s && p) return s < p
+    ? { label: '⏱ Stop first (−20% before +20%)', cls: '#ff6b6b' }
+    : { label: '⏱ Target first (+20% before −20%)', cls: '#4ade80' };
+  if (s) return { label: '⏱ Stop touched (−20%); target not yet', cls: '#ffb020' };
+  if (p) return { label: '⏱ Target touched (+20%); stop not yet', cls: '#4ade80' };
+  return { label: '⏱ Neither yet', cls: 'var(--text3)' };
+}
+function ftSection(t) {
+  const ft = t.firstTouch || {};
+  const bf = !!t.firstTouchBackfilled;
+  const c = ftVerdict(t, 'c_m20', 'c_p20');
+  const u = ftVerdict(t, 'u_m20', 'u_p20');
+  const note = bf ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">Backfilled: these times are first-observed (on or before the date shown), so the order is approximate — true crossing times predate logging.</div>` : '';
+  const hasData = Object.keys(ft).length > 0;
+  return `<div class="tr-section-label">First Touch — When (stop vs target)</div>
+    <div style="font-size:12px;line-height:1.9;">
+      <div><b>Contract −20/+20:</b> <span style="color:${c.cls};">${c.label}</span> · stop ${ftFmt(ft.c_m20, bf)} · target ${ftFmt(ft.c_p20, bf)}</div>
+      <div><b>Underlying −20/+20:</b> <span style="color:${u.cls};">${u.label}</span> · stop ${ftFmt(ft.u_m20, bf)} · target ${ftFmt(ft.u_p20, bf)}</div>
+      ${hasData ? `<div style="color:var(--text3);">All first touches — contract: −20 ${ftFmt(ft.c_m20, bf)} · −10 ${ftFmt(ft.c_m10, bf)} · +10 ${ftFmt(ft.c_p10, bf)} · +20 ${ftFmt(ft.c_p20, bf)} · +25 ${ftFmt(ft.c_p25, bf)}; underlying: −20 ${ftFmt(ft.u_m20, bf)} · −10 ${ftFmt(ft.u_m10, bf)} · +10 ${ftFmt(ft.u_p10, bf)} · +20 ${ftFmt(ft.u_p20, bf)}</div>` : '<div style="color:var(--text3);">No thresholds crossed yet — first touches log from the next poller tick.</div>'}
+      ${note}
+    </div>`;
+}
+function ftRenderSummary() {
+  const el = document.getElementById('firstTouchSummary'); if (!el) return;
+  const withData = (tradesCache || []).filter(t => t.firstTouch && Object.keys(t.firstTouch).length);
+  if (!withData.length) { el.textContent = ''; return; }
+  const tally = (stopKey, targetKey) => {
+    let tf = 0, sf = 0;
+    withData.forEach(t => { const v = ftVerdict(t, stopKey, targetKey); if (/Target first/.test(v.label)) tf++; else if (/Stop first/.test(v.label)) sf++; });
+    return { tf, sf, ne: withData.length - tf - sf };
+  };
+  const c = tally('c_m20', 'c_p20'), u = tally('u_m20', 'u_p20');
+  el.innerHTML = `⏱ First touch −20/+20 (n=${withData.length} with data): contract ${c.tf} target-first · ${c.sf} stop-first · ${c.ne} neither/undecided · underlying ${u.tf} target-first · ${u.sf} stop-first · ${u.ne} neither/undecided`;
+}
+
 function showTradeList() {
   document.getElementById('tradesListView').style.display = 'block';
   document.getElementById('tradesDetailView').classList.remove('active');
@@ -26681,6 +26731,8 @@ function renderTradeDetail() {
     </div>
 
     ${t.notes ? `<div style="font-size:12px;color:var(--text3);padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:4px;">${t.notes}</div>` : ''}
+
+    ${ftSection(t)}
 
     <div style="margin-top:20px;">
       <button class="btn btn-secondary" style="color:var(--danger);border-color:#2a1a1a;width:100%;height:40px;font-size:13px;"
