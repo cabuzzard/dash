@@ -14523,7 +14523,7 @@ async function titleJobsRun(env, invoke) {
               newsSource: [S.item.publisher, S.item.url].filter(Boolean).join(" "), newsDate: S.item.date || "", allowDuplicate: true });
             if (!t || !t.success || !t.titleId) throw new Error("title: " + ((t && t.error) || "no response"));
             S.titleId = String(t.titleId).replace(/-/g, "");
-            const g = await invoke({ action: "generateTitleAssets", titleId: S.titleId, campaignId: S.cid, productId: mains[0] || undefined, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1 });
+            const g = await invoke({ action: "generateTitleAssets", titleId: S.titleId, campaignId: S.cid, productId: mains[0] || undefined, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1, developmentOnly: true });
             const aid = g && ((g.assets || [])[0] || {}).id; if (!aid) throw new Error("article: " + ((g && g.error) || "no asset"));
             S.assetId = String(aid).replace(/-/g, "");
           } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
@@ -33436,10 +33436,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if ((isNewsPost ? sections.length < 3 : sections.length !== 3) || sections.some(x=>!String(x.body||'').trim())) return json({error:'article came back short — not saved'},502);   // news v2: 5 named sections
           validateBlogArticle([post.intro,...sections.map(x=>x.body),post.conclusion].join(' '),sections.length,isNewsPost?300:600);
 
-          // Create the Asset record — published immediately, no Development review step.
+          // Normal SEO generation enters Publish and writes to the live site.
+          // Digest news passes developmentOnly so the operator reviews it first.
           const assetProps = {
             "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: body.developmentOnly ? "Development" : "Publish" } },
             "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
             "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
@@ -33494,7 +33495,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // wherever the operator put them, independent of their assets
           // (2026-09-11).
 
-          // Push it live to the campaign's own site under a "blog" section —
+          // Push normal SEO generations live to the campaign's own site under a "blog" section —
           // created there the first time a campaign publishes one, appended
           // to after. Best-effort: a publish failure (no GITHUB_TOKEN, no
           // resolvable deploy path, GitHub API error) never fails the asset
@@ -33503,7 +33504,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // public site. Styled from the campaign's own Design Spec if one
           // is attached, falling back to the shared editorial default.
           let siteResult = { published: false };
-          if(!body.writeOnly)try {
+          if(!body.writeOnly&&!body.developmentOnly)try {
             let spec = null;
             if (campaignId) {
               const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
