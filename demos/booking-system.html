@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Booking System — Summit Home Services demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f4f2ec;
+        --surface: #ffffff;
+        --surface-2: #eceae2;
+        --ink: #1c2321;
+        --ink-2: #4c5751;
+        --ink-3: #7d877f;
+        --line: #d8d4c8;
+        --brand: #17594a;
+        --brand-ink: #ffffff;
+        --accent: #c2620a;
+        --requested: #8a5a00;
+        --requested-bg: #f7e8c3;
+        --confirmed: #17594a;
+        --confirmed-bg: #d7eae2;
+        --done: #3f4a44;
+        --done-bg: #e2e6e1;
+        --cancelled: #9c3226;
+        --cancelled-bg: #f6dcd6;
+        --focus: #17594a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141816;
+          --surface: #1e2421;
+          --surface-2: #262d29;
+          --ink: #eceee9;
+          --ink-2: #b7beb8;
+          --ink-3: #8b948c;
+          --line: #39423c;
+          --brand: #2e7d64;
+          --brand-ink: #f2f7f4;
+          --accent: #e08a3c;
+          --requested: #e8c46a;
+          --requested-bg: #3d3319;
+          --confirmed: #7fc7ab;
+          --confirmed-bg: #1d3a30;
+          --done: #a9b3ab;
+          --done-bg: #2b332e;
+          --cancelled: #ef9a8c;
+          --cancelled-bg: #40231e;
+          --focus: #7fc7ab;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font: 16px/1.5 "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+        padding: 0 16px 56px;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; }
+      header.top { padding: 28px 0 0; }
+      .kicker {
+        font-size: 12.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+        color: var(--accent); margin: 0 0 6px;
+      }
+      h1 { font-size: 34px; line-height: 1.12; margin: 0 0 10px; font-weight: 800; letter-spacing: -0.01em; }
+      .demo-note {
+        background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 14px; font-size: 14.5px; color: var(--ink-2); margin: 0 0 22px;
+      }
+      .demo-note b { color: var(--ink); }
+
+      .tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--line); margin-bottom: 24px; }
+      .tab {
+        appearance: none; border: 0; background: none; cursor: pointer;
+        font: inherit; font-weight: 700; font-size: 16px; color: var(--ink-2);
+        padding: 10px 16px; border-bottom: 3px solid transparent; margin-bottom: -2px;
+      }
+      .tab[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); }
+      .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+      .panel { display: none; }
+      .panel.active { display: block; }
+      .panel h2 { font-size: 21px; margin: 0 0 6px; }
+      .panel .lede { color: var(--ink-2); margin: 0 0 20px; font-size: 15.5px; max-width: 56ch; }
+
+      form { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+      .field { margin-bottom: 16px; }
+      .field:last-of-type { margin-bottom: 20px; }
+      label { display: block; font-weight: 700; font-size: 14.5px; margin-bottom: 6px; }
+      input, select, textarea {
+        width: 100%; font: inherit; color: var(--ink);
+        background: var(--bg); border: 1px solid var(--line); border-radius: 9px;
+        padding: 11px 12px;
+      }
+      input:focus, select:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
+      textarea { min-height: 84px; resize: vertical; }
+      .submit {
+        appearance: none; border: 0; cursor: pointer; width: 100%;
+        background: var(--brand); color: var(--brand-ink);
+        font: inherit; font-weight: 700; font-size: 16.5px;
+        padding: 13px 18px; border-radius: 10px;
+      }
+      .submit:active { transform: translateY(1px); }
+
+      #preview { margin-top: 22px; display: none; }
+      #preview.show { display: block; }
+      .preview-label { font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 8px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+      }
+      .card .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+      .card .service { font-size: 19px; font-weight: 800; margin: 0; }
+      .card .meta { color: var(--ink-2); font-size: 15px; margin-top: 4px; }
+      .card .notes { color: var(--ink-2); font-size: 15px; margin: 10px 0 0; white-space: pre-wrap; }
+      .pill {
+        flex: none; font-size: 12.5px; font-weight: 700; letter-spacing: .03em;
+        padding: 3px 11px; border-radius: 999px;
+      }
+      .pill.requested { color: var(--requested); background: var(--requested-bg); }
+      .pill.confirmed { color: var(--confirmed); background: var(--confirmed-bg); }
+      .pill.done { color: var(--done); background: var(--done-bg); }
+      .pill.cancelled { color: var(--cancelled); background: var(--cancelled-bg); }
+      .fineprint { font-size: 14px; color: var(--ink-2); margin: 12px 2px 0; }
+
+      .bookings { display: grid; gap: 12px; }
+      .bookings .card { padding: 16px 20px; }
+
+      .links { margin-top: 30px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+      .links h2 { font-size: 18px; margin: 0 0 6px; }
+      .links p { color: var(--ink-2); font-size: 15px; margin: 0 0 12px; }
+      .links a {
+        display: block; color: var(--brand); font-weight: 700; text-decoration: none;
+        padding: 9px 0; border-top: 1px solid var(--line); font-size: 15.5px;
+      }
+      .links a span { color: var(--ink-3); font-weight: 400; font-size: 13.5px; display: block; word-break: break-all; }
+      .links a:hover { text-decoration: underline; }
+      footer { margin-top: 34px; color: var(--ink-3); font-size: 13.5px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <p class="kicker">Deliverable demo · Booking System</p>
+        <h1>Book a visit with Summit Home Services</h1>
+        <p class="demo-note"><b>Demo</b> — Summit Home Services is a fictional business. All bookings below are samples, not real.</p>
+      </header>
+
+      <div class="tabs" role="tablist" aria-label="Booking system views">
+        <button class="tab" role="tab" id="tab-book" aria-controls="panel-book" aria-selected="true">Book a visit</button>
+        <button class="tab" role="tab" id="tab-list" aria-controls="panel-list" aria-selected="false">Bookings</button>
+      </div>
+
+      <section class="panel active" id="panel-book" role="tabpanel" aria-labelledby="tab-book">
+        <h2>Request a booking</h2>
+        <p class="lede">This is the customer-facing input side: pick a service, pick a date, and the request lands in the bookings list as <b>Requested</b>.</p>
+        <form id="bookForm" novalidate>
+          <div class="field">
+            <label for="f-name">Your name</label>
+            <input id="f-name" name="name" type="text" autocomplete="name" placeholder="e.g. Jordan Miller" required />
+          </div>
+          <div class="field">
+            <label for="f-service">Service</label>
+            <select id="f-service" name="service" required>
+              <option value="Drain cleaning">Drain cleaning</option>
+              <option value="Faucet install">Faucet install</option>
+              <option value="Water heater flush">Water heater flush</option>
+              <option value="Disposal replacement">Disposal replacement</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-date">Preferred date</label>
+            <input id="f-date" name="date" type="date" required />
+          </div>
+          <div class="field">
+            <label for="f-notes">Notes <span style="font-weight:400;color:var(--ink-3);">(optional)</span></label>
+            <textarea id="f-notes" name="notes" placeholder="Anything the tech should know — gate code, parking, what's been happening with it…"></textarea>
+          </div>
+          <button class="submit" type="submit">Request this booking</button>
+        </form>
+
+        <div id="preview" aria-live="polite">
+          <p class="preview-label">Booking that would be created</p>
+          <div class="card">
+            <div class="row">
+              <p class="service" id="p-service"></p>
+              <span class="pill requested">Requested</span>
+            </div>
+            <p class="meta" id="p-meta"></p>
+            <p class="notes" id="p-notes"></p>
+          </div>
+          <p class="fineprint">Demo: nothing is saved or sent anywhere. The client version writes to the Bookings database in Notion.</p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-list" role="tabpanel" aria-labelledby="tab-list">
+        <h2>Bookings</h2>
+        <p class="lede">The output side — the readout the business works from. Every request moves through the same pipeline: <b>Requested → Confirmed → Done</b> (or Cancelled).</p>
+        <div class="bookings">
+          <div class="card">
+            <div class="row">
+              <p class="service">Drain cleaning</p>
+              <span class="pill requested">Requested</span>
+            </div>
+            <p class="meta">Nov 2</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="service">Faucet install</p>
+              <span class="pill confirmed">Confirmed</span>
+            </div>
+            <p class="meta">Nov 3</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="service">Water heater flush</p>
+              <span class="pill done">Done</span>
+            </div>
+            <p class="meta">Oct 28</p>
+          </div>
+          <div class="card">
+            <div class="row">
+              <p class="service">Disposal replacement</p>
+              <span class="pill cancelled">Cancelled</span>
+            </div>
+            <p class="meta">Oct 30</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="links">
+        <h2>The working version lives in Notion</h2>
+        <p>This page is the demo front door. The sellable deliverable is the Notion system behind it — the app page is the owner's home base, and the Bookings database holds the form view, the calendar view, and the status board.</p>
+        <a href="https://www.notion.so/4051f7d3a4bb8105abbafdc5ac28baf9" target="_blank" rel="noopener">Booking System — app page <span>notion.so/4051f7d3a4bb8105abbafdc5ac28baf9</span></a>
+        <a href="https://www.notion.so/ff19185b07c946ed9aaae131f39f3f1c" target="_blank" rel="noopener">Bookings database <span>notion.so/ff19185b07c946ed9aaae131f39f3f1c</span></a>
+      </section>
+
+      <footer>Booking System demo · Webguy Business Services deliverable</footer>
+    </div>
+
+    <script>
+      var tabs = document.querySelectorAll('.tab');
+      var panels = { 'tab-book': document.getElementById('panel-book'), 'tab-list': document.getElementById('panel-list') };
+      function activate(tab) {
+        tabs.forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+        Object.keys(panels).forEach(function (k) { panels[k].classList.toggle('active', k === tab.id); });
+      }
+      tabs.forEach(function (t) { t.addEventListener('click', function () { activate(t); }); });
+
+      var form = document.getElementById('bookForm');
+      var preview = document.getElementById('preview');
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = document.getElementById('f-name').value.trim();
+        var service = document.getElementById('f-service').value;
+        var dateVal = document.getElementById('f-date').value;
+        var notes = document.getElementById('f-notes').value.trim();
+        if (!name || !dateVal) {
+          preview.classList.remove('show');
+          var missing = !name ? document.getElementById('f-name') : document.getElementById('f-date');
+          missing.focus();
+          return;
+        }
+        var d = new Date(dateVal + 'T12:00:00');
+        var pretty = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        document.getElementById('p-service').textContent = service;
+        document.getElementById('p-meta').textContent = name + ' · ' + pretty;
+        var notesEl = document.getElementById('p-notes');
+        notesEl.textContent = notes;
+        notesEl.style.display = notes ? '' : 'none';
+        preview.classList.add('show');
+        preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    </script>
+  </body>
+</html>

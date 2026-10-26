@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>Content OS — Willow Creek Bakery Demo</title>
+<style>
+  :root{
+    --bg:#fcfaf7; --surface:#ffffff; --surface2:#f6f1ea; --line:#e8ddd0;
+    --text:#1c1917; --muted:#6b6259; --accent:#9a3412; --accent-bg:#fff1e6;
+    --green:#166534; --green-bg:#dcfce7; --amber:#92400e; --amber-bg:#fef3c7;
+    --blue:#1e40af; --blue-bg:#dbeafe;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0c0a09; --surface:#1c1917; --surface2:#292524; --line:#44403c; --text:#f5f5f4; --muted:#a8a29e; --accent:#fb923c; --accent-bg:#431407; --green-bg:#14532d; --amber-bg:#451a03; --blue-bg:#1e3a5f; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  .wrap{max-width:1060px;margin:0 auto;padding:20px 18px 48px}
+  .demo-banner{background:#451a03;color:#ffedd5;border:1px solid #7c2d12;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:600;display:flex;gap:10px;align-items:flex-start}
+  @media (prefers-color-scheme: light){ .demo-banner{background:#fff7ed;color:#7c2d12;border-color:#fdba74} }
+  header{padding:28px 0 8px}
+  header h1{font-family:Georgia,serif;font-size:42px;line-height:0.95;letter-spacing:-0.02em;margin:0}
+  header h1 span{color:var(--accent)}
+  .subtitle{margin-top:10px;color:var(--muted);font-size:17px;max-width:640px}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .pill{font-size:13px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+  .notion-link{display:inline-flex;align-items:center;gap:8px;background:var(--text);color:var(--bg);padding:10px 14px;border-radius:999px;font-weight:600;font-size:14px}
+  .notion-link:hover{text-decoration:none;opacity:.9}
+
+  /* Tabs */
+  .tabs{display:flex;gap:6px;background:var(--surface2);padding:6px;border-radius:999px;margin:24px 0 22px;border:1px solid var(--line)}
+  .tab-btn{flex:1;border:0;background:transparent;padding:12px 16px;border-radius:999px;font-weight:700;font-size:15px;cursor:pointer;color:var(--muted)}
+  .tab-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.08);border:1px solid var(--line)}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+  @media(max-width:760px){ .grid2{grid-template-columns:1fr} header h1{font-size:34px} }
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px}
+  .card h2{margin:0 0 6px;font-size:20px;letter-spacing:-.02em}
+  .card h3{margin:0 0 8px;font-size:15px}
+  .muted{color:var(--muted);font-size:14px}
+  label{display:block;font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;margin:16px 0 6px}
+  input,textarea,select{width:100%;padding:12px 13px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:15px}
+  textarea{min-height:96px;resize:vertical}
+  .btn{margin-top:18px;width:100%;padding:13px;border-radius:10px;border:0;background:var(--accent);color:white;font-weight:700;font-size:15px;cursor:pointer}
+  .note{margin-top:14px;font-size:13px;line-height:1.5;background:var(--accent-bg);border:1px dashed #c2410c;padding:10px 12px;border-radius:10px;color:var(--text)}
+  .stat-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:16px 0}
+  .stat{background:var(--surface2);border-radius:12px;padding:14px;text-align:center}
+  .stat b{font-size:26px;display:block;line-height:1}
+  .stat span{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .inbox-list{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:10px}
+  .inbox-item{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .badge{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:4px 7px;border-radius:999px;white-space:nowrap}
+  .b-used{background:var(--green-bg);color:var(--green)} .b-wait{background:var(--amber-bg);color:var(--amber)} .b-new{background:var(--blue-bg);color:var(--blue)}
+  @media (prefers-color-scheme: dark){ .b-used,.b-wait,.b-new{color:#e7e5e4} }
+
+  /* Outputs */
+  .section{margin-bottom:18px}
+  .section-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px}
+  .section-head h2{font-size:18px;margin:0;letter-spacing:-.02em}
+  .campaign{background:linear-gradient(135deg,#7c2d12,#9a3412);color:white;border-radius:16px;padding:22px}
+  .campaign h2{color:white;margin:0;font-size:24px}
+  .campaign p{opacity:.9;margin:6px 0 0}
+  .products{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.products{grid-template-columns:1fr}}
+  .price{font-size:28px;font-weight:800;letter-spacing:-.03em}
+  .content-list{display:grid;gap:12px}
+  .content-item{display:grid;grid-template-columns:1fr auto;gap:12px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+  @media(max-width:640px){.content-item{grid-template-columns:1fr}}
+  .content-item h3{margin:0;font-size:16px;line-height:1.3}
+  .links{font-size:13px;color:var(--muted);margin-top:6px}
+  .links b{color:var(--text)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:12px;padding:5px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--line)}
+  .assets{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:760px){.assets{grid-template-columns:1fr 1fr}}
+  .asset{padding:16px;border-radius:14px;border:1px solid var(--line);background:var(--surface)}
+  .asset strong{display:block;font-size:15px}
+  .prompts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:640px){.prompts{grid-template-columns:1fr}}
+  .prompt{padding:14px 16px;border-radius:12px;background:var(--surface2);border:1px solid var(--line)}
+  footer{margin-top:28px;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo-banner">⚠️ <span>Demo — Willow Creek Bakery is a fictional business. All rows below are samples to replace or delete.</span></div>
+
+  <header>
+    <div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)">Webguy Business Services • Gig 1</div>
+    <h1>Content OS <span>Demo</span></h1>
+    <p class="subtitle">One idea in → content out. This page shows the customer-facing side of the Notion system: capture an idea on the left tab, see where it lands in the pipeline on the right.</p>
+    <div class="meta-row">
+      <span class="pill">🏪 Business: Willow Creek Bakery (fictional)</span>
+      <span class="pill">📅 Campaign: Nov 2–15, 2026</span>
+      <span class="pill">🗂️ Back office: Notion</span>
+      <a class="notion-link" href="https://www.notion.so/4011f7d3a4bb8177a606ea2c342a813f" target="_blank" rel="noopener">Open the real Notion deliverable ↗</a>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Content OS views">
+    <button class="tab-btn active" id="btn-inputs" role="tab" aria-selected="true" onclick="showTab('inputs')">✍️ Capture an idea — Inputs</button>
+    <button class="tab-btn" id="btn-outputs" role="tab" aria-selected="false" onclick="showTab('outputs')">🚀 Content pipeline — Outputs</button>
+  </nav>
+
+  <!-- INPUTS -->
+  <section id="panel-inputs" class="tab-panel active" role="tabpanel">
+    <div class="grid2">
+      <div class="card">
+        <h2>Capture an idea</h2>
+        <p class="muted">This is what the owner (or a customer) sees. Three fields, no Notion account needed. Try it — your idea appears in the inbox on the right.</p>
+        <form id="ideaForm">
+          <label for="title">Idea title</label>
+          <input id="title" required placeholder="e.g. Behind the scenes: morning bake" />
+          <label for="topic">Topic</label>
+          <input id="topic" placeholder="e.g. Sourdough, Seasonal menu, Story" />
+          <label for="notes">Notes</label>
+          <textarea id="notes" placeholder="What should this piece teach, show, or sell? Any details, links, or lines to include?"></textarea>
+          <button class="btn" type="submit">Add to Ideas Inbox →</button>
+        </form>
+        <div class="note">Demo: nothing is saved anywhere. The client version writes to the Ideas Inbox database in Notion.</div>
+        <p class="muted" style="margin-top:12px">In the live system this form feeds the same inbox the owner reviews in Notion. Used ideas become Content records linked to a Product and a Campaign.</p>
+      </div>
+
+      <div class="card">
+        <h2>Ideas Inbox — current state</h2>
+        <p class="muted">Sample state from the Notion demo. Counts only — titles in the real template are the client's to replace.</p>
+        <div class="stat-row">
+          <div class="stat"><b>5</b><span>Total ideas</span></div>
+          <div class="stat"><b>2</b><span>Used</span></div>
+          <div class="stat"><b>3</b><span>Waiting</span></div>
+        </div>
+
+        <ul class="inbox-list" id="inboxList">
+          <li class="inbox-item"><div><strong>Sample idea</strong><div class="muted">In inbox — already turned into content</div></div><span class="badge b-used">Used</span></li>
+          <li class="inbox-item"><div><strong>Sample idea</strong><div class="muted">In inbox — already turned into content</div></div><span class="badge b-used">Used</span></li>
+          <li class="inbox-item"><div><strong>Sample idea</strong><div class="muted">Waiting for review / assignment</div></div><span class="badge b-wait">Waiting</span></li>
+          <li class="inbox-item"><div><strong>Sample idea</strong><div class="muted">Waiting for review / assignment</div></div><span class="badge b-wait">Waiting</span></li>
+          <li class="inbox-item"><div><strong>Sample idea</strong><div class="muted">Waiting for review / assignment</div></div><span class="badge b-wait">Waiting</span></li>
+        </ul>
+
+        <div id="liveRegion" aria-live="polite" style="margin-top:14px"></div>
+        <p class="muted" style="margin-top:14px">Flow: <strong>Inbox → Content → Asset</strong>. When an idea is used, it stops being a loose note and becomes a tracked piece with a product, a campaign, and a due format.</p>
+        <button onclick="showTab('outputs')" style="width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);font-weight:700;cursor:pointer">See where used ideas go → Pipeline</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTPUTS -->
+  <section id="panel-outputs" class="tab-panel" role="tabpanel">
+    <div class="section campaign">
+      <div style="font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.85">Campaign</div>
+      <h2>Fall Harvest Menu Launch (Demo Sample)</h2>
+      <p>Nov 2–15, 2026 • Willow Creek Bakery • All content below is tied to this campaign.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Products</h2><span class="muted">What the content sells — fictional demo prices</span></div>
+      <div class="products">
+        <div class="card"><div class="muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px">Product 1</div><h3 style="font-size:19px;margin-top:6px">Sourdough Loaf Subscription</h3><div class="price">$28<span style="font-size:15px;font-weight:600;color:var(--muted)">/month</span></div><p class="muted">Recurring loaf delivery — the anchor product for the sourdough story content.</p></div>
+        <div class="card"><div class="muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px">Product 2</div><h3 style="font-size:19px;margin-top:6px">Harvest Pastry Box</h3><div class="price">$24<span style="font-size:15px;font-weight:600;color:var(--muted)">/box</span></div><p class="muted">Seasonal box for the Fall Harvest launch — featured across Instagram, video, and email.</p></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Content</h2><span class="muted">4 pieces • each linked to a product + the campaign</span></div>
+      <div class="content-list">
+        <article class="content-item"><div><h3>Why Our Sourdough Takes 48 Hours</h3><div class="links">Linked to: <b>Sourdough Loaf Subscription</b> • Campaign: <b>Fall Harvest Menu Launch</b></div><div class="chips"><span class="chip">✍️ Blog</span><span class="chip">Asset: Photo set</span></div></div><span class="badge b-used">Published</span></article>
+        <article class="content-item"><div><h3>5 Fall Pastries Worth Waking Up For</h3><div class="links">Linked to: <b>Harvest Pastry Box</b> • Campaign: <b>Fall Harvest Menu Launch</b></div><div class="chips"><span class="chip">📸 Instagram</span><span class="chip">Asset: Carousel</span></div></div><span class="badge b-wait">Scheduled</span></article>
+        <article class="content-item"><div><h3>From Oven to Counter: A Bakery Morning</h3><div class="links">Linked to: <b>Harvest Pastry Box</b> • Campaign: <b>Fall Harvest Menu Launch</b></div><div class="chips"><span class="chip">🎬 YouTube</span><span class="chip">Asset: Video script</span></div></div><span class="badge b-new">Writing</span></article>
+        <article class="content-item"><div><h3>The Willow Creek Harvest Menu Is Here</h3><div class="links">Linked to: <b>Harvest Pastry Box</b> • Campaign: <b>Fall Harvest Menu Launch</b></div><div class="chips"><span class="chip">✉️ Newsletter</span><span class="chip">Asset: Email</span></div></div><span class="badge b-used">Published</span></article>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Assets</h2><span class="muted">What gets made from each content piece</span></div>
+      <div class="assets">
+        <div class="asset"><span style="font-size:22px">🎠</span><strong>Carousel</strong><span class="muted">For “5 Fall Pastries…” — Instagram swipe set</span></div>
+        <div class="asset"><span style="font-size:22px">📷</span><strong>Photo set</strong><span class="muted">For “Why Our Sourdough…” — blog imagery</span></div>
+        <div class="asset"><span style="font-size:22px">🎬</span><strong>Video script</strong><span class="muted">For “From Oven to Counter…” — YouTube</span></div>
+        <div class="asset"><span style="font-size:22px">✉️</span><strong>Email</strong><span class="muted">For “Harvest Menu Is Here” — newsletter send</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><h2>Prompt library</h2><span class="muted">Reusable prompts that keep voice consistent</span></div>
+      <div class="prompts">
+        <div class="prompt"><strong>Bakery voice</strong><p class="muted" style="margin:4px 0 0">Tone &amp; style guide prompt for all Willow Creek writing.</p></div>
+        <div class="prompt"><strong>Menu description writer</strong><p class="muted" style="margin:4px 0 0">Turns product notes into menu-ready descriptions.</p></div>
+        <div class="prompt"><strong>Newsletter opener</strong><p class="muted" style="margin:4px 0 0">Warm opening lines for the bakery newsletter.</p></div>
+        <div class="prompt"><strong>Video hook writer</strong><p class="muted" style="margin:4px 0 0">First-15-seconds hooks for bakery videos.</p></div>
+      </div>
+    </div>
+
+    <div class="card" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center">
+      <div><strong>Want to see the back office?</strong><div class="muted">The Notion template holds the databases behind this page: Products, Campaigns, Content, Assets, Ideas Inbox, Prompts.</div></div>
+      <a class="notion-link" href="https://www.notion.so/4011f7d3a4bb8177a606ea2c342a813f" target="_blank" rel="noopener">Open Notion template ↗</a>
+    </div>
+  </section>
+
+  <footer>
+    <span class="muted">Content OS • Demo artifact — inputs are local-only, outputs are samples from the Notion demo.</span>
+    <a href="https://www.notion.so/4011f7d3a4bb8177a606ea2c342a813f" target="_blank" rel="noopener">Notion: 4011f7d3…813f ↗</a>
+  </footer>
+</div>
+
+<script>
+function showTab(name){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-selected','false')});
+  document.getElementById('panel-'+name).classList.add('active');
+  var btn=document.getElementById('btn-'+name); btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+  history.replaceState(null,'','#'+name);
+  window.scrollTo({top:120,behavior:'smooth'});
+}
+if(location.hash==='#outputs') showTab('outputs');
+
+document.getElementById('ideaForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  var title=document.getElementById('title').value.trim();
+  var topic=document.getElementById('topic').value.trim();
+  var notes=document.getElementById('notes').value.trim();
+  if(!title) return;
+  var li=document.createElement('li'); li.className='inbox-item';
+  li.innerHTML='<div><strong></strong><div class="muted"></div></div><span class="badge b-new">New — demo</span>';
+  li.querySelector('strong').textContent=title;
+  li.querySelector('.muted').textContent=(topic? topic+' • ':'')+(notes? notes.slice(0,90)+(notes.length>90?'…':'') : 'Added just now in this demo');
+  var list=document.getElementById('inboxList'); list.prepend(li);
+  document.getElementById('liveRegion').innerHTML='<div class="note" style="margin:0">Added “'+title.replace(/</g,'&lt;')+'” to the demo inbox above. In the client version this would now be a row in Notion.</div>';
+  e.target.reset();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>Quote Calculator — Summit Home Services (Demo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#f3f1ec; --surface:#fffdf8; --surface2:#ece8dd; --ink:#1c2321; --ink2:#4b5652; --ink3:#7a8681;
+    --line:#d8d2c2; --accent:#b45309; --accent-ink:#92400e; --accent-soft:#fef3c7;
+    --new:#2563eb; --quoted:#b45309; --won:#15803d; --lost:#6b7280;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141817; --surface:#1e2422; --surface2:#272f2c; --ink:#eef2f0; --ink2:#b9c4bf; --ink3:#8b9791;
+      --line:#37413d; --accent:#f59e0b; --accent-ink:#fbbf24; --accent-soft:#3a2f14;
+      --new:#60a5fa; --quoted:#fbbf24; --won:#4ade80; --lost:#9ca3af;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.55}
+  h1,h2,h3{font-family:"Archivo",system-ui,sans-serif;line-height:1.15;margin:0}
+  a{color:var(--accent-ink);font-weight:600}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 20px 64px}
+  /* header */
+  .top{padding:28px 0 0}
+  .brandrow{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+  .brandrow h1{font-size:clamp(28px,5vw,40px);font-weight:800;letter-spacing:-.02em}
+  .brandrow .biz{font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink2);letter-spacing:.04em;text-transform:uppercase}
+  .lede{color:var(--ink2);font-size:17px;max-width:62ch;margin:10px 0 0}
+  .demo-note{margin:18px 0 0;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;font-size:14.5px;font-weight:600}
+  /* tabs */
+  .tabs{display:flex;gap:8px;margin:22px 0 0;flex-wrap:wrap;border-bottom:2px solid var(--line);padding-bottom:0}
+  .tab-btn{appearance:none;border:1px solid var(--line);border-bottom:none;background:var(--surface2);color:var(--ink2);font-family:"Archivo",sans-serif;font-weight:700;font-size:15px;padding:11px 18px;border-radius:12px 12px 0 0;cursor:pointer}
+  .tab-btn[aria-selected="true"]{background:var(--surface);color:var(--ink);border-color:var(--line);box-shadow:inset 0 3px 0 var(--accent)}
+  .tab-btn:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);padding:24px}
+  .panel[hidden]{display:none}
+  /* form layout */
+  .grid{display:grid;grid-template-columns:1.35fr .85fr;gap:24px;align-items:start}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}.panel{padding:18px}}
+  label{display:block;font-weight:700;font-size:14px;margin:0 0 6px}
+  .field{margin-bottom:18px}
+  input[type="text"],select,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+  textarea{min-height:96px;resize:vertical}
+  .hint{font-size:13px;color:var(--ink3);margin-top:5px}
+  .estimate{border:1px solid var(--line);border-radius:var(--radius);padding:20px;background:var(--surface2)}
+  .estimate .k{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+  .estimate .price{font-family:"Archivo",sans-serif;font-size:44px;font-weight:800;line-height:1;margin:8px 0 2px}
+  .estimate .svc{font-weight:700}
+  .estimate .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px dashed var(--line);font-size:14.5px}
+  .estimate .row span:last-child{font-family:"IBM Plex Mono",monospace;font-weight:600}
+  .btn{appearance:none;border:none;background:var(--accent);color:#fff;font-family:"Archivo",sans-serif;font-weight:700;font-size:16px;padding:13px 22px;border-radius:10px;cursor:pointer;width:100%}
+  @media(prefers-color-scheme:dark){.btn{color:#1a1205}}
+  .btn:hover{filter:brightness(1.07)}
+  .fineprint{font-size:13.5px;color:var(--ink2);background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin-top:14px}
+  /* preview */
+  .preview{margin-top:22px;border:1.5px solid var(--won);border-radius:var(--radius);padding:18px 20px;display:none}
+  .preview.show{display:block}
+  .preview h3{font-size:17px;margin-bottom:8px}
+  .preview dl{display:grid;grid-template-columns:110px 1fr;gap:4px 14px;margin:0;font-size:15px}
+  .preview dt{font-weight:700;color:var(--ink2)}
+  .preview dd{margin:0}
+  /* status pills */
+  .pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;padding:2px 10px;border-radius:999px;border:1.5px solid currentColor;white-space:nowrap}
+  .pill.new{color:var(--new)} .pill.quoted{color:var(--quoted)} .pill.won{color:var(--won)} .pill.lost{color:var(--lost)}
+  /* outputs */
+  .summary{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+  .stat{flex:1 1 120px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--bg)}
+  .stat b{font-family:"Archivo",sans-serif;font-size:22px;display:block;line-height:1.1}
+  .stat span{font-size:13px;color:var(--ink2)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:var(--radius);padding:16px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+  .card h3{font-size:16.5px}
+  .card .who{color:var(--ink2);font-size:14.5px}
+  .card .amt{margin-top:auto;font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:600}
+  .card .toprow{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  table{width:100%;border-collapse:collapse;margin-top:22px;font-size:15px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:"Archivo",sans-serif;font-size:13px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink2)}
+  @media(max-width:640px){table,thead,tbody,tr,th,td{display:block}thead{display:none}tr{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;padding:6px 4px}td{border:none;padding:5px 12px}td::before{content:attr(data-l);display:block;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}}
+  .links{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .linkbtn{display:inline-block;border:1.5px solid var(--accent);color:var(--accent-ink);text-decoration:none;font-family:"Archivo",sans-serif;font-weight:700;font-size:14.5px;padding:10px 16px;border-radius:10px}
+  .linkbtn:hover{background:var(--accent-soft)}
+  /* suite */
+  .suite-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.suite-grid{grid-template-columns:1fr}}
+  .suite-card{border:1px solid var(--line);border-radius:var(--radius);padding:20px;background:var(--bg)}
+  .suite-card h3{font-size:19px;margin-bottom:4px}
+  .suite-card .tag{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent-ink);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .suite-card p{margin:8px 0;color:var(--ink2);font-size:15px}
+  .io{font-size:14.5px;margin:10px 0 0;padding:0;list-style:none}
+  .io li{padding:7px 0;border-top:1px dashed var(--line)}
+  .io b{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);display:block}
+  footer{margin-top:28px;color:var(--ink3);font-size:13.5px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <h1>Quote Calculator</h1>
+      <span class="biz">Summit Home Services</span>
+    </div>
+    <p class="lede">A customer picks a service and gets an estimate on the spot — no phone tag, no waiting on a callback. The owner works every request in Notion, from New to Won or Lost.</p>
+    <p class="demo-note">Demo — Summit Home Services is a fictional business. Demo prices and demo clients below are samples, not real.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Quote Calculator">
+    <button class="tab-btn" role="tab" id="tab-quote" aria-selected="true" aria-controls="panel-quote" data-tab="quote">Get a quote</button>
+    <button class="tab-btn" role="tab" id="tab-requests" aria-selected="false" aria-controls="panel-requests" data-tab="requests">Requests</button>
+    <button class="tab-btn" role="tab" id="tab-suite" aria-selected="false" aria-controls="panel-suite" data-tab="suite">The suite — all four deliverables</button>
+  </nav>
+
+  <!-- ============ TAB 1: INPUTS ============ -->
+  <section class="panel" id="panel-quote" role="tabpanel" aria-labelledby="tab-quote">
+    <div class="grid">
+      <form id="quoteForm" novalidate>
+        <div class="field">
+          <label for="fName">Your name</label>
+          <input type="text" id="fName" name="name" autocomplete="name" placeholder="Your full name">
+        </div>
+        <div class="field">
+          <label for="fService">Service</label>
+          <select id="fService" name="service">
+            <option value="Kitchen drain cleaning" data-price="120">Kitchen drain cleaning — $120</option>
+            <option value="Bathroom faucet install" data-price="240">Bathroom faucet install — $240</option>
+            <option value="Water heater flush" data-price="180">Water heater flush — $180</option>
+            <option value="Garbage disposal replacement" data-price="310">Garbage disposal replacement — $310</option>
+          </select>
+          <p class="hint">Flat demo price per service. The estimate on the right updates as you change it.</p>
+        </div>
+        <div class="field">
+          <label for="fNotes">Notes <span style="font-weight:400;color:var(--ink3)">(optional)</span></label>
+          <textarea id="fNotes" name="notes" placeholder="Anything the tech should know — access, timing, what you've already tried…"></textarea>
+        </div>
+        <button class="btn" type="submit">Request this quote →</button>
+        <p class="fineprint">Demo: nothing is saved or sent anywhere. The client version writes to the Quote Requests database in Notion.</p>
+      </form>
+
+      <aside class="estimate" aria-live="polite">
+        <div class="k">Your estimate</div>
+        <div class="price" id="estPrice">$120</div>
+        <div class="svc" id="estService">Kitchen drain cleaning</div>
+        <div class="row"><span>Status on submit</span><span>New</span></div>
+        <div class="row"><span>Where it lands</span><span>Quote Requests</span></div>
+        <div class="row"><span>Owner sees it as</span><span>Board + table</span></div>
+        <p style="font-size:13.5px;color:var(--ink2);margin:12px 0 0">This is the number the customer sees immediately. The owner then works the request through Quoted → Won / Lost in the Requests view.</p>
+      </aside>
+    </div>
+
+    <div class="preview" id="preview" aria-live="polite">
+      <h3>✓ Here's the record that would be created</h3>
+      <dl>
+        <dt>Name</dt><dd id="pName">—</dd>
+        <dt>Service</dt><dd id="pService">—</dd>
+        <dt>Estimate</dt><dd id="pPrice">—</dd>
+        <dt>Status</dt><dd><span class="pill new">New</span></dd>
+        <dt>Notes</dt><dd id="pNotes">—</dd>
+      </dl>
+      <p class="fineprint">Demo: nothing is saved or sent anywhere. The client version writes to the Quote Requests database in Notion.</p>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2: OUTPUTS ============ -->
+  <section class="panel" id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" hidden>
+    <h2 style="font-size:22px;margin-bottom:6px">Quote Requests — the owner's readout</h2>
+    <p style="color:var(--ink2);margin:0 0 18px;max-width:64ch">Every submitted quote lands here as one row. The owner moves it New → Quoted → Won or Lost. These are the four sample requests from the Notion demo database.</p>
+
+    <div class="summary">
+      <div class="stat"><b>4</b><span>sample requests</span></div>
+      <div class="stat"><b>1</b><span>New</span></div>
+      <div class="stat"><b>1</b><span>Quoted</span></div>
+      <div class="stat"><b>1</b><span>Won</span></div>
+      <div class="stat"><b>1</b><span>Lost</span></div>
+      <div class="stat"><b>$850</b><span>total quoted value</span></div>
+    </div>
+
+    <div class="cards">
+      <article class="card">
+        <div class="toprow"><h3>Kitchen drain cleaning</h3><span class="pill new">New</span></div>
+        <div class="who">Dana Example</div>
+        <div class="amt">$120</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Bathroom faucet install</h3><span class="pill quoted">Quoted</span></div>
+        <div class="who">Morgan Sample</div>
+        <div class="amt">$240</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Water heater flush</h3><span class="pill won">Won</span></div>
+        <div class="who">Casey Demo</div>
+        <div class="amt">$180</div>
+      </article>
+      <article class="card">
+        <div class="toprow"><h3>Garbage disposal replacement</h3><span class="pill lost">Lost</span></div>
+        <div class="who">Riley Test</div>
+        <div class="amt">$310</div>
+      </article>
+    </div>
+
+    <table aria-label="Sample quote requests">
+      <thead><tr><th>Service</th><th>Client</th><th>Status</th><th>Amount</th></tr></thead>
+      <tbody>
+        <tr><td data-l="Service">Kitchen drain cleaning</td><td data-l="Client">Dana Example</td><td data-l="Status"><span class="pill new">New</span></td><td data-l="Amount">$120</td></tr>
+        <tr><td data-l="Service">Bathroom faucet install</td><td data-l="Client">Morgan Sample</td><td data-l="Status"><span class="pill quoted">Quoted</span></td><td data-l="Amount">$240</td></tr>
+        <tr><td data-l="Service">Water heater flush</td><td data-l="Client">Casey Demo</td><td data-l="Status"><span class="pill won">Won</span></td><td data-l="Amount">$180</td></tr>
+        <tr><td data-l="Service">Garbage disposal replacement</td><td data-l="Client">Riley Test</td><td data-l="Status"><span class="pill lost">Lost</span></td><td data-l="Amount">$310</td></tr>
+      </tbody>
+    </table>
+
+    <div class="links">
+      <a class="linkbtn" href="https://www.notion.so/4051f7d3a4bb817fb088ccd3fa3899ae" target="_blank" rel="noopener">Open the Notion app page ↗</a>
+      <a class="linkbtn" href="https://www.notion.so/42405d9e066f43a198e0a125fe6c1600" target="_blank" rel="noopener">Open the Quote Requests database ↗</a>
+    </div>
+    <p style="font-size:13.5px;color:var(--ink3);margin-top:12px">In Notion, the same database carries a “Request a quote” form view and a “Requests by Status” board view. This page is the published front door; Notion stays the owner's back office.</p>
+  </section>
+
+  <!-- ============ TAB 3: THE SUITE ============ -->
+  <section class="panel" id="panel-suite" role="tabpanel" aria-labelledby="tab-suite" hidden>
+    <h2 style="font-size:22px;margin-bottom:6px">Four deliverables, one pattern</h2>
+    <p style="color:var(--ink2);margin:0 0 20px;max-width:66ch">Each one pairs a simple input side (a form, a capture field, an answer queue) with a readout side the owner actually works from. Three are Notion demos built for the Fiverr line; the fourth is the interview app already running in the dash.</p>
+
+    <div class="suite-grid">
+      <article class="suite-card">
+        <span class="tag">Deliverable 1 · Notion demo</span>
+        <h3>Content OS</h3>
+        <p>The marketed one. A Notion content system demoed with a fictional bakery, Willow Creek Bakery: 2 products, 1 campaign, 4 content pieces, 4 linked assets, 5 inbox ideas, and 4 prompt-library entries — one idea in, matched to a product, content out. A “Demo Guide — Start Here” on the template root labels the bakery rows as samples to replace or delete.</p>
+        <ul class="io">
+          <li><b>Inputs</b>Ideas Inbox capture, Products, Prompt Library, Campaigns</li>
+          <li><b>Outputs</b>Content calendar + board (Idea → Writing → Scheduled → Published), linked Assets / Drafts</li>
+        </ul>
+        <div class="links"><a class="linkbtn" href="https://www.notion.so/4011f7d3a4bb8177a606ea2c342a813f" target="_blank" rel="noopener">Open in Notion ↗</a></div>
+      </article>
+
+      <article class="suite-card">
+        <span class="tag">Deliverable 2 · This page</span>
+        <h3>Quote Calculator</h3>
+        <p>For Summit Home Services (fictional demo business). A customer picks a service and sees the price immediately; the request lands in the owner's pipeline instead of a voicemail. Four sample requests cover the full arc: New, Quoted, Won, Lost.</p>
+        <ul class="io">
+          <li><b>Inputs</b>“Get a quote” form on this page — name, service, notes — with a live estimate (mirrors the Notion “Request a quote” form view)</li>
+          <li><b>Outputs</b>Requests tab here; Quote Requests database in Notion with a “Requests by Status” board</li>
+        </ul>
+        <div class="links">
+          <a class="linkbtn" href="https://www.notion.so/4051f7d3a4bb817fb088ccd3fa3899ae" target="_blank" rel="noopener">Notion app page ↗</a>
+          <a class="linkbtn" href="https://www.notion.so/42405d9e066f43a198e0a125fe6c1600" target="_blank" rel="noopener">Requests database ↗</a>
+        </div>
+      </article>
+
+      <article class="suite-card">
+        <span class="tag">Deliverable 3 · Notion demo</span>
+        <h3>Booking System</h3>
+        <p>Same fictional Summit Home Services, the scheduling half. Four sample bookings across Requested, Confirmed, Done, and Cancelled (Nov 2, Nov 3, Oct 28, Oct 30), so a buyer sees the whole lifecycle, not an empty calendar.</p>
+        <ul class="io">
+          <li><b>Inputs</b>“Request a booking” form view on the Bookings database</li>
+          <li><b>Outputs</b>Calendar view by date + board view by status, plus the demo guide on the app page</li>
+        </ul>
+        <div class="links">
+          <a class="linkbtn" href="https://www.notion.so/4051f7d3a4bb8105abbafdc5ac28baf9" target="_blank" rel="noopener">Notion app page ↗</a>
+          <a class="linkbtn" href="https://www.notion.so/ff19185b07c946ed9aaae131f39f3f1c" target="_blank" rel="noopener">Bookings database ↗</a>
+        </div>
+      </article>
+
+      <article class="suite-card">
+        <span class="tag">Deliverable 4 · Already built — in the dash</span>
+        <h3>Client Interview App</h3>
+        <p>The one that already exists — not a new demo. It's the phone-first interview queue in the dash (<span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px">interviews/</span>, sharing the dash login). It works one <em>Flagged</em> interview at a time: a hub filter up top, the title and angle, why it's being asked, then one textarea per question — “say it the way you'd say it.” Save draft anytime; <strong>✓ Finish &amp; next</strong> clears the queue one interview at a time.</p>
+        <p>Under the hood it runs on one interview per main offering (product), stored in the Notion 🎤 Interviews DB through the worker (<span style="font-family:'IBM Plex Mono',monospace;font-size:13.5px">getInterviews / saveInterview</span>). An asset that needs its own interview gets one via “🎤 Request interview” inside the asset. It also carries the 🔎 Expert check, which tests each answer's claims against the current standard of practice in the field — with sources, the smallest fix, and the line a top practitioner would add.</p>
+        <ul class="io">
+          <li><b>Inputs</b>Your answers, in your own words, to auto-generated questions per product / title — flagged automatically for new titles (within ~30 min)</li>
+          <li><b>Outputs</b>A <em>Finished</em> interview flows to every title and asset under that offering — it feeds the writers <em>and</em> the 🗣 Your voice engine, so it teaches both what to say and how you say it</li>
+          <li><b>Status flow</b>Flagged (waiting on you) → Finished. The hub's weekly touch is just: read the queue, answer what's flagged</li>
+        </ul>
+        <p style="font-size:13.5px">Why it belongs in the suite: the other three capture what a business <em>sells and schedules</em>. This one captures what the owner <em>knows and sounds like</em> — it's the input that makes every content output sound human instead of generated.</p>
+      </article>
+    </div>
+  </section>
+
+  <footer>Demo page for the Webguy Business Services deliverable suite. Sample businesses, prices, and clients are fictional and labeled as such.</footer>
+</div>
+
+<script>
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+  function show(key){
+    tabs.forEach(function(b){
+      var on = b.getAttribute('data-tab')===key;
+      b.setAttribute('aria-selected', on?'true':'false');
+      document.getElementById('panel-'+b.getAttribute('data-tab')).hidden = !on;
+    });
+  }
+  tabs.forEach(function(b){ b.addEventListener('click', function(){ show(b.getAttribute('data-tab')); }); });
+
+  var sel = document.getElementById('fService');
+  var priceEl = document.getElementById('estPrice');
+  var svcEl = document.getElementById('estService');
+  function money(n){ return '$'+Number(n).toLocaleString('en-US'); }
+  function syncEstimate(){
+    var opt = sel.options[sel.selectedIndex];
+    priceEl.textContent = money(opt.getAttribute('data-price'));
+    svcEl.textContent = opt.value;
+  }
+  sel.addEventListener('change', syncEstimate);
+  syncEstimate();
+
+  document.getElementById('quoteForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = document.getElementById('fName').value.trim();
+    var notes = document.getElementById('fNotes').value.trim();
+    var opt = sel.options[sel.selectedIndex];
+    document.getElementById('pName').textContent = name || '(no name given)';
+    document.getElementById('pService').textContent = opt.value;
+    document.getElementById('pPrice').textContent = money(opt.getAttribute('data-price'));
+    document.getElementById('pNotes').textContent = notes || '—';
+    var pv = document.getElementById('preview');
+    pv.classList.add('show');
+    pv.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+})();
+</script>
+</body>
+</html>
