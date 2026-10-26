@@ -26598,6 +26598,34 @@ function ftVerdict(t, stopKey, targetKey) {
   if (p) return { label: '⏱ Target touched (+20%); stop not yet', cls: '#4ade80' };
   return { label: '⏱ Neither yet', cls: 'var(--text3)' };
 }
+// Eventual high — display-only, from the tracker's running max fields.
+// No new KV data: contract_max_high / max_high (with times) at close IS the
+// eventual high; while open it is the running max. For puts the favorable
+// underlying extreme is max_low, so the underlying line shows the favorable
+// eventual move for puts.
+function ftEventualHigh(t) {
+  const scope = t.expired ? 'final max at close' : 'running max';
+  const cPct = (t.contract_max_high != null && t.entry_contract != null)
+    ? (t.contract_max_high - t.entry_contract) / t.entry_contract * 100 : null;
+  const cLine = cPct == null
+    ? '—'
+    : `${cPct >= 0 ? '+' : ''}${cPct.toFixed(1)}% ($${t.contract_max_high}) · ${fmtDate(t.contract_max_high_time)} · ${scope}`;
+  const isPut = t.direction === 'P';
+  const uVal = isPut ? t.max_low : t.max_high;
+  const uTime = isPut ? t.max_low_time : t.max_high_time;
+  const uPct = (uVal != null && t.entry_price != null)
+    ? (isPut ? (1 - uVal / t.entry_price) : (uVal / t.entry_price - 1)) * 100 : null;
+  const uLine = uPct == null
+    ? '—'
+    : `${uPct >= 0 ? '+' : ''}${uPct.toFixed(1)}% ($${uVal}) · ${fmtDate(uTime)} · ${scope}`;
+  // Runner context: the overall contract max is attained at or after the
+  // first +20% touch (the max itself is ≥ +20%), so for trades that hit the
+  // target, the overall max IS the runner's eventual high. Same numbers,
+  // runner label — no new fields.
+  const runnerSuffix = ((t.firstTouch || {}).c_p20 != null && cPct != null)
+    ? ' · <b>Runner eventual high</b>' : '';
+  return { cLine, uLine, isPut, runnerSuffix };
+}
 function ftSection(t) {
   const ft = t.firstTouch || {};
   const bf = !!t.firstTouchBackfilled;
@@ -26605,10 +26633,13 @@ function ftSection(t) {
   const u = ftVerdict(t, 'u_m20', 'u_p20');
   const note = bf ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">Backfilled: these times are first-observed (on or before the date shown), so the order is approximate — true crossing times predate logging.</div>` : '';
   const hasData = Object.keys(ft).length > 0;
+  const eh = ftEventualHigh(t);
   return `<div class="tr-section-label">First Touch — When (stop vs target)</div>
     <div style="font-size:12px;line-height:1.9;">
       <div><b>Contract −20/+20:</b> <span style="color:${c.cls};">${c.label}</span> · stop ${ftFmt(ft.c_m20, bf)} · target ${ftFmt(ft.c_p20, bf)}</div>
       <div><b>Underlying −20/+20:</b> <span style="color:${u.cls};">${u.label}</span> · stop ${ftFmt(ft.u_m20, bf)} · target ${ftFmt(ft.u_p20, bf)}</div>
+      <div><b>Eventual high — contract:</b> ${eh.cLine}${eh.runnerSuffix}</div>
+      <div><b>Eventual high — underlying${eh.isPut ? ' (favorable move)' : ''}:</b> ${eh.uLine}</div>
       ${hasData ? `<div style="color:var(--text3);">All first touches — contract: −20 ${ftFmt(ft.c_m20, bf)} · −10 ${ftFmt(ft.c_m10, bf)} · +10 ${ftFmt(ft.c_p10, bf)} · +20 ${ftFmt(ft.c_p20, bf)} · +25 ${ftFmt(ft.c_p25, bf)}; underlying: −20 ${ftFmt(ft.u_m20, bf)} · −10 ${ftFmt(ft.u_m10, bf)} · +10 ${ftFmt(ft.u_p10, bf)} · +20 ${ftFmt(ft.u_p20, bf)}</div>` : '<div style="color:var(--text3);">No thresholds crossed yet — first touches log from the next poller tick.</div>'}
       ${note}
     </div>`;
