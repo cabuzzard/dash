@@ -1,23 +1,42 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blog — Build Watcher</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
-:root{--bg:#f5f3ee;--ink:#1c1713;--accent:#8a6a1f;}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hanken Grotesk", system-ui, sans-serif;line-height:1.7}
-.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
-header.site{border-bottom:1px solid color-mix(in srgb,var(--ink) 15%,transparent);padding-bottom:20px;margin-bottom:40px;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px}
-header.site a{color:var(--ink);text-decoration:none;font-weight:600}
-h1{font-family:"Archivo", system-ui, sans-serif;font-size:2.1rem;margin:0 0 8px}
-ul{list-style:none;margin:0;padding:0}
-li{border-bottom:1px solid color-mix(in srgb,var(--ink) 12%,transparent);padding:22px 0}
-li a{color:var(--ink);text-decoration:none;font-family:"Archivo", system-ui, sans-serif;font-size:1.3rem}
-li a:hover{color:var(--accent)}
-.excerpt{margin-top:6px;opacity:.75;font-size:.98rem}
-footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent);font-size:.85rem;opacity:.7}
-</style></head><body><div class="wrap">
-<header class="site"><a href="../index.html">Build Watcher</a></header>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#f5f3ee; --ink:#1c1713; --accent:#8a6a1f; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:0.85rem; color:var(--accent); }
+.hero { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; margin:0 0 28px; display:block; }
+h1, h2 { font-family:"Archivo", system-ui, sans-serif; color:var(--ink); line-height:1.25; }
+h1 { font-size:2.1rem; margin:0 0 8px; }
+h2 { font-size:1.4rem; margin:40px 0 14px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.meta { color:var(--accent); font-size:0.85rem; margin-bottom:28px; }
+.postlist { list-style:none; margin:0; padding:0; }
+.postlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.postlist a { color:var(--ink); text-decoration:none; font-family:"Archivo", system-ui, sans-serif; font-size:1.3rem; }
+.postlist a:hover { color:var(--accent); }
+.postlist .excerpt { margin-top:6px; color:var(--ink); opacity:0.75; font-size:0.98rem; }
+footer.site { margin-top:60px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:0.85rem; opacity:0.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../index.html">Build Watcher</a>
+  
+</header>
 <h1>Blog</h1>
-<ul><li><a href="./what-builder-confidence-numbers-don-t-tell-you-about-the-cost-of-your-/index.html">What Builder Confidence Numbers Don't Tell You About the Cost of Your Custom Project</a><div class="excerpt">When builder confidence falls and headlines say big builders are cutting prices, the instinct is relief. That instinct is wrong — and understanding exactly why is one of the most practical things you can do before you approve your next payment request.</div></li>
+<ul class="postlist">
+<li><a href="./what-your-construction-contract-actually-requires-on-a-pay-application/index.html">What Your Construction Contract Actually Requires on a Pay Application — and How to Check Before You Approve</a><div class="excerpt">Your contractor just sent a pay application. Before you write the check, your signed contract has something to say about whether that application is even complete — and most homeowners never look.</div></li>
+<li><a href="./what-builder-confidence-numbers-don-t-tell-you-about-the-cost-of-your-/index.html">What Builder Confidence Numbers Don't Tell You About the Cost of Your Custom Project</a><div class="excerpt">When builder confidence falls and headlines say big builders are cutting prices, the instinct is relief. That instinct is wrong — and understanding exactly why is one of the most practical things you can do before you approve your next payment request.</div></li>
 <li><a href="./builder-discounts-are-headlines-your-contract-is-the-only-number-that-/index.html">Builder Discounts Are Headlines — Your Contract Is the Only Number That Matters</a><div class="excerpt">The autumn headlines say builders are cutting prices. Nearly half of production builders reportedly reduced prices in recent months, and roughly two-thirds offered buyer incentives to move inventory. If you are mid-project or about to break ground, that feels like good news. It is not — not for you,</div></li>
 <li><a href="./labor-shortages-are-quietly-rewriting-your-construction-schedule-what-/index.html">Labor Shortages Are Quietly Rewriting Your Construction Schedule — What Every Homeowner Needs to Check in Their Contract Right Now</a><div class="excerpt">If you're mid-project or about to break ground, your schedule was written as though every framing crew, finish carpenter, and mechanical sub would show up exactly when the bid assumed they would. In 2026, that assumption is carrying more risk than most homeowners realize — and most construction cont</div></li>
 <li><a href="./residential-owner-s-rep-cost-is-it-worth-it/index.html">Residential Owner's Rep Cost — Is It Worth It?</a><div class="excerpt">You are mid-project, the change orders are stacking up, and the number on the current cost projection looks nothing like the number you agreed to. You have heard the term &quot;owner's representative&quot; and you are trying to figure out whether hiring one is a real solution or just another expense on a proj</div></li>
@@ -27,6 +46,9 @@ footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in s
 <li><a href="./on-your-side-ongoing-build-coordination/index.html">Your Project. Your Money. Someone Watching Out for You.</a><div class="excerpt">You hired an architect. You hired a general contractor. You are still the least-informed person in every meeting about your own project.
 
 That is not a coincidence — it is a structure. Your architect is hired to protect the design. Your contractor is hired to manage the build. Neither one is hired t</div></li>
-<li><a href="./owner-side-contract-review/index.html">Construction Project Health Check—Independent Review</a><div class="excerpt">You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a</div></li></ul>
+<li><a href="./owner-side-contract-review/index.html">Construction Project Health Check—Independent Review</a><div class="excerpt">You signed a contract. The bid made sense. Then the change orders started arriving, the schedule explanations got vague, and the number on the current projection stopped matching anything you originally agreed to. You are not a developer. You do not have a construction department. And neither your a</div></li>
+</ul>
 <footer class="site">Build Watcher</footer>
-</div></body></html>
+</div>
+</body>
+</html>
