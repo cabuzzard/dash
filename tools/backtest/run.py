@@ -16,14 +16,14 @@ except Exception:
 IS_START, IS_END = "2005-01-01", "2016-12-31"
 VAL_START, VAL_END = "2017-01-01", "2022-12-31"
 HO_START = "2023-01-01"
-FAMILIES = ["momentum", "meanrev", "meanrev_vix"]
+FAMILIES = ["momentum", "meanrev", "meanrev_vix", "rangefade"]
 RES = os.path.join(bt.HERE, "results")
 
 
-def evaluate(family, p, O, C, start, end):
-    W, reb_days = bt.run_family(family, p, O, C)
-    net, to, held = bt.simulate(W, O)
-    net2, to2, held2 = bt.simulate(W, O, cost_mult=2.0)
+def evaluate(family, p, O, C, start, end, H=None, L=None):
+    W, reb_days, E = bt.run_family(family, p, O, C, H, L)
+    net, to, held = bt.simulate(W, O, entry_px=E)
+    net2, to2, held2 = bt.simulate(W, O, cost_mult=2.0, entry_px=E)
     nreb = None
     if reb_days is not None:
         nreb = int(((reb_days >= start) & (reb_days <= end)).sum())
@@ -64,11 +64,11 @@ def main():
     ap.add_argument("--holdout", action="store_true")
     a = ap.parse_args()
     os.makedirs(RES, exist_ok=True)
-    O, C = bt.load_prices(refresh=a.refresh)
+    O, H, L, C = bt.load_prices(refresh=a.refresh)
     last = str(C.index[-1].date())
 
     if a.holdout:
-        return run_holdout(O, C, last)
+        return run_holdout(O, C, last, H, L)
 
     spy_is, spy_val = bt.benchmark(O, IS_START, IS_END), bt.benchmark(O, VAL_START, VAL_END)
     out = [f"# Backtest report — {datetime.now():%Y-%m-%d %H:%M}", "",
@@ -81,7 +81,7 @@ def main():
         params = bt.grid(fam)
         is_res = []
         for p in params:
-            m1, _ = evaluate(fam, p, O, C, IS_START, IS_END)
+            m1, _ = evaluate(fam, p, O, C, IS_START, IS_END, H, L)
             is_res.append((p, m1))
         is_res.sort(key=lambda x: -x[1]["sharpe"])
         best_p, best_is = is_res[0]
@@ -89,7 +89,7 @@ def main():
         nbs = [by_label[label(q)]["sharpe"] for q in bt.neighbours(fam, best_p, params)]
         nb_median = sorted(nbs)[len(nbs) // 2] if nbs else None
 
-        m1, m2 = evaluate(fam, best_p, O, C, VAL_START, VAL_END)
+        m1, m2 = evaluate(fam, best_p, O, C, VAL_START, VAL_END, H, L)
         ok, checks = verdict(m1, m2, spy_val, nb_median, best_is["sharpe"])
 
         out += [f"## {fam}", "", "In-sample grid (sorted by Sharpe):", "",
@@ -125,7 +125,7 @@ def main():
     print("\n".join(out))
 
 
-def run_holdout(O, C, last):
+def run_holdout(O, C, last, H=None, L=None):
     path = os.path.join(RES, "finalists.json")
     finalists = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else []
     if not finalists:
@@ -138,7 +138,7 @@ def run_holdout(O, C, last):
     for f in finalists:
         key = f'{f["family"]} `{label(f["params"])}`'
         warn = " ⚠ holdout ALREADY used for this config — result is no longer independent" if key in seen else ""
-        m1, m2 = evaluate(f["family"], f["params"], O, C, HO_START, last)
+        m1, m2 = evaluate(f["family"], f["params"], O, C, HO_START, last, H, L)
         ok, checks = verdict(m1, m2, spy, float("inf"), 0)   # C5 is an in-sample check; not re-run here
         failed = [n for n, c, _ in checks if not c]
         lines.append(f"- {key}: {fmt(m1)} · 2× costs {fmt(m2)} · {'PASS' if ok else 'FAIL ' + ', '.join(failed)}{warn}")

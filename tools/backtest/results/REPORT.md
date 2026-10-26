@@ -1,6 +1,6 @@
-# Backtest report — 2026-09-28 11:24
+# Backtest report — 2026-10-26 04:41
 
-Data through 2026-09-28. In-sample 2005-01-01→2016-12-31, validation 2017-01-01→2022-12-31. Holdout 2023-01-01→ untouched by this run.
+Data through 2026-10-23. In-sample 2005-01-01→2016-12-31, validation 2017-01-01→2022-12-31. Holdout 2023-01-01→ untouched by this run.
 
 **SPY buy & hold** — in-sample: CAGR 7.4% · Sharpe 0.47 · MaxDD -55.4% · exposure 100% · trades 1  
 validation: CAGR 11.3% · Sharpe 0.67 · MaxDD -32.0% · exposure 100% · trades 1
@@ -53,16 +53,16 @@ In-sample grid (sorted by Sharpe):
 |---|---|---|---|---|
 | rsi_n=2, rsi_th=5, exit_sma=10, slots=5 | 4.7% | 0.66 | -13.6% | 454 |
 | rsi_n=2, rsi_th=10, exit_sma=10, slots=5 | 5.5% | 0.63 | -14.9% | 775 |
-| rsi_n=2, rsi_th=15, exit_sma=10, slots=3 | 6.2% | 0.61 | -17.7% | 731 |
+| rsi_n=2, rsi_th=15, exit_sma=10, slots=3 | 6.2% | 0.62 | -17.7% | 732 |
 | rsi_n=2, rsi_th=10, exit_sma=10, slots=3 | 5.9% | 0.61 | -16.9% | 539 |
-| rsi_n=2, rsi_th=15, exit_sma=10, slots=5 | 5.6% | 0.60 | -17.9% | 1050 |
-| rsi_n=2, rsi_th=15, exit_sma=5, slots=3 | 5.0% | 0.54 | -16.1% | 835 |
+| rsi_n=2, rsi_th=15, exit_sma=10, slots=5 | 5.6% | 0.60 | -17.9% | 1051 |
+| rsi_n=2, rsi_th=15, exit_sma=5, slots=3 | 4.9% | 0.54 | -16.1% | 835 |
 | rsi_n=2, rsi_th=5, exit_sma=10, slots=3 | 4.5% | 0.52 | -16.5% | 333 |
 | rsi_n=2, rsi_th=5, exit_sma=5, slots=5 | 2.9% | 0.51 | -13.4% | 480 |
 | rsi_n=2, rsi_th=15, exit_sma=5, slots=5 | 4.1% | 0.50 | -15.7% | 1179 |
 | rsi_n=2, rsi_th=10, exit_sma=5, slots=5 | 3.6% | 0.49 | -14.7% | 865 |
 | rsi_n=2, rsi_th=5, exit_sma=5, slots=3 | 3.4% | 0.47 | -15.2% | 372 |
-| rsi_n=2, rsi_th=10, exit_sma=5, slots=3 | 3.9% | 0.47 | -16.7% | 622 |
+| rsi_n=2, rsi_th=10, exit_sma=5, slots=3 | 3.9% | 0.46 | -16.7% | 622 |
 
 **Chosen:** `rsi_n=2, rsi_th=5, exit_sma=10, slots=5`  
 Validation: CAGR -4.0% · Sharpe -0.30 · MaxDD -36.3% · exposure 22% · trades 231  
@@ -90,7 +90,7 @@ In-sample grid (sorted by Sharpe):
 | rsi_n=20, rsi_th=35, exit_sma=5, slots=5, fear=spike | 0.6% | 0.55 | -2.6% | 38 |
 | rsi_n=2, rsi_th=5, exit_sma=5, slots=5, fear=spike | 2.3% | 0.45 | -13.1% | 275 |
 | rsi_n=2, rsi_th=10, exit_sma=5, slots=5, fear=spike | 2.8% | 0.45 | -14.7% | 424 |
-| rsi_n=2, rsi_th=10, exit_sma=5, slots=5, fear=level | 2.4% | 0.44 | -14.7% | 284 |
+| rsi_n=2, rsi_th=10, exit_sma=5, slots=5, fear=level | 2.4% | 0.43 | -14.7% | 284 |
 | rsi_n=2, rsi_th=5, exit_sma=5, slots=5, fear=level | 1.8% | 0.40 | -13.1% | 168 |
 | rsi_n=20, rsi_th=35, exit_sma=5, slots=5, fear=level | 0.3% | 0.33 | -2.6% | 20 |
 
@@ -106,6 +106,76 @@ Validation @2× costs: CAGR 2.4% · Sharpe 0.52 · MaxDD -8.5% · exposure 4% ·
 | C4 no year > 50% of profit | ❌ | 2021: 54% |
 | C5 neighbours ≥ 0.7× in-sample Sharpe | ❌ | median 0.33 vs 0.44 |
 | C6 ≥ 30 rebalances/trades | ✅ | 85 |
+
+**Verdict: REJECTED**
+
+## rangefade
+
+In-sample grid (sorted by Sharpe):
+
+| config | CAGR | Sharpe | MaxDD | trades |
+|---|---|---|---|---|
+| window=20, atr_buffer=0.5, regime=held2, target=opposite, entry=rejection | -1.2% | 0.01 | -45.1% | 1304 |
+| window=20, atr_buffer=2.0, regime=adx25, target=opposite, entry=limit | -0.7% | 0.00 | -52.6% | 538 |
+| window=20, atr_buffer=2.0, regime=adx25, target=2R, entry=limit | -0.8% | -0.00 | -53.0% | 528 |
+| window=20, atr_buffer=1.0, regime=adx25, target=opposite, entry=limit | -0.8% | -0.02 | -47.7% | 696 |
+| window=20, atr_buffer=1.0, regime=held2, target=opposite, entry=rejection | -2.0% | -0.03 | -47.7% | 1083 |
+| window=20, atr_buffer=2.0, regime=held2, target=opposite, entry=rejection | -2.2% | -0.05 | -48.3% | 810 |
+| window=60, atr_buffer=2.0, regime=adx25, target=2R, entry=limit | -1.1% | -0.06 | -42.0% | 236 |
+| window=20, atr_buffer=0.5, regime=held2, target=2R, entry=rejection | -2.1% | -0.06 | -41.4% | 1592 |
+| window=60, atr_buffer=2.0, regime=adx25, target=opposite, entry=limit | -1.2% | -0.07 | -42.0% | 236 |
+| window=20, atr_buffer=1.0, regime=adx25, target=2R, entry=limit | -1.5% | -0.09 | -47.5% | 692 |
+| window=20, atr_buffer=2.0, regime=held2, target=opposite, entry=limit | -2.9% | -0.10 | -49.0% | 926 |
+| window=20, atr_buffer=0.5, regime=adx25, target=opposite, entry=limit | -1.8% | -0.11 | -47.5% | 851 |
+| window=20, atr_buffer=1.0, regime=held2, target=2R, entry=rejection | -3.1% | -0.12 | -45.3% | 1129 |
+| window=60, atr_buffer=0.5, regime=adx25, target=opposite, entry=limit | -1.4% | -0.15 | -34.2% | 303 |
+| window=60, atr_buffer=1.0, regime=adx25, target=opposite, entry=limit | -1.5% | -0.15 | -36.4% | 273 |
+| window=60, atr_buffer=2.0, regime=held2, target=2R, entry=limit | -3.5% | -0.16 | -56.2% | 733 |
+| window=60, atr_buffer=1.0, regime=adx25, target=2R, entry=limit | -1.6% | -0.17 | -36.0% | 276 |
+| window=60, atr_buffer=2.0, regime=held2, target=2R, entry=rejection | -4.2% | -0.19 | -54.6% | 708 |
+| window=60, atr_buffer=2.0, regime=held2, target=opposite, entry=limit | -4.0% | -0.19 | -55.9% | 725 |
+| window=60, atr_buffer=2.0, regime=held2, target=opposite, entry=rejection | -4.6% | -0.21 | -52.5% | 695 |
+| window=60, atr_buffer=1.0, regime=held2, target=2R, entry=rejection | -4.3% | -0.21 | -54.8% | 1039 |
+| window=60, atr_buffer=0.5, regime=held2, target=opposite, entry=limit | -4.2% | -0.23 | -55.3% | 1313 |
+| window=60, atr_buffer=1.0, regime=held2, target=opposite, entry=rejection | -4.8% | -0.23 | -52.5% | 920 |
+| window=60, atr_buffer=0.5, regime=held2, target=2R, entry=rejection | -4.4% | -0.24 | -49.9% | 1397 |
+| window=60, atr_buffer=0.5, regime=held2, target=opposite, entry=rejection | -4.8% | -0.25 | -51.2% | 1120 |
+| window=20, atr_buffer=2.0, regime=held2, target=2R, entry=limit | -5.0% | -0.26 | -59.3% | 901 |
+| window=20, atr_buffer=1.0, regime=held2, target=2R, entry=limit | -5.2% | -0.27 | -56.9% | 1378 |
+| window=60, atr_buffer=1.0, regime=held2, target=2R, entry=limit | -4.5% | -0.27 | -54.2% | 1048 |
+| window=20, atr_buffer=2.0, regime=held2, target=2R, entry=rejection | -5.4% | -0.28 | -58.1% | 727 |
+| window=60, atr_buffer=1.0, regime=held2, target=opposite, entry=limit | -5.4% | -0.32 | -58.4% | 1000 |
+| window=20, atr_buffer=0.5, regime=adx25, target=2R, entry=limit | -4.2% | -0.35 | -53.3% | 873 |
+| window=60, atr_buffer=0.5, regime=adx25, target=2R, entry=limit | -2.8% | -0.36 | -37.5% | 308 |
+| window=20, atr_buffer=1.0, regime=held2, target=opposite, entry=limit | -6.9% | -0.37 | -66.3% | 1301 |
+| window=60, atr_buffer=0.5, regime=held2, target=2R, entry=limit | -5.1% | -0.37 | -60.3% | 1474 |
+| window=60, atr_buffer=2.0, regime=adx25, target=opposite, entry=rejection | -5.3% | -0.40 | -54.2% | 648 |
+| window=20, atr_buffer=2.0, regime=adx25, target=opposite, entry=rejection | -6.7% | -0.45 | -61.0% | 775 |
+| window=60, atr_buffer=2.0, regime=adx25, target=2R, entry=rejection | -6.2% | -0.48 | -57.7% | 655 |
+| window=20, atr_buffer=0.5, regime=held2, target=opposite, entry=limit | -8.0% | -0.49 | -69.0% | 1734 |
+| window=60, atr_buffer=1.0, regime=adx25, target=opposite, entry=rejection | -6.6% | -0.53 | -58.5% | 812 |
+| window=60, atr_buffer=1.0, regime=adx25, target=2R, entry=rejection | -6.6% | -0.54 | -60.7% | 915 |
+| window=20, atr_buffer=0.5, regime=held2, target=2R, entry=limit | -8.5% | -0.56 | -72.2% | 2009 |
+| window=20, atr_buffer=2.0, regime=adx25, target=2R, entry=rejection | -7.6% | -0.56 | -66.2% | 698 |
+| window=20, atr_buffer=1.0, regime=adx25, target=opposite, entry=rejection | -8.2% | -0.59 | -67.9% | 1001 |
+| window=60, atr_buffer=0.5, regime=adx25, target=opposite, entry=rejection | -7.2% | -0.62 | -61.2% | 995 |
+| window=20, atr_buffer=1.0, regime=adx25, target=2R, entry=rejection | -8.5% | -0.66 | -67.7% | 1048 |
+| window=20, atr_buffer=0.5, regime=adx25, target=2R, entry=rejection | -8.2% | -0.70 | -66.5% | 1460 |
+| window=60, atr_buffer=0.5, regime=adx25, target=2R, entry=rejection | -8.1% | -0.78 | -66.7% | 1178 |
+| window=20, atr_buffer=0.5, regime=adx25, target=opposite, entry=rejection | -9.7% | -0.78 | -73.8% | 1251 |
+
+**Chosen:** `window=20, atr_buffer=0.5, regime=held2, target=opposite, entry=rejection`  
+Validation: CAGR -2.2% · Sharpe -0.07 · MaxDD -34.9% · exposure 96% · trades 697  
+Validation @2× costs: CAGR -4.5% · Sharpe -0.24 · MaxDD -38.4% · exposure 96% · trades 697
+
+| criterion | pass | value |
+|---|---|---|
+| C1 Sharpe ≥ max(0.8, SPY) | ❌ | -0.07 vs 0.80 |
+| C2 MaxDD ≤ 25% and ≤ SPY | ❌ | -34.9% vs SPY -32.0% |
+| C3 2× costs: CAGR>0, Sharpe ≥ 0.6 | ❌ | CAGR -4.5%, Sharpe -0.24 |
+| C4 no year > 50% of profit | ❌ | no net profit |
+| C5 neighbours ≥ 0.7× in-sample Sharpe | ❌ | median -0.03 vs 0.01 |
+| C6 ≥ 30 rebalances/trades | ✅ | 697 |
 
 **Verdict: REJECTED**
 
