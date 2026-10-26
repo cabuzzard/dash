@@ -4,7 +4,10 @@
     "title": "Stable Materials Don't Mean a Safe Schedule: How to Read Supply Signals Before They Bite Your Active Jobs",
     "intro": "A flat materials index feels like a green light. For small GCs running three to ten active jobs, it isn't — and mistaking the two is where schedules quietly fall apart.",
     "date": "2026-10-26",
-    "assetId": "4051f7d3a4bb81a0a8caede5a7c9392f"
+    "assetId": "4051f7d3a4bb81a0a8caede5a7c9392f",
+    "contentHash": "fedafc9e44ac353a81142d78224058a1778c7afa08168635dc5c84e59f945e1a",
+    "contentEditedAt": "2026-10-26T20:35:00.000Z",
+    "refreshedAt": "2026-10-26T20:35:31.624Z"
   },
   {
     "slug": "your-client-sees-11-material-inflation-and-5-bid-prices-here-s-why-tho",
