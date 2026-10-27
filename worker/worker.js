@@ -14893,7 +14893,7 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
 // the hub's ★ main offerings — "a true digest of everything that is important". Same pipeline as the Digest modal:
 // research (Gemini + Perplexity → rank) → a dated title in Main, product = the first main offering → the Digest pillar
 // from the ranked sources → a Digest PARENT asset, written and left at Development (unpublished)
-// counts. Topical material is the operator's. KV digest:auto:state:<cid> (resumable), digest:auto:done = {cid: period}.
+// counts. Topical material is the operator's. KV digest:auto:state:<assetId> (resumable; legacy campaign-keyed state migrates on read), digest:auto:done = {assetId: period}.
 const AD_DIGEST_STYLE = "PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).";
 // WEEKLY RESEARCH MEMORY — worksheet sync 2026-10-23. Never expires, never deletes findings.
 async function digestMemory(env,cid) {
@@ -15076,6 +15076,64 @@ function adPeriod() {   // WEEKLY (operator 2026-10-16): the week keyed by its S
   return { key: dd.toISOString().slice(0, 10), hour, minute:+p.minute, open: (wd === 0 && hour >= 20) || (wd === 1 && hour < 6),
     label: mon.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };   // titled for the Monday it's read
 }
+const digestCronKey = assetId => "digest:cron:" + String(assetId || "").replace(/-/g, "");
+async function digestParentsForHub(env, cid) {
+  const cacheKey = "digest:parents:v1:" + cid, cached = await env.TRADES.get(cacheKey, "json").catch(() => null);
+  if (cached?.at && Date.now() - cached.at < 120000 && Array.isArray(cached.rows)) return cached.rows;
+  const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: kwDashId(cid) } }, { property: "Pillar Type", select: { equals: "Digest" } }] }, sorts: [{ timestamp: "created_time", direction: "ascending" }] }).catch(e => { throw new Error("digest parents: " + e.message); });
+  const compact = rows.map(r => ({ id: r.id, properties: { "Content Strategy": r.properties?.["Content Strategy"], "Asset Title": r.properties?.["Asset Title"] } }));
+  await env.TRADES.put(cacheKey, JSON.stringify({ at: Date.now(), rows: compact }), { expirationTtl: 120 }).catch(() => {});
+  return compact;
+}
+async function digestMigrateCronFlags(env, cid, rows) {
+  const canonical = String(await env.TRADES.get("digest:asset:" + cid) || "").replace(/-/g, "");
+  for (const row of rows) {
+    const id = row.id.replace(/-/g, ""), key = digestCronKey(id);
+    if (await env.TRADES.get(key) !== null) continue;
+    // Only the existing canonical weekly Digest is migrated on. Other old or new digests default off.
+    const enabled = !!canonical && canonical === id;
+    await env.TRADES.put(key, JSON.stringify({ runsWeekly: enabled, migratedAt: new Date().toISOString(), migrated: true }));
+  }
+}
+async function digestWeeklyFlag(env, assetId) {
+  const value = await env.TRADES.get(digestCronKey(assetId), "json");
+  return value?.runsWeekly === true;
+}
+async function digestSetWeekly(env, assetId, runsWeekly) {
+  const id = hubAssetId(assetId); if (!/^[a-f0-9]{32}$/i.test(id)) throw new Error("assetId required");
+  const page = await newsletterNotion(env, "pages/" + kwDashId(id));
+  if (page.properties?.["Pillar Type"]?.select?.name !== "Digest") throw new Error("Selected asset is not a Digest parent");
+  const value = { runsWeekly: runsWeekly === true, updatedAt: new Date().toISOString() };
+  await env.TRADES.put(digestCronKey(id), JSON.stringify(value));
+  const check = await env.TRADES.get(digestCronKey(id), "json");
+  if (check?.runsWeekly !== value.runsWeekly) throw new Error("Weekly flag readback differs");
+  return { ok: true, assetId: id, runsWeekly: check.runsWeekly };
+}
+async function digestMoveTargets(env) {
+  const [titles, products] = await Promise.all([notionQuery(CONTENT_STRATEGY_DB, {}), notionQuery(PRODUCTS_DB, {})]);
+  const byId = new Map(products.map(p => [hubAssetId(p.id), p]));
+  return titles.map(t => {
+    const p = t.properties || {}, productId = ivRid(p, "product") || ivRid(p, "Product"), product = byId.get(productId), campaignId = ivRid(p, "Campaign") || (product && ivRid(product.properties, "Campaigns"));
+    if (!productId || !product || !campaignId || t.archived || t.in_trash || p.Status?.select?.name === "Archived" || product.archived || product.in_trash || product.properties?.Archived?.checkbox || product.properties?.Status?.select?.name === "Archived") return null;
+    return { titleId: hubAssetId(t.id), title: kwTitleOf(t), productId, product: kwTitleOf(product), campaignId: hubAssetId(campaignId) };
+  }).filter(x => x && x.title).sort((a, b) => a.product.localeCompare(b.product) || a.title.localeCompare(b.title));
+}
+async function digestMove(env, assetId, titleId) {
+  const id = hubAssetId(assetId), tid = hubAssetId(titleId);
+  if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(tid)) throw new Error("Digest asset and destination title are required");
+  const [asset, title] = await Promise.all([newsletterNotion(env, "pages/" + kwDashId(id)), newsletterNotion(env, "pages/" + kwDashId(tid))]);
+  if (asset.properties?.["Pillar Type"]?.select?.name !== "Digest") throw new Error("Selected asset is not a Digest parent");
+  if (title.parent?.database_id && hubAssetId(title.parent.database_id) !== hubAssetId(CONTENT_STRATEGY_DB)) throw new Error("Destination is not a Content Strategy title");
+  const props = title.properties || {}, productId = ivRid(props, "product") || ivRid(props, "Product"), campaignId = ivRid(props, "Campaign");
+  if (!productId || !campaignId) throw new Error("Destination title must have a Product and Campaign");
+  const oldProductId = ivRid(asset.properties, "Product") || ivRid(asset.properties, "product");
+  if (oldProductId === hubAssetId(productId)) return { ok: true, noOp: true, message: "Digest is already under this product; same-product moves do not change its title." };
+  const properties = { "Content Strategy": { relation: [{ id: kwDashId(tid) }] }, Product: { relation: [{ id: kwDashId(productId) }] }, Campaign: { relation: [{ id: kwDashId(campaignId) }] } };
+  await newsletterNotion(env, "pages/" + kwDashId(id), { method: "PATCH", body: JSON.stringify({ properties }) });
+  const after = await newsletterNotion(env, "pages/" + kwDashId(id)), actual = after.properties || {};
+  if (ivRid(actual, "Content Strategy") !== tid || (ivRid(actual, "Product") || ivRid(actual, "product")) !== hubAssetId(productId) || ivRid(actual, "Campaign") !== hubAssetId(campaignId)) throw new Error("Digest move readback differs");
+  return { ok: true, assetId: id, titleId: tid, productId: hubAssetId(productId), campaignId: hubAssetId(campaignId), childrenPreserved: true, poolPreserved: true };
+}
 // Perplexity writes the digest (operator 2026-10-16, API cost — no Claude): from the week's Gemini + Perplexity research it
 // ranks the items (the hub's Digest pool) AND writes the digest, in one call. Returns { sources, digest }.
 async function adPerplexityDigest(env, job, names) {
@@ -15084,7 +15142,7 @@ async function adPerplexityDigest(env, job, names) {
   const today = new Date().toISOString().slice(0, 10);
   const memory=await digestMemory(env,job.campaignId),raw=drJson(job.perplexity?.text||'[]'),reported=Array.isArray(raw)?raw:(raw?.sources||[]);
   const fresh=memoryPlan(memory,reported,job.id);
-  const input = `You are the editor of a weekly industry digest for one website hub. Its main offerings: ${names.join("; ")}.
+  const input = `You are the editor of a weekly industry digest for one title's subject area: ${names.join("; ")}.
 TODAY: ${today}. Use the research below. No new searches in synthesis; do not repeat established findings as news.
 ${await digestMemoryBrief(env,job.campaignId)}
 MECHANICALLY DEDUPED NEW / CHANGED FINDINGS (the issue's factual base; known findings only if needed as labelled historical context):
@@ -15250,22 +15308,28 @@ async function adStep(env, cid, S, invoke) {
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
     await digestMemorySeed(env,cid);
-    const mains = await hubMainList(env, cid); if (!mains.length) { S.step = "skip"; S.note = "no ★ main offerings"; return; }
     const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
-    const prods = []; for (const id of mains.slice(0, 15)) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: hdr }).then(r => r.json()).catch(() => null);
-      if (pg && pg.object !== "error" && !pg.archived) prods.push({ id, name: kwTitleOf(pg), keywords: kwSplit(kwRt(pg, "Keywords")).slice(0, 4) }); }
-    if (!prods.length) { S.step = "skip"; S.note = "main offerings not found"; return; }
-    const kws = hcUniq([...prods.flatMap(p => [kwNorm(p.name), ...p.keywords])]).slice(0, 30);
-    S.mainIds = prods.map(p => p.id); S.names = prods.map(p => p.name);
+    const title = await newsletterNotion(env, "pages/" + kwDashId(S.titleId));
+    if (ivRid(title.properties, "Campaign") !== cid) throw new Error("Digest title no longer belongs to this campaign");
+    const flow = await titleTopicKeywords(env, hdr, title.properties || {}), productId = ivRid(title.properties, "product") || ivRid(title.properties, "Product");
+    if (!flow.keywords || !flow.topicId) { S.step = "skip"; S.note = "digest title has no placed topic keyword set"; return; }
+    const product = productId ? await newsletterNotion(env, "pages/" + kwDashId(productId)).catch(() => null) : null;
+    S.titleName = kwTitleOf(title); S.productId = productId; S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
+    S.names = [S.productName || S.titleName];
+    const kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
     if (S.newsletter.fields['Research Depth'] === 'Free') { S.freeKeywords = kws; S.step = 'write'; return; }   // free news tier: no paid research job
-    S.keywords=kws;S.marketPlan=await productNotesPrepare(env,cid);S.step='market';return;
+    S.keywords=kws;S.marketPlan=await productNotesPrepare(env,cid);
+    S.marketPlan.topics = S.topicId === "__main" ? [] : S.marketPlan.topics.filter(x => x.id === S.topicId);
+    S.marketPlan.gaps = S.topicId === "__main" ? [] : S.marketPlan.gaps.filter(x => x.id === S.topicId);
+    S.marketPlan.current = S.topicId === "__main" ? [] : S.marketPlan.current.filter(x => x.topicId === S.topicId);
+    S.step='market';return;
   }
   if(S.step==='market') {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
     S.marketPlan.apiCursor=S.marketPlan.apiCursor||0;
     if(S.marketPlan.apiCursor<S.marketPlan.gaps.length){const scan=await productNotesEtsy(env,S.marketPlan.gaps[S.marketPlan.apiCursor]);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.apiCursor++;return;}
     const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,
-      guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
+      guidance: `Digest for title “${S.titleName}”, under product “${S.productName}”, using only the title's placed topic keyword flow. Topic ID: ${S.topicId}.` }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
   }
@@ -15279,10 +15343,9 @@ async function adStep(env, cid, S, invoke) {
   if (S.step === "write" || S.step === "pillar") {   // Perplexity ranks + writes (no Claude) → this week's Digest asset under the permanent title
     const free = S.newsletter && S.newsletter.fields['Research Depth'] === 'Free';
     const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
-    S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
     const runId=job.id||S.period,pendingKey='digest:pending:'+cid+':'+runId;
     let w=await env.TRADES.get(pendingKey,'json');
-    if(!w){w=free?await freeNewsDigest(env,S.name,S.freeKeywords||[]):await adPerplexityDigest(env,job,S.names);await env.TRADES.put(pendingKey,JSON.stringify(w));}
+    if(!w){w=free?await freeNewsDigest(env,S.titleName||S.name,S.freeKeywords||[]):await adPerplexityDigest(env,job,S.names);await env.TRADES.put(pendingKey,JSON.stringify(w));}
     S.memory=await digestMemoryCommit(env,cid,runId,[...(w.memoryFindings||[]),...w.sources]);
     const memory=await digestMemory(env,cid),newKeys=new Set(memory.items.filter(x=>x.firstSeenRun===runId).map(memoryKey));
     w.sources=w.sources.filter(x=>newKeys.has(memoryKey(x))).map(x=>({...x,memoryKind:memory.items.find(i=>memoryKey(i)===memoryKey(x))?.relationship||'new'}));
@@ -15290,18 +15353,18 @@ async function adStep(env, cid, S, invoke) {
     if(S.marketPlan)S.productNotes=await productNotesSave(env,cid,S.marketPlan,w.productNotes,runId);
     const usage=await env.TRADES.get('digest:usage:'+cid,'json')||[],entry=usage.find(x=>x.runId===job.id);if(entry){entry.memory=S.memory;entry.productNotes=S.productNotes;await env.TRADES.put('digest:usage:'+cid,JSON.stringify(usage));}
     await researchDigestSave(env,cid,S.titleId,w.sources||[]);
-    await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
+    await digestPoolMerge(env, cid, { sources: w.sources }, job.keywords || []).catch(() => {});
     const label = adPeriod().label;
-    S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
     await digestItemsSave(env, S.assetId, w.sources);   // its findings, premium / free, for the Digest section
-    await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
+    const writtenTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
+    await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: writtenTitle } }] },
       "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
-    await digestVerifyAsset(env,S.assetId,`Weekly Digest — ${label} (${S.name})`);
+    await digestVerifyAsset(env,S.assetId,writtenTitle);
     S.items = w.sources.length; S.step = "done"; return;
   }
 }
@@ -15321,34 +15384,62 @@ async function autoDigestRun(env, invoke) {
       const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
       try { const tid = await adEnsureTitle(env, cid, nm, invoke); await adEnsureBlank(env, cid, tid, nm, invoke); out.push({ cid, title: "ready" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
     }
+    const work = [];
     for (const cid of cids) {
+      const rows = await digestParentsForHub(env, cid); await digestMigrateCronFlags(env, cid, rows);
+      for (const row of rows) {
+        const assetId = row.id.replace(/-/g, ""), specificallyQueued = manual.some(x => x && typeof x === "object" && x.assetId === assetId), hubQueued = manual.includes(cid);
+        if (!await digestWeeklyFlag(env, assetId) && !specificallyQueued && !hubQueued) continue;
+        const titleId = ((row.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "");
+        const legacyTitleId = String(await env.TRADES.get("digest:title:" + cid) || "").replace(/-/g, "");
+        work.push({ cid, assetId, titleId, legacyWeekly: !!legacyTitleId && legacyTitleId === titleId && String(await env.TRADES.get("digest:asset:" + cid) || "").replace(/-/g, "") === assetId,
+          name: (HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid)?.campaign || HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid)?.name || "Hub"),
+          digestName: (row.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest" });
+      }
+    }
+    work.sort((a, b) => a.cid.localeCompare(b.cid) || a.assetId.localeCompare(b.assetId));
+    for (let wi = 0; wi < work.length; wi++) {
       if (Date.now() - t0 > 120000) break;
-      const key = "digest:auto:state:" + cid; let S = await env.TRADES.get(key, "json");
-      const finished = !S || ["done", "skip", "error"].includes(S.step), handNow = manual.includes(cid) && finished;   // a queued hand run starts once nothing is running — even after this week's run is done
+      const item = work[wi], { cid, assetId } = item, key = "digest:auto:state:" + assetId;
+      let S = await env.TRADES.get(key, "json");
+      // Resume a legacy in-flight state under its new asset-keyed state record.
+      if (!S && item.legacyWeekly) { const old = await env.TRADES.get("digest:auto:state:" + cid, "json"); if (old && !["done", "skip", "error"].includes(old.step)) S = { ...old, cid, assetId, titleId: item.titleId, legacyWeekly: true, digestName: item.digestName }; }
+      if (S && !["done", "skip", "error"].includes(S.step) && S.titleId && S.titleId !== item.titleId) {
+        S.step = "skip"; S.note = "Digest moved while its run was in progress; run again to use the destination title's keyword flow."; S.finishedAt = Date.now();
+        await env.TRADES.put(key, JSON.stringify({ ...S, ...item }), { expirationTtl: 30 * 86400 }); out.push({ cid, assetId, step: "skip", note: S.note }); continue;
+      }
+      if (S) Object.assign(S, item);
+      const firstForHub = work.find(x => x.cid === cid)?.assetId === assetId;
+      const manualEntry = manual.find(x => x && typeof x === "object" && x.assetId === assetId) || (firstForHub ? manual.find(x => x === cid) : null);
+      const finished = !S || ["done", "skip", "error"].includes(S.step), handNow = !!manualEntry && finished;
       const fresh = handNow || !S || (S.period !== per.key && !(S.manual && !finished));
-      if (fresh) { const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
-        if (manual.includes(cid)) { S = { period: "m" + Date.now(), manual: true, name: nm, step: "start", startedAt: Date.now(), tries: 0 };   // a hand run — same pipeline
-          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });   // saved BEFORE it leaves the queue — an interrupted tick resumes it
-          manual = manual.filter(x => x !== cid); await env.TRADES.put("digest:manual", JSON.stringify(manual)); }
-        else { if (done[cid] === per.key) continue; if (!weeklyEnabled||!weeklySlot(per,cids.indexOf(cid),cids.length)) continue;   // measured pilot first, then stagger Sunday starts
-          S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
-      if (S.step === "done" || S.step === "skip" || S.step === "error") { if(!S.manual)done[cid] = per.key; continue; }
-      if(!S.manual&&!weeklyEnabled)continue; // also hold old in-flight weekly states until pilot cost is measured
-      // Manual digest generation and the weekly rewrite share a per-hub lease.
-      // Whichever path owns it proceeds; the other resumes on its next runner tick.
-      const lease = await digestHubLease(env, cid, "auto:" + cid + ":" + S.period, 300);
-      if (!lease) { out.push({ cid, step: S.step, waiting: "manual digest generation" }); continue; }
+      if (fresh) {
+        if (handNow) {
+          S = { ...item, period: "m" + Date.now(), manual: true, step: "start", startedAt: Date.now(), tries: 0 };
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
+          manual = manual.filter(x => x !== manualEntry); await env.TRADES.put("digest:manual", JSON.stringify(manual));
+        } else {
+          if (done[assetId] === per.key || (item.legacyWeekly && done[cid] === per.key)) continue;
+          if (!weeklyEnabled || !weeklySlot(per, wi, work.length)) continue;
+          S = { ...item, period: per.key, step: "start", startedAt: Date.now(), tries: 0 };
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
+        }
+      }
+      if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) { done[assetId] = per.key; if (item.legacyWeekly) done[cid] = per.key; } continue; }
+      if (!S.manual && !weeklyEnabled) continue;
+      const lease = await digestHubLease(env, cid, "auto:" + assetId + ":" + S.period, 300);
+      if (!lease) { out.push({ cid, assetId, step: S.step, waiting: "another digest operation in this hub" }); continue; }
       try {
-        const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
+        const context = await newsletterContext(env, cid); S.newsletter = { productId: context.productId, recordId: context.recordId, fields: context.fields };
         while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
-          const before = S.step,progress=(S.marketPlan?.cursor||0)+(S.marketPlan?.apiCursor||0);
+          const before = S.step, progress = (S.marketPlan?.cursor || 0) + (S.marketPlan?.apiCursor || 0);
           try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
           await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
-          if (S.step === before&&!(S.step==='market'&&(S.marketPlan.cursor+(S.marketPlan.apiCursor||0))>progress)) break;   // waiting on research; free scan progress can continue within this tick's budget
+          if (S.step === before && !(S.step === "market" && (S.marketPlan.cursor + (S.marketPlan.apiCursor || 0)) > progress)) break;
         }
         await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
-        if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) done[cid] = per.key; S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
-        out.push({ cid, step: S.step });
+        if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) { done[assetId] = per.key; if (item.legacyWeekly) done[cid] = per.key; } S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
+        out.push({ cid, assetId, titleId: item.titleId, step: S.step });
       } finally { await digestHubLeaseRelease(env, lease); }
     }
     await env.TRADES.put("digest:auto:done", JSON.stringify(done));
@@ -20930,6 +21021,8 @@ ${JSON.stringify(products)}`;
         const digests = [];
         for (const r of rows) {
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+          const cronFlag = await env.TRADES.get(digestCronKey(id), "json"), legacyWeekly = String(await env.TRADES.get("digest:asset:" + cid) || "").replace(/-/g, "") === id;
+          const autoState = await env.TRADES.get("digest:auto:state:" + id, "json");
           for (const group of ["premium", "free", "news"]) for (const n of (d.children[group] || [])) if (n.jobId) {
             const j = await env.TRADES.get("titlejob:state:" + n.jobId, "json"); if (j) {
               const step = j.steps?.[j.i] || j.steps?.[j.steps.length - 1] || {}, output = (j.children || []).find(x => x.itemId === n.itemId || x.kind === group);
@@ -20941,14 +21034,30 @@ ${JSON.stringify(products)}`;
           const generationId = await env.TRADES.get("digest:generate:last:" + id), generationJob = generationId ? await env.TRADES.get("titlejob:state:" + generationId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
+            runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
               children: generationJob.children || [], startedAt: generationJob.startedAt || 0, finishedAt: generationJob.finishedAt || 0 } : null, ...d });
         }
-        const run = await env.TRADES.get("digest:auto:state:" + cid, "json"), queued = ((await env.TRADES.get("digest:manual", "json")) || []).includes(cid);
-        return json({ ok: true, digests, run: run && !["done", "skip", "error"].includes(run.step) ? { step: run.step, startedAt: run.startedAt } : queued ? { step: "queued" } : null,
-          last: run && ["done", "skip", "error"].includes(run.step) ? { step: run.step, note: run.note || run.error || "", at: run.finishedAt || 0 } : null,
+        const oldRun = await env.TRADES.get("digest:auto:state:" + cid, "json"), manualQueue = (await env.TRADES.get("digest:manual", "json")) || [], queued = manualQueue.some(x => x === cid || x?.cid === cid);
+        const activeRun = digests.find(d => d.weeklyRun && !["done", "skip", "error"].includes(d.weeklyRun.step))?.weeklyRun || (oldRun && !["done", "skip", "error"].includes(oldRun.step) ? oldRun : null);
+        const lastRun = [...digests].filter(d => d.weeklyRun && ["done", "skip", "error"].includes(d.weeklyRun.step)).sort((a,b) => (b.weeklyRun.finishedAt||0)-(a.weeklyRun.finishedAt||0))[0]?.weeklyRun || (oldRun && ["done", "skip", "error"].includes(oldRun.step) ? oldRun : null);
+        return json({ ok: true, digests, run: activeRun ? { step: activeRun.step, startedAt: activeRun.startedAt, assetId: activeRun.assetId || "" } : queued ? { step: "queued" } : null,
+          last: lastRun ? { step: lastRun.step, note: lastRun.note || lastRun.error || "", at: lastRun.finishedAt || 0 } : null,
           republicationHeld: await hubRepublicationHeld(env, cid) });
+      }
+      if (body.action === "digestSetWeekly") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        return json(await digestSetWeekly(env, body.assetId, body.runsWeekly === true));
+      }
+      if (body.action === "digestMoveTargets") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const titles = await digestMoveTargets(env);
+        return json({ ok: true, titles });
+      }
+      if (body.action === "digestMove") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        return json(await digestMove(env, body.assetId, body.titleId));
       }
       if(['digestMemoryTest','productNotesTest'].includes(body.action)) {
         if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
@@ -20960,11 +21069,14 @@ ${JSON.stringify(products)}`;
         const cid=hubAssetId(body.campaignId);if(!/^[a-f0-9]{32}$/i.test(cid)||!body.noteId)return json({error:'campaignId and noteId required'},400);
         return json(await productFromMarketNote(env,cid,body.noteId));
       }
-      // digestRunNow {campaignId} — a hand run: the SAME research + write as the weekly cron (queued; the */30 cron and this call drive it)
+      // digestRunNow {campaignId, assetId?} — queue this parent, or the first flagged parent for legacy callers.
       if (body.action === "digestRunNow") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (cid.length !== 32) return json({ error: "campaignId required" }, 400);
-        const q = (await env.TRADES.get("digest:manual", "json")) || []; if (!q.includes(cid)) q.push(cid); await env.TRADES.put("digest:manual", JSON.stringify(q));
+        const assetId = String(body.assetId || "").replace(/-/g, "");
+        if (assetId) { const page = await newsletterNotion(env, "pages/" + kwDashId(assetId)); if (page.properties?.["Pillar Type"]?.select?.name !== "Digest" || ivRid(page.properties, "Campaign") !== cid) return json({ error: "Digest parent does not belong to this campaign" }, 400); }
+        const q = (await env.TRADES.get("digest:manual", "json")) || [], entry = assetId ? { cid, assetId } : cid;
+        if (!q.some(x => x === entry || (x && x.cid === cid && x.assetId === assetId))) q.push(entry); await env.TRADES.put("digest:manual", JSON.stringify(q));
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
@@ -21068,9 +21180,9 @@ ${JSON.stringify(products)}`;
         }
         { const per = adPeriod(), states = {}, queue = [];
           for (const key of (await env.TRADES.list({ prefix: "digest:auto:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s || s.period !== per.key) continue;
-            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "write", "done"], fin = ["done", "skip", "error"].includes(s.step);
-            if (!fin) queue.push(cid);
-            states[cid] = { name: s.name, done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
+            const assetId = key.slice(18), cid = s.cid || "", steps = ["start", "market", "perplexity", "wait", "write", "done"], fin = ["done", "skip", "error"].includes(s.step);
+            if (!fin) queue.push(assetId);
+            states[assetId] = { cid, assetId, titleId: s.titleId || "", name: s.digestName || s.titleName || s.name || "Digest", done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
           out.digest = { queue, states }; }
         { const allQueue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {}, genStates = {}, genQueue = [];
           for (const key of (await env.TRADES.list({ prefix: "titlejob:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s) continue;
