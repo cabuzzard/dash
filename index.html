@@ -15928,7 +15928,7 @@ document.addEventListener('visibilitychange', () => {
 try { hubSitesExtraLoad(); } catch (e) {}   // remembered session: load every hub right away
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
-const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Weekly hub digests (Sunday night)' };
+const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Weekly hub digests (Sunday night)', digestGenerate: 'Digest generation' };
 let _hubJobs = { hidden: false, open: true, last: null, t: null, mine: new Set() };   // mine = jobs this page queued (always refreshed when done)
 function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
 async function hubJobsPoll() {
@@ -15943,6 +15943,9 @@ async function hubJobsPoll() {
       if (s.done && s.slug && (_hubJobs.mine.has(id) || (fresh && !firstPoll))) { _hubJobs.mine.delete(id); slugs.add(s.slug);
       if (s.kind === 'product' && s.productId && !s.error) { const K = _hubKw[s.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === s.productId); if (p) p.outOfSync = false; (_hubResState[s.slug] = _hubResState[s.slug] || {})[s.productId] = 'updated'; } } });
     slugs.forEach(sl => { if (_hub2Pool[sl]) hub2PoolLoad(sl, true); hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
+  { const now = ((_hubJobs.last && _hubJobs.last.jobs.digestGenerate) || {}).states || {}; _hubJobs.seenGen = _hubJobs.seenGen || new Set();
+    Object.entries(now).forEach(([id, s]) => { if (s.done && !_hubJobs.seenGen.has(id)) { _hubJobs.seenGen.add(id); const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === s.cid); if (h && _hub2Pool[h.slug]) hub2PoolLoad(h.slug, true); }
+      if (s.status === 'done' || s.status === 'failed') _hubJobs.mine.delete(id); }); }
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
   if (wasBusy && !busy) _hubJobs.justDone = true;   // keep a ✓ finished line until ✕
   hubJobsDraw();
@@ -15950,17 +15953,21 @@ async function hubJobsPoll() {
 }
 function hubJobsDraw() {
   let el = document.getElementById('hubJobsFly'); const R = _hubJobs.last;
-  const active = R ? Object.entries(R.jobs).filter(([, j]) => j.queue.length) : [];
+  const active = R ? Object.entries(R.jobs).filter(([k, j]) => j.queue.length || k === 'digestGenerate' && Object.values(j.states || {}).some(s => (s.at || 0) > Date.now() - 6 * 3600e3)) : [];
   if (!active.length && !_hubJobs.justDone) { if (el) el.remove(); if (R) _hubJobs.hidden = false; return; }
   if (_hubJobs.hidden) { if (el) el.remove(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'hubJobsFly'; el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9000;width:320px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:11.5px;color:var(--text);'; document.body.appendChild(el); }
   const body = active.map(([k, j]) => {
+    if (k === 'digestGenerate') {
+      const jobs = Object.entries(j.states || {}).filter(([,s]) => (s.at || 0) > Date.now() - 6 * 3600e3).sort((a,b) => (b[1].at || 0) - (a[1].at || 0));
+      return `<div style="padding:8px 10px;border-top:1px solid var(--border);"><div style="font-weight:600;margin-bottom:4px;">${esc(HUB_JOB_LABELS[k])}</div>${jobs.map(([id,s]) => `<div style="padding:5px 0;border-top:1px solid var(--border);"><div>${esc(s.name || hubJobsName(s.cid))} · ${esc(s.status || 'queued')} · ${s.i}/${s.total} steps${s.running ? ' · ' + esc(s.running) : ''}</div>${s.error ? `<div style="color:#f87171;">${esc(s.error)}</div>` : ''}${(s.children || []).length ? `<div style="color:var(--text3);margin-top:2px;">Created: ${(s.children || []).map(c => c.assetId ? `<a href="https://www.notion.so/${esc(c.assetId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(c.kind || 'asset')}</a>` : esc(c.kind || 'item')).join(' · ')}</div>` : ''}</div>`).join('')}</div>`;
+    }
     const all = [...new Set([...Object.keys(j.states).filter(c => j.queue.includes(c) || (j.states[c].at || 0) > Date.now() - 6 * 3600e3), ...j.queue])];
-    const done = all.filter(c => !j.queue.includes(c)).length, cur = j.queue[0], cs = j.states[cur] || {}, unit = k === 'titles' ? 'titles' : 'hubs', nm = c => (j.states[c] || {}).name || hubJobsName(c);
+    const done = all.filter(c => !j.queue.includes(c)).length, cur = j.queue[0], cs = j.states[cur] || {}, unit = k === 'titles' ? 'titles' : k === 'digestGenerate' ? 'jobs' : 'hubs', nm = c => (j.states[c] || {}).name || hubJobsName(c);
     const pct = cs.total ? Math.round(cs.i / cs.total * 100) : 0;
     return `<div style="padding:8px 10px;border-top:1px solid var(--border);"><div style="font-weight:600;margin-bottom:4px;">${esc(HUB_JOB_LABELS[k] || k)}</div>
       <div style="color:var(--text2);margin-bottom:4px;">${done} of ${all.length} ${unit} done · ${j.queue.length} left</div>
-      ${cur ? `<div style="color:var(--text3);">now: ${esc(nm(cur))}${cs.running ? ' — ' + esc(cs.running) + '…' : cs.total ? ` — ${cs.i} / ${cs.total} ${k === 'titles' ? 'steps' : 'records'}` : ' — waiting for the next run (every 4 min)'}</div>
+      ${cur ? `<div style="color:var(--text3);">now: ${esc(nm(cur))}${cs.running ? ' — ' + esc(cs.running) + '…' : cs.total ? ` — ${cs.i} / ${cs.total} ${k === 'titles' || k === 'digestGenerate' ? 'steps' : 'records'}` : ' — waiting for the next run (every 4 min)'}</div>
         <div style="height:5px;background:var(--surface2);border-radius:3px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--accent);"></div></div>` : ''}
       ${all.filter(c => j.states[c] && j.states[c].error).map(c => `<div style="color:#f87171;margin-top:3px;">✗ ${esc(nm(c))}: ${esc(j.states[c].error)}</div>`).join('')}</div>`; }).join('');
   el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;" onclick="_hubJobs.open=!_hubJobs.open;hubJobsDraw()"><b>⚙ Background jobs</b><span style="color:var(--text3);">${active.length ? active.length + ' running' : '✓ finished'}</span>
@@ -15968,6 +15975,7 @@ function hubJobsDraw() {
     ${_hubJobs.open ? body : ''}`;
 }
 setTimeout(hubJobsPoll, 4000);
+function hubJobsOpen() { _hubJobs.hidden = false; _hubJobs.open = true; _hubJobs.justDone = true; hubJobsDraw(); hubJobsPoll(); }
 // Temporary cross-hub focus worksheet: one row per hub, backed by the same
 // campaign Research keywords, Products records and main-offering KV used by
 // the build checklist. Kept deliberately separate from the dense Production
@@ -16797,7 +16805,8 @@ async function hub2PoolLoad(slug, force) {
     const pool = await call('getDigestPool', { campaignId: h.campaignId }).catch(e => ({ error: e.message }));
     _hub2Pool[slug] = { digests: r.digests || [], pool: pool && !pool.error ? (pool.items || []) : [], poolError: pool && pool.error || '', run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
     if (r.digests && r.digests[0] && _hub2DigOpen[slug + '|' + r.digests[0].assetId] === undefined) _hub2DigOpen[slug + '|' + r.digests[0].assetId] = true;   // newest open
-    clearTimeout(_hub2Pool[slug].timer); if (r.run) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), 60000); }   // a run is going — check again in a minute
+    clearTimeout(_hub2Pool[slug].timer); const genBusy = (_hub2Pool[slug].digests || []).some(d => d.generationJob && ['queued','running'].includes(d.generationJob.status));
+    if (r.run || genBusy) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), genBusy ? 10000 : 60000); }
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
   hub2PoolPaint(slug);
 }
@@ -16833,6 +16842,7 @@ function hub2DigHtml(slug, d) {
   const k = slug + '|' + d.assetId, open = !!_hub2DigOpen[k], items = d.items || [], ch = d.children || { premium: [], free: [], news: [] }, checks = d.checks || {};
   const used = { premium: new Set(ch.premium.flatMap(c => c.items || [])), free: new Set(ch.free.flatMap(c => c.items || [])), news: new Set(ch.news.map(c => c.itemId)) };
   const n = t => items.filter(x => (checks[x.id] || {})[t]).length, np = n('premium'), nf = n('free'), nn = n('news');
+  const gj = d.generationJob, jobLine = gj ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:5px 0 8px;padding:6px 8px;border:1px solid ${gj.status === 'failed' ? '#f87171' : gj.status === 'done' ? '#4ade80' : '#f6ad55'};border-radius:5px;font-size:10.5px;"><b>Generation ${esc(gj.status)}</b>${gj.total ? `<span>${Math.min(gj.i,gj.total)} / ${gj.total} steps${gj.running ? ' · ' + esc(gj.running) : ''}</span>` : ''}${gj.error ? `<span style="color:#f87171;">${esc(gj.error)}</span>` : ''}<button type="button" style="${B('var(--border2)')}" onclick="event.stopPropagation();hubJobsOpen()">Background jobs</button>${gj.status === 'failed' ? `<button type="button" style="${B('#f87171')}" onclick="event.stopPropagation();hub2DigestRetry('${slug}','${esc(gj.id)}',this)">Retry from failed step</button>` : ''}</div>` : '';
   const stCol = d.status === 'Review' ? '#ff7a00' : d.status === 'Published' ? '#4ade80' : 'var(--text3)';
   const head = `<summary style="cursor:pointer;padding:6px 8px;font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;" ontoggle="">
       <b style="color:var(--text);">${esc(d.title)}</b><span style="font-size:10.5px;color:${stCol};">${esc(d.status || '')}${d.readiness ? ' · ' + esc(d.readiness) : ''}</span>
@@ -16851,7 +16861,7 @@ function hub2DigHtml(slug, d) {
   const body = !items.length ? `<div style="font-size:11px;color:var(--text3);padding:6px 8px;">No findings stored for this digest (it was written before findings were kept per digest) — its issue is on the asset.</div>`
     : grp('Premium', '#f5c542', items.filter(x => x.split === 'premium')) + grp('Free', '#4ade80', items.filter(x => x.split !== 'premium'))
       + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button ${np + nf + nn ? '' : 'disabled'} style="${B('#f5c542')}" onclick="hub2DigGenerate('${slug}','${esc(d.assetId)}',this)">⚙ Generate checked — ${np ? '1 premium issue (' + np + ' items)' : 'no premium'} · ${nf ? '1 free issue (' + nf + ' items)' : 'no free'} · ${nn} news post${nn === 1 ? '' : 's'}</button><span style="font-size:10px;color:var(--text3);">children are created at Development — publish them from the asset modal</span></div>`;
-  return `<details open style="border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;" ontoggle="_hub2DigOpen['${k}']=this.open;if(!this.open)hub2PoolPaint('${slug}')">${head}<div style="padding:4px 10px 10px;">${body}${kids.length ? `<div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : ''}</div></details>`;
+  return `<details open style="border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;" ontoggle="_hub2DigOpen['${k}']=this.open;if(!this.open)hub2PoolPaint('${slug}')">${head}<div style="padding:4px 10px 10px;">${jobLine}${body}${kids.length ? `<div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : ''}</div></details>`;
 }
 let _hub2DigestPreview = null;
 function hub2DigestPreviewSourceHtml(data) {
@@ -16938,14 +16948,23 @@ async function hub2PoolTag(slug, itemId, tag, btn) {
   showToast(r.queued ? '✓ Pool item queued' : '✓ Pool item updated', 'success');
   await hub2PoolLoad(slug, true);
 }
+const _hub2DigestRequests = {};
 async function hub2DigGenerate(slug, assetId, btn) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return; btn.disabled = true; btn.textContent = '⏳ Writing the checked children…';
-  const r = await call('digestGenerate', { assetId, campaignId: h.campaignId, slug }).catch(e => ({ error: e.message }));
+  const requestId = _hub2DigestRequests[assetId] || (_hub2DigestRequests[assetId] = (crypto.randomUUID ? crypto.randomUUID() : 'dg-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
+  const r = await call('digestGenerate', { assetId, campaignId: h.campaignId, slug, requestId }).catch(e => ({ error: e.message }));
   if (!r || r.error) { showToast('Generate failed: ' + ((r && r.error) || 'no response'), 'error'); btn.disabled = false; return; }
+  if (r.jobId) { _hubJobs.mine.add(r.jobId); showToast(`Generation job ${r.status || 'queued'} — safe to leave this page.`, 'success'); hubJobsOpen(); hub2PoolLoad(slug, true); return; }
   const m = r.made || {}, parts = [m.premium && 'premium issue', m.free && 'free issue', (m.news || []).length && (m.news.length + ' news post' + (m.news.length === 1 ? '' : 's') + ' queued')].filter(Boolean);
   showToast((parts.length ? '✓ ' + parts.join(' · ') + ' — at Development' : 'Nothing generated') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length ? 'error' : 'success');
   if ((m.news || []).length) setTimeout(hubJobsPoll, 1500);
   hub2PoolLoad(slug, true);
+}
+async function hub2DigestRetry(slug, jobId, btn) {
+  btn.disabled = true; btn.textContent = 'Queuing retry…';
+  const r = await call('retryDigestGenerate', { jobId }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Retry failed: ' + ((r && r.error) || 'no response'), 'error'); btn.disabled = false; btn.textContent = 'Retry from failed step'; return; }
+  _hubJobs.mine.add(jobId); showToast('Retry queued from the failed step.', 'success'); hubJobsOpen(); hub2PoolLoad(slug, true);
 }
 async function hub2DigRunNow(slug, btn) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
