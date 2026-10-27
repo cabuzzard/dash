@@ -8,6 +8,9 @@
 <title>Hermes</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  .products-count-table tbody tr.products-count-header > td { background-color: var(--surface2); }
+  .products-count-table tr:hover > td,
+  .products-count-table thead tr:hover > th { background-color: var(--border2) !important; }
   :root {
     --bg:        #0a0a0a;
     --surface:   #111111;
@@ -12400,7 +12403,7 @@ function productsCountPair(development, published, slug = '', titleId = '', type
   const action = slug && titleId ? ` onclick="${esc(`productsOpenTitleAssets(${JSON.stringify(slug)},${JSON.stringify(titleId)},${JSON.stringify(type)})`)}"` : '';
   const style = action ? 'cursor:pointer;' : '';
   const tip = action ? 'Open all ' + esc(type) + ' assets for this title in All Output' : '';
-  return `<span${action} title="${tip}" style="color:#f59e0b;font-weight:600;${style}">${development}</span><span style="color:var(--text3);padding:0 4px;">·</span><span${action} title="${tip}" style="color:#16a34a;font-weight:600;${style}">${published}</span>`;
+  return `<span${action} title="${tip}" style="font-size:14px;color:#f59e0b;font-weight:700;${style}">${development}</span><span style="color:var(--text3);padding:0 4px;">·</span><span${action} title="${tip}" style="font-size:14px;color:#16a34a;font-weight:700;${style}">${published}</span>`;
 }
 function productsOpenTitleAssets(slug, titleId, type) {
   const hub = HUB_SITES.find(item => item.slug === slug), rows = (DEV2_ROWS || []).filter(row => row.assetId && row.titleId === titleId && hubCheckHubOf(row)?.slug === slug
@@ -12468,18 +12471,18 @@ function productsRender() {
   const head = 'padding:5px 8px;font-size:11px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;', th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;', td = 'padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);', countTd = td + 'text-align:center;';
   const totalCols = 4 + cols.length + 1, assetsFor = (topic, type, stage) => (data[stage][hub.slug + '|' + type] || []).filter(asset => asset.keywordTopic === topic);
   const countFor = (topic, titleId, type, stage) => assetsFor(topic, type, stage).filter(asset => asset.titleId === titleId).length;
-  let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;"><span style="color:#f59e0b;font-weight:600;">Development</span> · <span style="color:#16a34a;font-weight:600;">Published</span> · cells show numbers only; click a title count to open all assets of that type for the title in All Output. Order: Hub → Keyword Topic → Product → Title.</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${head}">Hub</th><th style="${head}">Keyword Topic</th><th style="${head}">Product</th><th style="${head}">Title</th>`
+  let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;"><span style="color:#f59e0b;font-weight:600;">Development</span> · <span style="color:#16a34a;font-weight:600;">Published</span> · cells show numbers only; click a title count to open all assets of that type for the title in All Output. Order: Hub → Keyword Topic → Product → Title.</div><div style="overflow-x:auto;"><table class="products-count-table" style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${head}">Hub</th><th style="${head}">Keyword Topic</th><th style="${head}">Product</th><th style="${head}">Title</th>`
     + cols.map((type, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="productsDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="productsDrop(event,${i})" title="Drag to reorder"><div>${esc(type)}</div><div style="font-weight:400;">${hubCheckCanAdd(type) ? `<button onclick="productsAddAsset(${i})" title="Add an unwritten ${esc(type)} asset at Development" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="productsColRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
     + `<th style="${th}">Total</th></tr></thead><tbody>`;
-  html += `<tr><td colspan="${totalCols}" style="${td}font-weight:700;background:var(--surface2);">${esc(hub.name || hub.slug)}</td></tr>`;
+  html += `<tr class="products-count-header"><td colspan="${totalCols}" style="${td}font-weight:700;">${esc(hub.name || hub.slug)}</td></tr>`;
   const topics = new Map(); titles.forEach(item => { const key = item.topic || '— no topic —'; if (!topics.has(key)) topics.set(key, []); topics.get(key).push(item); });
   for (const [topic, topicTitles] of [...topics.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    html += `<tr><td colspan="${totalCols}" style="${td}font-weight:600;background:var(--surface2);">${esc(topic)}</td></tr>`;
+    html += `<tr class="products-count-header"><td colspan="${totalCols}" style="${td}font-weight:600;">${esc(topic)}</td></tr>`;
     const groups = new Map();
     topicTitles.forEach(item => { const key = item.productId || (item.product ? 'name:' + item.product : 'none'); if (!groups.has(key)) groups.set(key, { name: item.product || '— no product —', titles: [] }); groups.get(key).titles.push(item); });
     for (const group of [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))) {
       const counts = cols.map(type => ({ development: group.titles.reduce((sum, item) => sum + countFor(topic, item.id, type, 'dev'), 0), published: group.titles.reduce((sum, item) => sum + countFor(topic, item.id, type, 'cells'), 0) }));
-      html += `<tr><td style="${td}"></td><td style="${td}"></td><td style="${td}font-weight:600;">${esc(group.name)}</td><td style="${td}font-weight:600;color:var(--text2);">${group.titles.length} title${group.titles.length === 1 ? '' : 's'}</td>` + counts.map(value => `<td style="${countTd}">${productsCountPair(value.development, value.published)}</td>`).join('') + `<td style="${countTd}font-weight:600;">${productsCountPair(counts.reduce((a, b) => a + b.development, 0), counts.reduce((a, b) => a + b.published, 0))}</td></tr>`;
+      html += `<tr class="products-count-header"><td style="${td}"></td><td style="${td}"></td><td style="${td}font-weight:600;">${esc(group.name)}</td><td style="${td}"></td>` + counts.map(value => `<td style="${countTd}">${productsCountPair(value.development, value.published)}</td>`).join('') + `<td style="${countTd}font-weight:600;">${productsCountPair(counts.reduce((a, b) => a + b.development, 0), counts.reduce((a, b) => a + b.published, 0))}</td></tr>`;
       for (const item of group.titles.sort((a, b) => a.name.localeCompare(b.name))) {
         const rowCounts = cols.map(type => ({ development: countFor(topic, item.id, type, 'dev'), published: countFor(topic, item.id, type, 'cells') }));
         html += `<tr><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}">${esc(item.name)}</td>` + rowCounts.map((value, i) => `<td style="${countTd}">${productsCountPair(value.development, value.published, hub.slug, item.id, cols[i])}</td>`).join('') + `<td style="${countTd}">${productsCountPair(rowCounts.reduce((a, b) => a + b.development, 0), rowCounts.reduce((a, b) => a + b.published, 0))}</td></tr>`;
