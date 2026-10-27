@@ -12505,8 +12505,7 @@ function productsRender() {
       }
     }
   }
-  const hubCounts = cols.map(type => ({ development: (data.dev[hub.slug + '|' + type] || []).length, published: (data.cells[hub.slug + '|' + type] || []).length }));
-  html += `<tr><td colspan="4" style="${td}font-weight:700;">Hub total</td>` + hubCounts.map(value => `<td style="${countTd}font-weight:700;">${productsCountPair(value.development, value.published)}</td>`).join('') + `<td style="${countTd}font-weight:700;">${productsCountPair(hubCounts.reduce((a, b) => a + b.development, 0), hubCounts.reduce((a, b) => a + b.published, 0))}</td></tr></tbody></table></div>`;
+  html += '</tbody></table></div>';
   body.innerHTML = html;
 }
 async function loadDev2() {
