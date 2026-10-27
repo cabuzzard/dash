@@ -153,6 +153,7 @@
   .dtable td { padding:8px 14px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:middle; }
   .dtable tr:last-child td { border-bottom:none; }
   .dtable tr:hover td { background:var(--surface2); }
+  tr.dev2-row:hover td, tr.hp-row:hover td, tr.fv-row:hover td { background:var(--surface2) !important; }
   .dom-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px; display:inline-block; }
   /* Google accounts two-level */
   .gacc-block { margin-bottom:8px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
@@ -4567,7 +4568,7 @@ function renderFlowTable(k = 'main') {
     return `<td title="${esc(c.name)} — click to ${on ? 'clear' : 'mark as needed'}" onclick="flowCheck('${k}',${ri},'${esc(c.id)}')" style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;cursor:pointer;font-weight:700;color:${on ? '#4ade80' : 'var(--text3)'};${on ? 'background:rgba(74,222,128,.08);' : ''}">${on ? '✕' : '·'}</td>`; };
   const prioCell = (c, r, ri) => { const cur = String((r.cells || {})[c.id] || '').trim(), opts = FLOW_PRIO_VALS.concat(cur && !FLOW_PRIO_VALS.includes(cur) ? [cur] : []);
     return `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;text-align:center;"><select onchange="flowPrioSet('${k}',${ri},'${esc(c.id)}',this.value)" title="Priority — one number" style="font-size:12px;font-weight:700;padding:3px 4px;background:var(--surface2);color:${cur ? 'var(--text)' : 'var(--text3)'};border:1px solid var(--border2);border-radius:5px;cursor:pointer;"><option value="">—</option>${opts.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></td>`; };
-  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => c.check ? chkCell(c, r, ri) : flowIsPrio(c) ? prioCell(c, r, ri) : Array.isArray(c.options) && c.options.length ? optCell(c, r, ri) : `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+  const rowHtml = (r, ri) => `<tr class="fv-row" data-ri="${ri}">${F.columns.map(c => c.check ? chkCell(c, r, ri) : flowIsPrio(c) ? prioCell(c, r, ri) : Array.isArray(c.options) && c.options.length ? optCell(c, r, ri) : `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
   const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
   const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
@@ -4694,7 +4695,7 @@ function fvBuild(k) {
             <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};border:1px solid var(--border);"><span style="display:inline-block;width:14px;">${open[key] ? '▼' : '▶'}</span><span style="color:var(--text3);font-weight:400;">${esc(fvColName(k, S[d].col))}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${n} row${n === 1 ? '' : 's'}${sub})</span></td></tr>`;
         }
         let shown = true; for (let d = 0; d < L; d++) if (!open[fvKey(r, S, d)]) shown = false;
-        if (shown) out += rowHtml(r, i);
+        if (shown) out += rowHtml(r, i).replace('<td style="padding:2px;', '<td style="padding:2px;padding-left:' + (10 + L * 18) + 'px;');
       });
       return out;
     } };
@@ -11671,17 +11672,17 @@ function renderHp() {
  hpEl('hpGroupBtn').textContent='☰ Group by sort: '+(HP_GROUP?'on':'off');
  hpEl('hpChips').innerHTML=HP_F.filter(f=>f.col&&f.val).map(f=>'<span>'+esc((HP_COLS.find(c=>c.key===f.col)||{}).label)+' '+(f.neg?'≠':'=')+' '+esc(f.val===HP_BLANK?'(blank)':f.val)+'</span>').join(' · ');
  const thead='<tr>'+HP_COLS.map(c=>{const i=HP_SORT.findIndex(x=>x.col===c.key),x=HP_SORT[i];return `<th onclick="hpSetSort('${c.key}',event)" title="Click: sort · Ctrl/Shift-click: add level · Alt-click: remove level" style="cursor:pointer;white-space:nowrap;padding:8px;text-align:left;border-bottom:1px solid var(--border2);">${esc(c.label)}${x?' '+(x.custom?'✥':x.asc?'▲':'▼')+(HP_SORT.length>1?i+1:''):''}</th>`;}).join('')+'</tr>';
- const rowHtml=r=>'<tr>'+HP_COLS.map(c=>{
+ const rowHtml=(r,indentPx)=>'<tr class="hp-row">'+HP_COLS.map((c,ci)=>{
   const v=r[c.key];let cell=v===null||v===undefined||v===''?'—':esc(v);
   if(c.key==='product')cell=`<a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(v)}</a>${r.main?' <b>★ Main</b>':''}`;
   if(c.key==='keywords')cell=`<details><summary>Show keywords</summary>${esc(v)}</details>`;
   if(c.key==='volume'||c.key==='value')cell=v==null?'Not available':`<span title="${esc(r[c.key+'Detail'])}">${c.key==='value'?'$':''}${Number(v).toLocaleString(undefined,c.key==='value'?{minimumFractionDigits:2,maximumFractionDigits:2}:{})}</span>`;
   if(c.key==='fit')cell=`<b>${v==null?'Unscored':v+'/100'}</b><details><summary>Reason</summary>${esc(r.reason)}</details>`;
   if(c.key==='synced')cell=`<span title="Product Keywords Out of Sync flag">${esc(v)}</span>`;
-  return `<td style="padding:8px;vertical-align:top;border-bottom:1px solid var(--border);">${cell}</td>`;
+  return `<td style="padding:8px;${ci===0 && indentPx ? `padding-left:${indentPx}px;` : ''}vertical-align:top;border-bottom:1px solid var(--border);">${cell}</td>`;
  }).join('')+'</tr>';
   let tbody = '';
-  if (!gOn) tbody = rows.map(rowHtml).join('');
+  if (!gOn) tbody = rows.map(r => rowHtml(r)).join('');
   else {
     // live counts for the current filters + sort: rows under each header, and how many groups sit directly under it
     const counts = {}, kids = {};
@@ -11700,7 +11701,7 @@ function renderHp() {
         tbody += `<tr data-k="${esc(k)}" data-d="${d}" data-pk="${esc(d ? hpGKey(r, d - 1) : '')}" data-col="${esc(col)}" data-v="${esc(v)}" onclick="hpToggleGroup(this.dataset.k)" style="cursor:pointer;background:rgba(127,127,127,${(0.16 - d * 0.025).toFixed(3)});border-bottom:1px solid var(--border);">
           <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};"><span title="Drag to reorder (sets a custom order for this column, everywhere)" onclick="event.stopPropagation()" onpointerdown="hpHeadDrag(event, this)" style="cursor:grab;color:var(--text3);padding:0 6px 0 0;touch-action:none;">⠿</span><span style="display:inline-block;width:14px;">${closed ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${countTxt(k, d)})</span></td></tr>`;
       }
-      if (!isHidden(r)) tbody += rowHtml(r);
+      if (!isHidden(r)) tbody += rowHtml(r, 10 + L * 18);
     });
   }
 
@@ -12832,7 +12833,7 @@ function renderDev2() {
     }).join('')}
   </tr>`;
 
-  const rowHtml = r => {
+  const rowHtml = (r, indentPx) => {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
     const compactBtn = (label, tip) => `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(tip)}" style="padding:0;border:0;background:transparent;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">${esc(label)}</button>`;
@@ -12853,8 +12854,8 @@ function renderDev2() {
       ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.hub)}</a>`
       : '';
     const isSel = DEV2_SELECTED.has(key);
-    return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
-      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId && /^topical post$/i.test(r.rawAssetType || '') ? `<button title="Write this topical SEO post (its 5-question interview first)" onclick="topicalWrite('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍</button><button title="Queue it for the 30-minute cron" onclick="topicalQueue('${esc(r.assetId)}', this)" style="margin-left:2px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">⏱</button>` : ''}${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button><button onclick="openCareGapEditor('${esc(r.campId)}','${esc(r.assetId)}','')" title="Open this asset's Publish modal here" style="margin-left:4px;font-size:10px;padding:1px 5px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">Publish</button>` : r.titleId ? `<button onclick="openCareGapEditor('${esc(r.campId)}','','${esc(r.titleId)}')" title="Create an asset from this title here" style="margin-left:4px;font-size:10px;padding:1px 5px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Asset</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
+    return `<tr class="dev2-row" style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
+      <td style="padding:6px 8px 6px ${indentPx || 8}px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId && /^topical post$/i.test(r.rawAssetType || '') ? `<button title="Write this topical SEO post (its 5-question interview first)" onclick="topicalWrite('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍</button><button title="Queue it for the 30-minute cron" onclick="topicalQueue('${esc(r.assetId)}', this)" style="margin-left:2px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">⏱</button>` : ''}${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button><button onclick="openCareGapEditor('${esc(r.campId)}','${esc(r.assetId)}','')" title="Open this asset's Publish modal here" style="margin-left:4px;font-size:10px;padding:1px 5px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">Publish</button>` : r.titleId ? `<button onclick="openCareGapEditor('${esc(r.campId)}','','${esc(r.titleId)}')" title="Create an asset from this title here" style="margin-left:4px;font-size:10px;padding:1px 5px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Asset</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;color:var(--text2);">${esc(dev2Val(r, 'kind'))}</td>
@@ -12875,7 +12876,7 @@ function renderDev2() {
     </tr>`;
   };
   let tbody = '';
-  if (!gOn) tbody = rows.map(rowHtml).join('');
+  if (!gOn) tbody = rows.map(r => rowHtml(r)).join('');
   else {
     // live counts for the current filters + sort: rows under each header, and how many groups sit directly under it
     const counts = {}, kids = {};
@@ -12894,7 +12895,7 @@ function renderDev2() {
         tbody += `<tr data-k="${esc(k)}" data-d="${d}" data-pk="${esc(d ? dev2GKey(r, d - 1) : '')}" data-col="${esc(col)}" data-v="${esc(v)}" onclick="dev2ToggleGroup(this.dataset.k)" style="cursor:pointer;background:rgba(127,127,127,${(0.16 - d * 0.025).toFixed(3)});border-bottom:1px solid var(--border);">
           <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};"><span title="Drag to reorder (sets a custom order for this column, everywhere)" onclick="event.stopPropagation()" onpointerdown="dev2HeadDrag(event, this)" style="cursor:grab;color:var(--text3);padding:0 6px 0 0;touch-action:none;">⠿</span><input type="checkbox" title="Select every row in this group" onclick="event.stopPropagation();dev2SelectGroup(this.closest('tr').dataset.k, ${d}, this.checked)" ${gSel[k] && gSel[k][1] === gSel[k][0] ? 'checked' : ''} style="margin:0 6px 0 0;vertical-align:middle;cursor:pointer;"><span style="display:inline-block;width:14px;">${closed ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${countTxt(k, d)})</span></td></tr>`;
       }
-      if (!isHidden(r)) tbody += rowHtml(r);
+      if (!isHidden(r)) tbody += rowHtml(r, 10 + L * 18);
     });
   }
 
