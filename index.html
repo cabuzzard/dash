@@ -16793,7 +16793,8 @@ async function hub2PoolLoad(slug, force) {
   if (_hub2Pool[slug] && !force && !_hub2Pool[slug].error) return hub2PoolPaint(slug);
   _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug);
   try { const r = await call('getDigests', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
-    _hub2Pool[slug] = { digests: r.digests || [], run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
+    const pool = await call('getDigestPool', { campaignId: h.campaignId }).catch(e => ({ error: e.message }));
+    _hub2Pool[slug] = { digests: r.digests || [], pool: pool && !pool.error ? (pool.items || []) : [], poolError: pool && pool.error || '', run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
     if (r.digests && r.digests[0] && _hub2DigOpen[slug + '|' + r.digests[0].assetId] === undefined) _hub2DigOpen[slug + '|' + r.digests[0].assetId] = true;   // newest open
     clearTimeout(_hub2Pool[slug].timer); if (r.run) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), 60000); }   // a run is going — check again in a minute
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
@@ -16810,8 +16811,21 @@ function hub2PoolHtml(slug) {
     : P.last ? `<span style="color:var(--text3);">Last run: ${esc(P.last.step)}${P.last.note ? ' — ' + esc(P.last.note) : ''}${P.last.at ? ' · ' + new Date(P.last.at).toLocaleString() : ''}</span>` : '';
   const heldLine = (P.republicationHeld || []).length ? `<div style="margin:8px 0;color:#f6ad55;font-size:11px;"><b>Hub updates held — the last good pages are preserved</b>${P.republicationHeld.map(h => `<div>${esc(h.payload?.title || h.assetId)}: ${esc(h.reason)}</div>`).join('')}</div>` : '';
   const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Same research + write as the weekly cron — a new Digest parent appears here when it is done" onclick="hub2DigRunNow('${slug}',this)">▶ Run a digest now</button>${runLine}</div>` + heldLine;
-  if (!P.digests.length) return top + '<div style="font-size:11px;color:var(--text3);">No Digest parents yet — ▶ Run a digest now, tick 📰 Digest parent on a title, or wait for Sunday night’s run.</div>';
-  return top + P.digests.map(d => hub2DigHtml(slug, d)).join('');
+  const pool = hub2DigestPoolHtml(slug, P);
+  if (!P.digests.length) return top + pool + '<div style="font-size:11px;color:var(--text3);">No Digest parents yet — ▶ Run a digest now, tick 📰 Digest parent on a title, or wait for Sunday night’s run.</div>';
+  return top + pool + P.digests.map(d => hub2DigHtml(slug, d)).join('');
+}
+function hub2DigestPoolHtml(slug, P) {
+  const items = P.pool || [], hub = HUB_SITES.find(x => x.slug === slug), B = col => `font-size:10px;padding:2px 6px;border:1px solid ${col};border-radius:4px;background:transparent;color:${col};cursor:pointer;`;
+  const rows = items.map(x => {
+    const kws = Array.isArray(x.keywords) ? x.keywords : [], busy = x.status && x.status !== 'error' && x.tag;
+    const link = /^https?:\/\//i.test(String(x.url || '')) ? `<a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--accent);">source ↗</a>` : '';
+    return `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:7px 5px;border-bottom:1px solid var(--border);font-size:11px;align-items:start;">
+      <div style="min-width:0;"><div style="color:var(--text);font-weight:500;">${esc(x.claim || '(no claim)')}</div><div style="color:var(--text3);font-size:10px;margin-top:3px;overflow-wrap:anywhere;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.tier ? ' · tier ' + esc(String(x.tier)) : ''}${link ? ' · ' + link : ''}</div><div style="color:var(--text3);font-size:10px;margin-top:3px;">Origin: ${esc(hub?.name || x.originHub || '—')} · Keywords: ${kws.length ? esc(kws.join(', ')) : '<span title="Not recorded on the original ingest">unknown</span>'}</div>${x.error ? `<div style="color:#f87171;font-size:10px;">${esc(x.error)}</div>` : ''}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;white-space:nowrap;"><span style="font-size:10px;color:${x.status === 'done' ? '#4ade80' : x.status === 'error' ? '#f87171' : x.status ? '#f6ad55' : 'var(--text3)'};">${esc([x.tag, x.status || 'untagged'].filter(Boolean).join(' · '))}</span><div style="display:flex;gap:4px;"><button type="button" ${busy || x.status === 'done' ? 'disabled' : ''} style="${busy || x.status === 'done' ? 'opacity:.5;cursor:default;' : ''}${B('#f5c542')}" onclick="hub2PoolTag('${slug}','${esc(x.id)}','premium',this)">★ Premium</button><button type="button" ${busy || x.status === 'done' ? 'disabled' : ''} style="${busy || x.status === 'done' ? 'opacity:.5;cursor:default;' : ''}${B('#8ab4f8')}" onclick="hub2PoolTag('${slug}','${esc(x.id)}','news',this)">📰 News</button></div></div>
+    </div>`;
+  }).join('');
+  return `<details style="border:1px solid var(--border2);border-radius:6px;margin:0 0 8px;"><summary style="cursor:pointer;padding:7px 8px;font-size:11.5px;color:var(--text);">Research pool · ${items.length} item${items.length === 1 ? '' : 's'} <span style="font-size:10px;color:var(--text3);">(additive; items remain available)</span></summary><div style="padding:2px 8px 8px;">${P.poolError ? `<div style="color:#f87171;font-size:11px;">Pool unavailable: ${esc(P.poolError)}</div>` : items.length ? rows : '<div style="font-size:11px;color:var(--text3);padding:6px 2px;">No pool findings yet.</div>'}</div></details>`;
 }
 function hub2DigHtml(slug, d) {
   const B = col => `font-size:10.5px;padding:2px 9px;border:1px solid ${col};border-radius:4px;background:transparent;color:${col};cursor:pointer;`;
@@ -16914,6 +16928,14 @@ async function hub2DigCheck(slug, assetId, itemId, target, on) {
   d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; hub2PoolPaint(slug);   // optimistic
   const r = await call('digestCheck', { assetId, itemId, target, on }).catch(e => ({ error: e.message }));
   if (!r || r.error) { showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); d.checks[itemId][target] = !on; hub2PoolPaint(slug); }
+}
+async function hub2PoolTag(slug, itemId, tag, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Queuing…'; }
+  const r = await call('tagDigestItem', { campaignId: h.campaignId, itemId, tag, slug }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Pool tag failed: ' + ((r && r.error) || 'no response'), 'error'); if (btn) { btn.disabled = false; btn.textContent = tag === 'premium' ? '★ Premium' : '📰 News'; } return; }
+  showToast(r.queued ? '✓ Pool item queued' : '✓ Pool item updated', 'success');
+  await hub2PoolLoad(slug, true);
 }
 async function hub2DigGenerate(slug, assetId, btn) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return; btn.disabled = true; btn.textContent = '⏳ Writing the checked children…';
