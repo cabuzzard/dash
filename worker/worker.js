@@ -14310,17 +14310,34 @@ async function kwHubPlaceTick(env) {
 // Each step runs the real action through the worker's own fetch handler (a self-signed token) — same code as the page.
 // Started right away by the page (runTitleJobs) and resumed by the */4 cron if the tab went away. One runner at a time.
 // DIGEST POOL (operator 2026-10-16) — KV digest:pool:<cid> = [{ id, claim, publisher, url, date, tier, split, at, tag, status,
-// titleId, assetId, error }]. Each ranked digest run (cron or the Digest modal) replaces the UNTAGGED items with its new
-// ones; tagged items stay. Tag ★ premium → a job builds an evergreen premium piece (title in Main · research · pillar);
-// tag 📰 news → a job writes a News SEO post on that item (left unpublished). Jobs run in the title-job queue.
+// originHub, keywords, titleId, assetId, error }]. Runs merge additively: unprocessed and processed items remain available.
+// Tag ★ premium → a job builds an evergreen premium piece; tag 📰 news → a job writes an unpublished News SEO post.
 const dpId = s => { let h = 5381; const x = String(s || ""); for (let i = 0; i < x.length; i++) h = ((h << 5) + h + x.charCodeAt(i)) | 0; return "di" + (h >>> 0).toString(36); };
-async function digestPoolMerge(env, cid, ranked) {
+function digestPoolNormalize(pool, cid) {
+  let changed = false;
+  const items = (Array.isArray(pool) ? pool : []).map(item => {
+    const x = item && typeof item === "object" ? { ...item } : {};
+    if (!x.originHub) { x.originHub = cid; changed = true; }
+    if (!Array.isArray(x.keywords)) { x.keywords = typeof x.keywords === "string" ? x.keywords.split(/[,;\n]/).map(k => k.trim()).filter(Boolean) : []; changed = true; }
+    return x;
+  });
+  return { items, changed };
+}
+async function digestPoolMerge(env, cid, ranked, keywords = []) {
   cid = String(cid || "").replace(/-/g, ""); if (!cid || !ranked) return;
-  const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], keep = pool.filter(x => x.tag);
-  const have = new Set(keep.map(x => x.id)), now = Date.now();
-  const add = (ranked.sources || []).map(s => ({ id: dpId((s.url || "") + "|" + (s.claim || "")), claim: String(s.claim || s.title || "").slice(0, 600), publisher: s.publisher || "", url: s.url || "", date: s.date || "",
-    tier: s.tier || "", split: s.split || "", at: now, tag: "", status: "" })).filter(x => x.claim && !have.has(x.id) && (have.add(x.id) || true));
-  await env.TRADES.put(key, JSON.stringify([...keep, ...add].slice(0, 200)));
+  const key = "digest:pool:" + cid, raw = await env.TRADES.get(key, "json"), normalized = digestPoolNormalize(raw || [], cid), pool = normalized.items;
+  const byId = new Map(pool.map(x => [x.id, x])), now = Date.now();
+  const surfacedBy = (Array.isArray(keywords) ? keywords : String(keywords || "").split(/[,;\n]/)).map(k => String(k || "").trim()).filter(Boolean);
+  for (const s of (ranked.sources || [])) {
+    const claim = String(s.claim || s.title || "").slice(0, 600); if (!claim) continue;
+    const id = dpId((s.url || "") + "|" + (s.claim || "")), old = byId.get(id);
+    if (old) { old.keywords = [...new Set([...(old.keywords || []), ...surfacedBy])]; continue; }
+    const item = { id, claim, publisher: s.publisher || "", url: s.url || "", date: s.date || "", tier: s.tier || "", split: s.split || "", at: now,
+      tag: "", status: "", originHub: cid, keywords: surfacedBy };
+    pool.push(item); byId.set(id, item);
+  }
+  // No count cap: dropping an unprocessed record would make an old pool item untaggable.
+  await env.TRADES.put(key, JSON.stringify(pool));
 }
 async function digestPoolUpdate(env, cid, itemId, patch) {
   const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], it = pool.find(x => x.id === itemId);
@@ -20308,13 +20325,15 @@ ${JSON.stringify(products)}`;
       }
       if (body.action === "getDigestPool") {
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return json({ error: "campaignId required" }, 400);
-        return json({ ok: true, items: (await env.TRADES.get("digest:pool:" + cid, "json")) || [], last: await env.TRADES.get("digest:last:" + cid, "json") });
+        const key = "digest:pool:" + cid, raw = await env.TRADES.get(key, "json"), normalized = digestPoolNormalize(raw || [], cid);
+        if (normalized.changed) await env.TRADES.put(key, JSON.stringify(normalized.items)); // legacy rows get origin from their pool key; unknown keywords stay blank
+        return json({ ok: true, items: normalized.items, last: await env.TRADES.get("digest:last:" + cid, "json") });
       }
       // tagDigestItem {campaignId, itemId, tag: "premium" | "news" | ""} — tagging queues the build job (once per item)
       if (body.action === "tagDigestItem") {
         const cid = String(body.campaignId || "").replace(/-/g, ""), tag = ["premium", "news"].includes(body.tag) ? body.tag : "";
         const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], it = pool.find(x => x.id === body.itemId);
-        if (!it) return json({ error: "Item not found — it may have been replaced by a newer digest run" }, 404);
+        if (!it) return json({ error: "Item not found in this hub's digest pool" }, 404);
         if (it.status && it.status !== "error" && it.tag && tag !== it.tag) return json({ error: "Already " + (it.status === "done" ? "built" : "building") + " as " + it.tag }, 400);
         it.tag = tag;
         if (tag && (!it.status || it.status === "error")) {
@@ -55926,7 +55945,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     job.ranked = await drRank(env, job); job.rankedAt = new Date().toISOString();
     await save();
     await env.TRADES.put("digest:last:" + job.campaignId, JSON.stringify({ jobId: job.id, at: job.rankedAt, sources: job.ranked.sources.map(s => ({ url: s.url, title: s.title })) }));
-    await digestPoolMerge(env, job.campaignId, job.ranked).catch(e => console.error("digestPoolMerge", e.message));   // the hub's Digest section pool
+    await digestPoolMerge(env, job.campaignId, job.ranked, job.keywords).catch(e => console.error("digestPoolMerge", e.message));   // additive hub pool with source keywords
     return { success: true, job: drPublic(job) };
   }
   if (op === "attach") {   // record which sources a written digest title used
