@@ -15280,6 +15280,22 @@ async function hcCreate(env, db, properties) {
 }
 const hcText = s => ({ rich_text: [{ type: "text", text: { content: String(s || "").slice(0, 1990) } }] });
 function hcIsAffiliate(p) { return /affiliate/i.test([hcRt(p, "Product Stack"), hcRt(p, "Type"), hcRt(p, "Product Tier"), hcSel(p, "Site"), kwTitleOf(p)].join(" ")); }
+// Shared with kwHubCleanPlan: the Products tab reuses this exact live/placeholder
+// classification so its list cannot drift from the cleanup rules.
+function kwHubClassifyProducts(products, titles, assets, research, mainIds) {
+  const live = products.filter(p => !p.properties?.Archived?.checkbox && !/^(archived|retired)$/i.test(hcSel(p, "Status")));
+  const mainSet = new Set((mainIds || []).map(x => String(x).replace(/-/g, "")));
+  const filled = new Set(research.filter(r => STRATEGY_FIELDS.reduce((n, f) => n + hcRt(r, f).length, 0) > 200).flatMap(r => hcRel(r, "Product")));
+  const prodAssets = new Set(assets.flatMap(a => hcRel(a, "Product")));
+  const T = titles.map(t => ({ id: t.id.replace(/-/g, ""), name: ((t.properties?.Title?.title) || []).map(x => x.plain_text).join("").trim() || "(untitled)", productId: hcRel(t, "product")[0] || "", hasAssets: hcRel(t, "Assets").length > 0, status: hcSel(t, "Status") }));
+  T.filter(t => t.hasAssets && t.productId).forEach(t => prodAssets.add(t.productId));
+  const pubProd = new Set(T.filter(t => /^(publish|published)$/i.test(t.status)).map(t => t.productId));
+  const P = live.map(p => { const id = p.id.replace(/-/g, ""), aff = hcIsAffiliate(p), bridge = hcRt(p, "Type") === HC_BRIDGE_TYPE;
+    const isReal = !aff && (mainSet.has(id) || filled.has(id) || prodAssets.has(id) || pubProd.has(id) || !!hcRt(p, "Price") || !!p.properties?.URL?.url);
+    return { id, page: p, name: kwTitleOf(p) || "(unnamed)", aff, bridge, kind: bridge ? "bridge" : isReal ? (mainSet.has(id) ? "main" : "real") : aff ? "affiliate" : "placeholder",
+      topicIdProp: hcRt(p, "Topic ID").replace(/-/g, ""), desc: hcRt(p, "Description").slice(0, 160) }; });
+  return { live, P, T };
+}
 function hcBridgeProps(cid, name, topicId) {
   return { Name: { title: [{ type: "text", text: { content: name.slice(0, 200) } }] }, Campaigns: { relation: [{ id: kwDashId(cid) }] }, Status: { select: { name: "Planning" } },
     Type: hcText(HC_BRIDGE_TYPE), "Topic ID": hcText(topicId || ""), "Keywords Out of Sync": { checkbox: true },
@@ -15304,18 +15320,7 @@ async function kwHubCleanPlan(env, campaignId) {
     notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
     notionQuery(PRODUCT_RESEARCH_DB, { filter: { property: "Product", relation: { is_not_empty: true } } }).catch(() => []),
     hubMainList(env, cid)]);
-  const live = prods.filter(p => !p.properties?.Archived?.checkbox && !/^(archived|retired)$/i.test(hcSel(p, "Status")));
-  const mainSet = new Set(mains.map(x => String(x).replace(/-/g, "")));
-  const filled = new Set(research.filter(r => STRATEGY_FIELDS.reduce((n, f) => n + hcRt(r, f).length, 0) > 200).flatMap(r => hcRel(r, "Product")));
-  const prodAssets = new Set(assets.flatMap(a => hcRel(a, "Product")));
-  const T = titles.map(t => ({ id: t.id.replace(/-/g, ""), name: ((t.properties?.Title?.title) || []).map(x => x.plain_text).join("").trim() || "(untitled)", productId: hcRel(t, "product")[0] || "",
-    hasAssets: hcRel(t, "Assets").length > 0, status: hcSel(t, "Status") }));
-  T.filter(t => t.hasAssets && t.productId).forEach(t => prodAssets.add(t.productId));
-  const pubProd = new Set(T.filter(t => /^(publish|published)$/i.test(t.status)).map(t => t.productId));
-  const P = live.map(p => { const id = p.id.replace(/-/g, ""), aff = hcIsAffiliate(p), bridge = hcRt(p, "Type") === HC_BRIDGE_TYPE;
-    const isReal = !aff && (mainSet.has(id) || filled.has(id) || prodAssets.has(id) || pubProd.has(id) || !!hcRt(p, "Price") || !!p.properties?.URL?.url);
-    return { id, page: p, name: kwTitleOf(p) || "(unnamed)", aff, bridge, kind: bridge ? "bridge" : isReal ? (mainSet.has(id) ? "main" : "real") : aff ? "affiliate" : "placeholder",
-      topicIdProp: hcRt(p, "Topic ID").replace(/-/g, ""), desc: hcRt(p, "Description").slice(0, 160) }; });
+  const { live, P, T } = kwHubClassifyProducts(prods, titles, assets, research, mains);
   const keep = P.filter(p => p.kind === "real" || p.kind === "main" || p.kind === "bridge"), convert = P.filter(p => p.kind === "affiliate" || p.kind === "placeholder");
   const convertIds = new Set(convert.map(p => p.id)), liveIds = new Set(live.map(p => p.id.replace(/-/g, "")));
   const movable = T.filter(t => !t.productId || !liveIds.has(t.productId) || convertIds.has(t.productId) || !t.hasAssets);
@@ -18766,7 +18771,7 @@ Return: {
           notionQuery(CONTENT_STRATEGY_DB, {}),
           notionQuery(ASSETS_DB, {}),
           ivList(null).catch(() => []),   // 🎤 interviews — their own rows under the title (Flagged / Finished)
-          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
+          notionQuery(PRODUCT_RESEARCH_DB, { filter: { property: "Product", relation: { is_not_empty: true } } }).catch(() => []),
           notionQuery(RESEARCH_DB, {}).catch(() => []),
           notionQuery(STRATEGY_SLOTS_DB, {}).catch(() => []),
           notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []),
@@ -27252,14 +27257,18 @@ Return ONLY this JSON, no other text, no fences:
         });
       }
       if (body.action === "getProducts") {
-        // Fetch products and campaigns in parallel so we can resolve campaign name + site
-        const [productRows, campRows] = await Promise.all([
+        // Reuse the hub cleanup's live-product classifier; the Products tab
+        // must not call the AI-backed cleanup planner just to render a list.
+        const [productRows, campRows, titleRows, assetRows, researchRows] = await Promise.all([
           notionQuery(PRODUCTS_DB, {
             sorts: [{ property: "Name", direction: "ascending" }],
           }),
           notionQuery(CAMPAIGNS_DB, {
             filter: { property: "Status", select: { does_not_equal: "Delete" } },
           }),
+          notionQuery(CONTENT_STRATEGY_DB, {}).catch(() => []),
+          notionQuery(ASSETS_DB, {}).catch(() => []),
+          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
         ]);
 
         // Build campaign lookup by id
@@ -27273,36 +27282,36 @@ Return ONLY this JSON, no other text, no fences:
           };
         });
 
-        const campaignIds = new Set(Object.keys(campById));
-
-        const products = productRows.map(p => {
+        const products = [];
+        for (const hub of HUB_SITES.filter(h => h.campaignId)) {
+          const cid = String(hub.campaignId).replace(/-/g, ""), belongs = (page, prop) => ((page.properties?.[prop]?.relation) || []).some(r => r.id.replace(/-/g, "") === cid);
+          const hubProductRows = productRows.filter(p => belongs(p, "Campaigns"));
+          if (!hubProductRows.length) continue;
+          const hubTitles = titleRows.filter(t => belongs(t, "Campaign"));
+          const hubAssets = assetRows.filter(a => belongs(a, "Campaign"));
+          const productIds = new Set(hubProductRows.map(p => p.id.replace(/-/g, "")));
+          const hubResearch = researchRows.filter(r => ((r.properties?.Product?.relation) || []).some(x => productIds.has(x.id.replace(/-/g, ""))));
+          const mainIds = await hubMainList(env, cid).catch(() => []);
+          const classified = kwHubClassifyProducts(hubProductRows, hubTitles, hubAssets, hubResearch, mainIds);
+          const eligible = new Set(classified.P.filter(p => ["main", "real", "bridge"].includes(p.kind)).map(p => p.id));
+          for (const p of hubProductRows) {
+            const id = p.id.replace(/-/g, "");
+            if (!eligible.has(id)) continue;
           const props = p.properties;
-          const id = p.id.replace(/-/g, "");
-
-          // Find campaign via the "Campaigns" relation property
-          let campaignName = "";
-          let site = props.Site?.select?.name || "";
-          let micrositeUrl = null;
-          const campRel = props["Campaigns"]?.relation || [];
-          campRel.forEach(r => {
-            const rid = r.id.replace(/-/g, "");
-            if (campaignIds.has(rid)) {
-              campaignName = campById[rid].name;
-              if (!site) site = campById[rid].site;
-              if (!micrositeUrl) micrositeUrl = campById[rid].microsite;
-            }
-          });
-
-          return {
+          products.push({
             id,
             name:        props.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-            campaign:    campaignName,
-            site,
+            campaign:    campById[cid]?.name || hub.name,
+            hub:         hub.name,
+            site:        props.Site?.select?.name || hub.site || "",
             status:      props.Status?.select?.name || "",
-            microsite:   micrositeUrl,
+            kind:        classified.P.find(x => x.id === id)?.kind || "real",
+            main:        mainIds.some(x => x.replace(/-/g, "") === id),
+            microsite:   hub.microsite || null,
             productsite: props["URL"]?.url || null,
-          };
-        });
+          });
+          }
+        }
 
         return json({ products });
       }
