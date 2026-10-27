@@ -16876,15 +16876,86 @@ function hub2DigHtml(slug, d) {
     return `<label title="${was ? 'Already in a ' + label + ' — check again to use it in another' : 'Check to include in the ' + label}" style="display:inline-flex;gap:3px;align-items:center;font-size:10px;color:${on ? col : 'var(--text3)'};cursor:pointer;white-space:nowrap;"><input type="checkbox" ${on ? 'checked' : ''} onchange="hub2DigCheck('${slug}','${esc(d.assetId)}','${esc(x.id)}','${t}',this.checked)">${label}${was ? ' ✓' : ''}</label>`; };
   const row = x => `<div class="hkw-row" style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
       <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.claim)}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.tier ? ' · tier ' + esc(String(x.tier)) : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">source ↗</a>` : ''}</div></div>
-      <div style="display:flex;gap:8px;flex-shrink:0;">${box(x, 'premium', 'Premium issue', '#f5c542')}${box(x, 'free', 'Free issue', '#4ade80')}${box(x, 'news', 'News SEO', '#8ab4f8')}</div></div>`;
+      <div style="display:flex;gap:8px;flex-shrink:0;align-items:center;flex-wrap:wrap;">${box(x, 'premium', 'Premium issue', '#f5c542')}${box(x, 'free', 'Free issue', '#4ade80')}${box(x, 'news', 'News SEO', '#8ab4f8')}<button type="button" style="${B('var(--border2)')}" onclick="event.stopPropagation();hub2DigestPreview('${slug}','${esc(d.assetId)}','','${esc(x.id)}')">Preview</button></div></div>`;
   const grp = (label, col, list) => list.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${col};margin:8px 0 2px;">${label} (${list.length})</div>` + list.map(row).join('') : '';
-  const link = (id, txt) => id ? `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">${txt}</a>` : txt;
-  const kids = [...ch.premium.map((c, i) => link(c.assetId, '★ Premium issue ' + (i + 1))), ...ch.free.map((c, i) => link(c.assetId, 'Free issue ' + (i + 1))),
-    ...ch.news.map(c => { const it = items.find(x => x.id === c.itemId); return link(c.assetId, '📰 ' + esc((it ? it.claim : 'news post').slice(0, 50)) + (c.state === 'error' ? ' ✗' : c.assetId ? '' : ' ⏳')); })];
+  const link = (id, txt, itemId = '') => id ? `<span style="display:inline-flex;align-items:center;gap:5px;"><a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">${txt}</a><button type="button" style="${B('var(--border2)')}" onclick="event.stopPropagation();hub2DigestPreview('${slug}','${esc(d.assetId)}','${esc(id)}','${esc(itemId)}')">Preview</button></span>` : txt;
+  const kids = [link(d.assetId, 'Weekly Digest parent'), ...ch.premium.map((c, i) => link(c.assetId, '★ Premium issue ' + (i + 1))), ...ch.free.map((c, i) => link(c.assetId, 'Free issue ' + (i + 1))),
+    ...ch.news.map(c => { const it = items.find(x => x.id === c.itemId); return link(c.assetId, '📰 ' + esc((it ? it.claim : 'news post').slice(0, 50)) + (c.state === 'error' ? ' ✗' : c.assetId ? '' : ' ⏳'), c.itemId); })];
   const body = !items.length ? `<div style="font-size:11px;color:var(--text3);padding:6px 8px;">No findings stored for this digest (it was written before findings were kept per digest) — its issue is on the asset.</div>`
     : grp('Premium', '#f5c542', items.filter(x => x.split === 'premium')) + grp('Free', '#4ade80', items.filter(x => x.split !== 'premium'))
       + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button ${np + nf + nn ? '' : 'disabled'} style="${B('#f5c542')}" onclick="hub2DigGenerate('${slug}','${esc(d.assetId)}',this)">⚙ Generate checked — ${np ? '1 premium issue (' + np + ' items)' : 'no premium'} · ${nf ? '1 free issue (' + nf + ' items)' : 'no free'} · ${nn} news post${nn === 1 ? '' : 's'}</button><span style="font-size:10px;color:var(--text3);">children are created at Development — publish them from the asset modal</span></div>`;
   return `<details open style="border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;" ontoggle="_hub2DigOpen['${k}']=this.open;if(!this.open)hub2PoolPaint('${slug}')">${head}<div style="padding:4px 10px 10px;">${body}${kids.length ? `<div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : ''}</div></details>`;
+}
+let _hub2DigestPreview = null;
+function hub2DigestPreviewSourceHtml(data) {
+  const s = data.sources || {}, out = [];
+  const findings = s.findings || [], research = s.research || [];
+  const urlLink = url => /^https?:\/\//i.test(String(url || '')) ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>` : '';
+  if (findings.length) out.push(`<section><h3>Digest findings</h3>${findings.map(x => `<article style="padding:9px 0;border-bottom:1px solid #e7e1d8;"><div>${esc(x.claim || '')}</div><div style="font-size:12px;color:#70685e;margin-top:4px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.tier ? ' · tier ' + esc(String(x.tier)) : ''}${x.verified === true ? ' · verified URL' : x.verified === false ? ' · URL unverified' : ''}${x.inPeriod === false ? ' · out of period' : ''}</div>${urlLink(x.url) ? `<div style="font-size:12px;margin-top:3px;">${urlLink(x.url)}</div>` : ''}</article>`).join('')}</section>`);
+  if (research.length) out.push(`<section><h3>Digest research sources</h3>${research.map(x => `<article style="padding:7px 0;border-bottom:1px solid #e7e1d8;">${esc(x.claim || '')}<div style="font-size:12px;color:#70685e;margin-top:3px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}</div>${urlLink(x.url) ? `<div style="font-size:12px;margin-top:3px;">${urlLink(x.url)}</div>` : ''}</article>`).join('')}</section>`);
+  if ((s.productContext || []).length) out.push(`<section><h3>Newsletter product research</h3><dl>${s.productContext.map(x => `<dt style="font-weight:700;margin-top:6px;">${esc(x.name)}</dt><dd style="margin:2px 0 6px;white-space:pre-wrap;">${esc(x.value)}</dd>`).join('')}</dl></section>`);
+  if (s.audience) out.push(`<section><h3>Hub audience</h3><p style="white-space:pre-wrap;">${esc(s.audience)}</p></section>`);
+  if (s.voice) out.push(`<section><h3>Operator voice</h3><p style="white-space:pre-wrap;">${esc(s.voice)}</p></section>`);
+  if ((s.interviews || []).length) out.push(`<section><h3>Finished interview answers</h3>${s.interviews.map(iv => `<details style="padding:6px 0;border-bottom:1px solid #e7e1d8;"><summary style="cursor:pointer;font-weight:700;">${esc(iv.title || 'Finished interview')}</summary>${(iv.questions || []).map((q,i) => `<div style="margin-top:8px;"><b>Q:</b> ${esc(q || '')}<div style="margin-top:3px;"><b>A:</b> ${esc((iv.answers || [])[i] || '')}</div></div>`).join('')}</details>`).join('')}</section>`);
+  if (s.pillar) out.push(`<section><h3>Title pillar passage</h3><blockquote style="margin:0;padding:4px 0 4px 12px;border-left:3px solid #b9a995;white-space:pre-wrap;">${esc(s.pillar)}</blockquote></section>`);
+  return out.length ? out.join('') : '<p style="color:#70685e;">No additional source records were available for this piece.</p>';
+}
+function hub2DigestPreviewClose() {
+  const root = document.getElementById('hub2DigestPreviewLayer'); if (root) root.style.display = 'none';
+  _hub2DigestPreview = null;
+}
+function hub2DigestPreviewShell(loadingText) {
+  let root = document.getElementById('hub2DigestPreviewLayer');
+  if (!root) { root = document.createElement('div'); root.id = 'hub2DigestPreviewLayer'; document.body.appendChild(root); }
+  root.style.cssText = 'position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(10,10,10,.82);overflow:auto;';
+  root.innerHTML = `<div style="width:min(980px,100%);max-height:96vh;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;background:#f7f1e6;color:#2b2620;box-shadow:0 18px 60px rgba(0,0,0,.5);"><div style="padding:16px 20px 12px;border-bottom:1px solid #d9cfbf;flex:none;"><div style="font-size:11px;color:#766d62;letter-spacing:.08em;text-transform:uppercase;">Reader preview · not published</div><h2 data-preview-title style="margin:4px 0 10px;font:600 23px/1.2 Georgia,serif;color:#2b2620;"></h2><dl data-preview-provenance style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px 14px;margin:0;font:12px/1.4 system-ui,sans-serif;"></dl></div><div data-preview-content style="min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px;flex:1;"><div style="font:14px system-ui,sans-serif;color:#70685e;">${esc(loadingText || 'Loading the reader view…')}</div></div><div style="padding:10px 14px;border-top:1px solid #d9cfbf;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f7f1e6;flex:none;"><span data-preview-message aria-live="polite" style="font:12px system-ui,sans-serif;color:#70685e;flex:1;min-width:180px;"></span><button type="button" data-preview-flag style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:transparent;color:#4d3d2c;cursor:pointer;">Flag for interview</button><button type="button" data-preview-publish style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:#8a6d4b;color:#fff;cursor:pointer;">Publish</button><button type="button" onclick="hub2DigestPreviewClose()" style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:transparent;color:#4d3d2c;cursor:pointer;">Close</button></div></div>`;
+  root.onclick = ev => { if (ev.target === root) hub2DigestPreviewClose(); };
+  return root;
+}
+async function hub2DigestPreview(slug, digestId, assetId, itemId) {
+  const hub = HUB_SITES.find(x => x.slug === slug); if (!hub) return showToast('Hub not found for this digest.', 'error');
+  const request = { slug, digestId, assetId: assetId || '', itemId: itemId || '', campaignId: hub.campaignId };
+  _hub2DigestPreview = request;
+  const root = hub2DigestPreviewShell('Loading the reader view…');
+  root.querySelector('[data-preview-title]').textContent = 'Loading preview…';
+  const data = await call('digestPreview', { campaignId: hub.campaignId, digestId, ...(assetId ? { assetId } : {}), ...(itemId ? { itemId } : {}) }).catch(e => ({ error: e.message }));
+  if (_hub2DigestPreview !== request) return;
+  if (!data || data.error) {
+    root.querySelector('[data-preview-title]').textContent = 'Preview unavailable';
+    root.querySelector('[data-preview-content]').textContent = (data && data.error) || 'No response from the worker.';
+    root.querySelector('[data-preview-flag]').disabled = true; root.querySelector('[data-preview-publish]').disabled = true;
+    root.querySelector('[data-preview-message]').textContent = 'Close and retry after the source is available.'; return;
+  }
+  const p = data.provenance || {}, title = data.pieceTitle || 'Untitled piece';
+  root.querySelector('[data-preview-title]').textContent = title;
+  root.querySelector('[data-preview-provenance]').innerHTML = [['Hub',p.hub],['Topic',p.topic],['Product',p.product],['Title',p.title],['Status',p.status],['Tier',p.tier]].map(([k,v]) => `<div><dt style="color:#766d62;">${k}</dt><dd style="margin:1px 0 0;font-weight:600;">${esc(v || '—')}</dd></div>`).join('');
+  const content = root.querySelector('[data-preview-content]');
+  if (data.readerHtml) {
+    const frame = document.createElement('iframe'); frame.title = 'Formatted reader preview'; frame.setAttribute('sandbox','');
+    frame.style.cssText = 'display:block;width:100%;height:min(62vh,720px);min-height:360px;border:0;border-radius:8px;background:#fff;'; frame.srcdoc = data.readerHtml; content.appendChild(frame);
+  } else {
+    content.innerHTML = `<div style="max-width:760px;margin:16px auto;padding:24px;border:1px solid #d9cfbf;border-radius:8px;background:#fff;color:#4a4035;font:15px/1.6 Georgia,serif;">${data.generated ? 'Reader rendering is not available for this asset type.' : 'This finding has not been generated into a written asset yet. The source finding is shown below; there is no article body to preview.'}</div>`;
+  }
+  content.insertAdjacentHTML('beforeend', `<details open style="margin:14px auto 4px;max-width:760px;padding:12px 16px;border:1px solid #d9cfbf;border-radius:8px;background:#fff;color:#2b2620;font:13px/1.5 system-ui,sans-serif;"><summary style="cursor:pointer;font-weight:700;">Sources and inputs</summary><div style="margin-top:8px;">${hub2DigestPreviewSourceHtml(data)}</div></details>`);
+  const pub = root.querySelector('[data-preview-publish]'); pub.disabled = !!data.publishDisabled; pub.title = data.publishDisabled ? (data.publishReason || 'This asset type cannot be published from the existing asset modal.') : 'Open this asset in the existing Publish modal.';
+  if (data.publishDisabled && data.publishReason) root.querySelector('[data-preview-message]').textContent = data.publishReason;
+  root.querySelector('[data-preview-publish]').onclick = () => {
+    const current = _hub2DigestPreview; if (!current || data.publishDisabled || !data.assetId) return;
+    hub2DigestPreviewClose(); openCareGapEditor(data.campaignId, data.assetId, data.titleId || data.digestTitleId || '');
+  };
+  const flag = root.querySelector('[data-preview-flag]'); flag.disabled = !data.digestTitleId;
+  flag.onclick = async () => {
+    if (!data.digestTitleId) return;
+    flag.disabled = true; const msg = root.querySelector('[data-preview-message]'); msg.textContent = 'Checking the title interview queue…';
+    const existing = await call('getInterviews', { titleId: data.digestTitleId }).catch(e => ({ error: e.message }));
+    if (!existing || existing.error) { msg.textContent = 'Could not check the interview queue: ' + ((existing && existing.error) || 'no response'); flag.disabled = false; return; }
+    const pending = (existing.interviews || []).find(x => x.scope === 'Title' && !['Finished','Superseded'].includes(x.status));
+    if (pending) { msg.textContent = 'This title already has an interview in the queue.'; return; }
+    msg.textContent = 'Creating the title-level interview…';
+    const result = await call('createInterviews', { titleId: data.digestTitleId, direction: 'Requested from the Digest reader preview' }).catch(e => ({ error: e.message }));
+    if (!result || result.error) { msg.textContent = 'Could not flag the title: ' + ((result && result.error) || 'no response'); flag.disabled = false; return; }
+    msg.textContent = 'Title interview created and queued.';
+  };
 }
 async function hub2DigCheck(slug, assetId, itemId, target, on) {
   const P = _hub2Pool[slug], d = P && (P.digests || []).find(x => x.assetId === assetId); if (!d) return;

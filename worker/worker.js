@@ -5078,11 +5078,13 @@ async function salesProofFor(productId) {
   };
 }
 
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId }) {
-  const prior = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore()?.writes.get(hubAssetId(assetId))?.before;
-  const priorUrl = prior?.properties?.['Content URL']?.url || prior?.properties?.['Site URL']?.url;
-  if (!env.__hubPublication && !env.__hubExplicitPublish && prior?.properties?.['Asset Status']?.select?.name === 'Published' && priorUrl) return { published: true, liveUrl: priorUrl, deferred: 'request republication boundary' };
-  if(assetId){const page=await ivPage(assetId);await requireHierarchyPlacement(env,page);await requireAssetWriting(page);}
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId, previewOnly = false }) {
+  if (!previewOnly) {
+    const prior = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore()?.writes.get(hubAssetId(assetId))?.before;
+    const priorUrl = prior?.properties?.['Content URL']?.url || prior?.properties?.['Site URL']?.url;
+    if (!env.__hubPublication && !env.__hubExplicitPublish && prior?.properties?.['Asset Status']?.select?.name === 'Published' && priorUrl) return { published: true, liveUrl: priorUrl, deferred: 'request republication boundary' };
+    if(assetId){const page=await ivPage(assetId);await requireHierarchyPlacement(env,page);await requireAssetWriting(page);}
+  }
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
@@ -5192,7 +5194,9 @@ ${(cta && cta.href) ? `<p style="margin-top:32px;"><a href="${esc(cta.href)}" st
 ${posts.map(p => `<li><a href="${esc(p.url || ('./' + p.slug + '/index.html'))}">${esc(p.title)}</a><div class="excerpt">${esc(p.intro)}</div></li>`).join('\n')}
 </ul>`;
 
-  await putFile(`${basePath}/${slug}/index.html`, pageShell(displayTitle, postBody, { siteHref: '../../index.html', blogHref: '../index.html' }), `${indexLabel} post: ${displayTitle}`);
+  const renderedPage = pageShell(displayTitle, postBody, { siteHref: '../../index.html', blogHref: '../index.html' });
+  if (previewOnly) return { previewHtml: renderedPage };
+  await putFile(`${basePath}/${slug}/index.html`, renderedPage, `${indexLabel} post: ${displayTitle}`);
   await putFile(`${basePath}/index.html`, pageShell(indexLabel, indexBody, { siteHref: '../index.html', blogHref: null }), `${indexLabel} index: add ${displayTitle}`);
   await putFile(`${basePath}/posts.json`, JSON.stringify(posts, null, 2), `${indexLabel} posts.json: add ${displayTitle}`);
 
@@ -20666,6 +20670,106 @@ ${JSON.stringify(products)}`;
         return json(panel);
       }
       // ── Digest parent actions (operator 2026-10-20) ──
+      // digestPreview {campaignId,digestId,assetId?|itemId?} — read-only rendered preview + source packet for one digest piece.
+      if (body.action === "digestPreview") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const cid = hubAssetId(body.campaignId || ""), did = hubAssetId(body.digestId || "");
+        if (!/^[a-f0-9]{32}$/i.test(cid) || !/^[a-f0-9]{32}$/i.test(did)) return json({ error: "campaignId and digestId required" }, 400);
+        const digestPage = await ivPage(did), dp = digestPage.properties || {};
+        if (hubAssetId(ivRid(dp, "Campaign")) !== cid || dp["Pillar Type"]?.select?.name !== "Digest") return json({ error: "Digest parent is not on this campaign" }, 404);
+        const data = await env.TRADES.get("digest:items:" + did, "json") || { items: [], children: { premium: [], free: [], news: [] } };
+        const items = Array.isArray(data.items) ? data.items : [], children = data.children || { premium: [], free: [], news: [] };
+        const itemId = String(body.itemId || ""); let selectedItem = itemId ? items.find(x => String(x.id) === itemId) : null;
+        if (itemId && !selectedItem) return json({ error: "Finding is no longer in this digest" }, 404);
+        let assetId = hubAssetId(body.assetId || ""), newsChild = null;
+        if (selectedItem && !assetId) {
+          newsChild = (children.news || []).find(x => String(x.itemId) === itemId) || null;
+          if (newsChild?.jobId && !newsChild.assetId) {
+            const job = await env.TRADES.get("titlejob:state:" + newsChild.jobId, "json").catch(() => null);
+            if (job) { newsChild.assetId = job.assetId || ""; newsChild.titleId = job.titleId || ""; }
+          }
+          assetId = hubAssetId(newsChild?.assetId || "");
+        }
+        const isFindingOnly = !!selectedItem && !assetId;
+        const isParent = !isFindingOnly && (!assetId || assetId === did);
+        let assetPage = null;
+        if (!isParent) {
+          if (assetId) {
+            assetPage = await ivPage(assetId);
+            const parentId = ivRid(assetPage.properties || {}, "Parent Asset");
+            if (hubAssetId(parentId) !== did) return json({ error: "This asset is not a child of the requested digest" }, 404);
+          }
+        } else { assetPage = digestPage; assetId = did; }
+        const ap = assetPage?.properties || {}, digestTitleId = ivRid(dp, "Content Strategy");
+        const titleId = isParent || isFindingOnly ? digestTitleId : (ivRid(ap, "Content Strategy") || hubAssetId(newsChild?.titleId || ""));
+        const titlePage = titleId ? await ivPage(titleId).catch(() => null) : null, tp = titlePage?.properties || {};
+        const productId = ivRid(tp, "product"), productPage = productId ? await ivPage(productId).catch(() => null) : null;
+        const campaignPage = await ivPage(cid).catch(() => null), campaignName = hubRichText(campaignPage?.properties?.Name?.title);
+        const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === cid);
+        const productName = hubRichText(productPage?.properties?.Name?.title);
+        const topicRefs = [hubRichText(tp["Topic ID"]?.rich_text), hubRichText(productPage?.properties?.["Topic ID"]?.rich_text)].filter(Boolean);
+        let topic = "";
+        for (const ref of topicRefs) {
+          if (ref === "__main") { topic = "★ Main Keywords"; break; }
+          if (!/^(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9-]{27}|smv[\w-]+)$/i.test(ref)) { topic = ref; break; }
+          const key = ref.replace(/-/g, "");
+          const [topicRows, staged] = await Promise.all([
+            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } }).catch(() => []),
+            env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => []),
+          ]);
+          const match = topicRows.find(t => {
+            const p = t.properties || {}, topicKey = hubRichText(p["Topic Key"]?.rich_text).replace(/-/g, "");
+            return topicKey === key || hubAssetId(t.id) === key;
+          });
+          if (match) { topic = hubRichText(match.properties?.Name?.title) || ""; break; }
+          const stagedMatch = (Array.isArray(staged) ? staged : []).find(t => String(t?.id || "").replace(/-/g, "") === key);
+          if (stagedMatch?.name) { topic = String(stagedMatch.name); break; }
+        }
+        const writing = assetPage ? await assetWritingState(assetPage) : { text: "", body: "" }, bodyText = writing.text || writing.body || "";
+        const assetType = ap["Asset Type"]?.select?.name || dp["Pillar Type"]?.select?.name || "";
+        const pieceTitle = hubRichText(ap["Platform Title"]?.rich_text) || hubRichText(ap["Asset Title"]?.title) || (selectedItem?.claim || "");
+        let readerHtml = "";
+        if (bodyText.trim() && (/^newsletter (paid|free)$/i.test(assetType) || isParent)) {
+          readerHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${pieceTitle.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</title></head><body style="margin:0;background:#f7f1e6;color:#2b2620;padding:20px 12px;">${mdToEmailHtml(bodyText)}</body></html>`;
+        } else if (bodyText.trim()) {
+          const parts = topicalArticleParts(bodyText);
+          const rendered = await publishSeoPostToLiveSite({ env, hdr: ivHdr(), dash: ivDash, campaignId: cid,
+            seoTitle: pieceTitle, workingTitle: pieceTitle, ...parts, assetId: null, thumbnail: ap.Thumbnail?.url || "", previewOnly: true });
+          if (rendered.error) return json({ error: "Could not render reader preview: " + rendered.error }, 502);
+          readerHtml = rendered.previewHtml || "";
+        }
+        const relatedIds = isParent ? new Set(items.map(x => String(x.id)))
+          : selectedItem ? new Set([String(selectedItem.id)])
+          : new Set([...(children.premium || []), ...(children.free || [])].find(x => hubAssetId(x.assetId) === assetId)?.items || []);
+        if (!selectedItem && !isParent) {
+          const news = (children.news || []).find(x => hubAssetId(x.assetId) === assetId);
+          if (news?.itemId) relatedIds.add(String(news.itemId));
+        }
+        const findings = items.filter(x => relatedIds.has(String(x.id))).map(x => ({ claim: x.claim || "", publisher: x.publisher || "", url: x.url || "", date: x.date || "", tier: x.tier || "", verified: x.verified, inPeriod: x.inPeriod }));
+        const savedResearch = digestTitleId ? await env.TRADES.get("digest:sources:" + digestTitleId, "json").catch(() => null) : null;
+        const findingUrls = new Set(findings.map(x => x.url).filter(Boolean));
+        const research = (savedResearch?.sources || []).filter(x => x?.url && (isParent || findingUrls.has(x.url)))
+          .map(x => ({ claim: x.claim || x.title || "", publisher: x.publisher || "", url: x.url || "", date: x.date || "" }));
+        const source = { findings, research, productContext: [], audience: "", voice: "", interviews: [], pillar: "" };
+        const interviews = titleId ? await ivForTitle(titleId).catch(() => []) : [];
+        if (/^newsletter (paid|free)$/i.test(assetType)) {
+          const ctx = await newsletterContext(env, cid).catch(() => null);
+          if (ctx?.fields) source.productContext = Object.entries(ctx.fields).filter(([,v]) => String(v || "").trim()).map(([name,value]) => ({ name, value: String(value) }));
+          [source.audience, source.voice] = await Promise.all([hubAudienceBlock(env, cid).catch(() => ""), voiceBlock(env, cid).catch(() => "")]);
+          source.interviews = interviews.filter(x => x.status === "Finished" && x.answers.some(a => a.trim()) && (x.scope === "Title" || x.scope === "Asset" && (x.assetIds || []).includes(did)))
+            .map(x => ({ title: x.title || "Finished interview", questions: x.qs || [], answers: x.answers || [] }));
+        } else if (!isParent && titleId) {
+          source.pillar = await extractPillarContent(ivHdr(), titleId).catch(() => "");
+          source.interviews = interviews.filter(x => x.scope === "Title" || x.scope === "Asset" && ((x.assetIds || []).includes(assetId) || (x.assetIds || []).includes(did) || (assetType && ivTypeMatch(x.forType, assetType))))
+            .map(x => { const pairs = (x.qs || []).map((q, i) => ({ q, a: ivWriteAnswer(x, i) })).filter(pair => pair.a);
+              return { title: x.title || "Interview", questions: pairs.map(pair => pair.q), answers: pairs.map(pair => pair.a) }; });
+        }
+        const tier = /^newsletter paid$/i.test(assetType) ? "Premium" : /^newsletter free$/i.test(assetType) ? "Free" : /news/i.test(assetType) ? "News SEO" : isParent ? "Digest parent" : isFindingOnly ? "News SEO finding" : assetType;
+        return json({ ok: true, assetId: isParent ? did : assetId, digestId: did, digestTitleId, titleId, campaignId: cid,
+          pieceTitle, body: bodyText, readerHtml, generated: !!(bodyText.trim()), publishDisabled: isFindingOnly || /^newsletter paid$/i.test(assetType),
+          publishReason: isFindingOnly ? "This finding has no generated asset yet." : /^newsletter paid$/i.test(assetType) ? "Premium issues have no send target and remain Review-only." : "",
+          provenance: { hub: hub?.name || campaignName || "", topic, product: productName, title: hubRichText(tp.Title?.title) || hubRichText(tp.Name?.title), status: ap["Asset Status"]?.select?.name || (isFindingOnly ? "Finding only" : ""), tier }, sources: source });
+      }
       // getDigests {campaignId} → every Digest parent of the hub (newest first) with its findings, checks, children + a running run
       if (body.action === "getDigests") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
