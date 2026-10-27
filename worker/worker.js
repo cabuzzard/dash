@@ -14285,6 +14285,106 @@ async function kwHubPlaceTick(env) {
 // KV titlejob:queue = [jobId…], titlejob:state:<jobId> = { titleId, name, slug, steps:[{action,label}], i, done, errors }.
 // Each step runs the real action through the worker's own fetch handler (a self-signed token) — same code as the page.
 // Started right away by the page (runTitleJobs) and resumed by the */4 cron if the tab went away. One runner at a time.
+const DIGEST_GENERATE_TTL = 7 * 86400;
+async function digestHubLease(env, cid, owner, ttl = 300) {
+  cid = String(cid || "").replace(/-/g, ""); if (!cid || !owner) return null;
+  const key = "digest:hub:generate-lock:" + cid, now = Date.now(), prior = await env.TRADES.get(key, "json");
+  if (prior && prior.until > now && prior.owner !== owner) return null;
+  const lease = { owner, until: now + ttl * 1000 };
+  await env.TRADES.put(key, JSON.stringify(lease), { expirationTtl: ttl });
+  const check = await env.TRADES.get(key, "json"); return check?.owner === owner ? { key, owner } : null;
+}
+async function digestHubLeaseRelease(env, lease) {
+  if (!lease) return;
+  const current = await env.TRADES.get(lease.key, "json").catch(() => null);
+  if (current?.owner === lease.owner) await env.TRADES.delete(lease.key).catch(() => {});
+}
+async function digestGenerateDigestSave(env, S, step, status, extra = {}) {
+  const key = "digest:items:" + S.assetId, d = await env.TRADES.get(key, "json");
+  if (!d) throw new Error("Digest findings expired before generation completed");
+  d.children = d.children || { premium: [], free: [], news: [] };
+  const kind = step.kind === "news" ? "news" : step.kind;
+  const list = d.children[kind] || (d.children[kind] = []), at = new Date().toISOString();
+  let entry = list.find(x => x.jobId === S.id && (step.kind === "news" ? x.itemId === step.itemId : x.kind === step.kind));
+  if (!entry) { entry = step.kind === "news" ? { itemId: step.itemId, jobId: S.id, at } : { jobId: S.id, kind: step.kind, items: step.items.map(x => x.id), at }; list.push(entry); }
+  Object.assign(entry, extra, { state: status, updatedAt: at });
+  if (status === "done") for (const item of (step.items || [step.item]).filter(Boolean)) {
+    d.checks = d.checks || {}; d.checks[item.id] = { ...(d.checks[item.id] || {}), [step.kind]: false };
+  }
+  await env.TRADES.put(key, JSON.stringify(d));
+  return entry;
+}
+async function digestGenerateJobStep(env, invoke, jobId, S, step) {
+  if (step.action === "digestIssue") {
+    const type = step.kind === "premium" ? "Newsletter Paid" : "Newsletter Free";
+    await newsletterMethod(await writingMethodsTable(env), step.kind); // refuse before creating an unmapped issue
+    if (!step.assetId) {
+      const candidates = await notionQuery(ASSETS_DB, { filter: { and: [
+        { property: "Parent Asset", relation: { contains: kwDashId(S.assetId) } },
+        { property: "Asset Type", select: { equals: type } },
+      ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+      const exactTitle = `${step.kind === "premium" ? "Premium issue" : "Free issue"} — ${S.digestName}`.slice(0, 190);
+      const existing = candidates.find(p => hubRichText(p.properties?.["Asset Title"]?.title) === exactTitle);
+      if (existing) step.assetId = hubAssetId(existing.id);
+      else {
+        const made = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.digestName, productId: S.productId || undefined,
+          campaignId: S.cid, slug: S.slug || undefined, allowMulti: true, parentAssetId: S.assetId,
+          types: [{ assetType: type, label: step.kind === "premium" ? "Premium issue" : "Free issue", titleOverride: exactTitle }] });
+        const aid = ((made && made.created) || [])[0]?.id;
+        if (!aid) throw new Error((made && (made.error || (made.failed || []).join(" · ") || (made.skipped || []).join(" · "))) || "Issue asset was not created");
+        step.assetId = hubAssetId(aid);
+      }
+      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+      await digestGenerateDigestSave(env, S, step, "running", { assetId: step.assetId });
+    }
+    const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === S.cid) || {};
+    const result = await digestWriteIssue(env, step.kind, step.items, hub.name || "the hub", {
+      assetId: step.assetId, digestId: S.assetId, titleId: S.titleId, campaignId: S.cid,
+    });
+    step.outcome = { assetId: step.assetId, written: !!result.written, violations: result.violations || [], kind: step.kind };
+    (S.children = S.children || []).push({ ...step.outcome });
+    await digestGenerateDigestSave(env, S, step, "done", { assetId: step.assetId, written: !!result.written, violations: result.violations || [] });
+    return;
+  }
+  if (step.action === "digestNews") {
+    if (!step.titleId) {
+      const mains = await hubMainList(env, S.cid);
+      const title = await invoke({ action: "createNewsBlogTitle", campaignId: S.cid, productId: mains[0] || undefined,
+        newsTitle: step.item.claim.slice(0, 180), newsBody: step.item.claim,
+        newsSource: [step.item.publisher, step.item.url].filter(Boolean).join(" "), newsDate: step.item.date || "",
+        allowDuplicate: true, digestJobId: jobId, digestItemId: step.itemId });
+      if (!title || !title.success || !title.titleId) throw new Error("News title: " + ((title && title.error) || "no response"));
+      if (title.pillarWritten === false) throw new Error("News pillar: " + (title.pillarError || "not written"));
+      step.titleId = hubAssetId(title.titleId);
+      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+      await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId });
+    }
+    if (!step.assetId) {
+      const existing = await notionQuery(ASSETS_DB, { filter: { and: [
+        { property: "Content Strategy", relation: { contains: kwDashId(step.titleId) } },
+        { property: "Campaign", relation: { contains: kwDashId(S.cid) } },
+        { property: "Asset Type", select: { equals: "Blog - SEO - News" } },
+      ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+      const prior = existing.find(p => !p.archived && !p.in_trash);
+      if (prior) step.assetId = hubAssetId(prior.id);
+      else {
+        const mains = await hubMainList(env, S.cid);
+        const generated = await invoke({ action: "generateTitleAssets", titleId: step.titleId, campaignId: S.cid,
+          productId: mains[0] || undefined, title: step.item.claim.slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true });
+        const aid = generated && ((generated.assets || [])[0] || {}).id;
+        if (!aid) throw new Error("News article: " + ((generated && generated.error) || "no asset"));
+        step.assetId = hubAssetId(aid);
+      }
+      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+      await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId, assetId: step.assetId });
+    }
+    step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news" };
+    (S.children = S.children || []).push({ ...step.outcome });
+    await digestGenerateDigestSave(env, S, step, "done", { titleId: step.titleId, assetId: step.assetId });
+    return;
+  }
+  throw new Error("Unknown digest generation step: " + step.action);
+}
 // DIGEST POOL (operator 2026-10-16) — KV digest:pool:<cid> = [{ id, claim, publisher, url, date, tier, split, at, tag, status,
 // originHub, keywords, titleId, assetId, error }]. Runs merge additively: unprocessed and processed items remain available.
 // Tag ★ premium → a job builds an evergreen premium piece; tag 📰 news → a job writes an unpublished News SEO post.
@@ -14509,6 +14609,41 @@ async function titleJobsRun(env, invoke) {
       const key = "titlejob:state:" + id, S = await env.TRADES.get(key, "json");
       if (!S || !Array.isArray(S.steps)) { await drop(id); mine = null; continue; }
       const step = S.steps[S.i];
+      if (S.kind === "digest-generate") {
+        if (!step) {
+          S.status = "done"; S.done = true; S.finishedAt = Date.now(); delete S.running;
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+          const activeKey = "digest:generate:active:" + S.assetId;
+          if (await env.TRADES.get(activeKey) === id) await env.TRADES.delete(activeKey);
+          await drop(id); mine = null; continue;
+        }
+        const lease = await digestHubLease(env, S.cid, "manual:" + id + ":" + S.i, 300);
+        if (!lease) { S.status = "queued"; delete S.running; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL }); break; }
+        S.status = "running"; S.startedAt = S.startedAt || Date.now(); S.running = step.label;
+        await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+        try {
+          await digestGenerateJobStep(env, invoke, id, S, step);
+          step.ok = true; delete step.error; S.i++; S.status = "queued"; delete S.running; ran++;
+          if (S.i >= S.steps.length) {
+            S.status = "done"; S.done = true; S.finishedAt = Date.now();
+            const activeKey = "digest:generate:active:" + S.assetId;
+            if (await env.TRADES.get(activeKey) === id) await env.TRADES.delete(activeKey);
+          }
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+          if (S.done) { await drop(id); mine = null; }
+        } catch (e) {
+          const error = e.message || String(e); step.error = error; step.tries = (step.tries || 0) + 1;
+          S.errors = [...(S.errors || []), { step: S.i, label: step.label, error, try: step.tries }]; delete S.running;
+          if (step.tries >= 3) {
+            S.status = "failed"; S.error = error; S.failedStep = { index: S.i, label: step.label, error, tries: step.tries }; S.finishedAt = Date.now();
+            await digestGenerateDigestSave(env, S, step, "error", { error, assetId: step.assetId || "", titleId: step.titleId || "" }).catch(() => {});
+          } else { S.status = "queued"; S.lastError = error; }
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+          if (S.status === "failed") await drop(id);
+          mine = null; ran++; break;
+        } finally { await digestHubLeaseRelease(env, lease); }
+        continue;
+      }
       if (step) {
         S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
         try {
@@ -15199,16 +15334,22 @@ async function autoDigestRun(env, invoke) {
           S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
       if (S.step === "done" || S.step === "skip" || S.step === "error") { if(!S.manual)done[cid] = per.key; continue; }
       if(!S.manual&&!weeklyEnabled)continue; // also hold old in-flight weekly states until pilot cost is measured
-      const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
-      while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
-        const before = S.step,progress=(S.marketPlan?.cursor||0)+(S.marketPlan?.apiCursor||0);
-        try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
+      // Manual digest generation and the weekly rewrite share a per-hub lease.
+      // Whichever path owns it proceeds; the other resumes on its next runner tick.
+      const lease = await digestHubLease(env, cid, "auto:" + cid + ":" + S.period, 300);
+      if (!lease) { out.push({ cid, step: S.step, waiting: "manual digest generation" }); continue; }
+      try {
+        const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields}; // fresh once per hub on every runner invocation
+        while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
+          const before = S.step,progress=(S.marketPlan?.cursor||0)+(S.marketPlan?.apiCursor||0);
+          try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
+          if (S.step === before&&!(S.step==='market'&&(S.marketPlan.cursor+(S.marketPlan.apiCursor||0))>progress)) break;   // waiting on research; free scan progress can continue within this tick's budget
+        }
         await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
-        if (S.step === before&&!(S.step==='market'&&(S.marketPlan.cursor+(S.marketPlan.apiCursor||0))>progress)) break;   // waiting on research; free scan progress can continue within this tick's budget
-      }
-      await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
-      if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) done[cid] = per.key; S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
-      out.push({ cid, step: S.step });
+        if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) done[cid] = per.key; S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
+        out.push({ cid, step: S.step });
+      } finally { await digestHubLeaseRelease(env, lease); }
     }
     await env.TRADES.put("digest:auto:done", JSON.stringify(done));
   } finally { await env.TRADES.delete("digest:auto:lock"); }
@@ -19332,6 +19473,20 @@ Return: {
         const newsBody   = String(body.newsBody || body.newsTitle || "").trim();
         const newsSource = String(body.newsSource || "").trim();
         const newsDate   = String(body.newsDate || "").trim();
+        const digestMemoKey = body.digestJobId && body.digestItemId
+          ? "digest:news-title:" + String(body.digestJobId).replace(/[^a-z0-9_-]/gi, "").slice(0, 80) + ":" + String(body.digestItemId).replace(/[^a-z0-9_-]/gi, "").slice(0, 100) : "";
+        if (digestMemoKey) {
+          const memo = await env.TRADES.get(digestMemoKey, "json");
+          if (memo?.titleId) {
+            if (!memo.pillarWritten) {
+              const token = await signToken(HMAC_SECRET, 900000), res = await this.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "writeTitlePillar", titleId: memo.titleId, token }) }), env, ctx);
+              const written = await res.json().catch(() => ({ error: "bad response " + res.status }));
+              if (!written || written.error || written.success === false) return json({ error: "News title exists but its pillar is not finished: " + ((written && written.error) || "no response") }, 502);
+              memo.pillarWritten = true; await env.TRADES.put(digestMemoKey, JSON.stringify(memo), { expirationTtl: DIGEST_GENERATE_TTL });
+            }
+            return json({ ...memo.result, pillarWritten: true, reused: true });
+          }
+        }
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         if (!newsBody) return json({ error: "newsTitle or newsBody required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -19505,6 +19660,10 @@ Return ONLY this JSON, no other text, no markdown fences:
         const titleResult = await titleResp.json();
         if (!titleResp.ok || !titleResult.id) return json({ error: titleResult.message || "Failed to create title" }, titleResp.status || 502);
         const newNewsTitleId = titleResult.id.replace(/-/g, "");
+        if (digestMemoKey) {
+          const result = { success: true, titleId: newNewsTitleId, headline, methodId: newsMethodId, methodName: NEWS_METHOD_NAME, searchIntent, pillarWritten: false };
+          await env.TRADES.put(digestMemoKey, JSON.stringify({ titleId: newNewsTitleId, headline, methodId: newsMethodId, campaignId, productId: productId || "", pillarWritten: false, result }), { expirationTtl: DIGEST_GENERATE_TTL });
+        }
 
         // ── Write the original-article pillar draft ──
         const pillarStyle = `Today's date is ${todayIso} — every year, deadline and "this year / next year" reference must be correct for today (current year ${thisYear}). Never invent a named update, law, study, report or statistic, and never present an unannounced future event as news; if no real development is found, write a practical explainer. ` + "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
@@ -19517,7 +19676,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           useGrounding: true,
         }).catch(e => ({ error: e.message }));
 
-        return json({
+        const finalResult = {
           success: true,
           titleId: newNewsTitleId,
           headline,
@@ -19527,7 +19686,9 @@ Return ONLY this JSON, no other text, no markdown fences:
           pillarWritten: !!(newsPillarResult && newsPillarResult.success),
           pillarWords: newsPillarResult?.wordCount || null,
           pillarError: newsPillarResult?.error || null,
-        });
+        };
+        if (digestMemoKey && newsPillarResult?.success) await env.TRADES.put(digestMemoKey, JSON.stringify({ titleId: newNewsTitleId, headline, methodId: newsMethodId, campaignId, productId: productId || "", pillarWritten: true, result: finalResult }), { expirationTtl: DIGEST_GENERATE_TTL });
+        return json(finalResult);
       }
 
       // ── createDevTitles (bulk) ──
@@ -20769,9 +20930,20 @@ ${JSON.stringify(products)}`;
         const digests = [];
         for (const r of rows) {
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
-          for (const n of (d.children.news || [])) if (n.jobId && !n.assetId) { const j = await env.TRADES.get("titlejob:state:" + n.jobId, "json"); if (j) { n.assetId = j.assetId || ""; n.titleId = j.titleId || ""; n.state = j.done ? "done" : (j.errors || []).length ? "error" : "running"; } }
+          for (const group of ["premium", "free", "news"]) for (const n of (d.children[group] || [])) if (n.jobId) {
+            const j = await env.TRADES.get("titlejob:state:" + n.jobId, "json"); if (j) {
+              const step = j.steps?.[j.i] || j.steps?.[j.steps.length - 1] || {}, output = (j.children || []).find(x => x.itemId === n.itemId || x.kind === group);
+              n.assetId = n.assetId || step.assetId || output?.assetId || ""; n.titleId = n.titleId || step.titleId || output?.titleId || "";
+              n.state = j.status || (j.done ? "done" : (j.errors || []).length ? "failed" : "running");
+              if (j.failedStep?.error) n.error = j.failedStep.error;
+            }
+          }
+          const generationId = await env.TRADES.get("digest:generate:last:" + id), generationJob = generationId ? await env.TRADES.get("titlejob:state:" + generationId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
-            readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""), ...d });
+            readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
+            generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
+              total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
+              children: generationJob.children || [], startedAt: generationJob.startedAt || 0, finishedAt: generationJob.finishedAt || 0 } : null, ...d });
         }
         const run = await env.TRADES.get("digest:auto:state:" + cid, "json"), queued = ((await env.TRADES.get("digest:manual", "json")) || []).includes(cid);
         return json({ ok: true, digests, run: run && !["done", "skip", "error"].includes(run.step) ? { step: run.step, startedAt: run.startedAt } : queued ? { step: "queued" } : null,
@@ -20811,45 +20983,70 @@ ${JSON.stringify(products)}`;
       if (body.action === "digestGenerate") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const id = String(body.assetId || "").replace(/-/g, ""), cid = String(body.campaignId || "").replace(/-/g, "");
-        const key = "digest:items:" + id, d = (await env.TRADES.get(key, "json")); if (!d || !cid) return json({ error: "digest findings or campaignId missing" }, 400);
+        const key = "digest:items:" + id, d = (await env.TRADES.get(key, "json")); if (!/^[a-f0-9]{32}$/i.test(id) || !/^[a-f0-9]{32}$/i.test(cid) || !d) return json({ error: "digest findings or campaignId missing" }, 400);
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+        if (!pg?.id || pg.object === "error" || pg.archived || pg.in_trash) return json({ error: "Digest parent could not be read" }, 404);
+        if (pg.properties?.["Pillar Type"]?.select?.name !== "Digest") return json({ error: "The selected asset is not a Digest parent" }, 400);
+        const actualCid = ((pg.properties?.Campaign?.relation || [])[0]?.id || "").replace(/-/g, "");
+        if (actualCid !== cid) return json({ error: "Digest does not belong to the requested hub" }, 403);
         const titleId = ((pg.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""), dname = (pg.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest";
         const productId = ((pg.properties?.Product?.relation || [])[0]?.id || "").replace(/-/g, "");
         if (!titleId) return json({ error: "this digest has no title" }, 400);
         await hubSitesMerge(env); const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid) || {}, hubName = hub.name || "the hub";
-        const requestId=String(body.requestId||'').slice(0,100);
-        if(requestId&&d.operations?.[requestId])return json({...d.operations[requestId],children:d.children,checks:d.checks,reused:true});
-        const picked = t => d.items.filter(x => (d.checks[x.id] || {})[t]), made = { premium: null, free: null, news: [] }, errors = [], outcomes=[];
-        if(requestId){d.operations={...(d.operations||{}),[requestId]:{ok:true,pending:true,made,errors,outcomes}};await env.TRADES.put(key,JSON.stringify(d));}
+        const requestId = String(body.requestId || "").slice(0, 100), requestKey = requestId ? `digest:generate:request:${id}:${requestId}` : "";
+        if (requestKey) {
+          const priorId = await env.TRADES.get(requestKey);
+          if (priorId) { const prior = await env.TRADES.get("titlejob:state:" + priorId, "json"); if (prior) return json({ ok: true, jobId: priorId, status: prior.status, reused: true }); }
+        }
+        const activeKey = "digest:generate:active:" + id, activeId = await env.TRADES.get(activeKey);
+        if (activeId) { const active = await env.TRADES.get("titlejob:state:" + activeId, "json");
+          if (active && ["queued", "running", "failed"].includes(active.status)) return json({ ok: true, jobId: activeId, status: active.status, reused: true }); }
+        const picked = t => (d.items || []).filter(x => (d.checks?.[x.id] || {})[t]);
+        const steps = [];
+        for (const kind of ["premium", "free"]) { const items = picked(kind); if (items.length) steps.push({ action: "digestIssue", kind, label: kind === "premium" ? "Premium issue" : "Free issue", items: items.map(x => ({ ...x })) }); }
+        for (const item of picked("news")) steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item } });
+        if (!steps.length) return json({ error: "No findings are checked for generation" }, 400);
+        for (const s of steps) {
+          if (s.kind === "premium" || s.kind === "free") newsletterMethod(await writingMethodsTable(env), s.kind);
+        }
+        const jobId = "dg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        const S = { id: jobId, kind: "digest-generate", assetId: id, cid, titleId, productId, digestName: dname, slug: hub.slug || body.slug || "",
+          name: "Digest generation — " + hubName, requestId, status: "queued", steps, i: 0, children: [], errors: [], createdAt: Date.now(), at: Date.now() };
         d.children = d.children || { premium: [], free: [], news: [] };
-        for (const [kind, type, label] of [["premium", "Newsletter Paid", "Premium issue"], ["free", "Newsletter Free", "Free issue"]]) {
-          const its = picked(kind); if (!its.length) continue;
-          try {
-            newsletterMethod(await writingMethodsTable(env),kind); // fail honestly before creating an unmapped child
-            const c = await invoke({ action: "createDevAssets", titleId, title: dname, productId: productId || undefined, campaignId: cid, slug: hub.slug || body.slug || undefined, allowMulti: true, parentAssetId: id,
-              types: [{ assetType: type, label, titleOverride: `${label} — ${dname}`.slice(0, 190) }] });
-            const aid = ((c && c.created) || [])[0]?.id; if (!aid) throw new Error((c && (c.error || (c.failed || []).join(" · "))) || "not created");
-            const entry={assetId:aid,items:its.map(x=>x.id),at:new Date().toISOString(),requestId};
-            d.children[kind].push(entry);made[kind]=aid;await env.TRADES.put(key,JSON.stringify(d));
-            try{const w=await digestWriteIssue(env,kind,its,hubName,{assetId:aid,digestId:id,titleId,campaignId:cid});entry.violations=w.violations;entry.written=w.written;outcomes.push({kind,assetId:aid,written:w.written,violations:w.violations});}
-            catch(error){entry.error=error.message;entry.held=true;await env.TRADES.put(key,JSON.stringify(d));throw error;}
-            its.forEach(x => { d.checks[x.id] = { ...(d.checks[x.id] || {}), [kind]: false }; });
-          } catch (e) { errors.push(label + ": " + e.message); }
+        for (const s of steps) {
+          const group = s.kind === "news" ? "news" : s.kind;
+          d.children[group] = d.children[group] || [];
+          if (!d.children[group].some(x => x.jobId === jobId && (group !== "news" || x.itemId === s.itemId)))
+            d.children[group].push(s.kind === "news" ? { jobId, itemId: s.itemId, state: "queued", at: new Date().toISOString() } : { jobId, kind: s.kind, items: s.items.map(x => x.id), state: "queued", at: new Date().toISOString() });
         }
-        for (const it of picked("news")) {   // one News SEO post per checked item (the existing digest-item news job, left unpublished)
-          const jid = "dj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-          await env.TRADES.put("titlejob:state:" + jid, JSON.stringify({ kind: "ditem", cid, item: it, name: "📰 " + it.claim.slice(0, 80), slug: hub.slug || "", steps: [{ action: "dnews", label: "news post" }], i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
-          await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), jid]));
-          d.children.news.push({ itemId: it.id, jobId: jid, at: new Date().toISOString() }); made.news.push(jid);
-          d.checks[it.id] = { ...(d.checks[it.id] || {}), news: false };
-        }
-        if(requestId){d.operations={...(d.operations||{}),[requestId]:{ok:true,made,errors,outcomes}};d.operations=Object.fromEntries(Object.entries(d.operations).slice(-20));}
+        await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+        const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.includes(jobId)) q.push(jobId);
+        await env.TRADES.put("titlejob:queue", JSON.stringify(q));
+        await env.TRADES.put(activeKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
+        await env.TRADES.put("digest:generate:last:" + id, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
+        if (requestKey) await env.TRADES.put(requestKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
+        d.operations = { ...(d.operations || {}), ...(requestId ? { [requestId]: { ok: true, pending: true, jobId, status: "queued" } } : {}) };
+        d.operations = Object.fromEntries(Object.entries(d.operations).slice(-20));
         await env.TRADES.put(key, JSON.stringify(d));
-        if (made.news.length) ctx.waitUntil(invoke({ action: "runTitleJobs" }).catch(() => {}));
-        return json({ ok: true, made, errors, outcomes, children: d.children, checks: d.checks });
+        ctx.waitUntil(invoke({ action: "runTitleJobs" }).catch(() => {}));
+        return json({ ok: true, jobId, status: "queued", total: steps.length });
+      }
+      if (body.action === "retryDigestGenerate") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const id = String(body.jobId || "").trim(), key = "titlejob:state:" + id, S = await env.TRADES.get(key, "json");
+        if (!S || S.kind !== "digest-generate") return json({ error: "Digest generation job not found" }, 404);
+        if (S.status !== "failed") return json({ error: "Only a failed digest generation job can be retried", status: S.status }, 409);
+        const step = S.steps[S.i]; if (!step) return json({ error: "No failed step to resume" }, 409);
+        delete step.error; delete step.tries; delete S.error; delete S.failedStep; delete S.finishedAt; S.status = "queued"; S.at = Date.now();
+        await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+        const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.includes(id)) q.push(id); await env.TRADES.put("titlejob:queue", JSON.stringify(q));
+        await env.TRADES.put("digest:generate:active:" + S.assetId, id, { expirationTtl: DIGEST_GENERATE_TTL });
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        ctx.waitUntil(invoke({ action: "runTitleJobs" }).catch(() => {}));
+        return json({ ok: true, jobId: id, status: "queued", resumeAt: S.i });
       }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
@@ -20875,10 +21072,19 @@ ${JSON.stringify(products)}`;
             if (!fin) queue.push(cid);
             states[cid] = { name: s.name, done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
           out.digest = { queue, states }; }
-        { const queue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {};
+        { const allQueue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {}, genStates = {}, genQueue = [];
           for (const key of (await env.TRADES.list({ prefix: "titlejob:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s) continue;
-            states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, kind: s.kind || "title", productId: s.productId || "", done: !!s.done, error: (s.errors || []).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
-          out.titles = { queue, states }; }
+            if (s.kind === "digest-generate") {
+              const id = key.slice("titlejob:state:".length), step = s.steps?.[s.i], terminal = ["done", "failed"].includes(s.status), at = s.finishedAt || s.startedAt || s.createdAt || 0;
+              if (!terminal) genQueue.push(id);
+              if (!terminal && allQueue.includes(id) || terminal && at > Date.now() - 6 * 3600e3)
+                genStates[id] = { name: s.name || "Digest generation", slug: s.slug || "", cid: s.cid || "", assetId: s.assetId || "", kind: s.kind, status: s.status || "queued",
+                  done: terminal && s.status === "done", error: s.error || "", failedStep: s.failedStep || null, i: s.i || 0, total: (s.steps || []).length,
+                  running: s.running || (step?.label || ""), children: s.children || [], at };
+              continue;
+            }
+            states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, kind: s.kind || "title", productId: s.productId || "", done: !!s.done, error: typeof s.error === "string" ? s.error : (s.errors || []).map(x => typeof x === "string" ? x : `${x.label || "step"}: ${x.error || "failed"}`).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
+          const queue = allQueue.filter(id => states[id]); out.titles = { queue, states }; out.digestGenerate = { queue: genQueue, states: genStates }; }
         return json({ ok: true, jobs: out, at: Date.now() });
       }
       if (body.action === "getHubMainOfferings") {   // the hub's main offerings (KV hub:mainproduct:<cid>) — for the ★ toggles
