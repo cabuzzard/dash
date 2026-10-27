@@ -1233,8 +1233,8 @@ async function handleStudio(env, body) {
 }
 // ── Hub news posts (2026-10-10) ── one "Blog - SEO - News" post per hub, built off one of the hub's MAIN products
 // (rotating through them): createNewsBlogTitle (headline + grounded news-analysis pillar, the product as the lead) →
-// generateTitleAssets (SEO post branch: writes the article and publishes it to web/hub/<slug>/blog/) → Published +
-// Hub Section News → Grok blog thumbnail (generateBlogPostThumbnail → saveOfferImage, which republishes the post).
+// generateTitleAssets (SEO post branch: writes the article at Development) →
+// explicit operator publishing → Hub Section News → thumbnail generation.
 // writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick, which keeps a per-hub, randomised
 // schedule so posting never looks machine-timed (operator 2026-10-10). Each hub has its own next-post time:
 //   build-up (fewer than HUB_NEWS_TARGET published news posts): next post 3-10 h after the last, at a random minute;
@@ -1265,7 +1265,7 @@ async function hubNewsCount(env, cid) {
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const rows = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
   return rows.filter(r => { const t = r.properties?.["Asset Type"]?.select?.name || "", st = r.properties?.["Asset Status"]?.select?.name || "";
-    return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^(publish|review)/i.test(st); }).length;
+    return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^(development|publish|review)/i.test(st); }).length;
 }
 // Lateral news search (operator 2026-10-23: "expand laterally through the hub keywords"): when no main product finds a readable
 // story, try the hub's OTHER placed keyword topics, each with its own name + Cluster Keywords. The post goes on the topic's own
@@ -1360,26 +1360,16 @@ async function writeHubNewsPost(env, cid, opts = {}) {
       return { skipped: true, reason: "the article never named its news source — moved to Planning, not published", hub: hub.name, headline: t.headline, assetId };
     }
   }
-  await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
-  // generateTitleAssets pushed the page while the asset was still at Development, and its own hub refresh pulled it straight back
-  // off (2026-10-23: 19 news posts Published but 404). Route it explicitly now it is Published + News; already-live is fine.
-  let routedUrl = "";
-  { const rp = await selfAction(env, "publishHubSectionAsset", { assetId, section: "news", campaignId: cid }).catch(e => ({ error: e.message }));
-    if (rp && rp.liveUrl) routedUrl = rp.liveUrl; else if (rp && rp.error && !/no longer eligible/i.test(rp.error)) console.error("news route:", rp.error); }
-  try { await ivCreateForAsset(env, { assetId, titleId: t.titleId, own: "Blog - SEO - News", direction: "Optional enrichment interview for a published news post" }); } catch (e) { console.error("news interview:", e.message); }   // optional, later — never blocks the post
-  let liveUrl = routedUrl || g.liveUrl || "";
-  if (!g.sitePublished) {   // the blog push failed (e.g. a GitHub write race) — republish this hub's unpublished posts
-    const bf = await selfAction(env, "backfillHubBlog", { campaignId: cid }).catch(() => null);
-    liveUrl = liveUrl || (bf && !bf.error ? "(republished via backfill)" : "");
-  }
+  try { await ivCreateForAsset(env, { assetId, titleId: t.titleId, own: "Blog - SEO - News", direction: "Optional enrichment interview for a news post" }); } catch (e) { console.error("news interview:", e.message); }
+  const liveUrl = "";
   let thumb = false, thumbError = "";
   const im = await selfAction(env, "generateBlogPostThumbnail", { assetId, codexDesign: true });   // same engine as the Publish modal button (Codex Design spec + approved recipe)
   if (im && im.imageUrl) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
-  const issue = opts.noIssue ? { skipped: true } : await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "", digest: digestBlock }).catch(e => ({ error: e.message }));
-  return { ok: true, hub: hub.name, product: product.name, topic: product.topic || "", headline: t.headline, titleId: t.titleId, assetId, liveUrl, story: storyUsed ? { title: storyUsed.title, publisher: storyUsed.publisher, url: storyUsed.url, date: storyUsed.date, via: storyUsed.via } : null, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
+  const issue = opts.noIssue ? { skipped: true } : await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: "", digest: digestBlock }).catch(e => ({ error: e.message }));
+  return { ok: true, hub: hub.name, product: product.name, topic: product.topic || "", headline: t.headline, titleId: t.titleId, assetId, liveUrl, published: false, status: "Development", story: storyUsed ? { title: storyUsed.title, publisher: storyUsed.publisher, url: storyUsed.url, date: storyUsed.date, via: storyUsed.via } : null, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
 }
 // rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
 // → the title renamed + its pillar rewritten (grounded) → refreshBlogAssetFromPillar republishes under the existing slug →
@@ -1961,7 +1951,7 @@ async function ivCronTick(env) {
 // a "Topical Post" asset at Planning in the hub's Articles section — so it shows in care-gap and the build checklist.
 // ✍ Write / ⏱ Queue (cron) → writeTopicalPost: the first run writes the asset's 5-question SHORT interview and waits;
 // once it's Finished, the article is written from the idea + the offering's interview + the short interview (rewritten
-// for SEO) + hub audience + voice, saved to the asset body, Asset Status → Review. Publishing stays the operator's call.
+// for SEO) + hub audience + voice, saved to the asset body, Asset Status → Development. Publishing stays the operator's call.
 const TOPICAL_TYPE = "Topical Post";
 async function createTopicalAssets(env, ideas, opts = {}) {
   await hubSitesMerge(env);
@@ -2403,7 +2393,7 @@ async function topicalSaveWriting(env, input, text, extraProps = {}) {
     if (!r.ok) { const d = await r.json(); throw new Error(d.message || 'Could not save the writing'); }
   }
   const keepPublished = state.page.properties['Asset Status']?.select?.name === 'Published';
-  const properties = { Body: { rich_text: ivRt(text) }, 'Asset Status': { select: { name: keepPublished ? 'Published' : 'Review' } },
+  const properties = { Body: { rich_text: ivRt(text) }, 'Asset Status': { select: { name: keepPublished ? 'Published' : 'Development' } },
     'Interview Sync': { select: { name: 'In Sync' } }, ...extraProps };
   if (skipInterview || state.page.properties[TOPICAL_REWRITE_PROP]) properties[TOPICAL_REWRITE_PROP] = { checkbox: skipInterview || (keepPublished && !!state.page.properties[TOPICAL_REWRITE_PROP]?.checkbox) };
   const r = await fetch(`https://api.notion.com/v1/pages/${ivDash(aid)}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ properties }) });
@@ -2414,7 +2404,7 @@ async function topicalSaveWriting(env, input, text, extraProps = {}) {
     const del = await fetch(`https://api.notion.com/v1/blocks/${block.id}`, { method: 'DELETE', headers: hdr });
     if (!del.ok) cleanupWarning = 'Writing saved; some previous body blocks need cleanup.';
   }
-  return { ok: true, words: text.split(/\s+/).length, status: keepPublished ? 'Published' : 'Review', writtenWithoutInterview: !!properties[TOPICAL_REWRITE_PROP]?.checkbox, ...(cleanupWarning ? { warning: cleanupWarning } : {}) };
+  return { ok: true, words: text.split(/\s+/).length, status: keepPublished ? 'Published' : 'Development', writtenWithoutInterview: !!properties[TOPICAL_REWRITE_PROP]?.checkbox, ...(cleanupWarning ? { warning: cleanupWarning } : {}) };
 }
 async function writeTopicalPost(env, assetId, options = {}) {
   const input = await topicalWriteInputs(env, assetId, options);
@@ -2706,11 +2696,12 @@ Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catc
   if(assetId){
     const page=await ivPage(assetId),p=page.properties||{};
     if(ivRid(p,'Campaign')!==cid||ivRid(p,'Content Strategy')!==hubAssetId(titleId))throw new Error('Newsletter target mismatch');
-    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(md)},'Platform Title':{rich_text:ivRt(it.subject)},'Asset Status':{select:{name:'Review'}}},children);
+    const status = p['Asset Status']?.select?.name === 'Published' ? 'Published' : 'Development';
+    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(md)},'Platform Title':{rich_text:ivRt(it.subject)},'Asset Status':{select:{name:status}}},children);
     return {ok:true,assetId:hubAssetId(page.id),subject:it.subject}; // write-only: no mailing campaign/draft side effects
   }
   const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
-    "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Review" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
+    "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Development" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
     "Body": { rich_text: rt(md) }, "Platform Title": { rich_text: rt(it.subject) }, "Content Strategy": { relation: [{ id: nd(titleId) }] }, "Campaign": { relation: [{ id: nd(cid) }] },
     "Capture Form": { rich_text: rt(`${hub.slug}/main · ActiveCampaign · tag: lead-hub-${hub.slug}`) }, "Platform Name": { select: { name: "Email" } } }, children }) }).then(r => r.json()).catch(e => ({ message: e.message }));
   if (!cr.id) return { error: "asset: " + (cr.message || "create failed") };
@@ -4271,8 +4262,8 @@ async function hfFinalize(env, assetId) {
   const key = `videos/${aid}/hf-reel-${Date.now().toString(36)}.mp4`;
   await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } });
   const videoUrl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
-  await hfAssetPatch(aid, await noDemoteStatus(aid, { "Video URL": { url: videoUrl }, "Asset Status": { select: { name: "Publish" } },
-    ...hfRenderNote(`done ${new Date().toISOString().slice(0, 16)} — ${job.renderId}`) }));
+  await hfAssetPatch(aid, { "Video URL": { url: videoUrl },
+    ...hfRenderNote(`done ${new Date().toISOString().slice(0, 16)} — ${job.renderId}`) });
   await env.TRADES.put("hf:asset:" + aid, JSON.stringify({ ...job, status: "done", videoUrl }));
   return { status: "done", videoUrl };
 }
@@ -4817,7 +4808,7 @@ async function createAssetComponentPage(hdr, { parentAssetId, assetType, title, 
   const props = {
     "Asset Title": { title: [{ type: "text", text: { content: title || (assetType + " — " + (sp["Asset Title"]?.title?.map(x=>x.plain_text).join("") || "Untitled")) } }] },
     "Asset Type": { select: { name: assetType } },
-    "Asset Status": { select: { name: sp["Asset Status"]?.select?.name || "Publish" } },
+    "Asset Status": { select: { name: "Development" } },
     "Status": { select: { name: "Draft" } },
     "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
   };
@@ -13456,7 +13447,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     const { post, titleId, campaignId, productId, idea } = state;
     const assetProps = {
       "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
-      "Asset Status": { select: { name: "Publish" } },
+      "Asset Status": { select: { name: "Development" } },
       "Asset Type":   { select: { name: methodName } },
       "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
       "Content Strategy": { relation: [{ id: dash(titleId) }] },
@@ -13500,27 +13491,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
   }
 
   if (job.step === "publish") {
-    const { post, sections, isSales, campaignId, assetId, idea, titleId } = state;
-    let siteResult = { published: false };
-    try {
-      siteResult = await publishSeoPostToLiveSite({
-        env, hdr, dash, campaignId, spec: null,
-        seoTitle: post.seoTitle, workingTitle: idea,
-        intro: post.intro, sections, conclusion: post.conclusion, assetId,
-        sub: isSales ? "sales" : "blog", productId: state.productId,
-      });
-      if (siteResult.published && siteResult.liveUrl) {
-        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
-        }).catch(() => {});
-      }
-    } catch (e) { siteResult = { published: false, error: e.message }; }
+    const { sections, assetId, titleId } = state;
     return {
       step: "done", state, done: true,
       result: {
         success: true, titleId, assetId, sectionCount: sections.length,
-        sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+        sitePublished: false, liveUrl: null, siteDeferred: "Generation leaves assets at Development; publish explicitly from the asset modal.",
       },
     };
   }
@@ -13764,10 +13740,11 @@ ${text.slice(0, 9000)}` }] }) });
   if(options.assetId){
     const page=await ivPage(options.assetId),p=page.properties||{};
     if(ivRid(p,'Parent Asset')!==hubAssetId(seoPostId))throw new Error('Offsite source mismatch');
-    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(out.body)},'Platform Title':{rich_text:ivRt(out.headline)},'Asset Status':{select:{name:'Review'}}},topicalMdBlocks(out.body));
+    const status = p['Asset Status']?.select?.name === 'Published' ? 'Published' : 'Development';
+    await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(out.body)},'Platform Title':{rich_text:ivRt(out.headline)},'Asset Status':{select:{name:status}}},topicalMdBlocks(out.body));
     return {ok:true,assetId:hubAssetId(page.id),words:String(out.body).split(/\s+/).length};
   }
-  const props = { "Asset Title": { title: ivRt(String(out.headline).slice(0, 200)) }, "Asset Type": { select: { name: "Off-site Article" } }, "Asset Status": { select: { name: "Review" } },
+  const props = { "Asset Title": { title: ivRt(String(out.headline).slice(0, 200)) }, "Asset Type": { select: { name: "Off-site Article" } }, "Asset Status": { select: { name: "Development" } },
     "Asset Class": { select: { name: "Publishable" } }, "Platform Name": { select: { name: plat === "Medium" ? "Other" : plat } }, "Parent Asset": { relation: [{ id: ivDash(seoPostId) }] },
     "Body": { rich_text: ivRt(String(out.body).slice(0, 1990)) }, ...(out.subtitle ? { "Platform Title": { rich_text: ivRt(String(out.subtitle).slice(0, 300)) } } : {}),
     ...(titleId ? { "Content Strategy": { relation: [{ id: ivDash(titleId) }] } } : {}), ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}), ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}),
@@ -13792,7 +13769,7 @@ async function stampParentAsset(titleId, parentId, sinceMs) {
 // ══ PARENT ASSETS (2026-10-14) ══ Title → pillar (from research) → PARENT asset per type (Asset Class Pillar: Digest,
 // Long Form Topical, Long Form Sales…) written from the title's pillar + its own interview (tier "Interview") → child
 // assets written from the parent. Stored as a "Pillar Content" section on the parent asset page so extractPillarContent
-// reads it (children via PILLAR_SOURCE). Asset Status → Review, Pillar Readiness → Ready.
+// reads it (children via PILLAR_SOURCE). Asset Status → Development, Pillar Readiness → Ready.
 const PARENT_BRIEFS = {
   "Long Form Topical": "an informational long-form piece on this title's sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people ask; teach, don't sell.",
   "Long Form Sales": "the sales piece for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader's awareness level; never hype.",
@@ -13845,11 +13822,10 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
     if (!w.ok) { const e = await w.json().catch(() => ({})); throw new Error(e.message || "could not save the parent"); }
   }
   await fetch(`https://api.notion.com/v1/pages/${ivDash(assetId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
-    // a parent is an internal piece: written = done (operator 2026-10-15) → Published + Publishing Date, so the checklist
-    // counts it; Hub Section Unlisted so it can never show on the live hub
+    // A generated parent stays at Development; readiness is tracked separately.
+    // Hub Section Unlisted keeps it off the live hub.
     "Pillar Readiness": { select: { name: "Ready" } }, "Pillar Sync": { select: { name: "In Sync" } }, "Interview Sync": { select: { name: "In Sync" } },
-    "Asset Status": { select: { name: "Published" } }, "Hub Section": { select: { name: "Unlisted" } } } }) }).catch(() => {});
-  await stampPublishingDate(ivDash(assetId)).catch(() => {});
+    "Asset Status": { select: { name: "Development" } }, "Hub Section": { select: { name: "Unlisted" } } } }) }).catch(() => {});
   return { success: true, words: text.split(/\s+/).length };
 }
 
@@ -14781,7 +14757,7 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
 // ══ AUTO DIGEST (operator 2026-10-16) ══ every hub, ONCE A WEEK (Sunday night Pacific, for Monday): ONE digest covering all of
 // the hub's ★ main offerings — "a true digest of everything that is important". Same pipeline as the Digest modal:
 // research (Gemini + Perplexity → rank) → a dated title in Main, product = the first main offering → the Digest pillar
-// from the ranked sources → a Digest PARENT asset, written and left UNPUBLISHED (Review) so it shows in the checklist
+// from the ranked sources → a Digest PARENT asset, written and left at Development (unpublished)
 // counts. Topical material is the operator's. KV digest:auto:state:<cid> (resumable), digest:auto:done = {cid: period}.
 const AD_DIGEST_STYLE = "PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).";
 // WEEKLY RESEARCH MEMORY — worksheet sync 2026-10-23. Never expires, never deletes findings.
@@ -14932,7 +14908,7 @@ async function digestMemoryTest(env,cid) {const m=await digestMemory(env,cid);re
 async function productNotesTest(env,cid) {const [topics,notes]=await Promise.all([productNotesTopics(env,cid),productNotesRead(env,cid)]);return {campaignId:cid,databaseId:await productNotesDb(env),topics:topics.map(t=>({...t,notes:notes.filter(n=>n.topicId===t.id)})),staleCount:notes.filter(n=>!marketFresh(n)&&n.status!=='Retired').length,gaps:marketGaps(topics,notes)};}
 async function digestVerifyAsset(env,id,title) {
   const page=await newsletterNotion(env,'pages/'+kwDashId(id));
-  if(hubRichText(page.properties?.['Asset Title']?.title)!==title||page.properties?.['Asset Status']?.select?.name!=='Review'||page.properties?.['Pillar Readiness']?.select?.name!=='Ready')throw new Error('Digest asset readback differs');
+  if(hubRichText(page.properties?.['Asset Title']?.title)!==title||page.properties?.['Asset Status']?.select?.name!=='Development'||page.properties?.['Pillar Readiness']?.select?.name!=='Ready')throw new Error('Digest asset readback differs');
   return true;
 }
 async function productFromMarketNote(env,cid,noteId) {
@@ -15186,7 +15162,7 @@ async function adStep(env, cid, S, invoke) {
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
     await digestItemsSave(env, S.assetId, w.sources);   // its findings, premium / free, for the Digest section
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
-      "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
+      "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
@@ -15593,7 +15569,7 @@ export default {
           const nh = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
           const { url: pageUrl, page } = await lfLoadAsset(aid);   // "Video URL" already exists (generateLongformScript ensures it)
           const props = { "Video URL": { url: vurl } };
-          if ((page.properties["Asset Status"]?.select?.name || "") === "Development") props["Asset Status"] = { select: { name: "Publish" } };
+          // Render completion stores the video only; it is not an approval to publish.
           const pr = await fetch(pageUrl, { method: "PATCH", headers: { ...nh, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
           if (!pr.ok) console.error("lfdone patch", aid, (await pr.text()).slice(0, 300));
           await setSt({ status: "done", url: vurl, size: len, msg: pr.ok ? "" : "video stored but the asset's Video URL didn't save" });
@@ -16521,7 +16497,7 @@ export default {
             if (!cr.id) { results.push({ hub: h.slug, orphan: slug, error: "title create failed" }); continue; }
             const aProps = {
               "Asset Title": { title: [{ text: { content: String(oj.name).slice(0, 200) } }] },
-              "Asset Status": { select: { name: "Publish" } },
+              "Asset Status": { select: { name: "Development" } },
               "Asset Type": { select: { name: "Offer – Content Hub" } },
               "Content Hub": { select: { name: h.slug } },
               "Campaign": { relation: [{ id: dashId(h.campaignId) }] },
@@ -21143,7 +21119,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
         await ensureDbRichTextProperty(hdr, ASSETS_DB, "Capture Form");
         const assetProps = {
           "Asset Title":      { title: [{ type: "text", text: { content: titleText.slice(0, 200) } }] },
-          "Asset Status":     { select: { name: "Publish" } },
+          "Asset Status":     { select: { name: "Development" } },
           "Asset Type":       { select: { name: methodName.slice(0, 100) } },
           "Status":           { select: { name: "Ready" } },
           "Body":             { rich_text: [{ type: "text", text: { content: sequenceMd.slice(0, 2000) } }] },
@@ -21397,7 +21373,7 @@ Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML
             const pp = await fetch(`https://api.notion.com/v1/pages/${dash(parentAssetId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
             const rel = k => (pp?.properties?.[k]?.relation || []).map(r => ({ id: r.id }));
             const props = { "Asset Title": { title: [{ type: "text", text: { content: String(email.subject).slice(0, 200) } }] }, "Asset Type": { select: { name: "Newsletter Free" } },
-              "Asset Status": { select: { name: "Review" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] }, "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
+        "Asset Status": { select: { name: "Development" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] }, "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
               "Body": { rich_text: [{ type: "text", text: { content: `${email.subject}\n${email.preheader || ""}\n\nActiveCampaign draft — campaign ${campData.campaign.id}, message ${messageId}. Review and send it in ActiveCampaign.`.slice(0, 1990) } }] },
               ...(rel("Campaign").length ? { "Campaign": { relation: rel("Campaign") } } : resolvedCampaignId ? { "Campaign": { relation: [{ id: dash(resolvedCampaignId) }] } } : {}),
               ...(rel("Product").length ? { "Product": { relation: rel("Product") } } : {}), ...(await assetMethodProp(null, "Newsletter Free")) };
@@ -33559,11 +33535,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if ((isNewsPost ? sections.length < 3 : sections.length !== 3) || sections.some(x=>!String(x.body||'').trim())) return json({error:'article came back short — not saved'},502);   // news v2: 5 named sections
           validateBlogArticle([post.intro,...sections.map(x=>x.body),post.conclusion].join(' '),sections.length,isNewsPost?300:600);
 
-          // Normal SEO generation enters Publish and writes to the live site.
-          // Digest news passes developmentOnly so the operator reviews it first.
           const assetProps = {
             "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
-            "Asset Status": { select: { name: body.developmentOnly ? "Development" : "Publish" } },
+            "Asset Status": { select: { name: reuseSeoPage?.properties?.["Asset Status"]?.select?.name === "Published" ? "Published" : "Development" } },
             "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
             "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
@@ -33618,41 +33592,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
           // wherever the operator put them, independent of their assets
           // (2026-09-11).
 
-          // Push normal SEO generations live to the campaign's own site under a "blog" section —
-          // created there the first time a campaign publishes one, appended
-          // to after. Best-effort: a publish failure (no GITHUB_TOKEN, no
-          // resolvable deploy path, GitHub API error) never fails the asset
-          // itself — the Notion asset and its Post Body are the source of
-          // truth either way, this just mirrors the finished post to the
-          // public site. Styled from the campaign's own Design Spec if one
-          // is attached, falling back to the shared editorial default.
-          let siteResult = { published: false };
-          if(!body.writeOnly&&!body.developmentOnly)try {
-            let spec = null;
-            if (campaignId) {
-              const campPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(campaignId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
-              const specId = campPage?.properties?.["Design Spec"]?.relation?.[0]?.id || null;
-              if (specId) {
-                const specPage = await fetch(`https://api.notion.com/v1/pages/${specId}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
-                if (specPage?.properties) spec = dsFromPage(specPage);
-              }
-            }
-            siteResult = await publishSeoPostToLiveSite({
-              env, hdr: dsHdr, dash: dsDash, campaignId, spec,
-              seoTitle: post.seoTitle, workingTitle: title,
-              intro: post.intro, sections, conclusion: post.conclusion, assetId,
-            });
-            if (siteResult.published && siteResult.liveUrl) {
-              await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
-                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
-              }).catch(() => {});
-            }
-          } catch (e) { siteResult = { published: false, error: e.message }; }
-
           return json({
             success: true, created: reuseSeoPage ? 0 : 1, rewritten: !!reuseSeoPage, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
-            sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+            sitePublished: false, liveUrl: null, siteDeferred: "Generated assets remain at Development until explicitly published.",
           });
         }
 
@@ -34310,7 +34252,7 @@ Return ONLY this JSON object:
 
           const assetProps = {
             "Asset Title":  { title: [{ text: { content: String(title).slice(0, 200) } }] },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
             "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
             "Body":         { rich_text: [{ text: { content: String(offer.promise || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
@@ -34616,7 +34558,7 @@ Produce all of this by calling the submit_article tool — do not include any of
           const bannerCopyLine = `BANNER:: ${String(article.bannerHeadline || headline).slice(0, 120).replace(/\n/g, ' / ')} | ${String(article.bannerAccent || '').slice(0, 80)} | ${String(article.bannerSubhead || article.hook || '').slice(0, 200)}`;
           const assetProps = {
             "Asset Title":  { title: [{ type: "text", text: { content: headline } }] },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
             "Asset Type":   { select: { name: String(assetType).slice(0, 100) } },
             "Body":         { rich_text: [{ type: "text", text: { content: String(article.hook || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
@@ -34748,7 +34690,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           const seqAssetTitle = (title + " — " + purpose + " sequence").slice(0, 200);
           const seqProps = {
             "Asset Title":      { title: [{ type: "text", text: { content: seqAssetTitle } }] },
-            "Asset Status":     { select: { name: "Publish" } },
+            "Asset Status":     { select: { name: "Development" } },
             "Asset Type":       { select: { name: assetType.slice(0, 100) } },
             "Status":           { select: { name: "Ready" } },
             "Body":             { rich_text: [{ type: "text", text: { content: sequenceMd.slice(0, 2000) } }] },
@@ -35116,7 +35058,7 @@ Produce all of this by calling the submit_table tool — do not include any of i
           const assetProps = {
             "Asset Title":      { title: [{ type: "text", text: { content: String(title).slice(0, 200) } }] },
             "Platform Title":   { rich_text: [{ type: "text", text: { content: String(title).slice(0, 1990) } }] },
-            "Asset Status":     { select: { name: "Publish" } },
+            "Asset Status":     { select: { name: "Development" } },
             "Asset Type":       { select: { name: String(assetType).slice(0, 100) } },
             "Body":             { rich_text: [{ type: "text", text: { content: markdownTable.slice(0, 1990) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
@@ -35327,7 +35269,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           const passed = !!(grade && grade.passed);
           const properties = {
             "Asset Title":  { title: [{ text: { content: String(current.assetTitle || "Untitled option").slice(0, 200) } }] },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
             "Body":         { rich_text: [{ text: { content: String(current.body || "").slice(0, 2000) } }] },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
             "Status":       { select: { name: passed ? "Ready" : "Needs Revision" } },
@@ -36178,7 +36120,8 @@ Write only the content itself. No preamble, no meta-commentary, no "Here's the c
         if(body.assetId){
           const page=await ivPage(body.assetId);if(ivRid(page.properties||{},'Content Strategy')!==hubAssetId(titleId))return json({error:'Asset/title mismatch'},400);
           if(!content.trim())return json({error:'No content came back'},502);
-          await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(content)},'Asset Status':{select:{name:'Review'}}},topicalMdBlocks(content));
+          const status=page.properties?.['Asset Status']?.select?.name==='Published'?'Published':'Development';
+          await saveExistingAssetWriting(page,{Body:{rich_text:ivRt(content)},'Asset Status':{select:{name:status}}},topicalMdBlocks(content));
           return json({ok:true,assetId:hubAssetId(page.id),chars:content.length});
         }
         // Convert content to Notion paragraph blocks (split on double newlines for paragraphs)
@@ -36886,7 +36829,7 @@ Rules:
 
         const properties = {
           "Asset Title": { title: [{ text: { content: assetTitle } }] },
-          "Asset Status": { select: { name: assetStatus || "Publish" } },
+          "Asset Status": { select: { name: "Development" } },
           "Body": { rich_text: [{ text: { content: (content || "").slice(0, 2000) } }] },
           "Content Strategy": { relation: [{ id: dash(titleId) }] },
           "Asset Class": { select: { name: klass } },
@@ -37605,15 +37548,12 @@ Portrait Instagram post, ready to publish.`;
         if (!put.ok) { const r = await put.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || put.status}` }, 500); }
         const imageUrl = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
 
-        // Same closing move as the Canva path's saveSinglePostImage: this IS
-        // a finished post now, so flip Asset Status to Publish — that status
-        // is what actually puts the asset on a path to publishing (the row's
-        // Publish modal, the publish queue, etc). Leaving it un-flipped was
-        // the original bug here: a real image with no forward path.
+        // Save the generated image only. Status remains unchanged at Development
+        // until the operator explicitly publishes the asset.
         try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" } }); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: await noDemoteStatus(assetId, { "Post Image": { url: imageUrl }, "Asset Status": { select: { name: "Publish" } } }) }),
+          body: JSON.stringify({ properties: { "Post Image": { url: imageUrl } } }),
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Post Image" }, 500); }
 
@@ -38325,7 +38265,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
           ...items.map(it => JSON.stringify(it, null, 0)),
           ``,
           `Box budgets: Headline Primary ~25-35 chars / 2-3 lines / no word >~9 chars; Headline Accent ~15-25 chars / <=2 lines; Primary+Accent <=~4 lines total; Body <=~110 chars (may be empty).`,
-          `Per asset: copy-design its template (NEVER edit the original) -> edit-design replace "Headline Primary" / "Headline Accent" / "Body" -> update_title to the asset title -> verify the thumbnail, REWRITE (not just trim) to fit the box AND sound like the reader -> commit -> export-design PNG -> POST {"action":"saveSinglePostImage","token":"<PIN session token>","assetId":"<id>","fileData":"<base64 png>","designUrl":"<canva edit url>","altText":"<alt>"} which hosts the PNG on Post Image, sets Design Link, and flips Asset Status to Publish.`,
+          `Per asset: copy-design its template (NEVER edit the original) -> edit-design replace "Headline Primary" / "Headline Accent" / "Body" -> update_title to the asset title -> verify the thumbnail, REWRITE (not just trim) to fit the box AND sound like the reader -> commit -> export-design PNG -> POST {"action":"saveSinglePostImage","token":"<PIN session token>","assetId":"<id>","fileData":"<base64 png>","designUrl":"<canva edit url>","altText":"<alt>"} which hosts the PNG on Post Image and sets Design Link; it leaves Asset Status unchanged.`,
         ].filter(Boolean).join("\n");
         return json({ success: true, handoffPrompt, assetCount: items.length });
       }
@@ -38378,7 +38318,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
         const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
         try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" }, "Design Link": { type: "url" }, "Alt Text": { type: "rich_text" } }); } catch (e) {}
-        const props = await noDemoteStatus(assetId, { "Post Image": { url }, "Asset Status": { select: { name: "Publish" } } });
+        const props = { "Post Image": { url } };
         if (designUrl && /^https:\/\//i.test(String(designUrl))) props["Design Link"] = { url: String(designUrl) };
         if (body.altText) props["Alt Text"] = { rich_text: [{ text: { content: String(body.altText).slice(0, 1990) } }] };
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -45456,20 +45396,15 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
 
         const previewUrl = `https://cabuzzard.github.io/dash/${basePath}/`;
 
-        // ── Step 6: upsert the Assets DB record + move the title to Review ──
+        // ── Step 6: upsert the Assets DB record; generated assets stay Development ──
         // assetQuery/existingAsset already looked up earlier (see Canva
         // Link comment above) — reused here rather than queried twice.
 
         const assetProps = {
           "Design Link": { url: previewUrl },
           "Status": { select: { name: "Ready" } },
-          // "Publish" (not "Development") — the carousel has actually
-          // finished rendering here, so per the operator's Asset Status
-          // vocabulary this is "fully generated, ready to compile/publish,"
-          // not still in progress. "Published" is the separate, later,
-          // manually-set true-live state. This is what the restructured
-          // Publish/Assets section (frontend, grouped by title) gates on.
-          "Asset Status": { select: { name: "Publish" } },
+          // Rendering completion does not publish; the asset remains Development.
+          "Asset Status": { select: { name: "Development" } },
           "Body": { rich_text: [{ type: "text", text: { content: caption.slice(0, 1990) } }] },
           "Notes": { rich_text: [{ type: "text", text: { content: hashtags.slice(0, 1990) } }] },
           "Platform Name": { select: { name: platformName || "Instagram" } },
@@ -46410,7 +46345,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
             "Notes": { rich_text: [{ type: "text", text: { content: (effectivePresenter || parsed.presenterCharacter || "").slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
           };
           Object.assign(assetProps, await assetMethodProp(body.methodId, "avatar video"));
           if (existingAvatarAsset) {
@@ -46663,7 +46598,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
             "Notes": { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
           };
           Object.assign(assetProps, await assetMethodProp(body.methodId, "text video"));
           // Shared design reference (same brief for the whole batch) onto
@@ -52039,7 +51974,7 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
 
         const assetProps = {
           "Asset Title": { title: cleanName ? [{ text: { content: cleanName } }] : [] },
-          "Asset Status": { select: { name: "Publish" } },
+          "Asset Status": { select: { name: "Development" } },
           "Asset Type": { select: { name: "Project Experience" } },
           "Content Strategy": { relation: [{ id: dash(titleId) }] },
         };
@@ -52577,7 +52512,7 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
             "Campaign": { relation: [{ id: dashId(campaignId) }] },
             "Body": { rich_text: chunkedRichText(fullText) },
             "Status": { select: { name: "Ready" } },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
           };
           Object.assign(assetProps, await assetMethodProp(body.methodId, assetType));
           const createResp = await fetch("https://api.notion.com/v1/pages", {
@@ -52689,7 +52624,7 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
         const summaryLine = `${ranked.length} live Upwork listing${ranked.length === 1 ? '' : 's'} matching: ${searchTerms.join(', ')}`.slice(0, 1990);
         const assetProps = {
           "Asset Title":  { title: [{ text: { content: `Upwork Search — ${titleName}`.slice(0, 200) } }] },
-          "Asset Status": { select: { name: "Publish" } },
+          "Asset Status": { select: { name: "Development" } },
           "Asset Type":   { select: { name: "upwork search" } },
           "Body":         { rich_text: [{ text: { content: summaryLine } }] },
           "Content Strategy": { relation: [{ id: dashId(titleId) }] },
@@ -52939,7 +52874,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Body": { rich_text: [{ type: "text", text: { content: parsed.voiceoverScript.slice(0, 1990) } }] },
             "Notes": { rich_text: [{ type: "text", text: { content: (parsed.visualMetaphor || '').slice(0, 1990) } }] },
             "Status": { select: { name: "Ready" } },
-            "Asset Status": { select: { name: "Publish" } },
+            "Asset Status": { select: { name: "Development" } },
           };
           Object.assign(assetProps, await assetMethodProp(body.methodId, "Explainer Video"));
           if (existingExplainerAsset) {
@@ -53178,7 +53113,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           "Hashtags":     { rich_text: [{ type: "text", text: { content: hashtagsLine.slice(0, 1990) } }] },
           "Post Caption": { rich_text: [{ type: "text", text: { content: String(parsed.postCaption || '').slice(0, 1990) } }] },
           "DALL-E Prompt":{ rich_text: [{ type: "text", text: { content: String(parsed.dallePrompt || '').slice(0, 1990) } }] },
-          "Asset Status": { select: { name: "Publish" } },
+          "Asset Status": { select: { name: "Development" } },
         };
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
         if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
@@ -53372,13 +53307,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
           "Craigslist Listing":     { rich_text: [{ type: "text", text: { content: craigslistBlock.slice(0, 1990) } }] },
           "FB Marketplace Listing": { rich_text: [{ type: "text", text: { content: fbBlock.slice(0, 1990) } }] },
           // Same as every other method (T Shirt, Carousel, Text Video, ...):
-          // generation itself lands the asset in "Publish" status, which is
-          // what makes it show up in the Publish Assets section at all
-          // (gated on PUBLISH_GATE client-side) — that section is exactly
-          // where the operator uploads photos, fills in the Etsy-required
-          // fields, and hits Publish, not somewhere it should be hidden
-          // from until manually finished elsewhere first.
-          "Asset Status": { select: { name: "Publish" } },
+          // Generated listing copy stays Development. The operator can fill
+          // any remaining Etsy details and publish explicitly from the asset.
+          "Asset Status": { select: { name: "Development" } },
         };
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
         if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
@@ -55966,11 +55897,8 @@ function drPublic(job, full) {
 // ════════ 🛠 Interactive tools: page + widget from a Utility-scout idea (2026-10-08) ════════
 // Interactivity pillar (worksheet rows Interactivity / Interactive Page / Interactive Widget):
 //   🧰 Utility site scout (seed → tool searches → ideas → Google top 10) picks WHAT to build;
-//   this builds it: one Claude call writes the tool (self-contained HTML + vanilla JS) plus SEO
-//   copy around it, then publishes TWO outputs from the same code:
-//     web/hub/<hub>/tools/<tool>/index.html  — standalone SEO page with AdSense slots (empty until a client id is set)
-//     web/hub/<hub>/tools/<tool>/widget.js   — embed: <div data-hub-tool="<tool>"></div><script src=".../widget.js"></script>
-//   + web/hub/<hub>/tools/tools.json (index) + an Asset (Type "Interactive Page", Hub Section "Interactive").
+//   this builds it: one Claude call writes a tool (self-contained HTML + vanilla JS) plus SEO
+//   copy around it, then saves the outputs on a Development Asset. Publication is a separate act.
 // Every search the scout found and the idea's Google top 10 are kept on the asset's notes (lossless) for later traffic work.
 async function handleInteractiveTool(body, env) {
   if (body.action !== "interactiveTool") return null;
@@ -55982,7 +55910,7 @@ async function handleInteractiveTool(body, env) {
   if (!cid) return { error: "campaignId required" };
   const t = await hubSiteTarget({ env, hdr, dash, campaignId: cid, sub: "tools" });
   if (t.error) return { error: t.error };
-  const { getFile, putFile, basePath, campName, s, hub } = t;
+  const { getFile, basePath, campName, s, hub } = t;
   const idxPath = `${basePath}/tools.json`;
   const readIdx = async () => { try { const { text } = await getFile(idxPath); return text ? JSON.parse(text) : []; } catch (e) { return []; } };
   if (op === "list") return { success: true, tools: await readIdx(), base: hub ? `https://dash-hubs.pages.dev/${hub.slug}/tools/` : "" };
@@ -56041,24 +55969,38 @@ ${(out.faq || []).length ? `<h2>Questions</h2>${out.faq.map(f => `<details><summ
 (function(){var html=${JSON.stringify(out.toolHtml)};var vars=${JSON.stringify(vars)};
 document.querySelectorAll('[data-hub-tool="${slug}"]').forEach(function(host){if(host.dataset.loaded)return;host.dataset.loaded=1;host.setAttribute('style',(host.getAttribute('style')||'')+';'+vars);
 var tmp=document.createElement('div');tmp.innerHTML=html;Array.prototype.slice.call(tmp.childNodes).forEach(function(n){if(n.tagName==='SCRIPT'){var sc=document.createElement('script');sc.textContent=n.textContent;host.appendChild(sc);}else host.appendChild(n);});});})();`;
-    await putFile(`${basePath}/${slug}/index.html`, page, `Interactive tool page: ${idea.name}`);
-    await putFile(`${basePath}/${slug}/widget.js`, widget, `Interactive tool widget: ${idea.name}`);
-    const live = hub ? `https://dash-hubs.pages.dev/${hub.slug}/tools/${slug}/` : "";
-    const idx = (await readIdx()).filter(x => x.slug !== slug);
-    idx.unshift({ slug, name: idea.name, title: out.title, primary: idea.primary, volume: idea.volume, url: live, widget: live ? live + "widget.js" : "", at: new Date().toISOString(), seed: sc.seed });
-    await putFile(idxPath, JSON.stringify(idx, null, 1), `Tools index: ${idea.name}`);
+    const live = ""; // Build stores a draft only; no public Pages writes occur here.
     // Asset record — lossless: every search + the Google top 10 go in Notes / Source References.
-    let assetId = null;
+    let assetId = null, draftStored = false;
     try {
       const notes = `Scout seed: ${sc.seed} (${sc.market}) · score ${idea.score} ${idea.verdict} · ${idea.volume}/mo\nSearches: ${(idea.keywords || []).map(k => `${k.t} ${k.v}`).join("; ")}`;
       const props = { "Asset Title": { title: [{ text: { content: out.title.slice(0, 200) } }] }, "Asset Type": { select: { name: "Interactive Page" } },
-        "Asset Status": { select: { name: "Published" } }, "Hub Section": { select: { name: "Interactive" } }, Campaign: { relation: [{ id: dash(cid) }] },
+        "Asset Status": { select: { name: "Development" } }, "Hub Section": { select: { name: "Interactive" } }, Campaign: { relation: [{ id: dash(cid) }] },
         Notes: { rich_text: [{ text: { content: notes.slice(0, 1990) } }] }, "Source References": { rich_text: [{ text: { content: serp.slice(0, 1990) } }] },
         ...(live ? { "Site URL": { url: live } } : {}), ...(await assetMethodProp(null, "Interactive Page").catch(() => ({}))) };
       const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
-      const d = await r.json(); if (r.ok) assetId = d.id.replace(/-/g, ""); else console.error("interactive asset create:", d.message);
+      const d = await r.json();
+      if (r.ok) {
+        assetId = d.id.replace(/-/g, "");
+        const codeBlocks = (text, language) => {
+          const chunks = String(text).match(/[\s\S]{1,1800}/g) || [""];
+          return chunks.map(content => ({ object: "block", type: "code", code: { rich_text: [{ type: "text", text: { content } }], language } }));
+        };
+        const children = [
+          { object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "Standalone page draft" } }] } },
+          ...codeBlocks(page, "html"),
+          { object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "Widget draft" } }] } },
+          ...codeBlocks(widget, "javascript"),
+        ];
+        for (let i = 0; i < children.length; i += 100) {
+          const saved = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ children: children.slice(i, i + 100) }) });
+          if (!saved.ok) throw new Error((await saved.json().catch(() => ({}))).message || "Interactive draft blocks could not be saved");
+        }
+        draftStored = true;
+      } else console.error("interactive asset create:", d.message);
     } catch (err) { console.error("interactive asset create:", err.message); }
-    return { success: true, slug, url: live, widget: live ? live + "widget.js" : "", embed: `<div data-hub-tool="${slug}"></div><script src="${live}widget.js"></script>`, assetId, title: out.title };
+    return { success: draftStored, draft: true, sitePublished: false, slug, url: "", widget: "", embed: "", assetId, title: out.title,
+      ...(draftStored ? {} : { error: "Interactive asset created, but its HTML draft was not saved to the record." }) };
   }
   return { error: "Unknown interactiveTool op" };
 }

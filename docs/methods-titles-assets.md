@@ -321,10 +321,10 @@ what stage the source title itself is in. A title leaving Development is a
 separate, real event (still stage-gated in the Development section) that
 doesn't by itself move or hide its assets; practically an operator moves a
 title out of Development once all its assets are published, but nothing
-enforces that coupling in code. `generateCarouselPreview` sets a newly
-rendered carousel's `Asset Status` to `"Publish"` (not `"Development"`) once
-rendering actually completes — see `renderPublishedAssets` in the microsite
-template for the grouping/rendering logic.
+enforces that coupling in code. Generated assets now remain at Development
+after rendering; the operator's explicit publish action moves them into the
+published section. See `renderPublishedAssets` in the microsite template for
+the grouping/rendering logic.
 
 ### The grading gate — every concept is graded by skill, not by a human
 
