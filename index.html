@@ -759,6 +759,10 @@
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
       <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
     <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
+    <div class="oc-sec" data-ock="hubproductsTable"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 id="hubProductsTableTitle" style="margin:0;font-size:16px;">Products</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Titles grouped by keyword topic and product, with the same deployed-only counts as All Hubs.</span><button onclick="productsClear(event)" title="Clear the selected hub" style="font-size:11px;padding:2px 7px;">× Clear</button></div>
+    <div class="oc-bd"><div id="hubProductsTableBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubProductsTableBody"><div style="font-size:12px;color:var(--text3);">Pick a hub above — press $ on a hub row.</div></div></div></div>
     <div class="oc-sec" data-ock="alloutput"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every product, title and asset from Notion.</span></div>
@@ -12045,6 +12049,7 @@ async function dev2EditSave() {
   }
   btn.disabled = false;
   renderDev2();
+  productsRender();
   if (failed.length) msg.innerHTML = '<span style="color:#f87171;">Not saved — ' + failed.map(esc).join(' · ') + '</span>' + (done.length ? ' (the rest saved)' : '');
   else m.classList.remove('open');
 }
@@ -12342,7 +12347,7 @@ function renderHubChecklist() {
     + `<th style="${th}">Total</th></tr></thead><tbody>`;
   hubs.forEach((h, hi) => {
     let tot = 0, totD = 0, totF = 0;
-    html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + cols.map((t, ci) => {
+    html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="productsLoadHub('${esc(h.slug)}');return false;" title="Open Products for this hub" style="display:inline-block;margin-right:7px;color:var(--accent);font-weight:700;text-decoration:none;">$</a><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + cols.map((t, ci) => {
       const c = n(h.slug, t), d = nd(h.slug, t), fl = nf(h.slug, t); tot += c; totD += d; totF += fl;
       const at = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t;
       return `<td style="${td}${at ? 'background:var(--surface2);' : ''}">${pair(c, d, c ? `hubCheckOpen(${hi},${ci},'live')` : '', d ? `hubCheckOpen(${hi},${ci},'dev')` : '', at && HUBCHECK_OPEN.kind === 'live', at && HUBCHECK_OPEN.kind === 'dev', hubCheckGoal(h.slug, t), fl, fl ? `hubCheckOpen(${hi},${ci},'flag')` : '', at && HUBCHECK_OPEN.kind === 'flag')}${rwBadge(nrw(h.slug, t), hi, ci)}</td>`;
@@ -12352,6 +12357,115 @@ function renderHubChecklist() {
     + `<td style="${td}">${pair(hubs.reduce((a, h) => a + cols.reduce((b, t) => b + n(h.slug, t), 0), 0), hubs.reduce((a, h) => a + cols.reduce((b, t) => b + nd(h.slug, t), 0), 0), '', '', false, false, gsum(hubs.flatMap(h => cols.map(t => hubCheckGoal(h.slug, t)))), hubs.reduce((a, h) => a + cols.reduce((b, t) => b + nf(h.slug, t), 0), 0))}</td></tr></tbody></table></div>`;
   body.innerHTML = html;
   list.innerHTML = HUBCHECK_OPEN ? `<div style="font-size:11.5px;color:var(--text2);">All Output below is filtered to <b>${esc(HUBCHECK_OPEN.slug)}</b> · <b>${esc(HUBCHECK_OPEN.t)}</b> — clear it with the table's ⚙ filter panel → Clear filters.</div>` : '';
+}
+// Products table: same deployed asset arrays as All Hubs, independently ordered columns.
+const PRODUCTS_COLS_KEY = 'hubProductsTableCols:v1';
+let PRODUCTS_TABLE_COLS = null, PRODUCTS_TABLE_SLUG = '', PRODUCTS_TABLE_DRAG = -1;
+function productsCols(types, cells, dev) {
+  if (!PRODUCTS_TABLE_COLS) {
+    try { const saved = JSON.parse(localStorage.getItem(PRODUCTS_COLS_KEY) || 'null'); if (Array.isArray(saved)) PRODUCTS_TABLE_COLS = saved; } catch (e) {}
+    if (!PRODUCTS_TABLE_COLS) PRODUCTS_TABLE_COLS = hubCheckCols(types, cells, dev).slice();
+  }
+  return PRODUCTS_TABLE_COLS;
+}
+function productsColsSave() { try { localStorage.setItem(PRODUCTS_COLS_KEY, JSON.stringify(PRODUCTS_TABLE_COLS || [])); } catch (e) {} }
+function productsLoadHub(slug) {
+  const hub = HUB_SITES.find(h => h.slug === slug && h.campaignId); if (!hub) return;
+  PRODUCTS_TABLE_SLUG = slug; productsRender();
+  const sec = document.querySelector('.oc-sec[data-ock="hubproductsTable"]'), hd = sec && sec.querySelector('.oc-hd'), bd = sec && sec.querySelector('.oc-bd');
+  if (bd && bd.style.display === 'none') ocToggle(null, hd);
+  if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function productsClear(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  PRODUCTS_TABLE_SLUG = '';
+  const title = document.getElementById('hubProductsTableTitle'), bar = document.getElementById('hubProductsTableBar'), body = document.getElementById('hubProductsTableBody');
+  if (title) title.textContent = 'Products'; if (bar) bar.innerHTML = '';
+  if (body) body.innerHTML = '<div style="font-size:12px;color:var(--text3);">Pick a hub above — press $ on a hub row.</div>';
+}
+function productsColAdd(sel) {
+  const value = sel.value; if (!value) return;
+  if (!PRODUCTS_TABLE_COLS.includes(value)) PRODUCTS_TABLE_COLS.push(value);
+  productsColsSave(); productsRender();
+}
+function productsDragStart(ev, i) { PRODUCTS_TABLE_DRAG = i; try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', String(i)); } catch (e) {} }
+function productsDrop(ev, j) {
+  ev.preventDefault(); const i = PRODUCTS_TABLE_DRAG; PRODUCTS_TABLE_DRAG = -1;
+  if (i < 0 || i === j || !PRODUCTS_TABLE_COLS[i]) return;
+  const [column] = PRODUCTS_TABLE_COLS.splice(i, 1); PRODUCTS_TABLE_COLS.splice(j, 0, column); productsColsSave(); productsRender();
+}
+function productsColRemove(i) { PRODUCTS_TABLE_COLS.splice(i, 1); productsColsSave(); productsRender(); }
+function productsCountPair(count) { return count ? `<span style="color:#16a34a;font-weight:600;">${count}</span>` : '<span style="color:var(--text3);">·</span>'; }
+function productsAddAsset(i) {
+  const type = PRODUCTS_TABLE_COLS[i], hub = HUB_SITES.find(h => h.slug === PRODUCTS_TABLE_SLUG);
+  if (!type || !hub) return;
+  const studio = hubCheckNorm(type) === 'client studio';
+  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(type)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${studio ? 'Creates a Client Studio link on the selected title.' : `Adds one unwritten ${esc(type)} asset at Development on the selected title.`}</div>
+    ${HT_LBL('Hub')}<select id="pcaHub" style="${HT_IN}" disabled><option value="${esc(hub.slug)}">${esc(hub.name || hub.slug)}</option></select>
+    ${HT_LBL('Title')}<select id="pcaTitle" style="${HT_IN}"></select>${studio ? `${HT_LBL('Client name')}<input id="pcaClient" placeholder="e.g. Dana R." style="${HT_IN}">` : ''}
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => productsAddAssetGo(${i}))">Add asset</button>${HC_CANCEL}</div>`);
+  productsAddTitles();
+}
+function productsAddTitles() {
+  const sel = document.getElementById('pcaTitle'); if (!sel) return;
+  const titles = hubCheckTitles(PRODUCTS_TABLE_SLUG), grouped = {};
+  titles.forEach(title => (grouped[title.product || '— no product —'] = grouped[title.product || '— no product —'] || []).push(title));
+  sel.innerHTML = titles.length ? Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([product, list]) => `<optgroup label="📦 ${esc(product)}">${list.map(title => `<option value="${esc(title.id)}">${esc(title.name)}</option>`).join('')}</optgroup>`).join('') : '<option value="">— no live, synced titles on this hub —</option>';
+}
+async function productsAddAssetGo(i) {
+  const type = PRODUCTS_TABLE_COLS[i], slug = PRODUCTS_TABLE_SLUG, hub = HUB_SITES.find(h => h.slug === slug), titleId = (document.getElementById('pcaTitle') || {}).value;
+  if (!hub) return 'Pick a hub'; if (!titleId) return 'Pick a title';
+  const title = hubCheckTitles(slug).find(item => item.id === titleId) || {}, spec = hubCheckTypeSpec(type);
+  if (hubCheckNorm(type) === 'client studio') {
+    const label = ((document.getElementById('pcaClient') || {}).value || '').trim(); if (!label) return 'Give the client a name';
+    if (!title.productId) return 'That title has no product — pick a title on a product';
+    const result = await call('clientStudioLink', { op: 'create', campaignId: hub.campaignId, productId: title.productId, titleId, label });
+    if (!result || result.error) return (result && result.error) || 'Not created';
+    let copied = false; try { await navigator.clipboard.writeText(result.link.url); copied = true; } catch (e) {}
+    showToast(result.assetError ? '⚠ Link made' + (copied ? ' and copied' : '') + ', but its asset was not: ' + result.assetError : '✓ Client Studio link for ' + label + (copied ? ' — copied' : ''), result.assetError ? 'error' : 'success');
+  } else {
+    const result = await call('createDevAssets', { titleId, title: title.name || '', productId: title.productId || undefined, campaignId: hub.campaignId, slug, allowMulti: true,
+      types: [{ assetType: spec.assetType, label: spec.label, ...(spec.pillar ? { pillar: true } : {}) }] });
+    if (!result || result.error) return (result && result.error) || 'Not created';
+    if (!(result.created || []).length) return ((result.failed || []).join(' · ') || (result.skipped || []).join(' · ') || 'Not created');
+    showToast('✓ ' + type + ' added at Development — ' + (title.name || 'title'), 'success');
+  }
+  _devTblLast = null; await loadDev2(); productsRender(); return true;
+}
+function productsRender() {
+  const body = document.getElementById('hubProductsTableBody'), bar = document.getElementById('hubProductsTableBar'), titleEl = document.getElementById('hubProductsTableTitle');
+  if (!body || !bar) return;
+  const hub = HUB_SITES.find(item => item.slug === PRODUCTS_TABLE_SLUG && item.campaignId);
+  if (!hub) { if (titleEl) titleEl.textContent = 'Products'; bar.innerHTML = ''; body.innerHTML = '<div style="font-size:12px;color:var(--text3);">Pick a hub above — press $ on a hub row.</div>'; return; }
+  if (titleEl) titleEl.textContent = 'Products — ' + (hub.name || hub.slug);
+  const data = hubCheckData(), cols = productsCols(data.types, data.cells, data.dev), remaining = data.types.filter(type => !cols.includes(type));
+  bar.innerHTML = `<select onchange="productsColAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${remaining.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('')}</select><span style="font-size:11px;color:var(--text3);">${cols.length} columns · counts match All Hubs</span>`;
+  const titles = hubCheckTitles(hub.slug).sort((a, b) => (a.topic || '').localeCompare(b.topic || '') || (a.product || '— no product —').localeCompare(b.product || '— no product —') || a.name.localeCompare(b.name));
+  if (!titles.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No live, synced titles placed in a keyword topic for this hub.</div>'; return; }
+  const head = 'padding:5px 8px;font-size:11px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;', th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;', td = 'padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);', countTd = td + 'text-align:center;';
+  const totalCols = 4 + cols.length + 1, assetsFor = (topic, type) => (data.cells[hub.slug + '|' + type] || []).filter(asset => asset.keywordTopic === topic);
+  const countFor = (topic, titleId, type) => assetsFor(topic, type).filter(asset => asset.titleId === titleId).length;
+  let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Deployed-only counts use the same placed, live, in-sync asset set as All Hubs. Order: Hub → Keyword Topic → Product → Title.</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${head}">Hub</th><th style="${head}">Keyword Topic</th><th style="${head}">Product</th><th style="${head}">Title</th>`
+    + cols.map((type, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="productsDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="productsDrop(event,${i})" title="Drag to reorder"><div>${esc(type)}</div><div style="font-weight:400;">${hubCheckCanAdd(type) ? `<button onclick="productsAddAsset(${i})" title="Add an unwritten ${esc(type)} asset at Development" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="productsColRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + `<th style="${th}">Total</th></tr></thead><tbody>`;
+  html += `<tr><td colspan="${totalCols}" style="${td}font-weight:700;background:var(--surface2);">${esc(hub.name || hub.slug)}</td></tr>`;
+  const topics = new Map(); titles.forEach(item => { const key = item.topic || '— no topic —'; if (!topics.has(key)) topics.set(key, []); topics.get(key).push(item); });
+  for (const [topic, topicTitles] of [...topics.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    html += `<tr><td colspan="${totalCols}" style="${td}font-weight:600;background:var(--surface2);">${esc(topic)}</td></tr>`;
+    const groups = new Map();
+    topicTitles.forEach(item => { const key = item.productId || (item.product ? 'name:' + item.product : 'none'); if (!groups.has(key)) groups.set(key, { name: item.product || '— no product —', titles: [] }); groups.get(key).titles.push(item); });
+    for (const group of [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      const counts = cols.map(type => group.titles.reduce((sum, item) => sum + countFor(topic, item.id, type), 0));
+      html += `<tr><td style="${td}"></td><td style="${td}"></td><td style="${td}font-weight:600;">${esc(group.name)}</td><td style="${td}font-weight:600;color:var(--text2);">${group.titles.length} title${group.titles.length === 1 ? '' : 's'}</td>` + counts.map(productsCountPair).map(value => `<td style="${countTd}">${value}</td>`).join('') + `<td style="${countTd}font-weight:600;">${productsCountPair(counts.reduce((a, b) => a + b, 0))}</td></tr>`;
+      for (const item of group.titles.sort((a, b) => a.name.localeCompare(b.name))) {
+        const rowCounts = cols.map(type => countFor(topic, item.id, type));
+        html += `<tr><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}">${esc(item.name)}</td>` + rowCounts.map(productsCountPair).map(value => `<td style="${countTd}">${value}</td>`).join('') + `<td style="${countTd}">${productsCountPair(rowCounts.reduce((a, b) => a + b, 0))}</td></tr>`;
+      }
+    }
+  }
+  const hubCounts = cols.map(type => (data.cells[hub.slug + '|' + type] || []).length);
+  html += `<tr><td colspan="4" style="${td}font-weight:700;">Hub total</td>` + hubCounts.map(value => `<td style="${countTd}font-weight:700;">${productsCountPair(value)}</td>`).join('') + `<td style="${countTd}font-weight:700;">${productsCountPair(hubCounts.reduce((a, b) => a + b, 0))}</td></tr></tbody></table></div>`;
+  body.innerHTML = html;
 }
 async function loadDev2() {
   hpInit();
@@ -12364,6 +12478,7 @@ async function loadDev2() {
     hpApplyLive(data.productStats);
     renderDev2();
     renderHubChecklist();
+    productsRender();
   } catch (e) {
     hpLiveFailed(e.message);
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
