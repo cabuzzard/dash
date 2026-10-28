@@ -1816,7 +1816,7 @@ async function ivMergeAssetInterviews(env, assetId) {
   await ivInvalidateBank(env, back.cid).catch(() => {});
   return { merged: true, keep: keep.id, superseded, questions: order.length, answered: answers.filter(Boolean).length, status: back.status };
 }
-async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
+async function ivCreateForAsset(env, { assetId, titleId, own, direction, digestLevel = "", forceInterview = false }) {
   let atype = own || "", aname = "", parentType = "";
   if (assetId) { const ap = await ivPage(assetId); const A = ap.properties;
     if (A["Asset Class"]?.select?.name === "Pillar") parentType = A["Pillar Type"]?.select?.name || "long-form";
@@ -1827,22 +1827,27 @@ async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
   const cid = ivRid(T, "Campaign"), pid = ivRid(T, "product");
   const [audience, prodRes, pillar] = await Promise.all([cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid) : "", extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "")]);
   const tierA = (await ivTierFn(env))(atype), dep = tierA === "depends", short = tierA === "short";
-  if(tierA==='none')return {interviews:[],skipped:true,reason:'This method has no interview requirement',modelCalls:0};
+  if(tierA==='none'&&!forceInterview)return {interviews:[],skipped:true,reason:'This method has no interview requirement',modelCalls:0};
   // STRUCTURE FIRST (operator 2026-10-24): plan the piece's outline for its Purpose, then tie every question to one section
-  const apS = assetId ? await ivPage(assetId).catch(() => null) : null, wsS = apS ? writeStyleOf(apS, (await writingMethod(env, apS).catch(() => ({}))).row) : null;
+  const apS = assetId ? await ivPage(assetId).catch(() => null) : null, methodS = apS ? await writingMethod(env, apS).catch(() => ({})) : {}, wsS = apS ? writeStyleOf(apS, methodS.row) : null;
+  const methodRecipe = digestLevel && methodS.method?.id ? await extractBlocksTextRecursive(ivHdr(), ivDash(methodS.method.id)).catch(() => "") : "";
   const outlineOn = !!assetId && !parentType, outlineBlock = outlineOn ? `\nSTRUCTURE FIRST — before writing any question, plan this piece's OUTLINE: its sections in order (3-7), shaped by its PURPOSE (${wsS ? wsS.purpose : "SEO"}): SEO → section headings that match what searchers actually ask (use the title research and pillar); Engagement → a hook then the story beats; Information → the steps or parts a reader needs. Then write the questions so EVERY question feeds exactly ONE section, and begin each question with "§<n> · <section heading> — ". Leave a section without a question when the research alone covers it; the operator sees the headings, so they know where each answer lands.\n` : "";
   const prompt = `You prepare ONE INTERVIEW of a business owner for a single piece of content.${outlineBlock}
 
 PIECE: ${aname || tname} (${atype})
 TITLE IT BELONGS TO: ${tname}
-${audience}${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${direction ? `\nOPERATOR'S DIRECTION: ${direction}\n` : ""}
-${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentType}" piece for this title, written from the title's pillar plus these answers; every asset for this title is then cut from that parent. Ask 6-10 questions specific to THIS title that only the owner can answer: a real client story on this exact topic, how they actually do it, what most advice gets wrong, a mistake and what it taught them, numbers they know, the questions clients ask them about it. Order them the way the piece should flow.`
+${audience}${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}${digestLevel && methodS.row?.contractText ? `\nMETHOD CONTRACT:\n${methodS.row.contractText}\n` : ""}${methodRecipe ? `\nMETHOD RECIPE:\n${methodRecipe.slice(0, 3000)}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${direction ? `\nOPERATOR'S DIRECTION:\n${direction}\n` : ""}
+${digestLevel === "premium" ? `THIS IS THE REQUIRED PREMIUM NEWSLETTER INTERVIEW. The selected findings and the Premium Newsletter method above are the subject matter. Ask the method's normal number and kind of questions, aimed at the operator's original analysis: what the developments mean together, which decisions matter, what is being missed, and what a subscriber should do. Ask for judgement and reasoning, not facts already supplied by the findings. The premium writer must use these answers as its analysis source.`
+      : digestLevel === "free" ? `THIS IS AN OPTIONAL FREE NEWSLETTER INTERVIEW. The selected findings are the subject matter. Ask the Free Newsletter method's normal set of questions only to add the operator's useful point of view or practical framing; do not ask the operator to repeat facts present in the findings.`
+      : digestLevel === "article" ? `THIS IS THE REQUIRED ARTICLE INTERVIEW for this one news item. Ask EXACTLY THREE short, specific questions about this development's significance, who is affected, what it changes, and the operator's analysis. Do not ask for facts already provided by the source, and do not use generic questions. The article writer must derive its analysis/perspective from these answers.`
+      : parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentType}" piece for this title, written from the title's pillar plus these answers; every asset for this title is then cut from that parent. Ask 6-10 questions specific to THIS title that only the owner can answer: a real client story on this exact topic, how they actually do it, what most advice gets wrong, a mistake and what it taught them, numbers they know, the questions clients ask them about it. Order them the way the piece should flow.`
       : short && !/\bnews\b/i.test(atype) ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video). Its job is to extract the owner's KNOWLEDGE and PERSPECTIVE (voice comes second): first-hand detail that improves the explanation, and — best of all — one original insight the whole article could be built around. Ask 3-5 short questions, ADAPTED to what this piece is: a how-to / decision / technical piece → the mistakes they've seen, unusual cases, and what conventional advice gets wrong; a comparison of options → what they've actually used, which tradeoffs really matter, and how they'd advise a customer choosing; an exploratory, lifestyle or perspective piece → their observations, experiences, values, and where they see it differently from most people. Make the FIRST question invite their single strongest view on the topic. Every question must be answerable honestly with "I don't have first-hand experience with this" — never presume expertise they may not have. Ask for opinions as opinions. The writer REWRITES the answers into the article, so ask for substance, not polished prose.`
       : /\bnews\b/i.test(atype) ? `THIS IS AN OPTIONAL INTERVIEW FOR A NEWS POST that is already written and published from verified reporting. Ask 2-3 short questions ONLY about the development's significance: what people in this field are overlooking, who is most affected and how, and what practical decision the reader should consider. Never ask about the facts themselves. Every question must be answerable with "I don't have a meaningful view on this" — then the post stays as it is.`
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
-  const isNewsIv = /\bnews\b/i.test(atype);
-  const ivMade = await ivAccumulate(env,{outline:outlineOn,cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:isNewsIv ? 2 : short ? 3 : 5,qmax:isNewsIv ? 3 : short ? 5 : 10,base:{   // short tier: 3-5 adaptive questions; news: 2-3 significance questions
+  const isNewsIv = /\bnews\b/i.test(atype), articleInterview = digestLevel === "article";
+  const qmin = articleInterview ? 3 : short ? 3 : 5, qmax = articleInterview ? 3 : short ? 5 : 10;
+  const ivMade = await ivAccumulate(env,{outline:outlineOn,cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:articleInterview ? 3 : isNewsIv ? 2 : qmin,qmax:articleInterview ? 3 : isNewsIv ? 3 : qmax,base:{   // normal question-generation path; digest articles are exactly 3
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) } });
@@ -14339,7 +14344,7 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
     }
     const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === S.cid) || {};
     const result = await digestWriteIssue(env, step.kind, step.items, hub.name || "the hub", {
-      assetId: step.assetId, digestId: S.assetId, titleId: S.titleId, campaignId: S.cid,
+      assetId: step.assetId, digestId: S.assetId, titleId: S.titleId, campaignId: S.cid, interviewId: step.interviewId || "",
     });
     step.outcome = { assetId: step.assetId, written: !!result.written, violations: result.violations || [], kind: step.kind };
     (S.children = S.children || []).push({ ...step.outcome });
@@ -14369,16 +14374,24 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
       if (prior) step.assetId = hubAssetId(prior.id);
       else {
         const mains = await hubMainList(env, S.cid);
-        const generated = await invoke({ action: "generateTitleAssets", titleId: step.titleId, campaignId: S.cid,
-          productId: mains[0] || undefined, title: step.item.claim.slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true });
-        const aid = generated && ((generated.assets || [])[0] || {}).id;
-        if (!aid) throw new Error("News article: " + ((generated && generated.error) || "no asset"));
+        const made = await invoke({ action: "createDevAssets", titleId: step.titleId, campaignId: S.cid, productId: mains[0] || undefined,
+          title: step.item.claim, allowMulti: true, parentAssetId: S.assetId, types: [{ assetType: "Blog - SEO - News", label: "News article", titleOverride: step.item.claim.slice(0, 180) }] });
+        const aid = made && ((made.created || [])[0] || {}).id;
+        if (!aid) throw new Error("News article: " + (made?.error || made?.failed?.join(" · ") || "no asset"));
         step.assetId = hubAssetId(aid);
       }
       await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
       await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId, assetId: step.assetId });
     }
-    step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news" };
+    const articleInterview = (await ivForTitle(step.titleId).catch(() => [])).find(x => x.id === hubAssetId(step.interviewId) && x.scope === "Asset" && x.assetIds.includes(hubAssetId(step.assetId)));
+    if (!articleInterview || articleInterview.status !== "Finished" || !articleInterview.answers.some(a => String(a || "").trim())) throw new Error("Article interview is no longer finished; complete it before generating this article");
+    const interviewText = articleInterview.questions.map((q, i) => articleInterview.answers[i] ? `Q: ${q}\nA: ${articleInterview.answers[i]}` : "").filter(Boolean).join("\n\n");
+    const written = await invoke({ action: "generateTitleAssets", titleId: step.titleId, assetId: step.assetId, replaceAssetId: step.assetId, campaignId: S.cid,
+      productId: S.productId || undefined, title: step.item.claim.slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true,
+      digestInterviewOnly: true, digestInterviewText: interviewText,
+      researchInstructions: `DIGEST ARTICLE: write about this one selected news item only. Use its source and facts, and derive the article's analysis/perspective exclusively from the finished article interview answers. Do not create substitute model opinions. Selected item: ${step.item.claim}\nSource: ${step.item.publisher || ""} ${step.item.url || ""} ${step.item.date || ""}` });
+    if (!written || written.error || written.success === false) throw new Error("News article write: " + (written?.error || "no response"));
+    step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news", written: true };
     (S.children = S.children || []).push({ ...step.outcome });
     await digestGenerateDigestSave(env, S, step, "done", { titleId: step.titleId, assetId: step.assetId });
     return;
@@ -14672,6 +14685,8 @@ async function titleJobsRun(env, invoke) {
               const own = await ivCreationTopicalMethod(env, step.assetType);
               if (own) await ivCreateForAsset(env, { assetId: step.assetId, titleId: S.titleId, own });
             }
+          } else if (step.action === "digestRescan") {
+            S.result = await digestRescanRun(env, S);
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
             const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Development", skipPillar: true,
@@ -14696,6 +14711,7 @@ async function titleJobsRun(env, invoke) {
       }
       delete S.running;
       if (S.i >= S.steps.length) { S.done = true; S.finishedAt = Date.now();
+        if (S.kind === "digest-rescan") { S.status = (S.errors || []).length ? "failed" : "done"; if (S.status === "failed") S.error = (S.errors || []).join(" · "); }
         if (S.kind === "ditem") await digestPoolUpdate(env, S.cid, S.item.id, { status: (S.errors || []).length ? "error" : "done", error: (S.errors || []).join(" · "), titleId: S.titleId || "", assetId: S.assetId || "" }).catch(() => {}); }
       await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
       if (S.done) { await drop(id); mine = null; }
@@ -14856,22 +14872,24 @@ async function digestWriteBlocks(env, assetId, heading, text) {
     if (!r.ok) { const x = await r.json().catch(() => ({})); throw new Error(x.message || "could not write the issue"); }
   }
 }
-async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId,campaignId}) {
+async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId,campaignId,interviewId=""}) {
   await governingFlow(env);
   const method=newsletterMethod(await writingMethodsTable(env),kind),context=await newsletterContext(env,campaignId);
   const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
   if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
   const methodId=ivRid(page.properties,'Method')||await resolveMethodIdByName('digest');if(!methodId)throw new Error('Existing Digest method record is missing; no issue was written');
   const [voice,audience,interviews]=await Promise.all([voiceBlock(env,campaignId),hubAudienceBlock(env,campaignId),ivForTitle(titleId)]);
-  const finished=interviews.filter(x=>x.status==='Finished'&&x.answers.some(a=>a.trim())&&(x.scope==='Title'||x.scope==='Asset'&&x.assetIds.includes(hubAssetId(digestId)))).map(x=>({questions:x.questions,answers:x.answers}));
+  const selectedInterview=interviewId?interviews.find(x=>x.id===hubAssetId(interviewId)&&x.scope==='Asset'&&x.assetIds.includes(hubAssetId(assetId))):null;
+  const finished=selectedInterview&&selectedInterview.status==='Finished'&&selectedInterview.answers.some(a=>a.trim())?[{questions:selectedInterview.questions,answers:selectedInterview.answers}]:[];
   const productAngles=(await productNotesRead(env,campaignId)).filter(n=>marketFresh(n)&&items.some(i=>i.topicId===n.topicId));
-  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,productAngles,finishedInterviews:finished};
+  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,productAngles,finishedInterviews:finished,operatorAnalysis:finished.flatMap(x=>x.questions.map((q,i)=>({question:q,answer:x.answers[i]||""}))).filter(x=>x.answer.trim())};
   let usage=null;
   const instructions='Method instructs; the process executes. Return exactly the worksheet contract fields as strings. Text only. '+
     'Frame the issue for the Subscriber Benefit, Value Proposition and Customer, in the operator voice. '+
     'Use only ticked findings and finished interviews. PRODUCT ANGLES are read-only product opportunities, not evidence of news. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
     'Unverified or out-of-period findings must never be presented as verified current developments. Data & Signals may use numbers ONLY from verified findings and must cite them. '+
     'Omit unsupported sections instead of padding; Feature Analysis and Subscriber Extra can be empty. Never invent news, statistics, sources or research. '+
+    (kind==='premium'?'The finished interview answers are the required source for operator analysis and judgment. Build Feature Analysis and recommendations from those answers; do not substitute model interpretation for missing operator answers. ':kind==='free'?(finished.length?'Use the finished interview answers for any operator point of view. ':'No interview was supplied: compile only the selected findings and do not invent an operator perspective. '):'')+
     (kind==='premium'?'Target 1,000–1,800 words across the sections, shorter when credible material is thin. ':'Target 300–500 words across Executive Summary and Call to Action. ')+
     'Do not repeat all sections in Body: return Body as an empty string; the worker assembles the returned section fields into Body in contract order without another model call.';
   const generated=await hcClaude(env,instructions+'\n\nNEWSLETTER WRITING PACKET\n'+JSON.stringify(packet),'newsletter_contract',schema,8000,u=>{usage=u;});
@@ -15349,6 +15367,29 @@ async function digestFloorPerplexity(env, job, queries, existingSources, limit) 
       keywordsUsed: Array.isArray(x.keywordsUsed) ? x.keywordsUsed : queries, sourceMethod: "perplexity-expansion" }));
   return { sources, reason: sources.length ? "" : "Perplexity expansion returned no additional valid source URLs", usage: data.usage || null,
     cost: pc.estimated ? `estimated $${pc.cost.toFixed(2)}` : `reported $${pc.cost.toFixed(2)}`, replayed: fetched.replayed };
+}
+async function digestRescanRun(env, S) {
+  const parent = await newsletterNotion(env, "pages/" + kwDashId(S.digestId));
+  if (parent.properties?.["Pillar Type"]?.select?.name !== "Digest" || ivRid(parent.properties, "Campaign") !== hubAssetId(S.cid)) throw new Error("Digest parent no longer belongs to this hub");
+  const titleId = ivRid(parent.properties, "Content Strategy"), explicit = fnNewsQueries(S.keywords || [], 6);
+  const related = S.broader ? await digestFloorRelatedQueries(env, S.cid, explicit).catch(() => []) : [];
+  const queries = [...new Set([...explicit, ...related])].slice(0, 6);
+  if (!queries.length) throw new Error("Enter at least one search keyword or select broader search");
+  const free = await freeNewsSearch(env, queries, { days: 30, max: 30 });
+  const freeSources = free.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free", keywordsUsed: [x.q], sourceMethod: x.via || "free-news" }));
+  const prior = (await env.TRADES.get("digest:items:" + S.digestId, "json"))?.items || [], pool = await env.TRADES.get("digest:pool:" + hubAssetId(S.cid), "json").catch(() => []), savedResearch = await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null);
+  const known = [...prior, ...(Array.isArray(pool) ? pool : []), ...(savedResearch?.sources || [])];
+  const paid = await digestFloorPerplexity(env, { id: S.id, campaignId: S.cid, createdAt: S.createdAt, runKind: "rescan" }, queries, [...known, ...freeSources], 20);
+  const candidates = digestFloorAppendSources([], [...freeSources, ...(paid.sources || [])]), knownUrls = new Set(known.map(x => memoryUrl(x.url || "")).filter(Boolean)), knownClaims = new Set(known.map(x => digestFloorSourceKey(x).claim).filter(Boolean));
+  const additions = candidates.filter(x => { const k = digestFloorSourceKey(x); if ((k.url && knownUrls.has(k.url)) || (k.claim && knownClaims.has(k.claim))) return false; if (k.url) knownUrls.add(k.url); if (k.claim) knownClaims.add(k.claim); return true; });
+  await digestItemsSave(env, S.digestId, additions, { additive: true, preserveTimestamp: true });
+  const after = (await env.TRADES.get("digest:items:" + S.digestId, "json")) || { items: [] };
+  const old = new Set(prior.map(x => x.id));
+  const addedItems = (after.items || []).filter(x => !old.has(x.id));
+  await digestPoolMerge(env, S.cid, { sources: addedItems }, queries);
+  const result = { at: new Date().toISOString(), jobId: S.id, keywords: queries, requestedKeywords: S.keywords || [], broader: !!S.broader, added: addedItems.length, addedItems, freeFound: freeSources.length, paidFound: (paid.sources || []).length, paidCost: paid.cost || "", paidReason: paid.reason || "" };
+  await env.TRADES.put("digest:rescan:last:" + S.digestId, JSON.stringify(result), { expirationTtl: 90 * 86400 });
+  return result;
 }
 function digestFloorAppendBody(body, additions) {
   if (!(additions || []).length) return body;
@@ -16565,13 +16606,14 @@ export default {
       body.__voice = await voiceBlock(env, body.campaignId).catch(() => "");
     }
     // 🎤 the title's FINISHED interviews (ivBlock) → every writer for that title, after the voice block
-    if (body.titleId && !body.__client && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+    if (body.titleId && !body.__client && !body.digestInterviewOnly && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
       const ib = await ivBlock(env, body.titleId, body.assetType, body.assetId).catch(() => ({ text: "" }));
       if (ib.text) {
         if (!body.__voice && !body.campaignId && ib.cid) body.__voice = await voiceBlock(env, ib.cid).catch(() => "");
         body.__voice = (body.__voice || "") + ib.text;
       }
     }
+    if (body.digestInterviewOnly && body.digestInterviewText) body.__voice = (body.__voice || "") + "\nDIGEST ARTICLE INTERVIEW — the only source for operator analysis:\n" + body.digestInterviewText + "\n";
 
     try {
       // Backfill already-Published Offer blog pages, five at a time; the regular publish path uses this same generator.
@@ -21041,7 +21083,12 @@ ${JSON.stringify(products)}`;
         const data = await env.TRADES.get("digest:items:" + did, "json") || { items: [], children: { premium: [], free: [], news: [] } };
         const items = Array.isArray(data.items) ? data.items : [], children = data.children || { premium: [], free: [], news: [] };
         const itemId = String(body.itemId || ""); let selectedItem = itemId ? items.find(x => String(x.id) === itemId) : null;
-        if (itemId && !selectedItem) return json({ error: "Finding is no longer in this digest" }, 404);
+        if (itemId && !selectedItem) {
+          const titleRef = ivRid(dp, "Content Strategy"), [pool, research] = await Promise.all([env.TRADES.get("digest:pool:" + cid, "json").catch(() => []), titleRef ? env.TRADES.get("digest:sources:" + hubAssetId(titleRef), "json").catch(() => null) : null]);
+          selectedItem = (Array.isArray(pool) ? pool : []).find(x => x.id === itemId) || (research?.sources || []).find(x => x.id === itemId || dpId((x.url || "") + "|" + (x.claim || x.title || "")) === itemId);
+          if (!selectedItem) return json({ error: "Source is no longer available in this digest, pool, or research record" }, 404);
+          selectedItem = { ...selectedItem, id: itemId, claim: selectedItem.claim || selectedItem.title || "" };
+        }
         let assetId = hubAssetId(body.assetId || ""), newsChild = null;
         if (selectedItem && !assetId) {
           newsChild = (children.news || []).find(x => String(x.itemId) === itemId) || null;
@@ -21140,6 +21187,13 @@ ${JSON.stringify(products)}`;
         const digests = [];
         for (const r of rows) {
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+          const titleIdForSources = ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "");
+          const [pool, research] = await Promise.all([env.TRADES.get("digest:pool:" + cid, "json").catch(() => []), titleIdForSources ? env.TRADES.get("digest:sources:" + titleIdForSources, "json").catch(() => null) : null]);
+          const sourceRows = [...(d.items || []).map(x => ({ ...x, sourceKind: "finding" })), ...(Array.isArray(pool) ? pool : []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || "")), sourceKind: "pool" })), ...((research?.sources || []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || x.title || "")), claim: x.claim || x.title || "", sourceKind: "research" })))];
+          const sourceSeen = new Set(); d.sources = sourceRows.filter(x => { const key = String(x.url || "").split("?")[0].toLowerCase() || String(x.claim || "").toLowerCase(); if (!key || sourceSeen.has(key)) return false; sourceSeen.add(key); return true; });
+          const interviewMaps = Array.isArray(d.interviewAssets) ? d.interviewAssets : [], interviewTitles = [...new Set(interviewMaps.map(x => x.titleId).filter(Boolean))];
+          const allDigestInterviews = (await Promise.all(interviewTitles.map(tid => ivForTitle(tid).catch(() => [])))).flat();
+          d.digestInterviews = allDigestInterviews.filter(x => x.scope === "Asset" && x.assetIds.some(a => interviewMaps.some(z => z.assetId === a))).map(x => ({ id: x.id, status: x.status, scope: x.scope, assetIds: x.assetIds }));
           const cronFlag = await env.TRADES.get(digestCronKey(id), "json"), legacyWeekly = String(await env.TRADES.get("digest:asset:" + cid) || "").replace(/-/g, "") === id;
           const autoState = await env.TRADES.get("digest:auto:state:" + id, "json");
           for (const group of ["premium", "free", "news"]) for (const n of (d.children[group] || [])) if (n.jobId) {
@@ -21151,12 +21205,14 @@ ${JSON.stringify(products)}`;
             }
           }
           const generationId = await env.TRADES.get("digest:generate:last:" + id), generationJob = generationId ? await env.TRADES.get("titlejob:state:" + generationId, "json") : null;
+          const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
             runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
-              children: generationJob.children || [], startedAt: generationJob.startedAt || 0, finishedAt: generationJob.finishedAt || 0 } : null, ...d });
+              children: generationJob.children || [], startedAt: generationJob.startedAt || 0, finishedAt: generationJob.finishedAt || 0 } : null,
+            rescan: rescanJob && ["queued", "running"].includes(rescanJob.status) ? { status: rescanJob.status, keywords: rescanJob.keywords || [], error: "", at: rescanJob.at || rescanJob.createdAt || 0 } : rescanJob?.status === "failed" ? { status: "failed", keywords: rescanJob.keywords || [], error: rescanJob.error || rescanJob.lastError || (rescanJob.errors || []).join(" · ") || "Search failed", at: rescanJob.finishedAt || rescanJob.at || 0 } : rescan ? { ...rescan, status: "done" } : null, ...d });
         }
         const oldRun = await env.TRADES.get("digest:auto:state:" + cid, "json"), manualQueue = (await env.TRADES.get("digest:manual", "json")) || [], queued = manualQueue.some(x => x === cid || x?.cid === cid);
         const activeRun = digests.find(d => d.weeklyRun && !["done", "skip", "error"].includes(d.weeklyRun.step))?.weeklyRun || (oldRun && !["done", "skip", "error"].includes(oldRun.step) ? oldRun : null);
@@ -21177,6 +21233,77 @@ ${JSON.stringify(products)}`;
       if (body.action === "digestMove") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         return json(await digestMove(env, body.assetId, body.titleId));
+      }
+      if (body.action === "digestFlagInterview") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const digestId = hubAssetId(body.assetId), level = String(body.level || ""), itemId = String(body.itemId || "");
+        if (!digestId || !["premium", "free", "article"].includes(level) || (level === "article" && !itemId)) return json({ error: "Digest, level, and article item are required" }, 400);
+        const dp = await newsletterNotion(env, "pages/" + kwDashId(digestId));
+        if (dp.properties?.["Pillar Type"]?.select?.name !== "Digest") return json({ error: "Selected asset is not a Digest parent" }, 400);
+        const titleId = ivRid(dp.properties, "Content Strategy"), cid = ivRid(dp.properties, "Campaign"), productId = ivRid(dp.properties, "Product");
+        if (!titleId || !cid) return json({ error: "Digest parent must have a title and campaign" }, 400);
+        const key = "digest:items:" + digestId, d = await env.TRADES.get(key, "json") || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+        let item = level === "article" ? (d.items || []).find(x => x.id === itemId) : null;
+        if (level === "article" && !item) {
+          const [pool, research] = await Promise.all([env.TRADES.get("digest:pool:" + hubAssetId(cid), "json").catch(() => []), env.TRADES.get("digest:sources:" + hubAssetId(titleId), "json").catch(() => null)]);
+          item = (Array.isArray(pool) ? pool : []).find(x => x.id === itemId) || (research?.sources || []).find(x => x.id === itemId || dpId((x.url || "") + "|" + (x.claim || x.title || "")) === itemId);
+          if (!item) return json({ error: "Selected source is no longer available in this digest's source records" }, 404);
+          item = { ...item, id: itemId, claim: item.claim || item.title || "", split: item.split === "premium" ? "premium" : "free" };
+          d.items = [...(d.items || []), item]; await env.TRADES.put(key, JSON.stringify(d));
+        }
+        d.interviewAssets = Array.isArray(d.interviewAssets) ? d.interviewAssets : [];
+        const identity = level + "|" + (level === "article" ? itemId : "*");
+        let mapping = d.interviewAssets.find(x => x.key === identity);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        if (!mapping) {
+          let storyTitleId = titleId, assetId = "", own = "Newsletter Paid";
+          if (level === "free") own = "Newsletter Free";
+          if (level === "article") {
+            const mains = await hubMainList(env, cid);
+            const madeTitle = await invoke({ action: "createNewsBlogTitle", campaignId: cid, productId: productId || mains[0] || undefined, newsTitle: item.claim.slice(0, 180), newsBody: item.claim, newsSource: [item.publisher, item.url].filter(Boolean).join(" "), newsDate: item.date || "", allowDuplicate: true, digestJobId: "s7-interview-" + digestId, digestItemId: itemId });
+            if (!madeTitle?.titleId) return json({ error: "Could not prepare the article title for its interview: " + (madeTitle?.error || "no response") }, 502);
+            storyTitleId = hubAssetId(madeTitle.titleId); own = "Blog - SEO - News";
+            const prior = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: kwDashId(storyTitleId) } }, { property: "Parent Asset", relation: { contains: kwDashId(digestId) } }, { property: "Asset Type", select: { equals: own } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+            assetId = hubAssetId(prior.find(p => !p.archived && !p.in_trash)?.id || "");
+          }
+          if (!assetId) {
+            const label = level === "premium" ? "Premium issue" : level === "free" ? "Free issue" : "News article";
+            const titleOverride = level === "article" ? item.claim.slice(0, 180) : `${label} — ${(dp.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest"}`.slice(0, 190);
+            const prior = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Parent Asset", relation: { contains: kwDashId(digestId) } }, { property: "Asset Type", select: { equals: own } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(() => []);
+            const same = prior.find(p => !p.archived && !p.in_trash && hubRichText(p.properties?.["Asset Title"]?.title) === titleOverride);
+            assetId = hubAssetId(same?.id || "");
+            if (!assetId) {
+              const made = await invoke({ action: "createDevAssets", titleId: storyTitleId, title: level === "article" ? item.claim : "Digest", productId: productId || undefined, campaignId: cid, allowMulti: true, parentAssetId: digestId, types: [{ assetType: own, label, titleOverride }] });
+              assetId = hubAssetId(made?.created?.[0]?.id || "");
+              if (!assetId) return json({ error: "Could not prepare the Development asset for this interview: " + (made?.error || made?.failed?.join(" · ") || "no asset returned") }, 502);
+            }
+          }
+          mapping = { key: identity, level, itemId: level === "article" ? itemId : "", titleId: storyTitleId, assetId, createdAt: new Date().toISOString() };
+          d.interviewAssets.push(mapping); await env.TRADES.put(key, JSON.stringify(d));
+        }
+        const current = (await ivForTitle(mapping.titleId).catch(() => [])).find(x => x.scope === "Asset" && x.assetIds.includes(hubAssetId(mapping.assetId)) && x.status !== "Superseded");
+        if (current) { mapping.interviewId = current.id; await env.TRADES.put(key, JSON.stringify(d)); return json({ ok: true, existing: true, level, itemId, assetId: mapping.assetId, interviewId: current.id, status: current.status }); }
+        const made = await ivCreateForAsset(env, { assetId: mapping.assetId, titleId: mapping.titleId, own, direction: level === "article" ? `Digest article interview. Source item: ${item.claim}\nPublisher: ${item.publisher || ""}\nURL: ${item.url || ""}\nDate: ${item.date || ""}` : `Digest ${level} issue interview. Selected findings are the writing subject.`, digestLevel: level, forceInterview: true });
+        const interview = (made.interviews || [])[0]; if (!interview?.id) return json({ error: made.reason || "Interview question generation did not return a record" }, 502);
+        mapping.interviewId = interview.id; await env.TRADES.put(key, JSON.stringify(d));
+        return json({ ok: true, level, itemId, assetId: mapping.assetId, interviewId: interview.id, status: interview.status || "In progress", questionCount: (interview.qs || interview.questions || []).length });
+      }
+      if (body.action === "digestRescan") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const digestId = hubAssetId(body.assetId), cid = hubAssetId(body.campaignId), keywords = String(body.keywords || "").split(/[\n,;]/).map(x => x.trim()).filter(Boolean).slice(0, 6), broader = body.broader === true;
+        if (!/^[a-f0-9]{32}$/i.test(digestId) || !/^[a-f0-9]{32}$/i.test(cid)) return json({ error: "Digest and campaign are required" }, 400);
+        if (!keywords.length && !broader) return json({ error: "Enter search keywords or select broader search" }, 400);
+        const parent = await newsletterNotion(env, "pages/" + kwDashId(digestId));
+        if (parent.properties?.["Pillar Type"]?.select?.name !== "Digest" || ivRid(parent.properties, "Campaign") !== cid) return json({ error: "Digest parent does not belong to this campaign" }, 403);
+        const activeKey = "digest:rescan:active:" + digestId, activeId = await env.TRADES.get(activeKey), active = activeId ? await env.TRADES.get("titlejob:state:" + activeId, "json") : null;
+        if (active && ["queued", "running"].includes(active.status)) return json({ ok: true, jobId: activeId, status: active.status, reused: true });
+        const jobId = "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), S = { id: jobId, kind: "digest-rescan", digestId, assetId: digestId, cid, titleId: ivRid(parent.properties, "Content Strategy"), keywords, broader, name: "Digest source rescan", status: "queued", steps: [{ action: "digestRescan", label: "Research and append sources" }], i: 0, createdAt: Date.now(), at: Date.now(), errors: [] };
+        await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: 7 * 86400 });
+        const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.includes(jobId)) q.push(jobId); await env.TRADES.put("titlejob:queue", JSON.stringify(q));
+        await env.TRADES.put(activeKey, jobId, { expirationTtl: 7 * 86400 });
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        ctx.waitUntil(invoke({ action: "runTitleJobs" }).catch(() => {}));
+        return json({ ok: true, jobId, status: "queued", keywords, broader });
       }
       if(['digestMemoryTest','productNotesTest'].includes(body.action)) {
         if(!await verifyToken(body.token,HMAC_SECRET))return json({error:'Unauthorized'},401);
@@ -21205,7 +21332,16 @@ ${JSON.stringify(products)}`;
       if (body.action === "digestCheck") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const id = String(body.assetId || "").replace(/-/g, ""), t = ["premium", "free", "news"].includes(body.target) ? body.target : ""; if (!id || !t || !body.itemId) return json({ error: "assetId, itemId and target required" }, 400);
-        const key = "digest:items:" + id, d = (await env.TRADES.get(key, "json")); if (!d) return json({ error: "this digest has no findings yet" }, 404);
+        const key = "digest:items:" + id, d = (await env.TRADES.get(key, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+        let selected = (d.items || []).find(x => x.id === body.itemId);
+        if (!selected) {
+          const parent = await newsletterNotion(env, "pages/" + kwDashId(id)), cid = ivRid(parent.properties || {}, "Campaign"), titleId = ivRid(parent.properties || {}, "Content Strategy");
+          const [pool, research] = await Promise.all([cid ? env.TRADES.get("digest:pool:" + hubAssetId(cid), "json").catch(() => []) : [], titleId ? env.TRADES.get("digest:sources:" + hubAssetId(titleId), "json").catch(() => null) : null]);
+          selected = (Array.isArray(pool) ? pool : []).find(x => x.id === body.itemId) || (research?.sources || []).find(x => x.id === body.itemId || dpId((x.url || "") + "|" + (x.claim || x.title || "")) === body.itemId);
+          if (!selected) return json({ error: "Source is no longer available in the digest, pool, or research record" }, 404);
+          selected = { ...selected, id: body.itemId, claim: selected.claim || selected.title || "", split: selected.split === "premium" ? "premium" : "free" };
+          d.items = [...(d.items || []), selected];
+        }
         d.checks = d.checks || {}; d.checks[body.itemId] = { ...(d.checks[body.itemId] || {}), [t]: !!body.on };
         await env.TRADES.put(key, JSON.stringify(d)); return json({ ok: true, checks: d.checks[body.itemId] });
       }
@@ -21236,9 +21372,20 @@ ${JSON.stringify(products)}`;
         if (activeId) { const active = await env.TRADES.get("titlejob:state:" + activeId, "json");
           if (active && ["queued", "running", "failed"].includes(active.status)) return json({ ok: true, jobId: activeId, status: active.status, reused: true }); }
         const picked = t => (d.items || []).filter(x => (d.checks?.[x.id] || {})[t]);
+        d.interviewAssets = Array.isArray(d.interviewAssets) ? d.interviewAssets : [];
+        const interviewFor = async map => { if (!map) return null; const list = await ivForTitle(map.titleId).catch(() => []); return list.find(x => x.id === map.interviewId && x.scope === "Asset" && x.assetIds.includes(hubAssetId(map.assetId))) || null; };
         const steps = [];
-        for (const kind of ["premium", "free"]) { const items = picked(kind); if (items.length) steps.push({ action: "digestIssue", kind, label: kind === "premium" ? "Premium issue" : "Free issue", items: items.map(x => ({ ...x })) }); }
-        for (const item of picked("news")) steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item } });
+        for (const kind of ["premium", "free"]) { const items = picked(kind); if (!items.length) continue;
+          const map = d.interviewAssets.find(x => x.key === kind + "|*"); let iv = await interviewFor(map);
+          if (kind === "premium" && (!iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim()))) return json({ error: "Premium generation is waiting for the required interview. Use Flag interview for Premium, then finish its answers." }, 409);
+          if (kind === "free" && (!iv || iv.status !== "Finished")) iv = null;
+          steps.push({ action: "digestIssue", kind, label: kind === "premium" ? "Premium issue" : "Free issue", items: items.map(x => ({ ...x })), ...(map?.assetId ? { assetId: map.assetId } : {}), ...(iv ? { interviewId: iv.id } : {}) });
+        }
+        for (const item of picked("news")) {
+          const map = d.interviewAssets.find(x => x.key === "article|" + item.id), iv = await interviewFor(map);
+          if (!map || !iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim())) return json({ error: `Article generation is waiting for the required interview for “${String(item.claim || "this item").slice(0, 90)}”. Use Flag interview on that source, then finish its answers.` }, 409);
+          steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item }, titleId: map.titleId, assetId: map.assetId, interviewId: iv.id });
+        }
         if (!steps.length) return json({ error: "No findings are checked for generation" }, 400);
         for (const s of steps) {
           if (s.kind === "premium" || s.kind === "free") newsletterMethod(await writingMethodsTable(env), s.kind);
