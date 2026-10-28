@@ -14406,10 +14406,11 @@ async function digestPoolMerge(env, cid, ranked, keywords = []) {
   const surfacedBy = (Array.isArray(keywords) ? keywords : String(keywords || "").split(/[,;\n]/)).map(k => String(k || "").trim()).filter(Boolean);
   for (const s of (ranked.sources || [])) {
     const claim = String(s.claim || s.title || "").slice(0, 600); if (!claim) continue;
+    const sourceKeywords = Array.isArray(s.keywordsUsed) && s.keywordsUsed.length ? s.keywordsUsed.map(k => String(k || "").trim()).filter(Boolean) : surfacedBy;
     const id = dpId((s.url || "") + "|" + (s.claim || "")), old = byId.get(id);
-    if (old) { old.keywords = [...new Set([...(old.keywords || []), ...surfacedBy])]; continue; }
+    if (old) { old.keywords = [...new Set([...(old.keywords || []), ...sourceKeywords])]; continue; }
     const item = { id, claim, publisher: s.publisher || "", url: s.url || "", date: s.date || "", tier: s.tier || "", split: s.split || "", at: now,
-      tag: "", status: "", originHub: cid, keywords: surfacedBy };
+      tag: "", status: "", originHub: cid, keywords: sourceKeywords, ...(s.expansionAdded ? { expansionAdded: true } : {}) };
     pool.push(item); byId.set(id, item);
   }
   // No count cap: dropping an unprocessed record would make an old pool item untaggable.
@@ -14840,10 +14841,11 @@ async function newsletterPanel(env,body) {
 async function digestItemsSave(env, assetId, sources, options={}) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
   const periodStart=options.preserveTimestamp&&prev.periodStart||hubCheckPeriodStart('Weekly'),periodEnd=options.preserveTimestamp&&prev.periodEnd||new Date().toISOString().slice(0,10),items=[];
-  const sourceList=(sources||[]).filter(s=>s&&s.claim),results=new Array(sourceList.length);let index=0;
-  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',topicId:s.topicId||'',memoryKind:s.memoryKind||'',split:s.split==='premium'?'premium':'free',...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
+  const existing=Array.isArray(prev.items)?prev.items:[],existingIds=new Set(options.additive?existing.map(s=>s.id):[]);
+  const sourceList=(sources||[]).filter(s=>s&&s.claim&&!existingIds.has(dpId((s.url||'')+'|'+s.claim))),results=new Array(sourceList.length);let index=0;
+  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',topicId:s.topicId||'',memoryKind:s.memoryKind||'',split:s.split==='premium'?'premium':'free',...(s.expansionAdded?{expansionAdded:true,keywordsUsed:Array.isArray(s.keywordsUsed)?s.keywordsUsed:[]}:{expansionAdded:false}),...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
   items.push(...results);
-  await env.TRADES.put(key, JSON.stringify({ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items,periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} }));
+  await env.TRADES.put(key, JSON.stringify({ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items:options.additive?[...existing,...items]:items,periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} }));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
@@ -15160,7 +15162,7 @@ ${(job.perplexity?.text || "(not available)").slice(0, 12000)}
 ${(job.perplexity?.results || []).map(x => `- ${x.title} | ${x.url} | ${x.date}`).join("\n").slice(0, 6000)}
 
 Do two things:
-1. A ranked list of this week's most important items (8-20): each with topicId (use a supplied topic ID), changes or contradicts (prior finding ID only if explicitly established), url (only real URLs from the research), publisher, date, claim (one sentence: what happened), tier (1 primary/regulator/original data · 2 trade press/named expert · 3 general), split ("premium" if it needs synthesis, real numbers, rule or price changes, or a how-to; otherwise "free").
+1. A ranked list of this week's most important items: aim for at least 20 distinct, useful findings. Each needs topicId (use a supplied topic ID), changes or contradicts (prior finding ID only if explicitly established), url (only real URLs from the research), publisher, date, claim (one sentence: what happened), tier (1 primary/regulator/original data · 2 trade press/named expert · 3 general), split ("premium" if it needs synthesis, real numbers, rule or price changes, or a how-to; otherwise "free"). Do not invent or duplicate findings to reach 20; if the supplied research is short, return the real findings and the worker will expand through related keywords.
 2. The digest itself, in markdown: a short intro, then ## sections; each item = what happened, why it matters to this audience, what to do. Cite publishers by name. Premium items are only teased (no full analysis). 600-1200 words.
 
 Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","claim","tier","split"}],"whatChanged":"one line","digest":"<markdown>","productNotes":[] }`;
@@ -15284,11 +15286,73 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
 }
 // the hub's weekly digest from free news: findings (all Free split) + a plain digest body — no model call
 async function freeNewsDigest(env, hubName, keywords) {
-  const found = await freeNewsSearch(env, fnNewsQueries(keywords), { days: 7, max: 12 });
-  const sources = found.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free" }));
+  const found = await freeNewsSearch(env, fnNewsQueries(keywords), { days: 7, max: 20 });
+  const sources = found.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free", keywordsUsed: [x.q], sourceMethod: "free-news" }));
   const digest = sources.length ? `## This week for ${hubName}\n\n` + sources.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n")
     : `No qualifying news found this week for ${hubName}.`;
   return { digest, sources };
+}
+function digestFloorSourceKey(source) {
+  const url = memoryUrl(source?.url || ""), claim = String(source?.claim || source?.title || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return { url, claim };
+}
+function digestFloorAppendSources(existing, additions) {
+  const out = [...(existing || [])], urls = new Set(), claims = new Set();
+  for (const source of out) { const k = digestFloorSourceKey(source); if (k.url) urls.add(k.url); if (k.claim) claims.add(k.claim); }
+  for (const source of additions || []) {
+    const k = digestFloorSourceKey(source); if (!k.url || !/^https?:\/\//i.test(k.url) || !k.claim || urls.has(k.url) || claims.has(k.claim)) continue;
+    urls.add(k.url); claims.add(k.claim); out.push({ ...source });
+  }
+  return out;
+}
+function digestFloorNewCount(memory, sources, runId) {
+  const plan = memoryPlan(memory, sources, runId);
+  return plan.counts.new + plan.counts.changed;
+}
+function digestFloorFreshSources(memory, sources, runId) {
+  const plan = memoryPlan(memory, sources, runId), keys = new Set([...plan.new, ...plan.changed].map(memoryKey));
+  return (sources || []).filter(source => keys.has(memoryKey(source))).map(source => ({ ...source }));
+}
+async function digestFloorRelatedQueries(env, cid, coreKeywords) {
+  const core = Array.isArray(coreKeywords) ? coreKeywords : [];
+  const demand = await kwDemandBlock(env, core.join(", "), { related: 40, limit: 40 }).catch(() => "");
+  const related = [...String(demand).matchAll(/^-\s*(.+?)\s+—/gm)].map(m => m[1].trim());
+  const lateral = await hubNewsTopicCandidates(env, cid, []).catch(() => []);
+  const hubTerms = [];
+  for (const topic of lateral || []) hubTerms.push(topic.topic, ...(topic.kw || []), ...(topic.topicKw || []), ...(topic.core || []));
+  try {
+    const research = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } });
+    for (const row of research || []) { const value = trRt(row.properties, "Keywords"); if (value) hubTerms.push(...value.split(/[,;\n]/).map(x => x.trim())); }
+  } catch (e) { console.error("digestFloorRelatedQueries research keywords", e.message); }
+  const exclude = new Set(fnNewsQueries(core, 40).map(x => x.toLowerCase()));
+  const phrases = [...new Set([...related, ...hubTerms].filter(Boolean))];
+  return fnNewsQueries(phrases, 40).filter(q => !exclude.has(q.toLowerCase())).slice(0, 6);
+}
+async function digestFloorPerplexity(env, job, queries, existingSources, limit) {
+  const phase = "perplexityExpansion", excluded = [...new Set((existingSources || []).map(x => x.url).filter(u => /^https?:\/\//i.test(u)))].slice(-120);
+  if (!env.PERPLEXITY_API_KEY) { await newsletterUsage(env, job, phase, { status: "skipped", error: "Perplexity key unavailable" }, false); return { sources: [], reason: "Perplexity key unavailable" }; }
+  const cap = await spendCheck(env, "perplexity"); if (cap) { await newsletterUsage(env, job, phase, { status: "skipped", error: "Perplexity expansion skipped by spend limit" }, false); return { sources: [], reason: "Perplexity expansion skipped by spend limit" }; }
+  const input = `Find up to ${limit} additional current news findings for a weekly digest. This is a gap-fill after a free-source search returned too few items. Free sources are acceptable; source prestige is not a filter. Use only the related search phrases below and real URLs. Do not repeat the existing URL or story/title list. Do not invent facts, URLs, dates, publishers, or claims. Return fewer if fewer real findings exist.\n\nRELATED KEYWORDS ACTUALLY SEARCHED:\n${queries.join("\n")}\n\nALREADY FOUND — EXCLUDE THESE URLS:\n${excluded.join("\n")}\n\nALREADY FOUND — EXCLUDE THESE CLAIMS:\n${(existingSources || []).map(x => String(x.claim || "")).slice(-60).join("\n")}\n\nReturn only a fenced JSON object: {"sources":[{"url":"real URL","publisher":"","date":"YYYY-MM-DD or empty","claim":"one factual sentence","tier":"1|2|3","split":"premium|free","keywordsUsed":["one searched phrase"]}]}`;
+  const priorProviderResult = await env.TRADES.get('digest:provider-result:' + job.id + ':' + phase, 'json');
+  await newsletterUsage(env, job, phase, { status: "running", promptChars: input.length }, !priorProviderResult);
+  let fetched;
+  try { fetched = await digestProviderFetch(env, job, phase, input); }
+  catch (error) { await newsletterUsage(env, job, phase, { status: "failed", error: error.message }, false); return { sources: [], reason: "Perplexity expansion failed: " + error.message }; }
+  const response = fetched.response, raw = await response.text(); let data = null; try { data = JSON.parse(raw); } catch (e) {}
+  if (!response.ok || !data) { const reason = "Perplexity expansion HTTP " + response.status; await newsletterUsage(env, job, phase, { status: "failed", error: reason }, false); return { sources: [], reason }; }
+  const pc = pplxCost(data.usage);
+  if (!fetched.replayed) await spendAdd(env, "perplexity", pc.cost, pc.estimated, data.usage).catch(() => {});
+  await newsletterUsage(env, job, phase, { status: "done", usage: data.usage || null }, false);
+  const text = data.output_text || (data.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n"), parsed = drJson(text);
+  const sources = (Array.isArray(parsed) ? parsed : parsed?.sources || []).filter(x => x && /^https?:\/\//i.test(x.url || "") && (x.claim || x.title)).slice(0, limit)
+    .map(x => ({ claim: String(x.claim || x.title).slice(0, 600), publisher: x.publisher || "", url: x.url, date: x.date || "", tier: String(x.tier || "3"), split: x.split === "premium" ? "premium" : "free", expansionAdded: true,
+      keywordsUsed: Array.isArray(x.keywordsUsed) ? x.keywordsUsed : queries, sourceMethod: "perplexity-expansion" }));
+  return { sources, reason: sources.length ? "" : "Perplexity expansion returned no additional valid source URLs", usage: data.usage || null,
+    cost: pc.estimated ? `estimated $${pc.cost.toFixed(2)}` : `reported $${pc.cost.toFixed(2)}`, replayed: fetched.replayed };
+}
+function digestFloorAppendBody(body, additions) {
+  if (!(additions || []).length) return body;
+  return String(body || "") + "\n\n## Additional developments found through related-keyword expansion\n\n" + additions.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n");
 }
 // active subscribers on the hub's ActiveCampaign newsletter list (KV hub:aclist:<slug>) — cached 6 h; any failure counts as 0
 async function hubListSubscribers(env, cid) {
@@ -15340,12 +15404,67 @@ async function adStep(env, cid, S, invoke) {
     S.step = "rank"; return;
   }
   if (S.step === "rank" || S.step === "title") { S.step = "write"; return; }   // (older runs) — the title is permanent now
+  if (S.step === "expand-free" || S.step === "expand-paid") {
+    const freeDepth = S.newsletter?.fields?.['Research Depth'] === 'Free';
+    const job = freeDepth ? { id: S.period, campaignId: cid, keywords: S.freeKeywords || [], newsletter: S.newsletter, periodStart: S.periodStart, runKind: S.manual ? 'manual' : 'weekly', periodKey: S.period }
+      : await env.TRADES.get("digres:" + S.jobId, "json");
+    if (!job) throw new Error("research run expired before related-keyword expansion");
+    const runId = job.id || S.period, pendingKey = 'digest:pending:' + cid + ':' + runId, w = await env.TRADES.get(pendingKey, 'json');
+    if (!w) throw new Error("ranked sources expired before related-keyword expansion");
+    S.floor = S.floor || { target: 20, coreItems: 0, relatedKeywords: [] };
+    const finishFloor = async reason => {
+      const memory = await digestMemory(env, cid), count = digestFloorNewCount(memory, w.sources || [], runId);
+      S.floor.items = count; S.floor.expansionItems = Math.max(0, count - (S.floor.coreItems || 0)); S.floor.met = count >= 20; S.floor.exhausted = !S.floor.met;
+      S.floor.reason = reason || (S.floor.met ? "20-item floor met" : "related-keyword expansion exhausted");
+      const used = S.floor.relatedKeywords.length ? S.floor.relatedKeywords.join(", ") : "none available";
+      S.note = `Record floor ${S.floor.met ? 'met' : 'not reached'}: ${count}/20 (${S.floor.coreItems || 0} core, ${S.floor.expansionItems} added by expansion); related keywords tried: ${used}.${S.floor.paidCost ? ' Paid Perplexity expansion: ' + S.floor.paidCost + '.' : S.floor.paidAttempted ? ' Paid Perplexity expansion attempted; ' + (S.floor.paidReason || 'no additional valid sources') + '.' : ' No paid expansion call was made.'}${S.floor.exhausted ? ' Expansion exhausted: ' + S.floor.reason + '.' : ''}`;
+      S.floorReady = true; S.step = 'write'; await env.TRADES.put(pendingKey, JSON.stringify(w));
+    };
+    if (S.step === "expand-free") {
+      const need = Math.max(0, 20 - digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId));
+      if (need && !S.floor.relatedKeywords.length) S.floor.relatedKeywords = await digestFloorRelatedQueries(env, cid, S.keywords || S.freeKeywords || []);
+      if (need && S.floor.relatedKeywords.length) {
+        const free = await freeNewsSearch(env, S.floor.relatedKeywords, { days: 7, max: need });
+        const candidates = (free || []).map(x => ({ claim: x.title, publisher: x.publisher || "", url: x.url, date: x.date || "", tier: "3", split: "free", expansionAdded: true,
+          keywordsUsed: [x.q], sourceMethod: "free-related-search", topicId: S.topicId || "" }));
+        const additions = digestFloorFreshSources(await digestMemory(env, cid), candidates, runId);
+        w.sources = digestFloorAppendSources(w.sources || [], additions); const added = w.sources.filter(x => x.expansionAdded);
+        w.digest = digestFloorAppendBody(w.digest, added); w.expansion = { ...(w.expansion || {}), freeItems: added.length, relatedKeywords: S.floor.relatedKeywords };
+      }
+      const count = digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId);
+      if (count >= 20) { await finishFloor(""); return; }
+      if (!S.floor.relatedKeywords.length) { await finishFloor("no real related keyword phrases were available"); return; }
+      if (freeDepth) { await finishFloor("Research Depth is Free; paid expansion is disabled"); return; }
+      if (!env.PERPLEXITY_API_KEY) { await finishFloor("Perplexity expansion is unavailable"); return; }
+      await env.TRADES.put(pendingKey, JSON.stringify(w)); S.step = "expand-paid"; return;
+    }
+    const need = Math.max(0, 20 - digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId));
+    if (!need) { await finishFloor(""); return; }
+    S.floor.paidAttempted = true;
+    const paidJob = { ...job, id: job.id || runId, campaignId: cid, newsletter: S.newsletter, runKind: S.manual ? 'manual' : 'weekly', periodKey: S.period };
+    const result = await digestFloorPerplexity(env, paidJob, S.floor.relatedKeywords, w.sources || [], need);
+    S.floor.paidCost = result.cost || ""; S.floor.paidReason = result.reason || "";
+    const freshPaid = digestFloorFreshSources(await digestMemory(env, cid), result.sources || [], runId);
+    const before = w.sources.length; w.sources = digestFloorAppendSources(w.sources || [], freshPaid);
+    const added = w.sources.slice(before); w.digest = digestFloorAppendBody(w.digest, added); w.expansion = { ...(w.expansion || {}), paidItems: added.length, paidCost: result.cost || "", relatedKeywords: S.floor.relatedKeywords };
+    await finishFloor(result.reason || ""); return;
+  }
   if (S.step === "write" || S.step === "pillar") {   // Perplexity ranks + writes (no Claude) → this week's Digest asset under the permanent title
     const free = S.newsletter && S.newsletter.fields['Research Depth'] === 'Free';
     const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
     const runId=job.id||S.period,pendingKey='digest:pending:'+cid+':'+runId;
     let w=await env.TRADES.get(pendingKey,'json');
     if(!w){w=free?await freeNewsDigest(env,S.titleName||S.name,S.freeKeywords||[]):await adPerplexityDigest(env,job,S.names);await env.TRADES.put(pendingKey,JSON.stringify(w));}
+    const dedupedCore = digestFloorAppendSources([], w.sources || []);
+    if (dedupedCore.length !== (w.sources || []).length) { w.sources = dedupedCore; await env.TRADES.put(pendingKey, JSON.stringify(w)); }
+    if (!S.floorReady) {
+      const coreCount = digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId);
+      S.floor = { target: 20, coreItems: coreCount, relatedKeywords: [], paidAttempted: false };
+      if (coreCount < 20) { S.floor.relatedKeywords = await digestFloorRelatedQueries(env, cid, S.keywords || S.freeKeywords || []); S.step = 'expand-free'; return; }
+      S.floor.items = coreCount; S.floor.expansionItems = 0; S.floor.met = true; S.floor.exhausted = false; S.floor.reason = "20-item floor met by core-keyword research";
+      S.note = `Record floor met: ${coreCount}/20 from core keywords, 0 added by expansion; related keywords tried: none required. No paid expansion call was made.`;
+      S.floorReady = true;
+    }
     S.memory=await digestMemoryCommit(env,cid,runId,[...(w.memoryFindings||[]),...w.sources]);
     const memory=await digestMemory(env,cid),newKeys=new Set(memory.items.filter(x=>x.firstSeenRun===runId).map(memoryKey));
     w.sources=w.sources.filter(x=>newKeys.has(memoryKey(x))).map(x=>({...x,memoryKind:memory.items.find(i=>memoryKey(i)===memoryKey(x))?.relationship||'new'}));
@@ -15357,7 +15476,7 @@ async function adStep(env, cid, S, invoke) {
     const label = adPeriod().label;
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
-    await digestItemsSave(env, S.assetId, w.sources);   // its findings, premium / free, for the Digest section
+    await digestItemsSave(env, S.assetId, w.sources, { additive: true });   // append this run's core + expansion findings; preserve prior checks, children and picks
     const writtenTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: writtenTitle } }] },
       "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
