@@ -12245,7 +12245,7 @@ function dev2CollapseAll(close) {
 // ── All Hubs — Deployed Assets checklist: hubs × asset types, deployed-only counts (Published AND live on the hub).
 // Columns are the viewer's own (add from the asset types present in hubs, reorder, remove) — kept in this browser.
 const HUBCHECK_KEY = 'hubChecklistCols:v2';   // v2: parents split by name (Series / Digest / Sales parent)
-let HUBCHECK_COLS = null, HUBCHECK_OPEN = null, HUBCHECK_GOALS = null;   // goals: worker getHubCheckGoals (per-period, cron-kept snapshot)
+let HUBCHECK_COLS = null, HUBCHECK_OPEN = null, HUBCHECK_GOALS = null, HUBCHECK_FLAT = [];   // FLAT: every column type in display order (groups expanded)   // goals: worker getHubCheckGoals (per-period, cron-kept snapshot)
 async function hubCheckGoalsLoad(rebuild) {
   const r = await call('getHubCheckGoals', rebuild ? { rebuild: true } : {}).catch(e => ({ error: e.message }));
   if (r && !r.error) { HUBCHECK_GOALS = r; renderHubChecklist(); }
@@ -12289,17 +12289,52 @@ function hubCheckCols(types, cells, dev) {
   if (!HUBCHECK_COLS) HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t)));   // default: types with something deployed or in development
   let offered = []; try { const v = localStorage.getItem(HUBCHECK_ALWAYS_KEY); offered = v === '1' ? ['Client Studio', 'listing', 't shirt'] : JSON.parse(v || '[]'); } catch (e) {}
   const fresh = HUBCHECK_ALWAYS.filter(t => !offered.includes(t));
-  if (fresh.length) { for (const t of fresh) if (!HUBCHECK_COLS.some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, JSON.stringify(HUBCHECK_ALWAYS)); } catch (e) {} }
+  if (fresh.length) { for (const t of fresh) if (!hubCheckFlat(HUBCHECK_COLS).some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, JSON.stringify(HUBCHECK_ALWAYS)); } catch (e) {} }
   return HUBCHECK_COLS;
 }
-function hubCheckAdd(sel) { const t = sel.value; if (!t) return; if (!HUBCHECK_COLS.includes(t)) HUBCHECK_COLS.push(t); hubCheckSave(); renderHubChecklist(); }
-// drag a column header onto another to move it there
-let HUBCHECK_DRAG = -1;
-function hubCheckDragStart(ev, i) { HUBCHECK_DRAG = i; try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', String(i)); } catch (e) {} }
-function hubCheckDrop(ev, j) { ev.preventDefault(); const i = HUBCHECK_DRAG; HUBCHECK_DRAG = -1; if (i < 0 || i === j || !HUBCHECK_COLS[i]) return; const [c] = HUBCHECK_COLS.splice(i, 1); HUBCHECK_COLS.splice(j, 0, c); hubCheckSave(); renderHubChecklist(); }
-function hubCheckRemove(i) { HUBCHECK_COLS.splice(i, 1); hubCheckSave(); renderHubChecklist(); }
+// ── column groups ──
+const hubCheckIsGroup = e => e && typeof e === 'object' && Array.isArray(e.cols);
+function hubCheckFlat(cols) { return (cols || []).flatMap(e => hubCheckIsGroup(e) ? e.cols : [e]); }
+function hubCheckAt(addr) {   // → { list, index, item } for an address
+  const [g, m] = String(addr).split('.').map(Number), top = HUBCHECK_COLS[g];
+  if (m >= 0 && hubCheckIsGroup(top)) return { list: top.cols, index: m, item: top.cols[m] };
+  return { list: HUBCHECK_COLS, index: g, item: top };
+}
+function hubCheckAdd(sel) {
+  const t = sel.value; if (!t) return;
+  if (t === '__group') { const name = (prompt('Name for the new column group:', 'New group') || '').trim(); sel.value = ''; if (!name) return;
+    HUBCHECK_COLS.push({ g: 'g' + Date.now().toString(36), name, open: true, cols: [] }); hubCheckSave(); renderHubChecklist(); return; }
+  if (!hubCheckFlat(HUBCHECK_COLS).includes(t)) HUBCHECK_COLS.push(t); hubCheckSave(); renderHubChecklist();
+}
+function hubCheckGroupToggle(gi) { const e = HUBCHECK_COLS[gi]; if (!hubCheckIsGroup(e)) return; e.open = !e.open; hubCheckSave(); renderHubChecklist(); }
+function hubCheckGroupRename(gi) { const e = HUBCHECK_COLS[gi]; if (!hubCheckIsGroup(e)) return; const name = (prompt('Rename this column group:', e.name) || '').trim(); if (!name) return; e.name = name; hubCheckSave(); renderHubChecklist(); }
+function hubCheckGroupUngroup(gi) { const e = HUBCHECK_COLS[gi]; if (!hubCheckIsGroup(e)) return; HUBCHECK_COLS.splice(gi, 1, ...e.cols); hubCheckSave(); renderHubChecklist(); }   // members return to the top level in place
+// drag a header: onto a group header = into that group (a group dropped on a group = move it there); onto a column = move to its place
+let HUBCHECK_DRAG = '';
+function hubCheckDragStart(ev, addr) { HUBCHECK_DRAG = String(addr); ev.stopPropagation(); try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', String(addr)); } catch (e) {} }
+function hubCheckDrop(ev, addr, intoGroup) {
+  ev.preventDefault(); ev.stopPropagation(); const from = HUBCHECK_DRAG; HUBCHECK_DRAG = ''; if (from === '' || from === String(addr)) return;
+  const src = hubCheckAt(from), tgt = hubCheckAt(addr); if (!src.item || !tgt.item) return;
+  const moving = src.item, target = tgt.item, movingGroup = hubCheckIsGroup(moving);
+  if (movingGroup && hubCheckIsGroup(target) && target === moving) return;
+  src.list.splice(src.index, 1);
+  if (intoGroup && !movingGroup && hubCheckIsGroup(target)) target.cols.push(moving);   // join the group
+  else {
+    // a group can't sit inside a group: dropped on a member, it goes before that member's group
+    const groupOfTarget = HUBCHECK_COLS.find(e => hubCheckIsGroup(e) && e.cols.includes(target));
+    const list = movingGroup && groupOfTarget ? HUBCHECK_COLS : (groupOfTarget ? groupOfTarget.cols : HUBCHECK_COLS);
+    const anchor = movingGroup && groupOfTarget ? groupOfTarget : target, at = list.indexOf(anchor);
+    list.splice(at < 0 ? list.length : at, 0, moving);
+  }
+  hubCheckSave(); renderHubChecklist();
+}
+function hubCheckDropEnd(ev) {   // dropped on Total: move to the end of the top level
+  ev.preventDefault(); const from = HUBCHECK_DRAG; HUBCHECK_DRAG = ''; if (from === '') return;
+  const src = hubCheckAt(from); if (!src.item) return; src.list.splice(src.index, 1); HUBCHECK_COLS.push(src.item); hubCheckSave(); renderHubChecklist();
+}
+function hubCheckRemove(addr) { const src = hubCheckAt(addr); if (!src.item) return; src.list.splice(src.index, 1); hubCheckSave(); renderHubChecklist(); }
 function hubCheckOpen(i, j, kind) {
-  const h = HUB_SITES.filter(x => x.campaignId)[i], t = HUBCHECK_COLS[j]; if (!h || !t) return;
+  const h = HUB_SITES.filter(x => x.campaignId)[i], t = HUBCHECK_FLAT[j]; if (!h || !t) return;
   // A count opens the All Output table filtered to that hub + asset type (its two filter slots), and scrolls to it.
   const { cells, dev } = hubCheckData(), k = h.slug + '|' + t, rows = [...(cells[k] || []), ...(dev[k] || [])];
   if (!rows.length) return;
@@ -12327,7 +12362,7 @@ function hubCheckTitles(slug) {
   return [...seen.values()].sort((a, b) => (a.product + a.name).localeCompare(b.product + b.name));
 }
 function hubCheckAddAsset(i) {
-  const t = HUBCHECK_COLS[i]; if (!t) return; const hubs = HUB_SITES.filter(h => h.campaignId);
+  const t = HUBCHECK_FLAT[i]; if (!t) return; const hubs = HUB_SITES.filter(h => h.campaignId);
   const studio = hubCheckNorm(t) === 'client studio';
   const pre = HUBCHECK_OPEN && hubs.some(h => h.slug === HUBCHECK_OPEN.slug) ? HUBCHECK_OPEN.slug : (hubs[0] || {}).slug;
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(t)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${studio
@@ -12346,7 +12381,7 @@ function hubCheckAddTitles() {
     : '<option value="">— no live, synced titles on this hub —</option>';
 }
 async function hubCheckAddAssetGo(i) {
-  const t = HUBCHECK_COLS[i], slug = document.getElementById('hcaHub').value, tid = document.getElementById('hcaTitle').value;
+  const t = HUBCHECK_FLAT[i], slug = document.getElementById('hcaHub').value, tid = document.getElementById('hcaTitle').value;
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Pick a hub'; if (!tid) return 'Pick a title';
   const ti = hubCheckTitles(slug).find(x => x.id === tid) || {}, sp = hubCheckTypeSpec(t);
   if (hubCheckNorm(t) === 'client studio') {
@@ -12388,13 +12423,18 @@ function renderHubChecklist() {
   if (!body) return;
   if (HUBCHECK_GOALS === null) { HUBCHECK_GOALS = false; hubCheckGoalsLoad(); }
   const { types, cells, dev, flag, rw } = hubCheckData(), cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
+  const flat = hubCheckFlat(cols); HUBCHECK_FLAT = flat;
+  // display order: a group shows its summary column, then (when open) its members; fi = the column's index in flat
+  const disp = []; let fi = 0;
+  cols.forEach((e, gi) => { if (hubCheckIsGroup(e)) { disp.push({ grp: e, gi }); e.cols.forEach((t, mi) => { if (e.open) disp.push({ t, addr: gi + '.' + mi, fi, member: true }); fi++; }); }
+    else disp.push({ t: e, addr: String(gi), fi: fi++ }); });
   const nrw = (slug, t) => (rw[slug + '|' + t] || []).length;   // blue ↻ = interview finished, rewrite due (not the same as red ⚑ = no interview yet)
   const rwBadge = (n, hi, ci) => n ? `<span style="color:var(--text3);"> · </span><span style="color:#3b82f6;font-weight:700;cursor:pointer;" onclick="hubCheckOpen(${hi},${ci},'flag')" title="Interview finished — the live text is waiting for a ↻ Rewrite">↻${n}</span>` : '';
   const nf = (slug, t) => (flag[slug + '|' + t] || []).length;
-  const left = types.filter(t => !cols.includes(t));
-  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(hubCheckLabel(t))}</option>`).join('')}</select>`
-    + `<span style="font-size:11px;color:var(--text3);">${cols.length} column${cols.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
-  if (!cols.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
+  const left = types.filter(t => !flat.includes(t));
+  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option><option value="__group">＋ New column group…</option>${left.map(t => `<option value="${esc(t)}">${esc(hubCheckLabel(t))}</option>`).join('')}</select>`
+    + `<span style="font-size:11px;color:var(--text3);">${flat.length} column${flat.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
+  if (!disp.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
   const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;';
   const td = 'padding:5px 8px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);';
   const n = (slug, t) => (cells[slug + '|' + t] || []).length, nd = (slug, t) => (dev[slug + '|' + t] || []).length;
@@ -12405,19 +12445,25 @@ function renderHubChecklist() {
     + dot + `<span style="${live ? 'color:#16a34a;font-weight:600;' : 'color:var(--text3);'}${clickLive ? 'cursor:pointer;' : ''}${onLive ? 'text-decoration:underline;' : ''}"${clickLive ? ` onclick="${clickLive}"` : ''} title="Published">${live || '·'}</span>`
     + (fl ? dot + `<span style="color:#dc2626;font-weight:700;${clickFlag ? 'cursor:pointer;' : ''}${onFlag ? 'text-decoration:underline;' : ''}"${clickFlag ? ` onclick="${clickFlag}"` : ''} title="Flagged — waiting on its interview (a digest: at Review)">⚑${fl}</span>` : '');
   const gsum = list => { const g = list.filter(Boolean); return g.length ? { goal: g.reduce((a, x) => a + x.goal, 0), cadence: 'each method’s own', method: 'sum of the goals' } : null; };
+  // a column group's cell = the sum of all its members (shown whether the group is open or collapsed)
+  const grpTd = (slugs, g) => { const sum = f => slugs.reduce((a, sl) => a + g.cols.reduce((b, t) => b + f(sl, t), 0), 0);
+    return `<td style="${td}background:var(--surface2);border-left:2px solid var(--accent);font-weight:600;">${pair(sum(n), sum(nd), '', '', false, false, gsum(slugs.flatMap(sl => g.cols.map(t => hubCheckGoal(sl, t)))), sum(nf))}</td>`; };
   let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Each cell: <b style="color:#ff7a00;">goal this period</b> · <b>development</b> · <b style="color:#16a34a;">published</b> · <b style="color:#dc2626;">⚑ flagged</b> (an asset waiting on its own interview; a digest at Review) — counts are assets on synced, live titles and products (all-time); goals come from the Current Methods worksheet’s tracked methods and reset each period by cron${HUBCHECK_GOALS && HUBCHECK_GOALS.at ? ' (updated ' + new Date(HUBCHECK_GOALS.at).toLocaleString() + ')' : ''}</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th>`
-    + cols.map((t, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="hubCheckDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,${i})" title="Drag to reorder"><div>${esc(hubCheckLabel(t))}</div><div style="font-weight:400;">${hubCheckCanAdd(t) ? `<button onclick="hubCheckAddAsset(${i})" title="Add an unwritten ${esc(t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
-    + `<th style="${th}">Total</th></tr></thead><tbody>`;
+    + disp.map(x => x.grp
+      ? `<th style="${th}cursor:grab;background:var(--surface2);border-left:2px solid var(--accent);" draggable="true" ondragstart="hubCheckDragStart(event,'${x.gi}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.gi}',true)" title="Column group — drop a column here to add it; drag to move the group"><div><button onclick="hubCheckGroupToggle(${x.gi})" title="${x.grp.open ? 'Collapse' : 'Expand'} this group" style="font-size:10px;padding:0 4px;">${x.grp.open ? '◂' : '▸'}</button> ${esc(x.grp.name)} <span style="font-weight:400;color:var(--text3);">(${x.grp.cols.length})</span></div><div style="font-weight:400;"><button onclick="hubCheckGroupRename(${x.gi})" title="Rename group" style="font-size:10px;padding:0 4px;">✎</button><button onclick="hubCheckGroupUngroup(${x.gi})" title="Remove the group (its columns stay)" style="font-size:10px;padding:0 4px;">×</button></div></th>`
+      : `<th style="${th}cursor:grab;${x.member ? 'background:var(--surface2);' : ''}" draggable="true" ondragstart="hubCheckDragStart(event,'${x.addr}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.addr}',false)" title="${x.member ? 'In a group — drag onto another column to take it out' : 'Drag to reorder, or onto a group header to add it to that group'}"><div>${esc(hubCheckLabel(x.t))}</div><div style="font-weight:400;">${hubCheckCanAdd(x.t) ? `<button onclick="hubCheckAddAsset(${x.fi})" title="Add an unwritten ${esc(x.t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove('${x.addr}')" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + `<th style="${th}" ondragover="event.preventDefault()" ondrop="hubCheckDropEnd(event)" title="Drop a column here to move it to the end">Total</th></tr></thead><tbody>`;
   hubs.forEach((h, hi) => {
-    let tot = 0, totD = 0, totF = 0;
-    html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="productsLoadHub('${esc(h.slug)}');return false;" title="Open Products for this hub" style="display:inline-block;margin-right:7px;color:var(--accent);font-weight:700;text-decoration:none;">$</a><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + cols.map((t, ci) => {
-      const c = n(h.slug, t), d = nd(h.slug, t), fl = nf(h.slug, t); tot += c; totD += d; totF += fl;
+    let tot = 0, totD = 0, totF = 0; flat.forEach(t => { tot += n(h.slug, t); totD += nd(h.slug, t); totF += nf(h.slug, t); });   // every column, incl. collapsed group members
+    html += `<tr><td style="${td}text-align:left;white-space:nowrap;"><a href="#" onclick="productsLoadHub('${esc(h.slug)}');return false;" title="Open Products for this hub" style="display:inline-block;margin-right:7px;color:var(--accent);font-weight:700;text-decoration:none;">$</a><a href="#" onclick="hubCheckGoHub('${esc(h.slug)}');return false;" title="Open this hub's card (Content Hubs 2)" style="color:var(--accent);text-decoration:none;">${esc(h.name || h.slug)}</a></td>` + disp.map(x => {
+      if (x.grp) return grpTd([h.slug], x.grp);
+      const t = x.t, ci = x.fi, c = n(h.slug, t), d = nd(h.slug, t), fl = nf(h.slug, t);
       const at = HUBCHECK_OPEN && HUBCHECK_OPEN.slug === h.slug && HUBCHECK_OPEN.t === t;
       return `<td style="${td}${at ? 'background:var(--surface2);' : ''}">${pair(c, d, c ? `hubCheckOpen(${hi},${ci},'live')` : '', d ? `hubCheckOpen(${hi},${ci},'dev')` : '', at && HUBCHECK_OPEN.kind === 'live', at && HUBCHECK_OPEN.kind === 'dev', hubCheckGoal(h.slug, t), fl, fl ? `hubCheckOpen(${hi},${ci},'flag')` : '', at && HUBCHECK_OPEN.kind === 'flag')}${rwBadge(nrw(h.slug, t), hi, ci)}</td>`;
-    }).join('') + `<td style="${td}">${pair(tot, totD, '', '', false, false, gsum(cols.map(t => hubCheckGoal(h.slug, t))), totF)}</td></tr>`;
+    }).join('') + `<td style="${td}">${pair(tot, totD, '', '', false, false, gsum(flat.map(t => hubCheckGoal(h.slug, t))), totF)}</td></tr>`;
   });
-  html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td>${cols.map(t => `<td style="${td}">${pair(hubs.reduce((a, h) => a + n(h.slug, t), 0), hubs.reduce((a, h) => a + nd(h.slug, t), 0), '', '', false, false, gsum(hubs.map(h => hubCheckGoal(h.slug, t))), hubs.reduce((a, h) => a + nf(h.slug, t), 0))}</td>`).join('')}`
-    + `<td style="${td}">${pair(hubs.reduce((a, h) => a + cols.reduce((b, t) => b + n(h.slug, t), 0), 0), hubs.reduce((a, h) => a + cols.reduce((b, t) => b + nd(h.slug, t), 0), 0), '', '', false, false, gsum(hubs.flatMap(h => cols.map(t => hubCheckGoal(h.slug, t)))), hubs.reduce((a, h) => a + cols.reduce((b, t) => b + nf(h.slug, t), 0), 0))}</td></tr></tbody></table></div>`;
+  html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td>${disp.map(x => x.grp ? grpTd(hubs.map(h => h.slug), x.grp) : `<td style="${td}">${pair(hubs.reduce((a, h) => a + n(h.slug, x.t), 0), hubs.reduce((a, h) => a + nd(h.slug, x.t), 0), '', '', false, false, gsum(hubs.map(h => hubCheckGoal(h.slug, x.t))), hubs.reduce((a, h) => a + nf(h.slug, x.t), 0))}</td>`).join('')}`
+    + `<td style="${td}">${pair(hubs.reduce((a, h) => a + flat.reduce((b, t) => b + n(h.slug, t), 0), 0), hubs.reduce((a, h) => a + flat.reduce((b, t) => b + nd(h.slug, t), 0), 0), '', '', false, false, gsum(hubs.flatMap(h => flat.map(t => hubCheckGoal(h.slug, t)))), hubs.reduce((a, h) => a + flat.reduce((b, t) => b + nf(h.slug, t), 0), 0))}</td></tr></tbody></table></div>`;
   body.innerHTML = html;
   list.innerHTML = HUBCHECK_OPEN ? `<div style="font-size:11.5px;color:var(--text2);">All Output below is filtered to <b>${esc(HUBCHECK_OPEN.slug)}</b> · <b>${esc(HUBCHECK_OPEN.t)}</b> — clear it with the table's ⚙ filter panel → Clear filters.</div>` : '';
 }
@@ -12427,7 +12473,7 @@ let PRODUCTS_TABLE_COLS = null, PRODUCTS_TABLE_SLUG = '', PRODUCTS_TABLE_DRAG = 
 function productsCols(types, cells, dev) {
   if (!PRODUCTS_TABLE_COLS) {
     try { const saved = JSON.parse(localStorage.getItem(PRODUCTS_COLS_KEY) || 'null'); if (Array.isArray(saved)) PRODUCTS_TABLE_COLS = saved; } catch (e) {}
-    if (!PRODUCTS_TABLE_COLS) PRODUCTS_TABLE_COLS = hubCheckCols(types, cells, dev).slice();
+    if (!PRODUCTS_TABLE_COLS) PRODUCTS_TABLE_COLS = hubCheckFlat(hubCheckCols(types, cells, dev));
   }
   return PRODUCTS_TABLE_COLS;
 }
