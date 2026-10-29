@@ -2312,8 +2312,11 @@ async function writeContractAsset(env,assetId) {
   const cur=writingFieldValues(p),currentFields=Object.fromEntries(contract.map(f=>[f.name,cur[f.name]||'']));
   // operator 2026-10-23: the writer must see what THIS asset is about — its own blurb and the Series idea noted on its page (with the
   // ranking's type / stage) — not just the shared title's pillar. Topical posts also get the hub's published posts for related links.
-  const pageNote=(await extractBlocksTextRecursive(ivHdr(),page.id).catch(()=>'')).split('\n').filter(l=>/series idea:|^\s*run ·|category:/i.test(l)).join('\n').slice(0,1500);
-  const subject={description:String(cur.Description||'').slice(0,600),note:pageNote};
+  // The note is a callout, which extractBlocksTextRecursive skips — read the blocks directly so a Run's whole plan arrives (2026-10-29).
+  const pageNote=(await offerBlogBlocks(ivHdr(),page.id).catch(()=>[])).map(b=>hubRichText(b[b.type]?.rich_text).trim()).filter(t=>/^(series idea:|run\s*·|category:)/i.test(t)).join('\n').slice(0,3000);
+  // Keyword Seed (Paste list runs): the operator's own topic line — the subject of the piece and, for SEO writing, its first keyword
+  const keywordSeed=hubRichText(p['Keyword Seed']?.rich_text).trim().slice(0,1500);
+  const subject={description:String(cur.Description||'').slice(0,600),note:pageNote,...(keywordSeed?{keywordSeed}:{})};
   let hubPosts=[];if(/topical/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
     if(hub)hubPosts=(await hubBlogManifest(env,hub)).filter(x=>x&&x.slug&&hubAssetId(x.assetId||'')!==hubAssetId(page.id)).slice(0,25).map(x=>({title:x.title,url:'../'+x.slug+'/'}));}catch(e){}}
   const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method.properties?.Notes?.rich_text),page:recipe},
@@ -2328,7 +2331,7 @@ async function writeContractAsset(env,assetId) {
   if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
   // 2026-10-24: the SEO keywords the check scores are handed to the writer, and the ONE corrective pass covers every problem the checks
   // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
-  const seoKws=style.purpose==='SEO'?kwSplit(String(packet.product?.properties?.Keywords||'')):[],seoList=seoCoverage(seoKws,'','').missing;
+  const seoKws=style.purpose==='SEO'?[...new Set([...(keywordSeed?keywordSeed.split(/\s*;\s*/).filter(Boolean).slice(0,3):[]),...kwSplit(String(packet.product?.properties?.Keywords||''))])]:[],seoList=seoCoverage(seoKws,'','').missing;
   const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'');
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
@@ -14914,6 +14917,16 @@ async function srReddit(q) {   // Reddit's free RSS search (the keyless JSON API
 // RUN TYPES (operator 2026-10-17: "put them all in") — a run = a set of posts made together from one source, one copy
 // strategy, one design treatment. Each: shape (single = separate posts · carousel = one carousel), posts, cadence, the idea
 // sources that feed it, and the copy formula. Writing / robust designer / Buffer per hub login come later.
+// ＋ Run → Paste list (operator 2026-10-29): the run is the operator's own list, nothing gathered or invented. As one carousel it
+// goes through seriesRun with this type; as separate posts the page calls seriesUseIdea once per line (each with a keywordSeed).
+const PASTE_RUN = { id: "paste", group: "Your list", name: "Paste list", shape: "carousel", posts: 25, cadence: "one carousel", sources: [], formula: "One slide per pasted line, in order — use only what that line says" };
+// Keyword Seed (Assets, rich text): the topic line a Paste list asset was made from — the writer's subject and first SEO keyword
+async function seriesKeywordSeed(env, assetIds, seed) {
+  const hdrT = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  await ensureDbRichTextProperty(hdrT, ASSETS_DB, "Keyword Seed").catch(() => {});
+  for (const id of assetIds) await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(id).replace(/-/g, "")), { method: "PATCH", headers: hdrT,
+    body: JSON.stringify({ properties: { "Keyword Seed": { rich_text: [{ type: "text", text: { content: String(seed).slice(0, 1990) } }] } } }) }).catch(e => console.error("Keyword Seed save:", e.message));
+}
 const RUN_TYPES = [
   { id: "faq", group: "Educational", name: "FAQ run", shape: "single", posts: 6, cadence: "over a week", sources: ["Search questions", "YouTube autocomplete", "Google autocomplete", "Title research"], formula: "The question as the hook → a 2-3 line answer → 'full answer on the blog'" },
   { id: "myth", group: "Educational", name: "Myth vs fact", shape: "single", posts: 5, cadence: "over a week", sources: ["Reddit", "Pain points", "Search questions"], formula: "'Myth: …' / 'Truth: …' + one proof point" },
@@ -21306,6 +21319,7 @@ ${JSON.stringify(products)}`;
             "Platform Title": { rich_text: [{ type: "text", text: { content: tb.title.slice(0, 1990) } }] }, "Description": { rich_text: [{ type: "text", text: { content: tb.blurb.slice(0, 1990) } }] } } }) }).catch(e => console.error("series title/blurb save:", e.message));
         }
         const own = await ivCreationTopicalMethod(env, body.assetType);
+        if (body.keywordSeed) await seriesKeywordSeed(env, r.created.map(a => a.id), body.keywordSeed);
         if (own) for (const asset of r.created) await ivCreateForAsset(env, { assetId: asset.id, titleId, own, direction: "Series idea: " + idea });
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !/^cat:/.test(body.ideaId) && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
@@ -21313,9 +21327,9 @@ ${JSON.stringify(products)}`;
       }
       // seriesRun {titleId, titleName, seriesAssetId, runType, ideas:[{id,t,src}], assetType, campaignId, productId, slug}
       if (body.action === "seriesRun") {
-        const titleId = String(body.titleId || "").replace(/-/g, ""), rt = RUN_TYPES.find(x => x.id === body.runType);
+        const titleId = String(body.titleId || "").replace(/-/g, ""), rt = body.runType === PASTE_RUN.id ? PASTE_RUN : RUN_TYPES.find(x => x.id === body.runType);
         if (!titleId || !rt || !body.assetType) return json({ error: "titleId, runType and assetType required" }, 400);
-        const ideas = (Array.isArray(body.ideas) ? body.ideas : []).slice(0, 12); if (!ideas.length) return json({ error: "no unused ideas in this run type's sources — refresh or add sources" }, 400);
+        const ideas = (Array.isArray(body.ideas) ? body.ideas : []).slice(0, rt === PASTE_RUN ? 25 : 12); if (!ideas.length) return json({ error: "no unused ideas in this run type's sources — refresh or add sources" }, 400);
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
@@ -21323,6 +21337,7 @@ ${JSON.stringify(products)}`;
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
           allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label: rt.name, titleOverride: `Run · ${rt.name} — ${body.titleName || "Series"}`, note: plan }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        if (rt === PASTE_RUN) await seriesKeywordSeed(env, [r.created[0].id], ideas.map(x => String(x.t).trim()).join("; "));
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; ideas.forEach(x => { if (x.id && !used.includes(x.id)) used.push(x.id); });
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used, posts: ideas.length });

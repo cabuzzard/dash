@@ -19025,8 +19025,11 @@ function hubSeriesDraw() {
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
-      <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
-      <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
+      <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)"><optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup>${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
+      ${S.runType === '__paste' ? `<select id="srPasteKind" class="kw-sel" title="What each pasted line becomes">${[['seo', 'each line → a Topical - SEO Post'], ['single', 'each line → a Single Post'], ['youtube', 'each line → a Topical - YouTube'], ['carousel', 'one carousel, a slide per line']].map(([v, l]) => `<option value="${v}"${(S.pasteKind || 'seo') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>` : ''}
+      <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button>
+      ${S.runType === '__paste' ? `<textarea id="srPaste" rows="7" placeholder="One topic per line — each line becomes the title seed and keyword seed of its own asset (bullets and numbers are stripped). Up to 25." style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.paste || '')}</textarea>` : ''}
+      <div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
     ${D ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid var(--accent);border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">✍ Ask Claude</b><select id="srAskMode" class="kw-sel" onchange="_series.askMode=this.value;_series.askN=undefined;_series.ask=document.getElementById('srAsk').value;hubSeriesDraw()"><option value="ask"${S.askMode !== 'split' ? ' selected' : ''}>write ideas for my ask</option><option value="split"${S.askMode === 'split' ? ' selected' : ''}>split my pasted list</option></select><span style="font-size:10.5px;color:var(--text3);">${S.askMode === 'split' ? 'paste your info → Claude splits it into one idea per item (nothing invented) → a new Run' : 'a specific ask → Claude writes the ideas → a new Run on this Series'}</span>
       <textarea id="srAsk" rows="${S.askMode === 'split' ? 8 : 2}" placeholder="${S.askMode === 'split' ? 'Paste your list / notes / doc here — each item becomes one post (or slide)' : 'e.g. one post per micro app a plumbing business could use — what it does, the hours it saves'}" style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.ask || '')}</textarea>
@@ -19108,13 +19111,50 @@ function hubSeriesRunPick(rt) {
 }
 function hubSeriesRunInfoText() {
   const S = _series, D = S && S.data; if (!D || !D.runTypes) return '';
-  const id = (document.getElementById('srRunType') || {}).value || D.runTypes[0].id, rt = D.runTypes.find(r => r.id === id); if (!rt) return '';
+  const id = S.runType || (document.getElementById('srRunType') || {}).value || D.runTypes[0].id;
+  if (id === '__paste') return 'Built only from your list — nothing gathered or invented. Each line seeds its asset\'s title and its Keyword Seed (the writer\'s subject, and the first keyword an SEO post must place). Topical posts get their interview flagged.';
+  const rt = D.runTypes.find(r => r.id === id); if (!rt) return '';
   const n = hubSeriesRunPick(rt).length;
   return `${rt.formula} · ${rt.cadence} · from ${rt.sources.join(', ')} · ${n ? n + ' unused idea' + (n === 1 ? '' : 's') + ' ready' : 'no unused ideas in these sources yet'}`;
 }
 function hubSeriesRunInfo() { const el = document.getElementById('srRunInfo'); if (el) el.textContent = hubSeriesRunInfoText(); }
+function hubSeriesRunPickType(v) {   // Paste list adds its own controls, so the modal redraws (keeping any text already pasted)
+  const S = _series; if (!S) return; const ta = document.getElementById('srPaste'); if (ta) S.paste = ta.value;
+  const was = S.runType === '__paste'; S.runType = v; if (was || v === '__paste') hubSeriesDraw(); else hubSeriesRunInfo();
+}
+// ＋ Run → Paste list: lines (bullets / numbering stripped, de-duplicated, max 25). Separate posts = one seriesUseIdea per line
+// (title + blurb seeded from the line, Keyword Seed = the line, interview flagged for topical kinds); one carousel = seriesRun 'paste'.
+function hubSeriesPasteLines(text) { const seen = new Set(); return String(text || '').split('\n').map(l => l.replace(/^\s*(?:[-*•·]|\d+[.)])\s*/, '').trim()).filter(l => l && !seen.has(l.toLowerCase()) && seen.add(l.toLowerCase())).slice(0, 25); }
+async function hubSeriesPasteRun() {
+  const S = _series, D = S && S.data; if (!D) return;
+  S.paste = document.getElementById('srPaste').value; S.pasteKind = document.getElementById('srPasteKind').value;
+  const lines = hubSeriesPasteLines(S.paste), kind = S.pasteKind;
+  if (!lines.length) { S.msg = '✗ Paste a list — one topic per line'; return hubSeriesDraw(); }
+  const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
+  if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
+  const base = { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug };
+  const idOf = t => 'paste:' + t.toLowerCase().slice(0, 120);
+  if (kind === 'carousel') {
+    S.msg = '⏳ Creating one carousel from ' + lines.length + ' lines…'; hubSeriesDraw();
+    const r = await call('seriesRun', { ...base, runType: 'paste', ideas: lines.map(t => ({ id: idOf(t), t, src: 'Paste list' })), assetType: hubSeriesType(S.slug, 'carousel') }).catch(e => ({ error: e.message }));
+    if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
+    else { S.used = new Set(r.used || []); S.paste = ''; S.msg = '✓ Paste list run created — one carousel, ' + r.posts + ' slides on one Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
+    return hubSeriesDraw();
+  }
+  const label = { single: 'Single Post', seo: 'Topical - SEO Post', youtube: 'Topical - YouTube' }[kind], made = [], failed = [];
+  for (let i = 0; i < lines.length; i++) {
+    S.msg = '⏳ ' + (i + 1) + ' / ' + lines.length + ' — ' + label + ': ' + lines[i]; hubSeriesDraw();
+    const r = await call('seriesUseIdea', { ...base, ideaId: idOf(lines[i]), idea: lines[i], source: 'Paste list', kind, assetType: hubSeriesType(S.slug, kind), keywordSeed: lines[i] }).catch(e => ({ error: e.message }));
+    if (!r || r.error) failed.push(lines[i] + ' (' + ((r && r.error) || 'no response') + ')'); else { made.push(lines[i]); S.used = new Set(r.used || []); }
+  }
+  S.paste = failed.map(f => f.replace(/ \([^)]*\)$/, '')).join('\n');   // only the lines that failed stay in the box, to retry
+  S.msg = (made.length ? '✓ ' + made.length + ' ' + label + (made.length === 1 ? '' : 's') + ' created from your list' + (kind !== 'single' ? ' (interviews flagged)' : '') : '') + (failed.length ? (made.length ? ' · ' : '') + '✗ ' + failed.length + ' not created: ' + failed.join(' · ') : '');
+  if (made.length) hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug));
+  hubSeriesDraw();
+}
 async function hubSeriesRun() {
   const S = _series, D = S && S.data; if (!D) return;
+  if (document.getElementById('srRunType').value === '__paste') return hubSeriesPasteRun();
   const rt = D.runTypes.find(r => r.id === document.getElementById('srRunType').value); if (!rt) return;
   const ideas = hubSeriesRunPick(rt); if (!ideas.length) { S.msg = '✗ No unused ideas in ' + rt.sources.join(', ') + ' — ⟳ refresh sources or attach a product'; return hubSeriesDraw(); }
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
