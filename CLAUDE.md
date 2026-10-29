@@ -326,6 +326,11 @@ order, 7 angles, 12 post types in §6). A slot holds pointers only: Title, `Form
 - **Look = global presets** (KV `presets:v1`: typography {display, body} → display = title/subhead, body = blurb/body/CTA; colour
   {bg, ink, accent}; motion {pace}) — `presetsGet` / `presetSave` / `presetDelete`; an asset only references names on its `Presets`
   property (`assetPresetsSet`); no reference = hub design. `hyperframesReel` applies them (template v3 `pace`).
+- **Backgrounds = one shared, reusable pool** (KV `backgrounds:v1`, uploads on R2 `backgrounds/`): `backgroundsGet` / `backgroundAdd
+  {name, url | fileData}` / `backgroundRemove` / `assetBackgroundSet {assetId, backgroundId}`. An asset stores only the reference
+  (`Presets.background`), never a copy; one background serves many posts across titles and asset types, and assigning never consumes
+  it. New stories get the next pool background in rotation (KV `backgrounds:rot`). Render: pool reference → asset's own image →
+  campaign plate.
 - **UI:** Content Hubs 2 create modal → **Strategy** dropdown on single-post rows (One-off post / Carousel / story strategies →
   Create first 10, Stop/Resume cron). care-gap Publish modal → 🎬 story panel (`storyAsset`): areas read-only, preset pickers +
   ＋ New preset, Render, this title's slots (written link to their asset, Open listed only). Asset row 🎬 Render covers stories.

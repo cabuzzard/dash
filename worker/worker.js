@@ -4000,7 +4000,9 @@ async function storyWrite(env, { slotId, strategyId, titleId }) {
   if (!up.ok) return { error: "Written, but the Video Spec / status save failed: " + ((await up.json().catch(() => ({}))).message || up.status), assetId };
   await fetch("https://api.notion.com/v1/pages/" + ivDash(slotId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
     "Status": { select: { name: "Filled" } }, "Asset": { relation: [{ id: ivDash(assetId) }] } } }) });
-  await storyLog(env, { slotId, assetId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type });
+  const bg = await backgroundNext(env).catch(() => null);   // shared pool, in rotation — a reference, never a copy
+  if (bg) await assetBackgroundSet(env, { assetId, backgroundId: bg.id }).catch(e => console.error("story background:", e.message));
+  await storyLog(env, { slotId, assetId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type, background: bg?.id || "" });
   // Creating an asset from a strategy puts that strategy on the cron loop (operator 2026-10-28) — unless the operator
   // has explicitly stopped it (⏸ Stop in the modal), which a later write never overrides.
   let scheduled = false;
@@ -4112,7 +4114,7 @@ async function storyCronTick(env, invoke) {
 // reusable, asset-type-agnostic: typography (a display + a body face; display → title/subhead, body → blurb/body/CTA,
 // so one pick cascades down the whole hierarchy), colour scheme (bg/ink/accent) and motion (pace). Stored once in KV
 // presets:v1; an asset only REFERENCES preset names on its "Presets" property (JSON) — never copies the values.
-// No reference = the hub's own design. The background image stays asset-level.
+// No reference = the hub's own design. Backgrounds work the same way (shared pool, below): the asset references one.
 const PRESET_FIELDS = { typography: ["display", "body"], color: ["bg", "ink", "accent"], motion: ["pace"] };
 async function presetsLib(env) {
   const lib = (await env.TRADES.get("presets:v1", "json")) || {};
@@ -4151,7 +4153,8 @@ async function assetPresetsSet(env, { assetId, typography, color, motion }) {
     if (!r.ok) return { error: "Could not add the Presets field: " + ((await r.json().catch(() => ({}))).message || r.status) };
     await env.TRADES.put("presets:prop:v1", "1");
   }
-  const lib = await presetsLib(env), ref = {};
+  const lib = await presetsLib(env), cur = assetPresetsOf(await ivPage(assetId).catch(() => null));
+  const ref = cur.background ? { background: cur.background } : {};   // the background reference survives a preset change
   for (const [k, n] of Object.entries({ typography, color, motion })) {
     if (!n) continue;
     if (!lib[k].some(x => x.name === n)) return { error: `No ${k} preset named "${n}"` };
@@ -4160,6 +4163,58 @@ async function assetPresetsSet(env, { assetId, typography, color, motion }) {
   const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Presets": { rich_text: ivRt(JSON.stringify(ref)) } } }) });
   if (!r.ok) return { error: "Could not save: " + ((await r.json().catch(() => ({}))).message || r.status) };
   return { ok: true, presets: ref };
+}
+// ── Background pool (operator 2026-10-28): backgrounds are REUSABLE, from one shared pool (KV backgrounds:v1, images on
+// R2 backgrounds/). An asset stores only a reference (Presets.background = pool id) — never a private copy. One background
+// can serve many posts across titles and asset types; assigning it never consumes or locks it. New stories get the next
+// pool background in rotation (KV backgrounds:rot). Removing one from the pool only stops new assignments; renders of
+// assets still pointing at it fall back to the asset's own image / the campaign plate.
+async function backgroundsPool(env) { return (await env.TRADES.get("backgrounds:v1", "json")) || []; }
+async function backgroundAdd(env, { name, url, fileData, contentType }) {
+  name = String(name || "").trim().slice(0, 80);
+  if (!name) return { error: "A background needs a name" };
+  const id = "bg" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  if (fileData) {   // upload → R2, public URL
+    if (!env.MEDIA) return { error: "R2 binding MEDIA missing" };
+    const b64 = String(fileData).replace(/^data:[^,]*,/, ""), bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    if (bin.length > 15 * 1024 * 1024) return { error: "Image over 15 MB" };
+    const type = /^image\/(png|jpe?g|webp)$/i.test(contentType || "") ? contentType : "image/jpeg", ext = type.split("/")[1].replace("jpeg", "jpg");
+    await env.MEDIA.put(`backgrounds/${id}.${ext}`, bin, { httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" } });
+    url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + `/backgrounds/${id}.${ext}`;
+  }
+  if (!/^https:\/\//.test(url || "")) return { error: "Give an https image URL or upload a file" };
+  const pool = await backgroundsPool(env);
+  if (pool.some(b => b.url === url)) return { error: "That image is already in the pool" };
+  pool.push({ id, name, url, addedAt: new Date().toISOString() });
+  await env.TRADES.put("backgrounds:v1", JSON.stringify(pool));
+  return { ok: true, id, pool };
+}
+async function backgroundRemove(env, { id }) {
+  const pool = (await backgroundsPool(env)).filter(b => b.id !== id);
+  await env.TRADES.put("backgrounds:v1", JSON.stringify(pool));
+  return { ok: true, pool };
+}
+// assign (or clear with backgroundId "") — writes only the reference, keeping the asset's preset references
+async function assetBackgroundSet(env, { assetId, backgroundId }) {
+  if (!assetId) return { error: "assetId required" };
+  if (backgroundId && !(await backgroundsPool(env)).some(b => b.id === backgroundId)) return { error: "No background with that id in the pool" };
+  if (!(await env.TRADES.get("presets:prop:v1"))) {
+    const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Presets": { rich_text: {} } } }) });
+    if (!r.ok) return { error: "Could not add the Presets field: " + ((await r.json().catch(() => ({}))).message || r.status) };
+    await env.TRADES.put("presets:prop:v1", "1");
+  }
+  const ref = assetPresetsOf(await ivPage(assetId).catch(() => null));
+  if (backgroundId) ref.background = backgroundId; else delete ref.background;
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Presets": { rich_text: ivRt(JSON.stringify(ref)) } } }) });
+  if (!r.ok) return { error: "Could not save: " + ((await r.json().catch(() => ({}))).message || r.status) };
+  return { ok: true, presets: ref };
+}
+// next pool background in rotation (null when the pool is empty) — rotation never removes anything from the pool
+async function backgroundNext(env) {
+  const pool = await backgroundsPool(env); if (!pool.length) return null;
+  const i = ((+(await env.TRADES.get("backgrounds:rot")) || 0) % pool.length);
+  await env.TRADES.put("backgrounds:rot", String(i + 1));
+  return pool[i];
 }
 // Resolve an asset's preset references into render variables (only values the template can actually use).
 async function presetVariables(env, page, tpl) {
@@ -4170,6 +4225,7 @@ async function presetVariables(env, page, tpl) {
   if (ty && tpl.bodyFonts.includes(ty.body)) v.bodyFont = ty.body;
   if (co) for (const k of ["bg", "ink", "accent"]) if (/^#[0-9a-f]{6}$/i.test(co[k] || "")) v[k] = co[k];
   if (mo && +mo.pace > 0) v.pace = String(mo.pace);
+  if (ref.background) { const bg = (await backgroundsPool(env)).find(b => b.id === ref.background); if (bg && /^https:\/\//.test(bg.url)) v.bgImage = bg.url; }
   return v;
 }
 // Publish-modal story panel: the written areas (read-only — copy is final), the preset references + library, the render,
@@ -4190,6 +4246,7 @@ async function storyAsset(env, { assetId }) {
   const tpl = HF_TEMPLATES["reel-kinetic"];
   return { success: true, spec, areas: spec.areas || [], videoUrl: P["Video URL"]?.url || "", status: P["Asset Status"]?.select?.name || "",
     presets: assetPresetsOf(page), lib: await presetsLib(env), fonts: { display: tpl.displayFonts, body: tpl.bodyFonts },
+    backgrounds: await backgroundsPool(env), ownImage: P["Post Image"]?.url || P["Instagram Background"]?.url || "",
     slot: mine, strategyName, slots };
 }
 // ── YouTube Longform — Question-Led (faceless presenter episodes) ──
@@ -50973,6 +51030,10 @@ ${assemblyManifest}`;
       if (body.action === "presetSave") return json(await presetSave(env, body));
       if (body.action === "presetDelete") return json(await presetDelete(env, body));
       if (body.action === "assetPresetsSet") return json(await assetPresetsSet(env, body));
+      if (body.action === "backgroundsGet") return json({ success: true, pool: await backgroundsPool(env) });
+      if (body.action === "backgroundAdd") return json(await backgroundAdd(env, body));
+      if (body.action === "backgroundRemove") return json(await backgroundRemove(env, body));
+      if (body.action === "assetBackgroundSet") return json(await assetBackgroundSet(env, body));
       if (body.action === "storyLog") return json({ success: true, log: (await env.TRADES.get("story:log", "json")) || [], queue: (await env.TRADES.get("story:queue", "json")) || [] });
 
       if (body.action === "hyperframesReel") {
