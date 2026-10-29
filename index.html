@@ -19025,7 +19025,7 @@ function hubSeriesDraw() {
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
-      <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)"><optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup>${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
+      <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup></select>
       ${S.runType === '__paste' ? `<select id="srPasteKind" class="kw-sel" title="What each pasted line becomes">${[['seo', 'each line → a Topical - SEO Post'], ['single', 'each line → a Single Post'], ['youtube', 'each line → a Topical - YouTube'], ['carousel', 'one carousel, a slide per line']].map(([v, l]) => `<option value="${v}"${(S.pasteKind || 'seo') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>` : ''}
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button>
       ${S.runType === '__paste' ? `<textarea id="srPaste" rows="7" placeholder="One topic per line — each line becomes the title seed and keyword seed of its own asset (bullets and numbers are stripped). Up to 25." style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.paste || '')}</textarea>` : ''}
@@ -19154,7 +19154,10 @@ async function hubSeriesPasteRun() {
 }
 async function hubSeriesRun() {
   const S = _series, D = S && S.data; if (!D) return;
-  if (document.getElementById('srRunType').value === '__paste') return hubSeriesPasteRun();
+  if (document.getElementById('srRunType').value === '__paste') {   // the paste box only exists once Paste list was picked — show it first
+    if (!document.getElementById('srPaste')) { S.runType = '__paste'; S.msg = 'Paste your list below, one topic per line, then Create run'; return hubSeriesDraw(); }
+    return hubSeriesPasteRun();
+  }
   const rt = D.runTypes.find(r => r.id === document.getElementById('srRunType').value); if (!rt) return;
   const ideas = hubSeriesRunPick(rt); if (!ideas.length) { S.msg = '✗ No unused ideas in ' + rt.sources.join(', ') + ' — ⟳ refresh sources or attach a product'; return hubSeriesDraw(); }
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
