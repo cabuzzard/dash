@@ -21541,6 +21541,22 @@ ${JSON.stringify(products)}`;
       }
       // ── Digest parent actions (operator 2026-10-20) ──
       // digestPreview {campaignId,digestId,assetId?|itemId?} — read-only rendered preview + source packet for one digest piece.
+      // listDigestIssues — every generated Premium / Free issue across hubs (operator 2026-10-29: issues need to be viewable outside
+      // their parent; articles are read on the published hub). Newest first; each row carries what digestPreview needs.
+      if (body.action === "listDigestIssues") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        await hubSitesMerge(env);
+        const types = ["Newsletter paid", "Newsletter Free"];   // the Notion option names (writes of "Newsletter Paid" land on "Newsletter paid")
+        const rows = await notionQuery(ASSETS_DB, { filter: { or: types.map(name => ({ property: "Asset Type", select: { equals: name } })) },
+          sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { throw new Error("issues: " + e.message); });
+        const issues = rows.filter(r => !r.archived && !r.in_trash && ivRid(r.properties || {}, "Parent Asset")).slice(0, 300).map(r => {
+          const p = r.properties || {}, cid = hubAssetId(ivRid(p, "Campaign") || ""), hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === cid) || {};
+          return { assetId: hubAssetId(r.id), digestId: hubAssetId(ivRid(p, "Parent Asset")), campaignId: cid, slug: hub.slug || "", hub: hub.name || "",
+            kind: /paid/i.test(p["Asset Type"]?.select?.name || "") ? "premium" : "free", created: r.created_time,
+            title: hubRichText(p["Asset Title"]?.title), subject: hubRichText(p["Platform Title"]?.rich_text), status: p["Asset Status"]?.select?.name || "" };
+        });
+        return json({ ok: true, issues });
+      }
       if (body.action === "digestPreview") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const cid = hubAssetId(body.campaignId || ""), did = hubAssetId(body.digestId || "");
