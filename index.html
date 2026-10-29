@@ -12474,18 +12474,16 @@ function renderHubChecklist() {
   html += `<tr><td style="${td}text-align:left;font-weight:600;">Total</td><td style="${td}font-weight:600;">${hubs.reduce((a, h) => a + (devProd[h.slug] || 0), 0)}</td>${disp.map(x => x.grp ? grpTd(hubs.map(h => h.slug), x.grp) : `<td style="${td}">${pair(hubs.reduce((a, h) => a + n(h.slug, x.t), 0), hubs.reduce((a, h) => a + nd(h.slug, x.t), 0), '', '', false, false, gsum(hubs.map(h => hubCheckGoal(h.slug, x.t))), hubs.reduce((a, h) => a + nf(h.slug, x.t), 0))}</td>`).join('')}`
     + `<td style="${td}">${pair(hubs.reduce((a, h) => a + flat.reduce((b, t) => b + n(h.slug, t), 0), 0), hubs.reduce((a, h) => a + flat.reduce((b, t) => b + nd(h.slug, t), 0), 0), '', '', false, false, gsum(hubs.flatMap(h => flat.map(t => hubCheckGoal(h.slug, t)))), hubs.reduce((a, h) => a + flat.reduce((b, t) => b + nf(h.slug, t), 0), 0))}</td></tr></tbody></table></div>`;
   body.innerHTML = html;
+  if (PRODUCTS_TABLE_SLUG) productsRender();   // same column layout — keep the Products table in step
   list.innerHTML = HUBCHECK_OPEN ? `<div style="font-size:11.5px;color:var(--text2);">All Output below is filtered to <b>${esc(HUBCHECK_OPEN.slug)}</b> · <b>${esc(HUBCHECK_OPEN.t)}</b> — clear it with the table's ⚙ filter panel → Clear filters.</div>` : '';
 }
 // Products table: same deployed asset arrays as All Hubs, independently ordered columns.
 const PRODUCTS_COLS_KEY = 'hubProductsTableCols:v1';
 let PRODUCTS_TABLE_COLS = null, PRODUCTS_TABLE_SLUG = '', PRODUCTS_TABLE_DRAG = -1;
-function productsCols(types, cells, dev) {
-  if (!PRODUCTS_TABLE_COLS) {
-    try { const saved = JSON.parse(localStorage.getItem(PRODUCTS_COLS_KEY) || 'null'); if (Array.isArray(saved)) PRODUCTS_TABLE_COLS = saved; } catch (e) {}
-    if (!PRODUCTS_TABLE_COLS) PRODUCTS_TABLE_COLS = hubCheckFlat(hubCheckCols(types, cells, dev));
-  }
-  return PRODUCTS_TABLE_COLS;
-}
+// The Products table shares All Hubs' column layout (operator 2026-10-29: "port the all hubs state of columns → product table, then
+// have them sync") — HUBCHECK_COLS, groups included. Every add / remove / drag / group change in either table edits that one layout
+// (hubCheck* functions) and re-renders both. PRODUCTS_TABLE_COLS is just its flat column list, for the ＋ asset buttons.
+function productsCols(types, cells, dev) { PRODUCTS_TABLE_COLS = hubCheckFlat(hubCheckCols(types, cells, dev)); return PRODUCTS_TABLE_COLS; }
 function productsColsSave() { try { localStorage.setItem(PRODUCTS_COLS_KEY, JSON.stringify(PRODUCTS_TABLE_COLS || [])); } catch (e) {} }
 function productsLoadHub(slug) {
   const hub = HUB_SITES.find(h => h.slug === slug && h.campaignId); if (!hub) return;
@@ -12521,9 +12519,10 @@ function productsCountPair(development, published, slug = '', titleId = '', type
   const pub = published ? `<span${action} title="${tip}" style="font-size:14px;color:#16a34a;font-weight:700;${style}">${published}</span>` : '';
   return dev + (dev && pub ? '<span style="color:var(--text3);padding:0 4px;">·</span>' : '') + pub;
 }
-function productsToggleGroup(groupId, button) {
+const PRODUCTS_OPEN = new Set();   // expanded product rows ("topic|product"), kept across re-renders this session
+function productsToggleGroup(groupId, button, key) {
   if (!button) return;
-  const open = button.getAttribute('aria-expanded') !== 'true';
+  const open = button.getAttribute('aria-expanded') !== 'true'; if (key) { if (open) PRODUCTS_OPEN.add(key); else PRODUCTS_OPEN.delete(key); }
   button.setAttribute('aria-expanded', String(open));
   button.textContent = open ? '▾' : '▸';
   document.querySelectorAll(`[data-products-group="${groupId}"]`).forEach(row => { row.style.display = open ? '' : 'none'; });
@@ -12588,15 +12587,28 @@ function productsRender() {
   if (!hub) { if (titleEl) titleEl.textContent = 'Products'; bar.innerHTML = ''; body.innerHTML = '<div style="font-size:12px;color:var(--text3);">Pick a hub above — press $ on a hub row.</div>'; return; }
   if (titleEl) titleEl.textContent = 'Products — ' + (hub.name || hub.slug);
   const data = hubCheckData(), cols = productsCols(data.types, data.cells, data.dev), remaining = data.types.filter(type => !cols.includes(type));
-  bar.innerHTML = `<select onchange="productsColAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${remaining.map(type => `<option value="${esc(type)}">${esc(type)}</option>`).join('')}</select><span style="font-size:11px;color:var(--text3);">${cols.length} columns · counts match All Hubs</span>`;
+  // display list — same as All Hubs: a group shows its summary column, then (when open) its members; fi = index in the flat list
+  const layout = HUBCHECK_COLS || [], disp = []; let fi = 0;
+  layout.forEach((e, gi) => { if (hubCheckIsGroup(e)) { disp.push({ grp: e, gi }); e.cols.forEach((t, mi) => { if (e.open) disp.push({ t, addr: gi + '.' + mi, fi, member: true }); fi++; }); }
+    else disp.push({ t: e, addr: String(gi), fi: fi++ }); });
+  bar.innerHTML = `<select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option><option value="__group">＋ New column group…</option>${remaining.map(type => `<option value="${esc(type)}">${esc(hubCheckLabel(type))}</option>`).join('')}</select><span style="font-size:11px;color:var(--text3);">${cols.length} columns · same columns and groups as All Hubs (a change in either table changes both) · counts match All Hubs</span>`;
   const titles = hubCheckTitles(hub.slug).sort((a, b) => (a.topic || '').localeCompare(b.topic || '') || (a.product || '— no product —').localeCompare(b.product || '— no product —') || a.name.localeCompare(b.name));
   if (!titles.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No live, synced titles placed in a keyword topic for this hub.</div>'; return; }
   const head = 'padding:5px 8px;font-size:11px;text-align:left;border-bottom:1px solid var(--border2);white-space:nowrap;', th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;', td = 'padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);', countTd = td + 'text-align:center;';
-  const totalCols = 4 + cols.length + 1, assetsFor = (topic, type, stage) => (data[stage][hub.slug + '|' + type] || []).filter(asset => asset.keywordTopic === topic);
+  const totalCols = 4 + disp.length + 1, assetsFor = (topic, type, stage) => (data[stage][hub.slug + '|' + type] || []).filter(asset => asset.keywordTopic === topic);
   const countFor = (topic, titleId, type, stage) => assetsFor(topic, type, stage).filter(asset => asset.titleId === titleId).length;
   let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;"><span style="color:var(--text);font-weight:600;">Development</span> · <span style="color:#16a34a;font-weight:600;">Published</span> · cells show numbers only; click a title count to open all assets of that type for the title in All Output. Order: Hub → Keyword Topic → Product → Title.</div><div style="overflow-x:auto;"><table class="products-count-table" style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${head}">Hub</th><th style="${head}">Keyword Topic</th><th style="${head}">Product</th><th style="${head}">Title</th>`
-    + cols.map((type, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="productsDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="productsDrop(event,${i})" title="Drag to reorder"><div>${esc(type)}</div><div style="font-weight:400;">${hubCheckCanAdd(type) ? `<button onclick="productsAddAsset(${i})" title="Add an unwritten ${esc(type)} asset at Development" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="productsColRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
-    + `<th style="${th}">Total</th></tr></thead><tbody>`;
+    + disp.map(x => x.grp
+      ? `<th style="${th}cursor:grab;background:var(--surface2);border-left:2px solid var(--accent);" draggable="true" ondragstart="hubCheckDragStart(event,'${x.gi}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.gi}',true)" title="Column group — drop a column here to add it; drag to move the group"><div><button onclick="hubCheckGroupToggle(${x.gi})" title="${x.grp.open ? 'Collapse' : 'Expand'} this group" style="font-size:10px;padding:0 4px;">${x.grp.open ? '◂' : '▸'}</button> ${esc(x.grp.name)} <span style="font-weight:400;color:var(--text3);">(${x.grp.cols.length})</span></div><div style="font-weight:400;"><button onclick="hubCheckGroupRename(${x.gi})" title="Rename group" style="font-size:10px;padding:0 4px;">✎</button><button onclick="hubCheckGroupUngroup(${x.gi})" title="Remove the group (its columns stay)" style="font-size:10px;padding:0 4px;">×</button></div></th>`
+      : `<th style="${th}cursor:grab;${x.member ? 'background:var(--surface2);' : ''}" draggable="true" ondragstart="hubCheckDragStart(event,'${x.addr}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.addr}',false)" title="${x.member ? 'In a group — drag onto another column to take it out' : 'Drag to reorder, or onto a group header to add it to that group'}"><div>${esc(hubCheckLabel(x.t))}</div><div style="font-weight:400;">${hubCheckCanAdd(x.t) ? `<button onclick="productsAddAsset(${x.fi})" title="Add an unwritten ${esc(x.t)} asset at Development" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove('${x.addr}')" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + `<th style="${th}" ondragover="event.preventDefault()" ondrop="hubCheckDropEnd(event)" title="Drop a column here to move it to the end">Total</th></tr></thead><tbody>`;
+  const grpStyle = 'background:var(--surface2);border-left:2px solid var(--accent);';
+  // one row's cells in display order: counts[fi] per flat column; a group cell = the sum of all its members (open or collapsed)
+  const rowCells = (counts, link) => disp.map(x => {
+    if (x.grp) { const members =layout.slice(0, x.gi).reduce((a, e) => a + (hubCheckIsGroup(e) ? e.cols.length : 1), 0), part = counts.slice(members, members + x.grp.cols.length);
+      return `<td style="${countTd}${grpStyle}">${productsCountPair(part.reduce((a, c) => a + c.development, 0), part.reduce((a, c) => a + c.published, 0))}</td>`; }
+    const c = counts[x.fi]; return `<td style="${countTd}${x.member ? 'background:var(--surface2);' : ''}">${link ? productsCountPair(c.development, c.published, link.slug, link.titleId, x.t) : productsCountPair(c.development, c.published)}</td>`;
+  }).join('');
   html += `<tr class="products-count-header"><td colspan="${totalCols}" style="${td}font-weight:700;">${esc(hub.name || hub.slug)}</td></tr>`;
   const topics = new Map(); titles.forEach(item => { const key = item.topic || '— no topic —'; if (!topics.has(key)) topics.set(key, []); topics.get(key).push(item); });
   let productGroupId = 0;
@@ -12611,10 +12623,10 @@ function productsRender() {
         published: group.titles.reduce((sum, item) => sum + countFor(topic, item.id, type, 'cells'), 0)
       }));
       const groupDev = groupCounts.reduce((sum, count) => sum + count.development, 0), groupPublished = groupCounts.reduce((sum, count) => sum + count.published, 0);
-      html += `<tr class="products-count-header products-count-product-header"><td style="${td}"></td><td style="${td}"></td><td style="${td}font-weight:600;"><button type="button" aria-expanded="false" onclick="productsToggleGroup(${groupId},this)" title="Expand ${esc(group.name)} titles" style="border:0;background:transparent;color:var(--text2);cursor:pointer;padding:0 5px 0 0;font-size:12px;">▸</button>${esc(group.name)}</td><td style="${td}"></td>` + groupCounts.map(count => `<td style="${countTd}">${productsCountPair(count.development, count.published)}</td>`).join('') + `<td style="${countTd}">${productsCountPair(groupDev, groupPublished)}</td></tr>`;
+      html += `<tr class="products-count-header products-count-product-header"><td style="${td}"></td><td style="${td}"></td><td style="${td}font-weight:600;"><button type="button" aria-expanded="${PRODUCTS_OPEN.has(topic + '|' + group.name)}" onclick="productsToggleGroup(${groupId},this,${esc(JSON.stringify(topic + '|' + group.name))})" title="Expand ${esc(group.name)} titles" style="border:0;background:transparent;color:var(--text2);cursor:pointer;padding:0 5px 0 0;font-size:12px;">${PRODUCTS_OPEN.has(topic + '|' + group.name) ? '▾' : '▸'}</button>${esc(group.name)}</td><td style="${td}"></td>` + rowCells(groupCounts) + `<td style="${countTd}">${productsCountPair(groupDev, groupPublished)}</td></tr>`;
       for (const item of group.titles.sort((a, b) => a.name.localeCompare(b.name))) {
         const rowCounts = cols.map(type => ({ development: countFor(topic, item.id, type, 'dev'), published: countFor(topic, item.id, type, 'cells') }));
-        html += `<tr data-products-group="${groupId}" style="display:none;"><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}">${esc(item.name)}</td>` + rowCounts.map((value, i) => `<td style="${countTd}">${productsCountPair(value.development, value.published, hub.slug, item.id, cols[i])}</td>`).join('') + `<td style="${countTd}">${productsCountPair(rowCounts.reduce((a, b) => a + b.development, 0), rowCounts.reduce((a, b) => a + b.published, 0))}</td></tr>`;
+        html += `<tr data-products-group="${groupId}" style="${PRODUCTS_OPEN.has(topic + '|' + group.name) ? '' : 'display:none;'}"><td style="${td}"></td><td style="${td}"></td><td style="${td}"></td><td style="${td}">${esc(item.name)}</td>` + rowCells(rowCounts, { slug: hub.slug, titleId: item.id }) + `<td style="${countTd}">${productsCountPair(rowCounts.reduce((a, b) => a + b.development, 0), rowCounts.reduce((a, b) => a + b.published, 0))}</td></tr>`;
       }
     }
   }
