@@ -301,6 +301,28 @@ Method **HyperFrames Reel** (Methods DB, Live): 20s 9:16 kinetic-text Reel (hook
   to R2 `videos/<assetId>/`, sets Video URL + `Video Render` note; render completion leaves Asset Status unchanged at Development.
   `op:"check"` = the polling fallback. KV `hf:asset:<id>`.
 - Secret **`HEYGEN_API_KEY`** (HeyGen account, billed per render credit). Publish → Buffer as an Instagram Reel (existing video path).
+- **v2 (2026-10-28)** renders both shapes: the Reel (hook/beat1-3/cta) and the **single post story** (`areas` JSON `[{kind,text}]` + `format`).
+  One full-length `#stage` clip built at load; render length comes from the timeline (no root `data-duration`). Story play rules by
+  format: stack (Talking Back & Forth bubbles / Visuals cards / Clone panels), split (Green Screen), replace (the rest). Display font →
+  title/subhead, body font → blurb/body/CTA. Copy is never clipped.
+
+## Single post story (2026-10-28)
+
+Short silent 9:16 text video written from a **🎯 Strategy Slot**. **One method** — Methods DB `single post story` — holds every writing
+rule (constants, video rules, area hierarchy title > subhead > blurb > body > CTA + word budgets, 8 formats as area lists in reveal
+order, 7 angles, 12 post types in §6). A slot holds pointers only: Title, `Format` (select), Angle, `Type` (post type name),
+`Method Name = single post story`. Strategy **56-Slot Loop** (Growth Strategy) = 8 formats × 7 angles per title; grid on its page.
+- **Write:** `storyWrite {slotId | strategyId [+titleId]}` → creates the Asset (Type `single post story`, slot pointers + hub booking
+  link in `Description`) → the governed **`writeAsset`** pipeline (Current Methods row "Single Post Story", contract `Story Areas` +
+  `Post Caption`) → checks the areas against the method's format list + budgets (one rewrite if they miss; never trims) → `Video Spec`
+  v2 + Status **Publish** + slot **Filled**. Misses after two writes → asset left at Development, slot stays Open.
+- **Booking link:** Logins `Booking Link` for the campaign, else a dummy URL.
+- **Cron:** `storySchedule {strategyId,on}` (KV `story:sched`). Monday `15 0` → `storyCronEnqueue` queues 10 random Open slots of the
+  current title (first in the strategy's Titles order with a pillar + Open slots; slots copied from the grid when a title has none);
+  `*/4` → `storyCronTick` writes one. Log: `storyLog`. Status rule: asset Publish = written, waiting in the Publish modal; slot
+  Published only when the operator sends it to Buffer.
+- **UI:** Content Hubs 2 create modal → **Strategy** dropdown on single-post rows (One-off post / Carousel / story strategies);
+  care-gap asset row 🎬 Render covers stories.
 
 ## Cron Scripts panel (Globals tab · ⏰)
 

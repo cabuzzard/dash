@@ -3841,12 +3841,239 @@ async function voiceBlockLearned(env, campaignId) {
 // MP4 to R2 → the asset's Video URL. Secret: HEYGEN_API_KEY.
 const HF_TEMPLATES = {
   "reel-kinetic": {
-    url: "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/hyperframes/reel-kinetic-v1.zip",
+    // v2 (2026-10-28): same reel shape (hook/beat1-3/cta) plus the single post story shape — an ordered `areas`
+    // list + `format` (play rule), render length taken from the timeline. v1 stays published for reference.
+    url: "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/hyperframes/reel-kinetic-v2.zip",
     aspect: "9:16",
     displayFonts: ["Bricolage Grotesque", "Newsreader", "DM Serif Display", "Familjen Grotesk", "Bitter", "Space Grotesk", "Archivo", "Fraunces", "Libre Franklin", "Inter", "Hanken Grotesk", "IBM Plex Sans"],
     bodyFonts: ["Hanken Grotesk", "Inter", "IBM Plex Sans", "Libre Franklin", "Space Grotesk", "Archivo"],
   },
 };
+// ── single post story (2026-10-28) — a short silent 9:16 text video written from a Strategy Slot ──
+// ONE method ("single post story", Methods DB) holds every writing rule: constants, video rules, the area hierarchy +
+// word budgets (§3), the 8 formats as area lists in reveal order (§4), the 7 angles (§5) and the 12 post types (§6).
+// A slot (🎯 Strategy Slots, Method Name = single post story) stores pointers only: Title, Format, Angle, Type.
+// Writing goes through the governed writeAsset pipeline (Current Methods row "Single Post Story"); the slot's pointers
+// and the hub's booking link reach the writer as the asset's Description. This code only checks the written areas
+// against the method's own format list + budgets — it never trims or rewrites copy. Valid → Video Spec v2 + Asset
+// Status Publish + slot Filled. Render: hyperframesReel (reel-kinetic v2). Cron: Monday enqueues 10 random Open slots
+// of each scheduled strategy's current title; the */4 tick writes one per tick.
+const STORY_METHOD = "single post story";
+const STORY_BOOKING_DUMMY = "https://example.com/book-a-strategy-call";
+const storyKind = k => /^cta$/i.test(k) ? "CTA" : String(k).toLowerCase();
+const storyWords = t => String(t || "").trim().split(/\s+/).filter(Boolean).length;
+function storyParseMethod(text) {
+  const formats = {}, budgets = {}, types = [];
+  let postWords = 0, inTypes = false;
+  for (const l of String(text || "").split("\n")) {
+    if (/^\s*##\s/.test(l)) inTypes = /post types/i.test(l);
+    let m = /^\s*###\s+(.+?)\s*$/.exec(l);
+    if (m && inTypes) { types.push(m[1]); continue; }
+    m = /^\s*-\s*(.+?)\s*=\s*(.+)$/.exec(l);
+    if (m && /×/.test(m[2])) {
+      const parts = m[2].split("·").map(s => /^(title|subhead|blurb|body|cta)\s*×\s*(\d+)(?:\s*-\s*(\d+))?$/i.exec(s.trim()));
+      if (parts.every(Boolean)) formats[m[1].trim()] = parts.map(k => ({ kind: storyKind(k[1]), min: +k[2], max: +(k[3] || k[2]) }));
+      continue;
+    }
+    m = /^\s*-\s*(title|subhead|blurb|body|cta):\s*up to\s*(\d+)\s*words/i.exec(l);
+    if (m) { budgets[storyKind(m[1])] = +m[2]; continue; }
+    m = /whole post:\s*up to\s*(\d+)\s*words/i.exec(l);
+    if (m) postWords = +m[1];
+  }
+  return { formats, budgets, postWords, types };
+}
+// "kind: text" lines → areas; anything else is reported, never dropped silently
+function storyParseAreas(text) {
+  const areas = [], stray = [];
+  for (const l of String(text || "").split(/\r?\n/)) {
+    if (!l.trim()) continue;
+    const m = /^\s*(?:[-*]\s*)?(title|subhead|blurb|body|cta)\s*(?:\d+)?\s*:\s*(.+)$/i.exec(l);
+    if (m) areas.push({ kind: storyKind(m[1]), text: m[2].trim() }); else stray.push(l.trim().slice(0, 60));
+  }
+  return { areas, stray };
+}
+function storyCheck(areas, stray, pattern, budgets, postWords) {
+  const problems = stray.map(s => `a line that is not "kind: text": "${s}"`);
+  let i = 0;
+  for (const g of pattern) {
+    let n = 0; while (i < areas.length && areas[i].kind === g.kind && n < g.max) { i++; n++; }
+    if (n < g.min) problems.push(`expected ${g.min === g.max ? g.min : g.min + "-" + g.max} ${g.kind} area(s) at position ${i + 1}, got ${n}`);
+  }
+  if (i < areas.length) problems.push(`${areas.length - i} area(s) beyond the format's list, starting "${areas[i].kind}: ${areas[i].text.slice(0, 40)}"`);
+  for (const a of areas) { const b = budgets[a.kind], w = storyWords(a.text); if (b && w > b) problems.push(`${a.kind} "${a.text.slice(0, 40)}…" is ${w} words (budget ${b})`); }
+  const total = areas.reduce((s, a) => s + storyWords(a.text), 0);
+  if (postWords && total > postWords) problems.push(`the post is ${total} words (budget ${postWords})`);
+  return problems;
+}
+async function storyMethod() {
+  const id = await resolveMethodIdByName(STORY_METHOD);
+  if (!id) throw new Error(`No "${STORY_METHOD}" method in the Methods DB`);
+  const text = await extractBlocksTextRecursive(ivHdr(), ivDash(id));
+  return { id, ...storyParseMethod(text) };
+}
+async function storyBookingLink(campaignId) {
+  if (!campaignId) return STORY_BOOKING_DUMMY;
+  const rows = await notionQuery(LOGINS_DB, { filter: { property: "Campaign", relation: { contains: ivDash(campaignId) } } })
+    .catch(e => { console.error("storyBookingLink:", e.message); return []; });
+  return rows.map(r => r.properties?.["Booking Link"]?.url).find(u => /^https?:\/\//.test(u || "")) || STORY_BOOKING_DUMMY;
+}
+function storySlotOf(page) {
+  const p = page.properties || {}, rt = k => hubRichText(p[k]?.rich_text);
+  return { id: hubAssetId(page.id), name: hubRichText(p.Name?.title), status: p.Status?.select?.name || "", format: p.Format?.select?.name || "",
+    angle: rt("Angle"), type: rt("Type"), method: rt("Method Name"), titleId: ivRid(p, "Title"), strategyId: ivRid(p, "Growth Strategy"),
+    campaignId: ivRid(p, "Campaign"), productId: ivRid(p, "Product"), assetId: ivRid(p, "Asset") };
+}
+async function storySlots(strategyId) {
+  const rows = await notionQuery(STRATEGY_SLOTS_DB, { filter: { and: [
+    { property: "Growth Strategy", relation: { contains: ivDash(strategyId) } },
+    { property: "Method Name", rich_text: { equals: STORY_METHOD } }] } });
+  return rows.filter(r => !r.archived && !r.in_trash).map(storySlotOf);
+}
+async function storyLog(env, entry) {
+  const log = (await env.TRADES.get("story:log", "json")) || [];
+  await env.TRADES.put("story:log", JSON.stringify([{ ...entry, at: new Date().toISOString() }, ...log].slice(0, 100)));
+}
+// Write ONE story: an explicit slotId, or a random Open slot of strategyId (on titleId when given).
+async function storyWrite(env, { slotId, strategyId, titleId }) {
+  if (!slotId) {
+    if (!strategyId) return { error: "slotId or strategyId required" };
+    const open = (await storySlots(strategyId)).filter(s => s.status === "Open" && (!titleId || s.titleId === hubAssetId(titleId)));
+    if (!open.length) return { error: titleId ? "This title has no Open slots in that strategy" : "That strategy has no Open slots" };
+    slotId = open[Math.floor(Math.random() * open.length)].id;
+  }
+  const slot = storySlotOf(await ivPage(slotId));
+  if (slot.method !== STORY_METHOD) return { error: "That slot is not a single post story slot" };
+  if (slot.status !== "Open") return { error: `That slot is ${slot.status || "not Open"}` };
+  if (!slot.titleId) return { error: "That slot has no Title" };
+  const titlePage = await ivPage(slot.titleId), titleName = hubRichText(titlePage.properties?.Title?.title) || "Untitled";
+  const pillar = await extractPillarContent(ivHdr(), ivDash(slot.titleId)).catch(() => "");
+  if (!pillar.trim()) { await storyLog(env, { slotId, error: "no_pillar", title: titleName }); return { error: "no_pillar", reason: `"${titleName}" has no pillar yet — write it first; this slot is skipped, not written.` }; }
+  const m = await storyMethod(), pattern = m.formats[slot.format];
+  if (!pattern) return { error: `The method lists no format "${slot.format}"` };
+  if (!m.types.includes(slot.type)) return { error: `The method lists no post type "${slot.type}"` };
+  const cid = slot.campaignId || ivRid(titlePage.properties, "Campaign"), pid = slot.productId || ivRid(titlePage.properties, "product");
+  const booking = await storyBookingLink(cid);
+  const description = `SLOT — write exactly this one post. Format: ${slot.format} (areas in this order: ${pattern.map(g => g.kind + " ×" + (g.min === g.max ? g.min : g.min + "-" + g.max)).join(" · ")}). `
+    + `Angle: ${slot.angle}. Post type: ${slot.type} — apply only that post type's section of the method's Post types. Booking link for the CTA and caption: ${booking}.`;
+  const short = titleName.split(" — ")[0];
+  const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
+    "Asset Title": { title: ivRt(`${short} · ${slot.format} × ${slot.angle}`.slice(0, 200)) },
+    "Asset Type": { select: { name: "single post story" } },
+    "Asset Status": { select: { name: "Development" } },
+    "Description": { rich_text: ivRt(description) },
+    "Content Strategy": { relation: [{ id: ivDash(slot.titleId) }] },
+    ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
+    ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}),
+    "Platform Name": { select: { name: "Instagram" } },
+    "Method": { relation: [{ id: ivDash(m.id) }] },
+  } }) });
+  const created = await cr.json().catch(() => ({}));
+  if (!cr.ok || !created.id) return { error: "Could not create the asset: " + (created.message || cr.status) };
+  const assetId = hubAssetId(created.id);
+  // up to two governed writes; the second only when the first misses the format's areas or budgets
+  let areas = [], problems = [], fields = {};
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const w = await writeContractAsset(env, assetId).catch(e => ({ error: e.message }));
+    if (w.error) {
+      await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }).catch(() => {});
+      await storyLog(env, { slotId, error: w.error, reason: w.reason || "" });
+      return { error: w.error, reason: w.reason || "", slotId };
+    }
+    fields = writingFieldValues((await ivPage(assetId)).properties || {});
+    const parsed = storyParseAreas(fields["Story Areas"]);
+    areas = parsed.areas; problems = storyCheck(areas, parsed.stray, pattern, m.budgets, m.postWords);
+    if (!problems.length) break;
+  }
+  if (problems.length) {   // left at Development, slot stays Open — nothing is cut to fit
+    await storyLog(env, { slotId, assetId, error: "areas_invalid", problems });
+    return { error: "areas_invalid", assetId, slotId, problems };
+  }
+  const spec = { template: "reel-kinetic", v: 2, format: slot.format, areas, type: slot.type, angle: slot.angle, slotId };
+  const up = await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+    "Video Spec": { rich_text: ivRt(JSON.stringify(spec)) },
+    "Body": { rich_text: ivRt(areas.map(a => a.text).join("\n")) },
+    "Asset Status": { select: { name: "Publish" } } } }) });
+  if (!up.ok) return { error: "Written, but the Video Spec / status save failed: " + ((await up.json().catch(() => ({}))).message || up.status), assetId };
+  await fetch("https://api.notion.com/v1/pages/" + ivDash(slotId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+    "Status": { select: { name: "Filled" } }, "Asset": { relation: [{ id: ivDash(assetId) }] } } }) });
+  await storyLog(env, { slotId, assetId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type });
+  return { ok: true, assetId, slotId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type, areas, caption: fields["Post Caption"] || "" };
+}
+// Every strategy that has single post story slots, with Open / Filled / Published per title + its cron toggle.
+async function storyStrategies(env) {
+  const rows = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Method Name", rich_text: { equals: STORY_METHOD } } })
+    .catch(e => { console.error("storyStrategies:", e.message); return []; });
+  const sched = (await env.TRADES.get("story:sched", "json")) || {}, by = {};
+  for (const s of rows.filter(r => !r.archived).map(storySlotOf)) {
+    const st = by[s.strategyId] ||= { id: s.strategyId, titles: {} }, t = st.titles[s.titleId] ||= { titleId: s.titleId, Open: 0, Filled: 0, Published: 0 };
+    t[s.status] = (t[s.status] || 0) + 1;
+  }
+  const out = [];
+  for (const st of Object.values(by)) {
+    const pg = await ivPage(st.id).catch(() => null);
+    out.push({ id: st.id, name: hubRichText(pg?.properties?.["Strategy Name"]?.title) || "Strategy", status: pg?.properties?.Status?.select?.name || "",
+      titles: Object.values(st.titles), scheduled: !!sched[st.id]?.on, perRun: sched[st.id]?.perRun || 10 });
+  }
+  return { strategies: out, queue: ((await env.TRADES.get("story:queue", "json")) || []).length };
+}
+async function storySchedule(env, { strategyId, on }) {
+  if (!strategyId) return { error: "strategyId required" };
+  const sched = (await env.TRADES.get("story:sched", "json")) || {}, id = hubAssetId(strategyId);
+  sched[id] = { ...(sched[id] || {}), on: !!on, perRun: 10, at: new Date().toISOString() };
+  await env.TRADES.put("story:sched", JSON.stringify(sched));
+  return { ok: true, scheduled: !!on };
+}
+// Monday: for each scheduled strategy, the current title = the first title (strategy's Titles order) with a pillar and
+// Open slots. A title with a pillar and no slots yet gets the strategy's grid copied from its existing slots first.
+// Picks 10 Open slots at random (without replacement, already-queued ones excluded) onto KV story:queue.
+async function storyCronEnqueue(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const sched = (await env.TRADES.get("story:sched", "json")) || {};
+  const queue = (await env.TRADES.get("story:queue", "json")) || [], queued = new Set(queue.map(q => q.slotId));
+  for (const [strategyId, cfg] of Object.entries(sched)) {
+    if (!cfg?.on) continue;
+    const strat = await ivPage(strategyId).catch(() => null);
+    const titleIds = (strat?.properties?.Titles?.relation || []).map(r => hubAssetId(r.id));
+    let slots = await storySlots(strategyId);
+    let picked = null;
+    for (const tid of titleIds) {
+      let mine = slots.filter(s => s.titleId === tid);
+      if (mine.length && !mine.some(s => s.status === "Open")) continue;   // this title's slots are all done
+      const pillar = await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "");
+      if (!pillar.trim()) { console.log(`storyCron: ${strategyId.slice(0, 8)} title ${tid.slice(0, 8)} has no pillar — skipped and flagged`); continue; }
+      if (!mine.length) {   // the grid = the strategy's existing Format × Angle → Type cells
+        const grid = [...new Map(slots.map(s => [s.format + "|" + s.angle, s])).values()];
+        if (!grid.length) continue;
+        const tName = hubRichText((await ivPage(tid)).properties?.Title?.title).split(" — ")[0];
+        for (const [i, g] of grid.entries()) {
+          const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: {
+            "Name": { title: ivRt(`${tName} · ${g.format} × ${g.angle.split(" /")[0].replace(/^The | Angle$/g, "")}`) }, "Status": { select: { name: "Open" } }, "Sequence": { number: i + 1 },
+            "Format": { select: { name: g.format } }, "Angle": { rich_text: ivRt(g.angle) }, "Type": { rich_text: ivRt(g.type) }, "Method Name": { rich_text: ivRt(STORY_METHOD) },
+            "Title": { relation: [{ id: ivDash(tid) }] }, "Growth Strategy": { relation: [{ id: ivDash(strategyId) }] },
+            ...(g.campaignId ? { "Campaign": { relation: [{ id: ivDash(g.campaignId) }] } } : {}), ...(g.productId ? { "Product": { relation: [{ id: ivDash(g.productId) }] } } : {}) } }) });
+          if (!r.ok) console.error("storyCron slot create:", (await r.json().catch(() => ({}))).message || r.status);
+        }
+        console.log(`storyCron: created ${grid.length} slots for title ${tid.slice(0, 8)}`);
+        slots = await storySlots(strategyId); mine = slots.filter(s => s.titleId === tid);
+      }
+      picked = mine.filter(s => s.status === "Open" && !queued.has(s.id)); break;
+    }
+    if (!picked) { console.log(`storyCron: ${strategyId.slice(0, 8)} — no title with a pillar and Open slots`); continue; }
+    for (let i = picked.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [picked[i], picked[j]] = [picked[j], picked[i]]; }
+    for (const s of picked.slice(0, cfg.perRun || 10)) { queue.push({ slotId: s.id, strategyId }); queued.add(s.id); }
+    console.log(`storyCron: queued ${Math.min(picked.length, cfg.perRun || 10)} from ${strategyId.slice(0, 8)}`);
+  }
+  await env.TRADES.put("story:queue", JSON.stringify(queue));
+}
+// */4: write the next queued slot (one per tick — each is one or two model calls).
+async function storyCronTick(env, invoke) {
+  const queue = (await env.TRADES.get("story:queue", "json")) || [];
+  if (!queue.length) return;
+  const next = queue.shift();
+  await env.TRADES.put("story:queue", JSON.stringify(queue));
+  const r = await invoke({ action: "storyWrite", slotId: next.slotId });
+  console.log(`storyWrite ${next.slotId.slice(0, 8)}: ${r.ok ? "✓ " + r.format + " × " + r.angle : r.error + (r.reason ? " — " + r.reason : "")}; ${queue.length} left`);
+}
 // ── YouTube Longform — Question-Led (faceless presenter episodes) ──
 // Script = episode JSON on the asset's "Video Spec" ({v, question, format, title, segments,
 // render:{character, voice}}); background plate on "Longform Background". The render runs on
@@ -50604,6 +50831,15 @@ ${assemblyManifest}`;
         return json({ ok: true, order, empty, groups });
       }
 
+      // ── single post story: write one (slotId, or a random Open slot of strategyId [+ titleId]) · list story strategies · cron toggle
+      if (body.action === "storyWrite") {
+        try { return json(await storyWrite(env, body)); }   // errors ride in the body (error + reason) so the modal can show why
+        catch (e) { return json({ error: e.message }, 502); }
+      }
+      if (body.action === "storyStrategies") return json({ success: true, ...(await storyStrategies(env)) });
+      if (body.action === "storySchedule") return json(await storySchedule(env, body));
+      if (body.action === "storyLog") return json({ success: true, log: (await env.TRADES.get("story:log", "json")) || [], queue: (await env.TRADES.get("story:queue", "json")) || [] });
+
       if (body.action === "hyperframesReel") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         if (!aid) return json({ error: "assetId required" }, 400);
@@ -50627,7 +50863,9 @@ ${assemblyManifest}`;
           const brief = campaignId ? await assembleImageBrief(env, { campaignId }).catch(() => null) : null;
           const plate = P["Post Image"]?.url || P["Instagram Background"]?.url || brief?.approvedPlate?.imageUrl || "";
           const variables = {
-            hook: spec.hook, beat1: spec.beat1, beat2: spec.beat2, beat3: spec.beat3, cta: spec.cta,
+            ...(Array.isArray(spec.areas)   // single post story: ordered areas + the format's play rule (copy passed whole, never clipped)
+              ? { areas: JSON.stringify(spec.areas.map(a => ({ kind: a.kind, text: a.text }))), format: spec.format || "" }
+              : { hook: spec.hook, beat1: spec.beat1, beat2: spec.beat2, beat3: spec.beat3, cta: spec.cta }),
             brand: String(hub?.logoText || (P["Asset Title"]?.title || []).map(t => t.plain_text).join("").split(" — ")[0] || "").slice(0, 40),
           };
           if (/^https:\/\//.test(plate)) variables.bgImage = plate;
@@ -54535,6 +54773,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await titleJobsRun(env, invoke); })());   // ＋ title research / pillar jobs left by a closed tab
+      cw("storyCronTick", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
       cw("autoDigestRun", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
@@ -54559,6 +54801,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "15 0 * * *" && new Date().getUTCDay() === 1) {
+      cw("storyCronEnqueue", storyCronEnqueue(env));   // single post story: 10 random Open slots per scheduled strategy
       cw("runTitleIdleSweep", runTitleIdleSweep(env).then(r => console.log(`titleIdleSweep: ${r.moved || 0} → Idea${r.left ? ', ' + r.left + ' left' : ''}`)).catch(e => console.error("runTitleIdleSweep failed:", e.message)));
     }
     if (event.cron === "15 0 * * *") {

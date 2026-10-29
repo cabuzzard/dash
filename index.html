@@ -17598,13 +17598,71 @@ async function hub2CreateStep(slug, id) {
   const names = new Set(m.aliases.map(hub2Norm)), match = _htMethods.find(x => names.has(hub2Norm(x.name)));
   const anyP = hub2GenericGroup(m.parent);
   el.innerHTML = `${anyP && parents.length ? HT_LBL('Written from') + `<select id="h2cParent" style="${HT_IN}">${parents.map(p => `<option value="${esc(p.assetId)}">${esc(p.pillarType || p.assetType || 'parent')} parent</option>`).join('')}<option value="">The title's pillar</option></select>` : !parents.length ? `<input type="hidden" id="h2cParent" value=""><div style="color:var(--text2);margin-bottom:8px;">Written from the title's pillar.</div>` : parents.length > 1 ? HT_LBL('Written from') + `<select id="h2cParent" style="${HT_IN}">${parents.map(p => `<option value="${esc(p.assetId)}">${esc(p.pillarType || p.assetType || 'parent')}</option>`).join('')}</select>` : `<input type="hidden" id="h2cParent" value="${esc(parents[0].assetId)}"><div style="color:#4ade80;margin-bottom:8px;">✓ From the ${esc(parents[0].pillarType || parents[0].assetType || '')} parent${nlink(parents[0].assetId)}</div>`}
+    <div id="h2cStratWrap"></div><div id="h2cClassic">
     ${HT_LBL('Method')}<select id="h2cMethod" style="${HT_IN}" onchange="document.getElementById('h2cCT').style.display=/single post/i.test(this.options[this.selectedIndex].text)?'':'none'">${match ? '' : '<option value="">— no Live method matches this row; choose one —</option>'}${_htMethods.map(x => `<option value="${esc(x.id)}" ${match && x.id === match.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <div id="h2cCT" style="display:${match && /single post/i.test(match.name) ? '' : 'none'};">${HT_LBL('Content type')}<select id="h2cCTv" style="${HT_IN}">${['Hook', 'Pain Point', 'Benefit', 'Informational', 'Customer Focus', 'Proof', 'Objection', 'Contrarian'].map(x => `<option>${x}</option>`).join('')}</select></div>
     ${_htPlatforms.length ? HT_LBL('Platform (optional)') + `<select id="h2cPlat" style="${HT_IN}"><option value="">— method default —</option>${_htPlatforms.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
     ${HT_LBL('How many')}<input id="h2cCount" type="number" min="1" max="10" value="1" style="${HT_IN}width:90px;">
     ${HT_LBL('Guidance (optional)')}<textarea id="h2cGuide" rows="3" style="${HT_IN}resize:vertical;"></textarea>
     <button class="modal-btn" onclick="this.textContent='⏳ generating…';hcModalRun(this, () => hub2CreateGo('${slug}', '${esc(id)}'))">Create ${esc(m.name)}</button>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px;">Can take a minute or two.</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:6px;">Can take a minute or two.</div></div>`;
+  if (hub2IsSinglePostRow(m)) hub2StoryInit(slug, id, m);
+}
+// ── Strategy dropdown (single post story, 2026-10-28): a single-post row picks a STRATEGY first. One-off post / Carousel
+// = the existing single post / single post carousel methods (the classic controls below, unchanged). A story strategy
+// writes from its 🎯 Strategy Slots: ✍ Write asset = one random Open slot of this title, written via the governed
+// writeAsset pipeline and set to Publish; ⏰ Schedule cron = every Monday, 10 random Open slots of its current title.
+let _hub2Story = [];
+const hub2IsSinglePostRow = m => /single post/i.test([m.name, ...(m.aliases || [])].join(' '));
+async function hub2StoryInit(slug, id, m) {
+  const wrap = document.getElementById('h2cStratWrap'), h = HUB_SITES.find(x => x.slug === slug);
+  if (!wrap) return;
+  wrap.innerHTML = HT_LBL('Strategy') + `<select id="h2cStrat" style="${HT_IN}" disabled><option>Loading strategies…</option></select><div id="h2cStratBox"></div>`;
+  const [st, gs] = await Promise.all([call('storyStrategies').catch(() => ({})), call('listGrowthStrategies', { campaignId: h && h.campaignId }).catch(() => ({}))]);
+  const sel = document.getElementById('h2cStrat'); if (!sel) return;
+  _hub2Story = st.strategies || [];
+  const storyIds = new Set(_hub2Story.map(s => s.id)), others = (gs.strategies || []).filter(s => !storyIds.has(hub2Id(s.id)));
+  sel.innerHTML = `<option value="oneoff">One-off post</option><option value="carousel">Carousel</option>`
+    + (_hub2Story.length ? `<optgroup label="Story strategies (slots)">${_hub2Story.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.scheduled ? ' · ⏰ scheduled' : ''}</option>`).join('')}</optgroup>` : '')
+    + (others.length ? `<optgroup label="Other strategies — no story slots yet">${others.map(s => `<option value="" disabled>${esc(s.name)}</option>`).join('')}</optgroup>` : '');
+  sel.disabled = false;
+  sel.value = /story/i.test(m.name) && _hub2Story.length ? _hub2Story[0].id : 'oneoff';
+  sel.onchange = () => hub2StratPick(slug, id);
+  const tsel = document.getElementById('h2cTitle'); if (tsel) tsel.addEventListener('change', () => hub2StratPick(slug, id));
+  hub2StratPick(slug, id);
+}
+function hub2StratPick(slug, id) {
+  const v = document.getElementById('h2cStrat')?.value, box = document.getElementById('h2cStratBox'), classic = document.getElementById('h2cClassic'), ms = document.getElementById('h2cMethod');
+  if (!box || !classic) return;
+  const story = _hub2Story.find(s => s.id === v);
+  classic.style.display = story ? 'none' : '';
+  if (!story) {   // One-off / Carousel → point the classic method picker at the matching method, nothing else changes
+    box.innerHTML = '';
+    const want = v === 'carousel' ? /carousel/i : /^single post\b(?!.*(carousel|story))/i, o = ms && [...ms.options].find(x => want.test(x.text));
+    if (o) { ms.value = o.value; ms.onchange && ms.onchange(); }
+    return;
+  }
+  const tid = hub2Id(document.getElementById('h2cTitle')?.value), t = story.titles.find(x => x.titleId === tid);
+  box.innerHTML = `<div style="font-size:11px;color:var(--text2);margin:6px 0 8px;">${t ? `This title: <b>${t.Open || 0}</b> open · ${t.Filled || 0} written · ${t.Published || 0} published.` : "This title has no slots in this strategy. Slots are made per title once its pillar is written — the cron does it when the loop reaches the title."}</div>
+    <button class="modal-btn" ${t && t.Open ? '' : 'disabled'} onclick="this.textContent='⏳ writing…';hcModalRun(this, () => hub2StoryWrite('${slug}', '${esc(story.id)}'))">✍ Write asset</button>
+    <button class="modal-btn" style="margin-top:6px;" onclick="hub2StorySchedule(this, '${esc(slug)}', '${esc(id)}', '${esc(story.id)}')">${story.scheduled ? '⏸ Stop cron' : '⏰ Schedule cron'}</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px;">Write asset: one random Open slot of this title, written and set to Publish (about a minute). Schedule cron: every Monday, 10 random Open slots of the strategy's current title, one written per 4 minutes.${story.scheduled ? ' <b>Scheduled now.</b>' : ''}</div>`;
+}
+async function hub2StoryWrite(slug, strategyId) {
+  const titleId = hub2Id(document.getElementById('h2cTitle')?.value);
+  if (!titleId) return 'Choose a title';
+  const r = await call('storyWrite', { strategyId, titleId });
+  if (r.error === 'areas_invalid') return `Written but it misses the format (left at Development, slot still Open): ${(r.problems || []).join('; ')}`;
+  if (!r.ok) return 'Not written: ' + (r.reason || r.error || 'no response');
+  showToast(`✓ ${r.format} × ${r.angle} (${r.type}) — written, at Publish`, 'success'); hub2ChecklistLoad(slug, true); return true;
+}
+async function hub2StorySchedule(btn, slug, id, strategyId) {
+  const s = _hub2Story.find(x => x.id === strategyId); if (!s) return;
+  btn.disabled = true;
+  const r = await call('storySchedule', { strategyId, on: !s.scheduled }).catch(e => ({ error: e.message }));
+  btn.disabled = false;
+  if (!r || r.error) return showToast('Cron not changed: ' + ((r && r.error) || 'no response'), 'error');
+  s.scheduled = !!r.scheduled; showToast(s.scheduled ? '⏰ Scheduled — 10 slots every Monday' : '⏸ Cron stopped', 'success'); hub2StratPick(slug, id);
 }
 async function hub2ParentCreate(slug, id, prowId, btn) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Checklist[slug] || {}, prow = (st.methods || []).find(x => x.id === prowId), t = hub2ReadyTitles(slug).find(x => x.id === document.getElementById('h2cTitle')?.value);
@@ -22506,6 +22564,12 @@ const CRON_REGISTRY = [
   { fn: 'runTitleIdleSweep', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC (also on demand: titleIdleSweep action / KV titleidle:runnow via the */30 cron)', group: 'Content',
     what: 'Any hub title at Status Development that is out of sync and has no Published asset moves to Status Idea (in-sync titles are never moved; its flagged interviews go to Idea too) (pre-Planning parking). Max 150 moves per run; a capped run finishes on the next */30 tick.',
     io: 'Notion: Content Strategy Status → Idea · KV: titleidle:last, titleidle:lock, titleidle:runnow' },
+  { fn: 'storyCronEnqueue', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC · only strategies switched on with ⏰ Schedule cron', group: 'Content',
+    what: 'single post story loop: for each scheduled strategy, the current title (first in its Titles order with a pillar and Open slots) gets 10 random Open slots queued. A title with a pillar and no slots yet gets the strategy grid copied first; a title with no pillar is skipped and logged.',
+    io: 'Notion: 🎯 Strategy Slots (read; new slots for the next title) · KV: story:sched, story:queue' },
+  { fn: 'storyCronTick', cron: '*/4 * * * *', when: 'Every 4 min · no-op when the queue is empty', group: 'Content',
+    what: 'Writes the next queued single post story slot (storyWrite → governed writeAsset, checked against the method\'s format + word budgets) → asset at Publish, slot Filled. One per tick.',
+    io: 'Claude (1-2 writes) · Notion: Assets (create + write), Strategy Slots → Filled · KV: story:queue, story:log' },
   { fn: 'runSwingStrategies', cron: '*/5 12-16 * * MON-FRI', when: 'Once per session ~09:45 ET (self-gated on the ORB cron)', group: 'Trading',
     what: 'ETF_MOMENTUM_V1 (top 3 of 10 asset ETFs by 3-mo return, re-picked every 20 sessions) + FEAR_DIP_V1 (RSI(2)<10 above SMA200, only when VIX>20; exit signal close>SMA5 or 20 sessions, recorded on the trade meta). Rules as backtested in tools/backtest. Picks written as swing calls via the ORB contract picker; tracked by runTradePoll.',
     io: 'KV: swing:* · writes trades:* paper signals' },

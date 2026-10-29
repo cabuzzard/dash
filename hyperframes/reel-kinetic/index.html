@@ -2,6 +2,8 @@
 <html
   lang="en"
   data-composition-variables='[
+    {"id":"areas","type":"string","label":"Story areas (JSON [{kind,text}] — single post story; empty = Reel)","default":""},
+    {"id":"format","type":"string","label":"Story format (play rule)","default":""},
     {"id":"hook","type":"string","label":"Hook (first line, ≤60 chars)","default":"Your numbers live in five different tools.","maxLength":90},
     {"id":"beat1","type":"string","label":"Beat 1 (≤70 chars)","default":"Your ad platform says one thing.","maxLength":90},
     {"id":"beat2","type":"string","label":"Beat 2 (≤70 chars)","default":"Your CRM says another.","maxLength":90},
@@ -25,7 +27,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
-    <title>Reel — kinetic text (dash template)</title>
+    <title>Reel / story — kinetic text (dash template v2)</title>
     <link rel="stylesheet" href="fonts.css" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
@@ -44,73 +46,60 @@
           color-mix(in srgb, var(--bg) 82%, transparent) 70%,
           color-mix(in srgb, var(--bg) 35%, transparent) 100%);
       }
+      /* ONE clip for the whole run; everything inside is built at load and revealed by the timeline */
+      #stage { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; }
+      .layer { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; box-sizing: border-box; }
+      .hide { opacity: 0; }
+      .w { display: inline-block; }
 
-      /* Reels safe band: keep copy between ~280px and ~1450px */
-      .scene {
-        position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-        box-sizing: border-box; padding: 300px 96px 470px;
-        display: flex; flex-direction: column; justify-content: center; gap: 36px;
-      }
+      /* ── Reel shape (v1 look): Reels safe band ~280px-1450px ── */
+      .scene { padding: 300px 96px 470px; display: flex; flex-direction: column; justify-content: center; gap: 36px; }
       .eyebrow {
         display: block; font-family: var(--bodyFontStack); font-weight: 600; font-size: 34px;
         letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink);
         align-self: flex-start; padding-bottom: 10px; border-bottom: 6px solid var(--accent);
       }
-      .hook {
-        margin: 0; font-family: var(--displayFontStack); font-weight: 700; color: var(--ink);
-        line-height: 1.02; letter-spacing: -0.02em; max-width: 888px;
-      }
-      .beat-num {
-        display: block; width: 150px; font-family: var(--displayFontStack); font-weight: 700;
-        font-size: 150px; line-height: 0.9; color: var(--accent);
-      }
-      .beat-text {
-        margin: 0; font-family: var(--displayFontStack); font-weight: 600; color: var(--ink);
-        line-height: 1.06; letter-spacing: -0.015em; max-width: 888px;
-      }
+      .hook { margin: 0; font-family: var(--displayFontStack); font-weight: 700; color: var(--ink); line-height: 1.02; letter-spacing: -0.02em; max-width: 888px; }
+      .beat-num { display: block; width: 150px; font-family: var(--displayFontStack); font-weight: 700; font-size: 150px; line-height: 0.9; color: var(--accent); }
+      .beat-text { margin: 0; font-family: var(--displayFontStack); font-weight: 600; color: var(--ink); line-height: 1.06; letter-spacing: -0.015em; max-width: 888px; }
       .rule { display: block; width: 160px; height: 10px; background: var(--accent); border-radius: 5px; transform-origin: left center; }
-      .w { display: inline-block; }
       .cta-pill {
         display: block; align-self: flex-start; box-sizing: border-box; max-width: 888px;
         padding: 34px 54px; border-radius: 999px; background: var(--accent); color: #fff;
         font-family: var(--bodyFontStack); font-weight: 600; font-size: 60px; line-height: 1.1;
       }
       .brand { display: block; font-family: var(--bodyFontStack); font-weight: 500; font-size: 40px; color: var(--ink); opacity: 0.85; }
+
+      /* ── Story shape: the global area hierarchy title > subhead > blurb > body > CTA ──
+         display font → title, subhead · body font → blurb, body, CTA (one typeface choice cascades) */
+      .k-title   { font-family: var(--displayFontStack); font-weight: 700; color: var(--ink); line-height: 1.04; letter-spacing: -0.02em; }
+      .k-subhead { font-family: var(--displayFontStack); font-weight: 600; color: var(--ink); line-height: 1.08; letter-spacing: -0.012em; }
+      .k-blurb   { font-family: var(--bodyFontStack); font-weight: 600; color: var(--ink); line-height: 1.2; }
+      .k-body    { font-family: var(--bodyFontStack); font-weight: 500; color: var(--ink); line-height: 1.28; }
+      .k-CTA     { font-family: var(--bodyFontStack); font-weight: 600; color: #fff; background: var(--accent); border-radius: 999px; line-height: 1.12; padding: 30px 50px; }
+      .area { position: absolute; left: 96px; width: 888px; box-sizing: border-box; margin: 0; }
+      .zone-cta { top: 1470px; width: auto; max-width: 888px; }
+      .stack { position: absolute; left: 96px; top: 300px; width: 888px; height: 1130px; display: flex; flex-direction: column; justify-content: center; gap: 26px; }
+      .stack .area { position: relative; left: 0; width: auto; }
+      .bubble { max-width: 760px; border-radius: 44px; padding: 26px 38px; box-sizing: border-box; }
+      .bubble.l { align-self: flex-start; background: color-mix(in srgb, var(--bg) 88%, var(--ink)); border-bottom-left-radius: 10px; }
+      .bubble.r { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 10px; }
+      .card { display: flex; gap: 26px; align-items: baseline; }
+      .card .n { font-family: var(--displayFontStack); font-weight: 700; color: var(--accent); font-size: 64px; line-height: 1; flex: 0 0 auto; }
+      .panel { border-left: 10px solid var(--accent); padding: 18px 0 18px 30px; }
+      .panel.alt { border-left-color: color-mix(in srgb, var(--ink) 55%, transparent); }
+      .split { position: absolute; top: 640px; width: 432px; display: flex; flex-direction: column; gap: 22px; }
+      .split.left { left: 72px; } .split.right { left: 576px; }
+      .split .area { position: relative; left: 0; width: auto; }
+      .quote { border-left: 10px solid var(--accent); padding-left: 30px; font-style: italic; }
     </style>
   </head>
   <body>
-    <div id="reel" data-composition-id="reel" data-start="0" data-width="1080" data-height="1920" data-duration="20">
+    <div id="reel" data-composition-id="reel" data-start="0" data-width="1080" data-height="1920">
       <div id="bgfill"></div>
       <div id="plate-wrap"><img id="plate" data-layout-allow-overflow data-var-src="bgImage" src="assets/plate-default.jpg" alt="" crossorigin="anonymous" /></div>
       <div id="scrim"></div>
-
-      <section id="s-hook" class="scene clip" data-start="0" data-duration="5" data-track-index="1">
-        <span id="hook-eyebrow" class="eyebrow" data-var-text="brand">Brand</span>
-        <h1 id="hook-text" class="hook">Hook</h1>
-      </section>
-
-      <section id="s-b1" class="scene clip" data-start="5" data-duration="4" data-track-index="1">
-        <span id="b1-num" class="beat-num">01</span>
-        <span id="b1-rule" class="rule"></span>
-        <p id="b1-text" class="beat-text">Beat one</p>
-      </section>
-
-      <section id="s-b2" class="scene clip" data-start="9" data-duration="4" data-track-index="1">
-        <span id="b2-num" class="beat-num">02</span>
-        <span id="b2-rule" class="rule"></span>
-        <p id="b2-text" class="beat-text">Beat two</p>
-      </section>
-
-      <section id="s-b3" class="scene clip" data-start="13" data-duration="4" data-track-index="1">
-        <span id="b3-num" class="beat-num">03</span>
-        <span id="b3-rule" class="rule"></span>
-        <p id="b3-text" class="beat-text">Beat three</p>
-      </section>
-
-      <section id="s-cta" class="scene clip" data-start="17" data-duration="3" data-track-index="1">
-        <span id="cta-pill" class="cta-pill" data-var-text="cta">CTA</span>
-        <span id="cta-brand" class="brand" data-var-text="brand">Brand</span>
-      </section>
+      <div id="stage" class="clip" data-start="0" data-duration="20" data-track-index="1"></div>
     </div>
 
     <script>
@@ -119,7 +108,7 @@
         const FALLBACK = { serif: "Georgia, serif", sans: "system-ui, sans-serif" };
         const SERIFS = ["Newsreader", "DM Serif Display", "Bitter", "Fraunces"];
         const stack = f => `"${f}", ${SERIFS.includes(f) ? FALLBACK.serif : FALLBACK.sans}`;
-        const root = document.getElementById("reel");
+        const root = document.getElementById("reel"), stage = document.getElementById("stage");
         root.style.setProperty("--displayFontStack", stack(V.displayFont || "Bricolage Grotesque"));
         root.style.setProperty("--bodyFontStack", stack(V.bodyFont || "Hanken Grotesk"));
 
@@ -130,51 +119,118 @@
           if (n >= 80) return small;
           return Math.round(big - (big - small) * ((n - 24) / 56));
         };
-        // Word spans for the word-by-word rise.
-        const words = (el, text) => {
-          el.textContent = "";
-          String(text || "").trim().split(/\s+/).forEach((w, i, a) => {
-            const s = document.createElement("span");
-            s.className = "w"; s.textContent = w + (i < a.length - 1 ? " " : "");
-            el.appendChild(s);
-          });
-          return el.querySelectorAll(".w");
+        const el = (tag, cls, parent, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; (parent || stage).appendChild(e); return e; };
+        // Word spans for the word-by-word rise. The space sits BETWEEN spans — a trailing space inside an
+        // inline-block is trimmed, which glued the words together.
+        const words = (e, text) => {
+          e.textContent = "";
+          String(text || "").trim().split(/\s+/).forEach((w, i) => { if (i) e.appendChild(document.createTextNode(" ")); el("span", "w", e, w); });
+          return e.querySelectorAll(".w");
         };
 
-        const hookEl = document.getElementById("hook-text");
-        hookEl.style.fontSize = sizeFor(V.hook, 132, 84) + "px";
-        const hookWords = words(hookEl, V.hook || "Your numbers live in five different tools.");
-        const beats = [1, 2, 3].map(i => {
-          const el = document.getElementById(`b${i}-text`);
-          const t = V[`beat${i}`] || "";
-          el.style.fontSize = sizeFor(t, 104, 70) + "px";
-          return words(el, t);
-        });
+        let areas = [];
+        try { const a = JSON.parse(V.areas || "[]"); if (Array.isArray(a)) areas = a.filter(x => x && String(x.text || "").trim()); } catch (e) { areas = []; }
+        const tl = gsap.timeline({ paused: true });
+        let T;
+
+        if (!areas.length) {
+          // ── Reel shape: hook 0-5 → 3 beats (4s each) → CTA 17-20 ──
+          T = 20;
+          const sHook = el("div", "layer scene");
+          const eyebrow = el("span", "eyebrow", sHook, V.brand || "Brand");
+          const hookEl = el("h1", "hook", sHook);
+          hookEl.style.fontSize = sizeFor(V.hook, 132, 84) + "px";
+          const hookWords = words(hookEl, V.hook || "Your numbers live in five different tools.");
+          tl.from(eyebrow, { y: 30, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.25);
+          tl.from(hookWords, { yPercent: 70, opacity: 0, duration: 0.6, ease: "power3.out", stagger: 0.09 }, 0.45);
+          tl.to([hookEl, eyebrow], { y: -40, opacity: 0, duration: 0.4, ease: "power2.in" }, 4.55);
+          [5, 9, 13].forEach((t0, k) => {
+            const s = el("div", "layer scene hide");
+            const num = el("span", "beat-num", s, "0" + (k + 1)), rule = el("span", "rule", s), txt = el("p", "beat-text", s);
+            const t = V["beat" + (k + 1)] || "";
+            txt.style.fontSize = sizeFor(t, 104, 70) + "px";
+            const ws = words(txt, t);
+            tl.set(s, { opacity: 1 }, t0);
+            tl.from(num, { x: -80, opacity: 0, duration: 0.55, ease: "power3.out" }, t0 + 0.15);
+            tl.from(rule, { scaleX: 0, duration: 0.5, ease: "power2.out" }, t0 + 0.35);
+            tl.from(ws, { yPercent: 60, opacity: 0, duration: 0.5, ease: "power3.out", stagger: 0.07 }, t0 + 0.45);
+            tl.to([num, rule, txt], { x: 60, opacity: 0, duration: 0.35, ease: "power2.in" }, t0 + 3.6);
+          });
+          const sCta = el("div", "layer scene hide");
+          const pill = el("span", "cta-pill", sCta, V.cta || "See how it works"), brand = el("span", "brand", sCta, V.brand || "Brand");
+          tl.set(sCta, { opacity: 1 }, 17);
+          tl.from(pill, { scale: 0.85, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, 17.2);
+          tl.from(brand, { y: 24, opacity: 0, duration: 0.45, ease: "power3.out" }, 17.55);
+        } else {
+          // ── Story shape: one area = one beat, reveal order = reading order, CTA last and held ──
+          const fmt = String(V.format || "").toLowerCase();
+          const mode = /back\s*&\s*forth|visuals|clone/.test(fmt) ? "stack" : /green screen|split/.test(fmt) ? "split" : "replace";
+          const beat = a => { const n = String(a.text).trim().split(/\s+/).length; return Math.min(3.8, Math.max(1.6, 0.8 + 0.24 * n)); };
+          const SIZE = { title: [104, 72], subhead: [78, 58], blurb: [50, 42], body: [54, 44], CTA: [54, 46] };
+          const styleArea = (e, a, scale) => { const [b, s] = SIZE[a.kind] || SIZE.body; e.style.fontSize = Math.round(sizeFor(a.text, b, s) * (scale || 1)) + "px"; };
+          const cta = areas[areas.length - 1].kind === "CTA" ? areas[areas.length - 1] : null;
+          const main = cta ? areas.slice(0, -1) : areas;
+          let t = 0.3;
+          const enter = (e, ws, at) => {
+            tl.set(e, { opacity: 1 }, at);
+            tl.from(ws, { yPercent: 60, opacity: 0, duration: 0.45, ease: "power3.out", stagger: Math.min(0.06, 0.9 / Math.max(1, ws.length)) }, at);
+          };
+          if (mode === "stack") {
+            const box = el("div", "stack");
+            const bubbles = /back\s*&\s*forth/.test(fmt), cards = /visuals/.test(fmt);
+            const many = main.length > 5 ? 0.86 : 1;
+            let bi = 0, ci = 0;
+            main.forEach((a, i) => {
+              let e, txtEl;
+              if (i > 0 && a.kind === "blurb" && bubbles) { e = el("p", `area k-blurb bubble ${bi++ % 2 ? "r" : "l"} hide`, box); txtEl = e; }
+              else if (i > 0 && a.kind === "blurb" && cards) { e = el("div", "area card hide", box); el("span", "n", e, String(++ci).padStart(2, "0")); txtEl = el("p", "k-blurb", e); txtEl.style.margin = "0"; }
+              else if (i > 0 && a.kind === "blurb") { e = el("p", `area k-blurb panel ${ci++ % 2 ? "alt" : ""} hide`, box); txtEl = e; }
+              else { e = el("p", `area k-${a.kind} hide`, box); txtEl = e; }
+              styleArea(txtEl, a, many);
+              enter(e, words(txtEl, a.text), t);
+              t += beat(a);
+            });
+          } else if (mode === "split") {
+            // header (first area), then left panel (next two), right panel (next two); anything further joins the right
+            const head = main[0], rest = main.slice(1);
+            const h = el("p", `area k-${head.kind} hide`); h.style.top = "300px"; styleArea(h, head, 0.85);
+            enter(h, words(h, head.text), t); t += beat(head);
+            const L = el("div", "split left"), R = el("div", "split right");
+            rest.forEach((a, i) => {
+              const e = el("p", `area k-${a.kind} hide`, i < 2 ? L : R);
+              styleArea(e, a, 0.72);
+              enter(e, words(e, a.text), t); t += beat(a);
+            });
+          } else {
+            // replace: the first area is the hook (centred, big), then rises to a header and stays;
+            // every later area takes the centre and gives it up to the next
+            main.forEach((a, i) => {
+              const e = el("p", `area k-${a.kind} hide${i === 0 && a.kind === "blurb" ? " quote" : ""}`);
+              styleArea(e, a, i === 0 ? 1 : 0.95);
+              e.style.top = i === 0 ? "760px" : "820px";
+              const ws = words(e, a.text), d = beat(a);
+              enter(e, ws, t);
+              if (i === 0) {
+                if (main.length > 1) tl.to(e, { y: -440, scale: 0.62, transformOrigin: "left top", duration: 0.5, ease: "power2.inOut" }, t + d - 0.3);
+              } else if (i < main.length - 1) {
+                tl.to(e, { y: -30, opacity: 0, duration: 0.35, ease: "power2.in" }, t + d - 0.25);
+              }
+              t += d;
+            });
+          }
+          if (cta) {
+            const c = el("p", "area zone-cta k-CTA hide", stage, cta.text);
+            styleArea(c, cta);
+            tl.fromTo(c, { scale: 0.85, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(1.6)" }, t);
+            t += Math.max(2.6, beat(cta));
+          }
+          T = Math.round((t + 0.4) * 10) / 10;
+        }
+
+        stage.setAttribute("data-duration", String(T));   // a clip's duration is re-read from the live DOM
+        tl.fromTo("#plate", { scale: 1.0 }, { scale: 1.12, duration: T, ease: "none" }, 0);   // also sets the timeline (= render) length
 
         window.__timelines = window.__timelines || {};
-        const tl = gsap.timeline({ paused: true });
-
-        // Plate: one slow push-in across the whole reel.
-        tl.fromTo("#plate", { scale: 1.0 }, { scale: 1.12, duration: 20, ease: "none" }, 0);
-
-        // HOOK 0–5
-        tl.from("#hook-eyebrow", { y: 30, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.25);
-        tl.from(hookWords, { yPercent: 70, opacity: 0, duration: 0.6, ease: "power3.out", stagger: 0.09 }, 0.45);
-        tl.to("#s-hook .hook, #hook-eyebrow", { y: -40, opacity: 0, duration: 0.4, ease: "power2.in" }, 4.55);
-
-        // BEATS 5–17 (4s each)
-        [5, 9, 13].forEach((t0, k) => {
-          const i = k + 1;
-          tl.from(`#b${i}-num`, { x: -80, opacity: 0, duration: 0.55, ease: "power3.out" }, t0 + 0.15);
-          tl.from(`#b${i}-rule`, { scaleX: 0, duration: 0.5, ease: "power2.out" }, t0 + 0.35);
-          tl.from(beats[k], { yPercent: 60, opacity: 0, duration: 0.5, ease: "power3.out", stagger: 0.07 }, t0 + 0.45);
-          tl.to(`#b${i}-num, #b${i}-rule, #b${i}-text`, { x: 60, opacity: 0, duration: 0.35, ease: "power2.in" }, t0 + 3.6);
-        });
-
-        // CTA 17–20
-        tl.from("#cta-pill", { scale: 0.85, opacity: 0, duration: 0.55, ease: "back.out(1.6)" }, 17.2);
-        tl.from("#cta-brand", { y: 24, opacity: 0, duration: 0.45, ease: "power3.out" }, 17.55);
-
         window.__timelines["reel"] = tl;
       })();
     </script>
