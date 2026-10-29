@@ -4581,12 +4581,23 @@ async function noDemoteStatus(assetId, props) {
   } catch (e) {}
   return props;
 }
+// A missing property fails the WHOLE Notion PATCH — "Video Render" was only ever added by the Reel generator, so a
+// finalize on any other asset silently lost its Video URL (found 2026-10-28 on the first single post story render).
+// On failure: add Video URL / Video Render to the Assets DB and retry; last resort, save without the note.
 async function hfAssetPatch(assetId, props) {
   const id = String(assetId).replace(/-/g, "");
   const dashed = `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
-  return fetch(`https://api.notion.com/v1/pages/${dashed}`, { method: "PATCH",
-    headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: props }) });
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const patch = p => fetch(`https://api.notion.com/v1/pages/${dashed}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: p }) });
+  let r = await patch(props);
+  if (r.ok) return r;
+  console.error("hfAssetPatch:", r.status, (await r.text().catch(() => "")).slice(0, 200));
+  await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { method: "PATCH", headers: hdr,
+    body: JSON.stringify({ properties: { "Video URL": { url: {} }, "Video Render": { rich_text: {} } } }) }).catch(() => {});
+  r = await patch(props);
+  if (r.ok || !props["Video Render"]) return r;
+  const { ["Video Render"]: _note, ...rest } = props;
+  return Object.keys(rest).length ? patch(rest) : r;
 }
 const hfRenderNote = t => ({ "Video Render": { rich_text: [{ text: { content: String(t).slice(0, 1900) } }] } });
 // Check one asset's render; when completed, copy the MP4 to R2 and fill Video URL.
