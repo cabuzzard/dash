@@ -6398,7 +6398,7 @@ function pubStoryDraw() {
     <div style="display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
       ${(d.areas || []).map(a => `<div><span style="display:inline-block;width:62px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);">${esc(a.kind)}</span>${esc(a.text)}</div>`).join('') || '<span style="color:var(--ink3);">No areas written yet.</span>'}
       <div style="font-size:10px;color:var(--ink3);margin-top:4px;">Copy is final — the video plays it exactly as written, one area per beat.</div></div>
-    <div style="font-weight:700;color:var(--ink);margin-top:2px;">Look <span style="font-weight:400;color:var(--ink3);">— global presets this asset references (background image stays this asset's own)</span></div>
+    <div style="font-weight:700;color:var(--ink);margin-top:2px;">Look <span style="font-weight:400;color:var(--ink3);">— global presets this asset references</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">${sel('typography', 'Typeface')}${sel('color', 'Colour scheme')}${sel('motion', 'Motion')}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
       <button class="btn" onclick="pubStorySavePresets(this)">💾 Use these presets</button>
@@ -6407,6 +6407,18 @@ function pubStoryDraw() {
       ${d.videoUrl ? `<a class="kwlink" href="${esc(d.videoUrl)}" target="_blank" rel="noopener">▶ Video</a>` : ''}
       <span id="pubStoryMsg" style="font-size:10.5px;color:var(--ink3);"></span></div>
     <div id="pubStoryForm"></div>
+    <div style="font-weight:700;color:var(--ink);margin-top:2px;">Background <span style="font-weight:400;color:var(--ink3);">— from the shared pool; any number of posts can use the same one</span></div>
+    <div style="display:flex;gap:6px;overflow-x:auto;padding:2px 0;">
+      <button onclick="pubStoryBg('')" title="No pool background — the post's own image or the campaign plate" style="flex:0 0 auto;width:58px;height:100px;border-radius:7px;border:2px solid ${P.background ? 'var(--border)' : 'var(--accent, #1b881b)'};background:var(--bg2, #eee);font-size:9.5px;color:var(--ink3);cursor:pointer;">none</button>
+      ${(d.backgrounds || []).map(b => `<button onclick="pubStoryBg('${esc(b.id)}')" title="${esc(b.name)}" style="flex:0 0 auto;padding:0;border-radius:7px;border:2px solid ${P.background === b.id ? 'var(--accent, #1b881b)' : 'transparent'};background:none;cursor:pointer;"><img src="${esc(b.url)}" alt="${esc(b.name)}" style="display:block;width:54px;height:96px;object-fit:cover;border-radius:5px;"></button>`).join('')}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <input id="pubStoryBgName" class="finput" style="font-size:11px;width:130px;" placeholder="Name">
+      <input id="pubStoryBgUrl" class="finput" style="font-size:11px;flex:1;min-width:140px;" placeholder="https://… image URL (or choose a file)">
+      <input id="pubStoryBgFile" type="file" accept="image/png,image/jpeg,image/webp" style="font-size:10.5px;max-width:170px;">
+      <button class="btn" onclick="pubStoryBgAdd(this)">＋ Add to pool</button>
+      ${d.ownImage && !(d.backgrounds || []).some(b => b.url === d.ownImage) ? `<button class="btn" onclick="pubStoryBgAdd(this, true)" title="Put this post's existing image into the shared pool">＋ This post's image</button>` : ''}
+    </div>
     <div style="font-weight:700;color:var(--ink);margin-top:2px;">${esc(d.strategyName || 'Strategy')} — this title's slots <span style="font-weight:400;color:var(--ink3);">(${counts})</span></div>
     <div style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;">${(d.slots || []).map(slotRow).join('') || '<span style="color:var(--ink3);">No slot linked to this asset.</span>'}</div>`;
 }
@@ -6437,6 +6449,24 @@ async function pubStoryPresetSave(kind, btn) {
   btn.disabled = true;
   try { const r = await w('presetSave', { kind, preset }); d.lib = r.lib; pubStoryDraw(); document.getElementById('pubStoryMsg').textContent = `✓ "${preset.name}" saved — pick it above, then 💾 Use these presets`; }
   catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = e.message; btn.disabled = false; }
+}
+async function pubStoryBg(backgroundId) {
+  const d = PUB_STORY, msg = () => document.getElementById('pubStoryMsg'); if (!d) return;
+  try { const r = await w('assetBackgroundSet', { assetId: d.assetId, backgroundId }); d.presets = r.presets; pubStoryDraw();
+    msg().style.color = 'var(--fresh)'; msg().textContent = '✓ Background set — 🎬 Render again to apply';
+  } catch (e) { msg().style.color = 'var(--stale)'; msg().textContent = e.message; }
+}
+async function pubStoryBgAdd(btn, own) {
+  const d = PUB_STORY, msg = document.getElementById('pubStoryMsg'); if (!d) return;
+  const name = document.getElementById('pubStoryBgName').value.trim() || (own ? (d.spec.format || 'Story') + ' background' : '');
+  const file = (document.getElementById('pubStoryBgFile').files || [])[0];
+  const payload = { name, url: own ? d.ownImage : document.getElementById('pubStoryBgUrl').value.trim() };
+  btn.disabled = true;
+  try {
+    if (!own && file) { payload.contentType = file.type; payload.fileData = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); }); delete payload.url; }
+    const r = await w('backgroundAdd', payload); d.backgrounds = r.pool; pubStoryDraw();
+    document.getElementById('pubStoryMsg').textContent = `✓ "${name}" is in the pool — tap it to use it here`;
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = e.message; btn.disabled = false; }
 }
 async function pubStoryRender(btn) {
   await hfReel(btn);   // same HeyGen render + polling as the Reel
