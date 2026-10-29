@@ -118,3 +118,7 @@ test('one digest asset type: the retired one-shot "digest" always becomes a Dige
   assert.match(html, /return hub2OpenDigestParents\(slug, m\)/);
   assert.doesNotMatch(html, /return hub2DigestModal\(slug\)|return hub2NewsModal\(slug\)|return hub2FreeNlModal\(slug\)/);
 });
+test('a parent made before the rename is retyped to Digest Parent on its next run', () => {
+  const step = source.slice(source.indexOf('async function adStep('), source.indexOf('async function autoDigestRun('));
+  assert.match(step, /kwNotionPatch\(env, S\.assetId, \{ "Asset Type": \{ select: \{ name: DIGEST_PARENT_TYPE \} \} \}\)/);
+});

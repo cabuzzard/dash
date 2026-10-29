@@ -15888,6 +15888,8 @@ async function adStep(env, cid, S, invoke) {
   if (S.step === "expand-free" || S.step === "expand-paid") S.step = "widen";   // runs in flight from the old record-floor steps
   if (S.step === "start") {
     await digestMemorySeed(env,cid);
+    // one asset type (2026-10-29): retype a parent made before the rename. The REST API adds the "Digest Parent" option itself.
+    await kwNotionPatch(env, S.assetId, { "Asset Type": { select: { name: DIGEST_PARENT_TYPE } } }).catch(e => console.error("digest parent retype", e.message));
     const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
     const title = await newsletterNotion(env, "pages/" + kwDashId(S.titleId));
     if (ivRid(title.properties, "Campaign") !== cid) throw new Error("Digest title no longer belongs to this campaign");
