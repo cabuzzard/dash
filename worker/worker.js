@@ -3843,7 +3843,7 @@ const HF_TEMPLATES = {
   "reel-kinetic": {
     // v2 (2026-10-28): same reel shape (hook/beat1-3/cta) plus the single post story shape — an ordered `areas`
     // list + `format` (play rule), render length taken from the timeline. v1 stays published for reference.
-    url: "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/hyperframes/reel-kinetic-v2.zip",
+    url: "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/hyperframes/reel-kinetic-v3.zip",   // v3: + pace (motion preset)
     aspect: "9:16",
     displayFonts: ["Bricolage Grotesque", "Newsreader", "DM Serif Display", "Familjen Grotesk", "Bitter", "Space Grotesk", "Archivo", "Fraunces", "Libre Franklin", "Inter", "Hanken Grotesk", "IBM Plex Sans"],
     bodyFonts: ["Hanken Grotesk", "Inter", "IBM Plex Sans", "Libre Franklin", "Space Grotesk", "Archivo"],
@@ -4001,7 +4001,15 @@ async function storyWrite(env, { slotId, strategyId, titleId }) {
   await fetch("https://api.notion.com/v1/pages/" + ivDash(slotId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
     "Status": { select: { name: "Filled" } }, "Asset": { relation: [{ id: ivDash(assetId) }] } } }) });
   await storyLog(env, { slotId, assetId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type });
-  return { ok: true, assetId, slotId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type, areas, caption: fields["Post Caption"] || "" };
+  // Creating an asset from a strategy puts that strategy on the cron loop (operator 2026-10-28) — unless the operator
+  // has explicitly stopped it (⏸ Stop in the modal), which a later write never overrides.
+  let scheduled = false;
+  if (slot.strategyId) {
+    const sched = (await env.TRADES.get("story:sched", "json")) || {}, cur = sched[slot.strategyId];
+    if (!cur) { sched[slot.strategyId] = { on: true, perRun: 10, at: new Date().toISOString(), by: "asset created" }; await env.TRADES.put("story:sched", JSON.stringify(sched)); }
+    scheduled = !!(sched[slot.strategyId] || {}).on;
+  }
+  return { ok: true, scheduled, assetId, slotId, title: titleName, format: slot.format, angle: slot.angle, type: slot.type, areas, caption: fields["Post Caption"] || "" };
 }
 // Every strategy that has single post story slots, with Open / Filled / Published per title + its cron toggle.
 async function storyStrategies(env) {
@@ -4016,7 +4024,7 @@ async function storyStrategies(env) {
   for (const st of Object.values(by)) {
     const pg = await ivPage(st.id).catch(() => null);
     out.push({ id: st.id, name: hubRichText(pg?.properties?.["Strategy Name"]?.title) || "Strategy", status: pg?.properties?.Status?.select?.name || "",
-      titles: Object.values(st.titles), scheduled: !!sched[st.id]?.on, perRun: sched[st.id]?.perRun || 10 });
+      titles: Object.values(st.titles), scheduled: !!sched[st.id]?.on, started: !!sched[st.id], perRun: sched[st.id]?.perRun || 10 });
   }
   return { strategies: out, queue: ((await env.TRADES.get("story:queue", "json")) || []).length };
 }
@@ -4069,14 +4077,120 @@ async function storyCronEnqueue(env) {
   }
   await env.TRADES.put("story:queue", JSON.stringify(queue));
 }
-// */4: write the next queued slot (one per tick — each is one or two model calls).
-async function storyCronTick(env, invoke) {
-  const queue = (await env.TRADES.get("story:queue", "json")) || [];
-  if (!queue.length) return;
-  const next = queue.shift();
+// Creation (operator 2026-10-28): "creation generates the first ten, then the cron runs Sunday night for the next and
+// next". Queues 10 random Open slots of the title (the */4 tick writes them, ~15 min) and puts the strategy on the loop.
+async function storyStart(env, { strategyId, titleId }) {
+  if (!strategyId || !titleId) return { error: "strategyId and titleId required" };
+  const tid = hubAssetId(titleId), sid = hubAssetId(strategyId);
+  const pillar = await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "");
+  if (!pillar.trim()) return { error: "This title has no pillar yet — write it first." };
+  const queue = (await env.TRADES.get("story:queue", "json")) || [], queued = new Set(queue.map(q => q.slotId));
+  const open = (await storySlots(sid)).filter(s => s.titleId === tid && s.status === "Open" && !queued.has(s.id));
+  if (!open.length) return { error: queued.size ? "This title's Open slots are already queued" : "This title has no Open slots in that strategy" };
+  for (let i = open.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [open[i], open[j]] = [open[j], open[i]]; }
+  const pick = open.slice(0, 10);
+  pick.forEach(s => queue.push({ slotId: s.id, strategyId: sid }));
   await env.TRADES.put("story:queue", JSON.stringify(queue));
-  const r = await invoke({ action: "storyWrite", slotId: next.slotId });
-  console.log(`storyWrite ${next.slotId.slice(0, 8)}: ${r.ok ? "✓ " + r.format + " × " + r.angle : r.error + (r.reason ? " — " + r.reason : "")}; ${queue.length} left`);
+  const sched = (await env.TRADES.get("story:sched", "json")) || {};
+  sched[sid] = { ...(sched[sid] || {}), on: true, perRun: 10, at: new Date().toISOString(), by: "creation" };
+  await env.TRADES.put("story:sched", JSON.stringify(sched));
+  return { ok: true, queued: pick.length, queueLength: queue.length, scheduled: true };
+}
+// */4: write the next queued slots — up to 3 per tick (each is one or two model calls), stopping early near the time budget.
+async function storyCronTick(env, invoke) {
+  const t0 = Date.now();
+  for (let n = 0; n < 3 && Date.now() - t0 < 6 * 60 * 1000; n++) {
+    const queue = (await env.TRADES.get("story:queue", "json")) || [];
+    if (!queue.length) return;
+    const next = queue.shift();
+    await env.TRADES.put("story:queue", JSON.stringify(queue));
+    const r = await invoke({ action: "storyWrite", slotId: next.slotId });
+    console.log(`storyWrite ${next.slotId.slice(0, 8)}: ${r.ok ? "✓ " + r.format + " × " + r.angle : r.error + (r.reason ? " — " + r.reason : "")}; ${queue.length} left`);
+  }
+}
+// ── Global look presets (2026-10-28) — what a post LOOKS like, separate from what it says (the method). Named,
+// reusable, asset-type-agnostic: typography (a display + a body face; display → title/subhead, body → blurb/body/CTA,
+// so one pick cascades down the whole hierarchy), colour scheme (bg/ink/accent) and motion (pace). Stored once in KV
+// presets:v1; an asset only REFERENCES preset names on its "Presets" property (JSON) — never copies the values.
+// No reference = the hub's own design. The background image stays asset-level.
+const PRESET_FIELDS = { typography: ["display", "body"], color: ["bg", "ink", "accent"], motion: ["pace"] };
+async function presetsLib(env) {
+  const lib = (await env.TRADES.get("presets:v1", "json")) || {};
+  for (const k of Object.keys(PRESET_FIELDS)) if (!Array.isArray(lib[k])) lib[k] = [];
+  return lib;
+}
+async function presetSave(env, { kind, preset }) {
+  if (!PRESET_FIELDS[kind]) return { error: "kind must be typography, color or motion" };
+  const name = String(preset?.name || "").trim().slice(0, 60);
+  if (!name) return { error: "A preset needs a name" };
+  const p = { name };
+  for (const f of PRESET_FIELDS[kind]) {
+    const v = String(preset?.[f] ?? "").trim();
+    if (kind === "color" && !/^#[0-9a-f]{6}$/i.test(v)) return { error: `${f} must be a #rrggbb colour` };
+    if (kind === "motion" && !(+v >= 0.6 && +v <= 1.6)) return { error: "pace must be between 0.6 and 1.6" };
+    if (kind === "typography" && !(f === "display" ? HF_TEMPLATES["reel-kinetic"].displayFonts : HF_TEMPLATES["reel-kinetic"].bodyFonts).includes(v)) return { error: `${v || "(blank)"} is not a bundled ${f} font` };
+    p[f] = kind === "motion" ? +v : v;
+  }
+  const lib = await presetsLib(env);
+  lib[kind] = [...lib[kind].filter(x => x.name !== name), p].sort((a, b) => a.name.localeCompare(b.name));
+  await env.TRADES.put("presets:v1", JSON.stringify(lib));
+  return { ok: true, lib };
+}
+async function presetDelete(env, { kind, name }) {
+  if (!PRESET_FIELDS[kind]) return { error: "unknown kind" };
+  const lib = await presetsLib(env);
+  lib[kind] = lib[kind].filter(x => x.name !== name);
+  await env.TRADES.put("presets:v1", JSON.stringify(lib));
+  return { ok: true, lib };
+}
+const assetPresetsOf = page => { try { const j = JSON.parse(hubRichText(page?.properties?.Presets?.rich_text) || "{}"); return j && typeof j === "object" ? j : {}; } catch (e) { return {}; } };
+async function assetPresetsSet(env, { assetId, typography, color, motion }) {
+  if (!assetId) return { error: "assetId required" };
+  if (!(await env.TRADES.get("presets:prop:v1"))) {
+    const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Presets": { rich_text: {} } } }) });
+    if (!r.ok) return { error: "Could not add the Presets field: " + ((await r.json().catch(() => ({}))).message || r.status) };
+    await env.TRADES.put("presets:prop:v1", "1");
+  }
+  const lib = await presetsLib(env), ref = {};
+  for (const [k, n] of Object.entries({ typography, color, motion })) {
+    if (!n) continue;
+    if (!lib[k].some(x => x.name === n)) return { error: `No ${k} preset named "${n}"` };
+    ref[k] = n;
+  }
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Presets": { rich_text: ivRt(JSON.stringify(ref)) } } }) });
+  if (!r.ok) return { error: "Could not save: " + ((await r.json().catch(() => ({}))).message || r.status) };
+  return { ok: true, presets: ref };
+}
+// Resolve an asset's preset references into render variables (only values the template can actually use).
+async function presetVariables(env, page, tpl) {
+  const ref = assetPresetsOf(page), lib = await presetsLib(env), v = {};
+  const pick = k => ref[k] ? lib[k].find(x => x.name === ref[k]) : null;
+  const ty = pick("typography"), co = pick("color"), mo = pick("motion");
+  if (ty && tpl.displayFonts.includes(ty.display)) v.displayFont = ty.display;
+  if (ty && tpl.bodyFonts.includes(ty.body)) v.bodyFont = ty.body;
+  if (co) for (const k of ["bg", "ink", "accent"]) if (/^#[0-9a-f]{6}$/i.test(co[k] || "")) v[k] = co[k];
+  if (mo && +mo.pace > 0) v.pace = String(mo.pace);
+  return v;
+}
+// Publish-modal story panel: the written areas (read-only — copy is final), the preset references + library, the render,
+// and this title's slots in the same strategy (written ones link to their asset; Open ones are listed, not rendered).
+async function storyAsset(env, { assetId }) {
+  const page = await ivPage(assetId);
+  if (!page?.properties) return { error: "Asset not found" };
+  const P = page.properties;
+  let spec = {}; try { spec = JSON.parse(hubRichText(P["Video Spec"]?.rich_text) || "{}"); } catch (e) {}
+  const slotRows = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Asset", relation: { contains: ivDash(assetId) } } }).catch(() => []);
+  const mine = slotRows[0] ? storySlotOf(slotRows[0]) : (spec.slotId ? storySlotOf(await ivPage(spec.slotId)) : null);
+  let slots = [], strategyName = "";
+  if (mine?.strategyId) {
+    slots = (await storySlots(mine.strategyId)).filter(s => s.titleId === mine.titleId)
+      .map(s => ({ id: s.id, name: s.name, status: s.status, format: s.format, angle: s.angle, type: s.type, assetId: s.assetId, current: s.id === mine.id }));
+    strategyName = hubRichText((await ivPage(mine.strategyId).catch(() => null))?.properties?.["Strategy Name"]?.title);
+  }
+  const tpl = HF_TEMPLATES["reel-kinetic"];
+  return { success: true, spec, areas: spec.areas || [], videoUrl: P["Video URL"]?.url || "", status: P["Asset Status"]?.select?.name || "",
+    presets: assetPresetsOf(page), lib: await presetsLib(env), fonts: { display: tpl.displayFonts, body: tpl.bodyFonts },
+    slot: mine, strategyName, slots };
 }
 // ── YouTube Longform — Question-Led (faceless presenter episodes) ──
 // Script = episode JSON on the asset's "Video Spec" ({v, question, format, title, segments,
@@ -50841,7 +50955,13 @@ ${assemblyManifest}`;
         catch (e) { return json({ error: e.message }, 502); }
       }
       if (body.action === "storyStrategies") return json({ success: true, ...(await storyStrategies(env)) });
+      if (body.action === "storyStart") return json(await storyStart(env, body));
       if (body.action === "storySchedule") return json(await storySchedule(env, body));
+      if (body.action === "storyAsset") return json(await storyAsset(env, body));
+      if (body.action === "presetsGet") return json({ success: true, lib: await presetsLib(env) });
+      if (body.action === "presetSave") return json(await presetSave(env, body));
+      if (body.action === "presetDelete") return json(await presetDelete(env, body));
+      if (body.action === "assetPresetsSet") return json(await assetPresetsSet(env, body));
       if (body.action === "storyLog") return json({ success: true, log: (await env.TRADES.get("story:log", "json")) || [], queue: (await env.TRADES.get("story:queue", "json")) || [] });
 
       if (body.action === "hyperframesReel") {
@@ -50878,6 +50998,7 @@ ${assemblyManifest}`;
           if (hex(tk.accent)) variables.accent = tk.accent;
           if (tpl.displayFonts.includes(fonts.display)) variables.displayFont = fonts.display;
           if (tpl.bodyFonts.includes(fonts.body)) variables.bodyFont = fonts.body;
+          Object.assign(variables, await presetVariables(env, page, tpl));   // the asset's global preset references win over the hub defaults
           const origin = new URL(request.url).origin;
           const sig = await hmacHex((env.HMAC_SECRET || "").trim(), "hf:" + aid);
           const d = await hfApi(env, "POST", "/v3/hyperframes/renders", {
@@ -50933,7 +51054,7 @@ ${assemblyManifest}`;
           if (missing.length) return json({ error: `Slide${missing.length > 1 ? "s" : ""} ${missing.join(", ")} ${missing.length > 1 ? "have" : "has"} no finished Post Image yet — make every slide's image first` }, 400);
           assets = slides.map(x => ({ image: { url: x.postImage } }));
           kind = `carousel (${slides.length} slides)`;
-        } else if (/video|reel|short|explainer|avatar/i.test(assetType)) {
+        } else if (/video|reel|short|explainer|avatar|single post story/i.test(assetType)) {
           const v = String(body.videoUrl || P["Video URL"]?.url || "").trim();
           if (!https(v)) return json({ error: "No public Video URL on this asset yet — paste a permanent https link to the MP4 (or upload it once video hosting is enabled)" }, 400);
           assets = [{ video: { url: v, metadata: { thumbnailOffset: 1000 } } }];
@@ -51008,6 +51129,12 @@ ${assemblyManifest}`;
             body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Published" } } } }) });
           statusSet = up.ok;
           if (up.ok) await stampPublishingDate(assetId);
+          // single post story: the send IS the approval → its Strategy Slot goes Filled → Published
+          if (up.ok && /single post story/i.test(assetType)) {
+            const slots = await notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Asset", relation: { contains: dashId(assetId) } } }).catch(e => { console.error("story slot lookup:", e.message); return []; });
+            for (const s of slots) await fetch(`https://api.notion.com/v1/pages/${s.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Status": { select: { name: "Published" } } } }) }).catch(e => console.error("story slot → Published:", e.message));
+          }
           if (!up.ok) console.error("sendAssetToBuffer: status flip failed", up.status, (await up.text()).slice(0, 200));
         } catch (e) { console.error("sendAssetToBuffer: status flip failed", e.message); }
         // a single post carousel went out as one post → every other slide is Published too

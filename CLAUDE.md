@@ -317,12 +317,18 @@ order, 7 angles, 12 post types in §6). A slot holds pointers only: Title, `Form
   `Post Caption`) → checks the areas against the method's format list + budgets (one rewrite if they miss; never trims) → `Video Spec`
   v2 + Status **Publish** + slot **Filled**. Misses after two writes → asset left at Development, slot stays Open.
 - **Booking link:** Logins `Booking Link` for the campaign, else a dummy URL.
-- **Cron:** `storySchedule {strategyId,on}` (KV `story:sched`). Monday `15 0` → `storyCronEnqueue` queues 10 random Open slots of the
+- **Creation → cron:** `storyStart {strategyId,titleId}` (modal ✍ Create — first 10) queues 10 random Open slots of the title and puts
+  the strategy on the loop (KV `story:sched`; any `storyWrite` also schedules a never-scheduled strategy; an operator ⏸ Stop via
+  `storySchedule {on:false}` is never overridden). Monday `15 0` UTC (= Sunday night US) → `storyCronEnqueue` queues the next 10 of the
   current title (first in the strategy's Titles order with a pillar + Open slots; slots copied from the grid when a title has none);
-  `*/4` → `storyCronTick` writes one. Log: `storyLog`. Status rule: asset Publish = written, waiting in the Publish modal; slot
-  Published only when the operator sends it to Buffer.
-- **UI:** Content Hubs 2 create modal → **Strategy** dropdown on single-post rows (One-off post / Carousel / story strategies);
-  care-gap asset row 🎬 Render covers stories.
+  `*/4` → `storyCronTick` writes up to 3 per tick. Log: `storyLog`. Status rule: asset Publish = written, waiting in the Publish modal;
+  slot Published only when the operator sends it to Buffer (`sendAssetToBuffer` flips it; stories send as video).
+- **Look = global presets** (KV `presets:v1`: typography {display, body} → display = title/subhead, body = blurb/body/CTA; colour
+  {bg, ink, accent}; motion {pace}) — `presetsGet` / `presetSave` / `presetDelete`; an asset only references names on its `Presets`
+  property (`assetPresetsSet`); no reference = hub design. `hyperframesReel` applies them (template v3 `pace`).
+- **UI:** Content Hubs 2 create modal → **Strategy** dropdown on single-post rows (One-off post / Carousel / story strategies →
+  Create first 10, Stop/Resume cron). care-gap Publish modal → 🎬 story panel (`storyAsset`): areas read-only, preset pickers +
+  ＋ New preset, Render, this title's slots (written link to their asset, Open listed only). Asset row 🎬 Render covers stories.
 
 ## Cron Scripts panel (Globals tab · ⏰)
 

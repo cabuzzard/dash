@@ -1016,6 +1016,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <span id="pubCarouselStatus" style="font-size:10.5px;color:var(--ink3);"></span>
             </div>
           </div>
+          <!-- 🎬 Single post story: written areas (read-only), global look presets, render, this title's strategy slots -->
+          <div id="pubStoryWrap" style="display:none;flex-direction:column;gap:8px;padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--border2);font-size:11.5px;color:var(--ink2);"></div>
           <div id="pubSpWrap" style="display:none;flex-direction:column;gap:6px;padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--border2);">
           <div style="font-size:11px;color:var(--ink2);font-weight:700;">Post copy <span style="font-weight:400;color:var(--ink3);">— the three text fields on the image. Edit here or in 🎯 Preview &amp; Edit; Save stores them, and your rewrites teach the writer your voice.</span></div>
           <label style="font-size:11px;color:var(--ink2);">Headline Primary<input type="text" id="pubSpPrimary" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
@@ -6372,6 +6374,74 @@ async function hfReel(btn) {
     btn.disabled = false; btn.textContent = '🎬 Still rendering — click to check'; btn.dataset.op = 'check';
   } catch (e) { btn.disabled = false; btn.textContent = '🎬 Render'; alert('Reel render: ' + e.message); }
 }
+// ── 🎬 Single post story panel (Publish modal) ── the copy is final, so the areas are shown read-only. The LOOK is
+// global: named presets (typeface → whole hierarchy, colour scheme, motion pace) the asset references by name; no pick =
+// the hub's design. Render = HeyGen (reel-kinetic). Below: this title's slots in the strategy — written ones open their
+// asset, Open ones are listed only (not rendered until written + approved). 📤 Send to Buffer is the approval.
+let PUB_STORY = null;
+async function pubStoryLoad(assetId) {
+  const sw = document.getElementById('pubStoryWrap');
+  let d; try { d = await w('storyAsset', { assetId }); } catch (e) { if (pubAssetId === assetId) sw.textContent = 'Could not load the story: ' + e.message; return; }
+  if (pubAssetId !== assetId) return;
+  PUB_STORY = { assetId, ...d }; pubStoryDraw();
+}
+function pubStoryDraw() {
+  const d = PUB_STORY, sw = document.getElementById('pubStoryWrap'); if (!d) return;
+  const s = d.spec || {}, P = d.presets || {}, L = d.lib || {};
+  const sel = (k, label) => `<label style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:120px;">${label}<select id="pubStoryP_${k}" class="finput" style="font-size:11px;"><option value="">Hub default</option>${(L[k] || []).map(p => `<option ${P[k] === p.name ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>`;
+  const slotRow = x => `<div style="display:flex;gap:6px;align-items:baseline;${x.current ? 'font-weight:700;' : ''}">
+      <span style="flex:0 0 64px;font-size:10px;color:${x.status === 'Open' ? 'var(--ink3)' : x.status === 'Published' ? 'var(--fresh)' : 'var(--ink2)'};">${esc(x.status || '')}</span>
+      <span style="flex:1;min-width:0;">${esc(x.format)} × ${esc(x.angle.split(' /')[0])} <span style="color:var(--ink3);">· ${esc(x.type)}</span></span>
+      ${x.assetId && !x.current ? (getCachedPublishAsset(x.assetId) ? `<a class="kwlink" href="#" onclick="event.preventDefault();openPublishAssetModal('${esc(x.assetId)}')">open</a>` : `<a class="kwlink" href="https://www.notion.so/${esc(x.assetId)}" target="_blank" rel="noopener">open</a>`) : x.status === 'Open' ? '<span style="font-size:10px;color:var(--ink3);">pending — not written</span>' : ''}</div>`;
+  const counts = ['Open', 'Filled', 'Published'].map(k => `${(d.slots || []).filter(x => x.status === k).length} ${k === 'Filled' ? 'written' : k.toLowerCase()}`).join(' · ');
+  sw.innerHTML = `<div style="font-weight:700;color:var(--ink);">🎬 Single post story <span style="font-weight:400;color:var(--ink3);">— ${esc(s.format || '')} × ${esc(s.angle || '')} · ${esc(s.type || '')}</span></div>
+    <div style="display:flex;flex-direction:column;gap:3px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;">
+      ${(d.areas || []).map(a => `<div><span style="display:inline-block;width:62px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);">${esc(a.kind)}</span>${esc(a.text)}</div>`).join('') || '<span style="color:var(--ink3);">No areas written yet.</span>'}
+      <div style="font-size:10px;color:var(--ink3);margin-top:4px;">Copy is final — the video plays it exactly as written, one area per beat.</div></div>
+    <div style="font-weight:700;color:var(--ink);margin-top:2px;">Look <span style="font-weight:400;color:var(--ink3);">— global presets this asset references (background image stays this asset's own)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">${sel('typography', 'Typeface')}${sel('color', 'Colour scheme')}${sel('motion', 'Motion')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <button class="btn" onclick="pubStorySavePresets(this)">💾 Use these presets</button>
+      <button class="btn" onclick="pubStoryPresetForm()">＋ New preset</button>
+      <button class="btn" data-assetid="${esc(d.assetId)}" data-op="render" onclick="pubStoryRender(this)">🎬 ${d.videoUrl ? 'Render again' : 'Render'}</button>
+      ${d.videoUrl ? `<a class="kwlink" href="${esc(d.videoUrl)}" target="_blank" rel="noopener">▶ Video</a>` : ''}
+      <span id="pubStoryMsg" style="font-size:10.5px;color:var(--ink3);"></span></div>
+    <div id="pubStoryForm"></div>
+    <div style="font-weight:700;color:var(--ink);margin-top:2px;">${esc(d.strategyName || 'Strategy')} — this title's slots <span style="font-weight:400;color:var(--ink3);">(${counts})</span></div>
+    <div style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;">${(d.slots || []).map(slotRow).join('') || '<span style="color:var(--ink3);">No slot linked to this asset.</span>'}</div>`;
+}
+async function pubStorySavePresets(btn) {
+  const d = PUB_STORY, msg = document.getElementById('pubStoryMsg'); if (!d) return;
+  const v = k => document.getElementById('pubStoryP_' + k).value;
+  btn.disabled = true;
+  try { const r = await w('assetPresetsSet', { assetId: d.assetId, typography: v('typography'), color: v('color'), motion: v('motion') });
+    d.presets = r.presets; msg.style.color = 'var(--fresh)'; msg.textContent = '✓ Saved — 🎬 Render again to apply';
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = e.message; }
+  btn.disabled = false;
+}
+function pubStoryPresetForm(kind) {
+  const d = PUB_STORY, box = document.getElementById('pubStoryForm'); if (!d) return;
+  kind = kind || 'typography';
+  const fontSel = (id, list) => `<select id="${id}" class="finput" style="font-size:11px;">${list.map(f => `<option>${esc(f)}</option>`).join('')}</select>`;
+  const fields = kind === 'typography' ? `Display (title, subhead) ${fontSel('pspDisplay', d.fonts.display)} Body (blurb, body, CTA) ${fontSel('pspBody', d.fonts.body)}`
+    : kind === 'color' ? `Background <input type="color" id="pspBg" value="#ffffff"> Ink <input type="color" id="pspInk" value="#1a2a1a"> Accent <input type="color" id="pspAccent" value="#1b881b">`
+    : `Pace <input type="number" id="pspPace" class="finput" style="width:70px;font-size:11px;" min="0.6" max="1.6" step="0.1" value="1"> <span style="color:var(--ink3);">(1 = default · higher = slower)</span>`;
+  box.innerHTML = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px;border:1px dashed var(--border);border-radius:8px;">
+    <select class="finput" style="font-size:11px;" onchange="pubStoryPresetForm(this.value)">${['typography', 'color', 'motion'].map(k => `<option value="${k}" ${k === kind ? 'selected' : ''}>${k === 'color' ? 'colour scheme' : k}</option>`).join('')}</select>
+    <input id="pspName" class="finput" style="font-size:11px;width:140px;" placeholder="Preset name"> ${fields}
+    <button class="btn" onclick="pubStoryPresetSave('${kind}', this)">Save preset</button></div>`;
+}
+async function pubStoryPresetSave(kind, btn) {
+  const d = PUB_STORY, msg = document.getElementById('pubStoryMsg'), g = id => (document.getElementById(id) || {}).value;
+  const preset = { name: g('pspName'), display: g('pspDisplay'), body: g('pspBody'), bg: g('pspBg'), ink: g('pspInk'), accent: g('pspAccent'), pace: g('pspPace') };
+  btn.disabled = true;
+  try { const r = await w('presetSave', { kind, preset }); d.lib = r.lib; pubStoryDraw(); document.getElementById('pubStoryMsg').textContent = `✓ "${preset.name}" saved — pick it above, then 💾 Use these presets`; }
+  catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = e.message; btn.disabled = false; }
+}
+async function pubStoryRender(btn) {
+  await hfReel(btn);   // same HeyGen render + polling as the Reel
+  if (PUB_STORY && pubAssetId === PUB_STORY.assetId) pubStoryLoad(PUB_STORY.assetId);
+}
 let PUB_ASSET_CACHE = {};
 const normalizedRecordId = id => String(id || '').replace(/-/g, '');
 function cachePublishAsset(a) {
@@ -6621,6 +6691,8 @@ function openPublishAssetModal(assetId) {
   const pubSpWrapEl = document.getElementById('pubSpWrap');
   const isSp = /\bsingle post\b/i.test(data.type || '') && !/single post story/i.test(data.type || '');   // a story is a video: no 3-field image editor
   pubSpWrapEl.style.display = isSp ? 'flex' : 'none';
+  { const sw = document.getElementById('pubStoryWrap'), isStory = /single post story/i.test(data.type || '');
+    sw.style.display = isStory ? 'flex' : 'none'; sw.innerHTML = isStory ? 'Loading the story…' : ''; if (isStory) pubStoryLoad(assetId); }
   ['pubSpPrimary', 'pubSpAccent', 'pubSpBody'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('pubSpStatus').textContent = isSp ? 'Loading…' : '';
   if (isSp) {

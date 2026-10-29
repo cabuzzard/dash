@@ -4,6 +4,7 @@
   data-composition-variables='[
     {"id":"areas","type":"string","label":"Story areas (JSON [{kind,text}] — single post story; empty = Reel)","default":""},
     {"id":"format","type":"string","label":"Story format (play rule)","default":""},
+    {"id":"pace","type":"string","label":"Motion pace (story beats × this; 1 = default, 0.6-1.6)","default":"1"},
     {"id":"hook","type":"string","label":"Hook (first line, ≤60 chars)","default":"Your numbers live in five different tools.","maxLength":90},
     {"id":"beat1","type":"string","label":"Beat 1 (≤70 chars)","default":"Your ad platform says one thing.","maxLength":90},
     {"id":"beat2","type":"string","label":"Beat 2 (≤70 chars)","default":"Your CRM says another.","maxLength":90},
@@ -165,7 +166,8 @@
           // ── Story shape: one area = one beat, reveal order = reading order, CTA last and held ──
           const fmt = String(V.format || "").toLowerCase();
           const mode = /back\s*&\s*forth|visuals|clone/.test(fmt) ? "stack" : /green screen|split/.test(fmt) ? "split" : "replace";
-          const beat = a => { const n = String(a.text).trim().split(/\s+/).length; return Math.min(3.8, Math.max(1.6, 0.8 + 0.24 * n)); };
+          const PACE = Math.min(1.6, Math.max(0.6, parseFloat(V.pace) || 1));   // global motion preset
+          const beat = a => { const n = String(a.text).trim().split(/\s+/).length; return PACE * Math.min(3.8, Math.max(1.6, 0.8 + 0.24 * n)); };
           const SIZE = { title: [104, 72], subhead: [78, 58], blurb: [50, 42], body: [54, 44], CTA: [54, 46] };
           const styleArea = (e, a, scale) => { const [b, s] = SIZE[a.kind] || SIZE.body; e.style.fontSize = Math.round(sizeFor(a.text, b, s) * (scale || 1)) + "px"; };
           const cta = areas[areas.length - 1].kind === "CTA" ? areas[areas.length - 1] : null;

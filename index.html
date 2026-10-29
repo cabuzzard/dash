@@ -17644,17 +17644,16 @@ function hub2StratPick(slug, id) {
   }
   const tid = hub2Id(document.getElementById('h2cTitle')?.value), t = story.titles.find(x => x.titleId === tid);
   box.innerHTML = `<div style="font-size:11px;color:var(--text2);margin:6px 0 8px;">${t ? `This title: <b>${t.Open || 0}</b> open · ${t.Filled || 0} written · ${t.Published || 0} published.` : "This title has no slots in this strategy. Slots are made per title once its pillar is written — the cron does it when the loop reaches the title."}</div>
-    <button class="modal-btn" ${t && t.Open ? '' : 'disabled'} onclick="this.textContent='⏳ writing…';hcModalRun(this, () => hub2StoryWrite('${slug}', '${esc(story.id)}'))">✍ Write asset</button>
-    <button class="modal-btn" style="margin-top:6px;" onclick="hub2StorySchedule(this, '${esc(slug)}', '${esc(id)}', '${esc(story.id)}')">${story.scheduled ? '⏸ Stop cron' : '⏰ Schedule cron'}</button>
-    <div style="font-size:11px;color:var(--text3);margin-top:6px;">Write asset: one random Open slot of this title, written and set to Publish (about a minute). Schedule cron: every Monday, 10 random Open slots of the strategy's current title, one written per 4 minutes.${story.scheduled ? ' <b>Scheduled now.</b>' : ''}</div>`;
+    <button class="modal-btn" ${t && t.Open ? '' : 'disabled'} onclick="this.textContent='⏳ queuing…';hcModalRun(this, () => hub2StoryStart('${slug}', '${esc(story.id)}'))">✍ Create — first 10</button>
+    ${story.started ? `<button class="modal-btn" style="margin-top:6px;" onclick="hub2StorySchedule(this, '${esc(slug)}', '${esc(id)}', '${esc(story.id)}')">${story.scheduled ? '⏸ Stop the Sunday cron' : '▶ Resume the Sunday cron'}</button>` : ''}
+    <div style="font-size:11px;color:var(--text3);margin-top:6px;">Create: 10 random Open slots of this title are written now (about 15 minutes), each landing at Publish, and the strategy goes on the cron — every Sunday night (8:15 pm ET) the next 10, until the title's 56 are done, then the next title.${story.started ? (story.scheduled ? ' <b>Cron on.</b>' : ' <b>Cron stopped.</b>') : ''}</div>`;
 }
-async function hub2StoryWrite(slug, strategyId) {
+async function hub2StoryStart(slug, strategyId) {
   const titleId = hub2Id(document.getElementById('h2cTitle')?.value);
   if (!titleId) return 'Choose a title';
-  const r = await call('storyWrite', { strategyId, titleId });
-  if (r.error === 'areas_invalid') return `Written but it misses the format (left at Development, slot still Open): ${(r.problems || []).join('; ')}`;
-  if (!r.ok) return 'Not written: ' + (r.reason || r.error || 'no response');
-  showToast(`✓ ${r.format} × ${r.angle} (${r.type}) — written, at Publish`, 'success'); hub2ChecklistLoad(slug, true); return true;
+  const r = await call('storyStart', { strategyId, titleId });
+  if (!r.ok) return 'Not started: ' + (r.reason || r.error || 'no response');
+  showToast(`✓ ${r.queued} stories queued — written over the next ~15 min, each at Publish. Sunday cron on.`, 'success'); hub2ChecklistLoad(slug, true); return true;
 }
 async function hub2StorySchedule(btn, slug, id, strategyId) {
   const s = _hub2Story.find(x => x.id === strategyId); if (!s) return;
@@ -22564,11 +22563,11 @@ const CRON_REGISTRY = [
   { fn: 'runTitleIdleSweep', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC (also on demand: titleIdleSweep action / KV titleidle:runnow via the */30 cron)', group: 'Content',
     what: 'Any hub title at Status Development that is out of sync and has no Published asset moves to Status Idea (in-sync titles are never moved; its flagged interviews go to Idea too) (pre-Planning parking). Max 150 moves per run; a capped run finishes on the next */30 tick.',
     io: 'Notion: Content Strategy Status → Idea · KV: titleidle:last, titleidle:lock, titleidle:runnow' },
-  { fn: 'storyCronEnqueue', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC · only strategies switched on with ⏰ Schedule cron', group: 'Content',
-    what: 'single post story loop: for each scheduled strategy, the current title (first in its Titles order with a pillar and Open slots) gets 10 random Open slots queued. A title with a pillar and no slots yet gets the strategy grid copied first; a title with no pillar is skipped and logged.',
+  { fn: 'storyCronEnqueue', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC = Sunday night US (8:15 pm ET) · strategies put on the loop by Create (first 10) · ⏸ Stop in the modal', group: 'Content',
+    what: 'single post story loop: for each scheduled strategy, the current title (first in its Titles order with a pillar and Open slots) gets the next 10 random Open slots queued. A title with a pillar and no slots yet gets the strategy grid copied first; a title with no pillar is skipped and logged.',
     io: 'Notion: 🎯 Strategy Slots (read; new slots for the next title) · KV: story:sched, story:queue' },
   { fn: 'storyCronTick', cron: '*/4 * * * *', when: 'Every 4 min · no-op when the queue is empty', group: 'Content',
-    what: 'Writes the next queued single post story slot (storyWrite → governed writeAsset, checked against the method\'s format + word budgets) → asset at Publish, slot Filled. One per tick.',
+    what: 'Writes the next queued single post story slots (storyWrite → governed writeAsset, checked against the method\'s format + word budgets) → asset at Publish, slot Filled. Up to 3 per tick, so a batch of 10 lands in ~15 min.',
     io: 'Claude (1-2 writes) · Notion: Assets (create + write), Strategy Slots → Filled · KV: story:queue, story:log' },
   { fn: 'runSwingStrategies', cron: '*/5 12-16 * * MON-FRI', when: 'Once per session ~09:45 ET (self-gated on the ORB cron)', group: 'Trading',
     what: 'ETF_MOMENTUM_V1 (top 3 of 10 asset ETFs by 3-mo return, re-picked every 20 sessions) + FEAR_DIP_V1 (RSI(2)<10 above SMA200, only when VIX>20; exit signal close>SMA5 or 20 sessions, recorded on the trade meta). Rules as backtested in tools/backtest. Picks written as swing calls via the ORB contract picker; tracked by runTradePoll.',
