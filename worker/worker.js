@@ -7,6 +7,7 @@ import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
 import { NEWSLETTER_FIELDS, NEWSLETTER_DEPTHS, newsletterIssueType, newsletterDepth, newsletterSetting, newsletterSteering, newsletterSchema, newsletterBody, newsletterInPeriod, newsletterVerifyUrl } from './newsletter-methodology.mjs';
 import { MARKET_FORMS, memoryUrl, memoryKey, memoryPlan, marketFresh, marketGaps, marketStaleAfter, weeklySlot } from './digest-memory.mjs';
+import { DIGEST_TARGET, DIGEST_THIN, DIGEST_CARRY_RUNS, DIGEST_PERIOD_DAYS, digestPeriod, refreshPeriodFlags, usedIds, recordState, advanceCarry, scopeTokens, relevantToScope, phraseHit, coreQueries, focusQueries, byTier } from './digest-records.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -14672,6 +14673,10 @@ async function digestGenerateDigestSave(env, S, step, status, extra = {}) {
   if (status === "done") for (const item of (step.items || [step.item]).filter(Boolean)) {
     d.checks = d.checks || {}; d.checks[item.id] = { ...(d.checks[item.id] || {}), [step.kind]: false };
   }
+  // generated issues are permanent (operator 2026-10-28): a done Premium/Free issue consumes its interview mapping, so the
+  // next generation from this rolling parent prepares its OWN issue asset and interview instead of rewriting this one
+  if (status === "done" && step.kind !== "news" && Array.isArray(d.interviewAssets))
+    d.interviewAssets = d.interviewAssets.map(m => m.key === step.kind + "|*" ? { ...m, key: step.kind + "|done:" + S.id, consumedAt: at } : m);
   await env.TRADES.put(key, JSON.stringify(d));
   return entry;
 }
@@ -14685,7 +14690,7 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
         { property: "Asset Type", select: { equals: type } },
       ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
       const exactTitle = `${step.kind === "premium" ? "Premium issue" : "Free issue"} — ${S.digestName}`.slice(0, 190);
-      const existing = candidates.find(p => hubRichText(p.properties?.["Asset Title"]?.title) === exactTitle);
+      const existing = candidates.find(p => hubRichText(p.properties?.["Asset Title"]?.title) === exactTitle && Date.parse(p.created_time) >= (S.createdAt || 0));   // only this job's own (retry), never an earlier permanent issue
       if (existing) step.assetId = hubAssetId(existing.id);
       else {
         const made = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.digestName, productId: S.productId || undefined,
@@ -15212,12 +15217,16 @@ async function newsletterPanel(env,body) {
 }
 async function digestItemsSave(env, assetId, sources, options={}) {
   const key = "digest:items:" + String(assetId).replace(/-/g, ""), prev = (await env.TRADES.get(key, "json")) || {};
-  const periodStart=options.preserveTimestamp&&prev.periodStart||hubCheckPeriodStart('Weekly'),periodEnd=options.preserveTimestamp&&prev.periodEnd||new Date().toISOString().slice(0,10),items=[];
+  const current=digestPeriod(),periodStart=options.preserveTimestamp&&prev.periodStart||current.periodStart,periodEnd=options.preserveTimestamp&&prev.periodEnd||current.periodEnd,items=[];
   const existing=Array.isArray(prev.items)?prev.items:[],existingIds=new Set(options.additive?existing.map(s=>s.id):[]);
   const sourceList=(sources||[]).filter(s=>s&&s.claim&&!existingIds.has(dpId((s.url||'')+'|'+s.claim))),results=new Array(sourceList.length);let index=0;
-  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',topicId:s.topicId||'',memoryKind:s.memoryKind||'',split:s.split==='premium'?'premium':'free',...(s.expansionAdded?{expansionAdded:true,keywordsUsed:Array.isArray(s.keywordsUsed)?s.keywordsUsed:[]}:{expansionAdded:false}),...check,inPeriod:newsletterInPeriod(s.date,periodStart,periodEnd)};}}));
+  await Promise.all(Array.from({length:Math.min(4,sourceList.length)},async()=>{while(index<sourceList.length){const i=index++,s=sourceList[i],check=await newsletterVerifyUrl(env,s.url||'');results[i]={id:options.preserveTimestamp&&s.id?s.id:dpId((s.url||'')+'|'+s.claim),claim:String(s.claim).slice(0,600),summary:String(s.summary||'').slice(0,500),publisher:s.publisher||'',url:s.url||'',date:s.date||'',tier:s.tier||'',topicId:s.topicId||'',memoryKind:s.memoryKind||'',split:s.split==='premium'?'premium':'free',sourceMethod:s.sourceMethod||'',keywordsUsed:Array.isArray(s.keywordsUsed)?s.keywordsUsed:[],expansionAdded:!!s.expansionAdded,...(options.runId?{addedRun:options.runId}:{}),...check};}}));
   items.push(...results);
-  await env.TRADES.put(key, JSON.stringify({ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items:options.additive?[...existing,...items]:items,periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} }));
+  // records are additive, so every record's current-period flag is recomputed against this period (never deleted);
+  // a run (options.runId) also carries the existing unused records forward one run
+  let next={ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items:refreshPeriodFlags(options.additive?[...existing,...items]:items,{periodStart,periodEnd}),periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} };
+  if(options.runId)next=advanceCarry(next,options.runId,new Set(items.map(x=>x.id)));
+  await env.TRADES.put(key, JSON.stringify(next));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
@@ -15230,6 +15239,8 @@ async function digestWriteBlocks(env, assetId, heading, text) {
 }
 async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId,campaignId,interviewId=""}) {
   await governingFlow(env);
+  // current-period flags are recomputed at write time (records are additive); curated records lead with the best-sourced first
+  items=byTier(refreshPeriodFlags(items,digestPeriod())).map(x=>({...x,suggestedSplit:x.split}));
   const method=newsletterMethod(await writingMethodsTable(env),kind),context=await newsletterContext(env,campaignId);
   const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
   if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
@@ -15245,6 +15256,7 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
     'Use only ticked findings and finished interviews. PRODUCT ANGLES are read-only product opportunities, not evidence of news. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
     'Unverified or out-of-period findings must never be presented as verified current developments. Data & Signals may use numbers ONLY from verified findings and must cite them. '+
     'Omit unsupported sections instead of padding; Feature Analysis and Subscriber Extra can be empty. Never invent news, statistics, sources or research. '+
+    (kind==='premium'?'Premium value comes first from the operator curation (these ticked findings) and their sourcing, second from analysis: lead with the curated findings in the order given (primary sources first) and what each means, then the operator analysis. suggestedSplit is only a research suggestion. ':'')+
     (kind==='premium'?'The finished interview answers are the required source for operator analysis and judgment. Build Feature Analysis and recommendations from those answers; do not substitute model interpretation for missing operator answers. ':kind==='free'?(finished.length?'Use the finished interview answers for any operator point of view. ':'No interview was supplied: compile only the selected findings and do not invent an operator perspective. '):'')+
     (kind==='premium'?'Target 1,000–1,800 words across the sections, shorter when credible material is thin. ':'Target 300–500 words across Executive Summary and Call to Action. ')+
     'Do not repeat all sections in Body: return Body as an empty string; the worker assembles the returned section fields into Body in contract order without another model call.';
@@ -15526,7 +15538,7 @@ ${JSON.stringify([...fresh.new,...fresh.changed])}
 ${productNotesBrief(job.marketPlan)}
 NEWSLETTER FRAMING (from its Product Research):
 ${newsletterSteering(job.newsletter?.fields)}
-THIS DIGEST PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${today}. Mark older context as historical.
+${job.guidance ? "RUN FOCUS (what this digest is about and how wide to look):\n" + job.guidance + "\n" : ""}THIS DIGEST PERIOD: ${job.periodStart||digestPeriod().periodStart} through ${today}. Mark older context as historical.
 
 === GEMINI DEEP RESEARCH ===
 ${(job.gemini?.text || "(not available)").slice(0, 25000)}
@@ -15658,13 +15670,68 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
     const qt = fnTokens(x.q); let qhit = 0; fnTokens(x.title).forEach(w => { if (qt.has(w)) qhit++; });   // relevance floor: loosely related trending headlines are rejected
     return { ...x, qhit, need: Math.min(2, qt.size), score: hit * 10 + Math.max(0, days - age) }; }).filter(x => x.qhit >= x.need && x.score >= 10).sort((a, b) => b.score - a.score).slice(0, max);
 }
-// the hub's weekly digest from free news: findings (all Free split) + a plain digest body — no model call
-async function freeNewsDigest(env, hubName, keywords) {
-  const found = await freeNewsSearch(env, fnNewsQueries(keywords), { days: 7, max: 20 });
-  const sources = found.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free", keywordsUsed: [x.q], sourceMethod: "free-news" }));
-  const digest = sources.length ? `## This week for ${hubName}\n\n` + sources.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n")
+// ── DIGEST FREE SOURCES (operator 2026-10-28: "value is added in analysis, not just sourcing — free sources can generate
+// value"). Every title keyword is searched on its own across Bing News + Google News + GDELT + Reddit; widening adds the
+// Federal Register (rules) and PubMed (studies). Relevance matches the headline OR its summary. Zero model calls.
+// (freeNewsSearch above stays as-is for the hub news cron.)
+function dfsText(s) { return fnDecode(String(s || "")).replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#\d+;/g, " ").replace(/\s+/g, " ").trim(); }
+async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max = 40, feeds = ["bing", "google", "gdelt", "reddit"], gdeltMax = 8 } = {}) {
+  const qs = [...new Set((queries || []).map(q => String(q || "").trim()).filter(q => q.length > 2))].slice(0, 16), seen = new Set(), items = [];
+  const since = Date.now() - days * 864e5, sinceDay = new Date(since).toISOString().slice(0, 10);
+  const day = t => { const d = Date.parse(t); return Number.isFinite(d) ? new Date(d).toISOString().slice(0, 10) : ""; };
+  const recent = d => !d || d >= sinceDay;
+  const get = (url, type = "text") => fetch(url, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }).then(r => r.ok ? (type === "json" ? r.json() : r.text()) : null).catch(() => null);
+  const rss = xml => [...String(xml || "").matchAll(/<(item|entry)>([\s\S]*?)<\/\1>/g)].map(m => { const it = m[2]; return { it, g: re => fnDecode((it.match(re) || [])[1] || "") }; });
+  const add = x => {
+    x.title = dfsText(x.title); x.summary = dfsText(x.summary).slice(0, 500);
+    if (!x.title || !/^https?:\/\//i.test(x.url || "")) return;
+    const key = memoryUrl(x.url) || x.url, tk = x.title.toLowerCase(); if (seen.has(key) || seen.has(tk)) return;
+    seen.add(key); seen.add(tk); items.push(x);
+  };
+  let gdeltAt = 0, gdeltN = 0;
+  for (const q of qs) {
+    const e = encodeURIComponent(q);
+    if (feeds.includes("bing")) for (const { g } of rss(await get(`https://www.bing.com/news/search?q=${e}&format=rss`))) {   // real article URLs
+      let link = g(/<link>([\s\S]*?)<\/link>/); const u = link.match(/[?&]url=([^&]+)/); if (u) { try { link = decodeURIComponent(u[1]); } catch (err) {} }
+      const date = day(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (!recent(date)) continue;
+      add({ title: g(/<title>([\s\S]*?)<\/title>/), summary: g(/<description>([\s\S]*?)<\/description>/), url: link, publisher: g(/<News:Source>([\s\S]*?)<\/News:Source>/), date, q, sourceMethod: "bing-news" });
+    }
+    if (feeds.includes("google")) for (const { g } of rss(await get(`https://news.google.com/rss/search?q=${e}+when:${days}d&hl=en-US&gl=US&ceid=US:en`))) {   // headlines; links are Google redirects
+      const date = day(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (!recent(date)) continue;
+      const pub = g(/<source[^>]*>([\s\S]*?)<\/source>/), title = g(/<title>([\s\S]*?)<\/title>/);
+      add({ title: pub && title.endsWith(" - " + pub) ? title.slice(0, -(pub.length + 3)) : title, summary: "", url: g(/<link>([\s\S]*?)<\/link>/), publisher: pub, date, q, sourceMethod: "google-news" });
+    }
+    if (feeds.includes("gdelt") && gdeltN < gdeltMax) {   // GDELT DOC 2.0 — open index; allows one request every 5 seconds
+      const wait = 5500 - (Date.now() - gdeltAt); if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      gdeltAt = Date.now(); gdeltN++;
+      const j = await get(`https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(q + " sourcelang:english")}&mode=artlist&maxrecords=50&format=json&timespan=${days}d`, "json");
+      if (!j) gdeltN = gdeltMax;   // rate-limited (shared Worker IPs) or down: opportunistic only, stop asking for the rest of this search
+      for (const a of (j && j.articles) || []) { const sd = String(a.seendate || ""); add({ title: a.title, summary: "", url: a.url, publisher: a.domain || "", date: sd ? sd.slice(0, 4) + "-" + sd.slice(4, 6) + "-" + sd.slice(6, 8) : "", q, sourceMethod: "gdelt" }); }
+    }
+    if (feeds.includes("reddit")) for (const { it, g } of rss(await get(`https://www.reddit.com/search.rss?q=${e}&sort=new&t=week`))) {   // what the audience is discussing
+      const date = day(g(/<updated>([\s\S]*?)<\/updated>/)); if (!recent(date)) continue;
+      add({ title: g(/<title>([\s\S]*?)<\/title>/), summary: g(/<content[^>]*>([\s\S]*?)<\/content>/), url: (it.match(/<link href="([^"]+)"/) || [])[1] || "", publisher: "Reddit " + ((it.match(/<category[^>]*label="([^"]+)"/) || [])[1] || ""), date, q, sourceMethod: "reddit" });
+    }
+    if (feeds.includes("fedreg")) {   // Federal Register — rules and policy (primary source)
+      const j = await get(`https://www.federalregister.gov/api/v1/documents.json?per_page=10&order=newest&conditions[term]=${e}&conditions[publication_date][gte]=${sinceDay}`, "json");
+      for (const r of (j && j.results) || []) add({ title: r.title, summary: r.abstract || "", url: r.html_url, publisher: "Federal Register" + ((r.agencies || [])[0]?.name ? " — " + r.agencies[0].name : ""), date: r.publication_date || "", q, sourceMethod: "federal-register" });
+    }
+    if (feeds.includes("pubmed")) {   // PubMed — new studies (primary source)
+      const s = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json&retmax=8&sort=pub_date&datetype=pdat&reldate=${days}&term=${e}`, "json"), ids = s?.esearchresult?.idlist || [];
+      const sum = ids.length ? await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&retmode=json&id=${ids.join(",")}`, "json") : null;
+      for (const id of ids) { const r = sum?.result?.[id]; if (r) add({ title: r.title, summary: "", url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`, publisher: r.fulljournalname || r.source || "PubMed", date: day(String(r.sortpubdate || "").replace(/\//g, "-")), q, sourceMethod: "pubmed" }); }
+    }
+  }
+  return items.filter(x => phraseHit(x.q, x.title + " " + x.summary))   // the query's words together, not scattered
+    .map(x => ({ ...x, score: (/^(federal-register|pubmed)$/.test(x.sourceMethod) ? 10 : 0) + Math.max(0, days - (x.date ? (Date.now() - Date.parse(x.date)) / 864e5 : days)) }))
+    .sort((a, b) => b.score - a.score).slice(0, max)
+    .map(x => ({ claim: x.title.slice(0, 600), summary: x.summary, publisher: x.publisher, url: x.url, date: x.date, split: "free", keywordsUsed: [x.q], sourceMethod: x.sourceMethod,
+      tier: /^(federal-register|pubmed)$/.test(x.sourceMethod) ? "1" : x.sourceMethod === "reddit" ? "community" : "free-news" }));
+}
+// the plain digest body for a free-depth run — a dated list of this run's records, no model call
+function freeDigestBody(hubName, sources) {
+  return sources.length ? `## This week for ${hubName}\n\n` + sources.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n")
     : `No qualifying news found this week for ${hubName}.`;
-  return { digest, sources };
 }
 function digestFloorSourceKey(source) {
   const url = memoryUrl(source?.url || ""), claim = String(source?.claim || source?.title || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -15687,69 +15754,29 @@ function digestFloorFreshSources(memory, sources, runId) {
   const plan = memoryPlan(memory, sources, runId), keys = new Set([...plan.new, ...plan.changed].map(memoryKey));
   return (sources || []).filter(source => keys.has(memoryKey(source))).map(source => ({ ...source }));
 }
-async function digestFloorRelatedQueries(env, cid, coreKeywords) {
-  const core = Array.isArray(coreKeywords) ? coreKeywords : [];
-  const demand = await kwDemandBlock(env, core.join(", "), { related: 40, limit: 40 }).catch(() => "");
-  const related = [...String(demand).matchAll(/^-\s*(.+?)\s+—/gm)].map(m => m[1].trim());
-  const lateral = await hubNewsTopicCandidates(env, cid, []).catch(() => []);
-  const hubTerms = [];
-  for (const topic of lateral || []) hubTerms.push(topic.topic, ...(topic.kw || []), ...(topic.topicKw || []), ...(topic.core || []));
-  try {
-    const research = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } });
-    for (const row of research || []) { const value = trRt(row.properties, "Keywords"); if (value) hubTerms.push(...value.split(/[,;\n]/).map(x => x.trim())); }
-  } catch (e) { console.error("digestFloorRelatedQueries research keywords", e.message); }
-  const exclude = new Set(fnNewsQueries(core, 40).map(x => x.toLowerCase()));
-  const phrases = [...new Set([...related, ...hubTerms].filter(Boolean))];
-  return fnNewsQueries(phrases, 40).filter(q => !exclude.has(q.toLowerCase())).slice(0, 6);
-}
-async function digestFloorPerplexity(env, job, queries, existingSources, limit) {
-  const phase = "perplexityExpansion", excluded = [...new Set((existingSources || []).map(x => x.url).filter(u => /^https?:\/\//i.test(u)))].slice(-120);
-  if (!env.PERPLEXITY_API_KEY) { await newsletterUsage(env, job, phase, { status: "skipped", error: "Perplexity key unavailable" }, false); return { sources: [], reason: "Perplexity key unavailable" }; }
-  const cap = await spendCheck(env, "perplexity"); if (cap) { await newsletterUsage(env, job, phase, { status: "skipped", error: "Perplexity expansion skipped by spend limit" }, false); return { sources: [], reason: "Perplexity expansion skipped by spend limit" }; }
-  const input = `Find up to ${limit} additional current news findings for a weekly digest. This is a gap-fill after a free-source search returned too few items. Free sources are acceptable; source prestige is not a filter. Use only the related search phrases below and real URLs. Do not repeat the existing URL or story/title list. Do not invent facts, URLs, dates, publishers, or claims. Return fewer if fewer real findings exist.\n\nRELATED KEYWORDS ACTUALLY SEARCHED:\n${queries.join("\n")}\n\nALREADY FOUND — EXCLUDE THESE URLS:\n${excluded.join("\n")}\n\nALREADY FOUND — EXCLUDE THESE CLAIMS:\n${(existingSources || []).map(x => String(x.claim || "")).slice(-60).join("\n")}\n\nReturn only a fenced JSON object: {"sources":[{"url":"real URL","publisher":"","date":"YYYY-MM-DD or empty","claim":"one factual sentence","tier":"1|2|3","split":"premium|free","keywordsUsed":["one searched phrase"]}]}`;
-  const priorProviderResult = await env.TRADES.get('digest:provider-result:' + job.id + ':' + phase, 'json');
-  await newsletterUsage(env, job, phase, { status: "running", promptChars: input.length }, !priorProviderResult);
-  let fetched;
-  try { fetched = await digestProviderFetch(env, job, phase, input); }
-  catch (error) { await newsletterUsage(env, job, phase, { status: "failed", error: error.message }, false); return { sources: [], reason: "Perplexity expansion failed: " + error.message }; }
-  const response = fetched.response, raw = await response.text(); let data = null; try { data = JSON.parse(raw); } catch (e) {}
-  if (!response.ok || !data) { const reason = "Perplexity expansion HTTP " + response.status; await newsletterUsage(env, job, phase, { status: "failed", error: reason }, false); return { sources: [], reason }; }
-  const pc = pplxCost(data.usage);
-  if (!fetched.replayed) await spendAdd(env, "perplexity", pc.cost, pc.estimated, data.usage).catch(() => {});
-  await newsletterUsage(env, job, phase, { status: "done", usage: data.usage || null }, false);
-  const text = data.output_text || (data.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n"), parsed = drJson(text);
-  const sources = (Array.isArray(parsed) ? parsed : parsed?.sources || []).filter(x => x && /^https?:\/\//i.test(x.url || "") && (x.claim || x.title)).slice(0, limit)
-    .map(x => ({ claim: String(x.claim || x.title).slice(0, 600), publisher: x.publisher || "", url: x.url, date: x.date || "", tier: String(x.tier || "3"), split: x.split === "premium" ? "premium" : "free", expansionAdded: true,
-      keywordsUsed: Array.isArray(x.keywordsUsed) ? x.keywordsUsed : queries, sourceMethod: "perplexity-expansion" }));
-  return { sources, reason: sources.length ? "" : "Perplexity expansion returned no additional valid source URLs", usage: data.usage || null,
-    cost: pc.estimated ? `estimated $${pc.cost.toFixed(2)}` : `reported $${pc.cost.toFixed(2)}`, replayed: fetched.replayed };
-}
+// Guided re-scan: the operator's keywords (plus, with "Also search Research Focus", the newsletter's Research Focus phrases)
+// across the FREE sources only — no paid call (operator 2026-10-28: thin results go free). Additive; not a run.
 async function digestRescanRun(env, S) {
   const parent = await newsletterNotion(env, "pages/" + kwDashId(S.digestId));
   if (parent.properties?.["Pillar Type"]?.select?.name !== "Digest" || ivRid(parent.properties, "Campaign") !== hubAssetId(S.cid)) throw new Error("Digest parent no longer belongs to this hub");
-  const titleId = ivRid(parent.properties, "Content Strategy"), explicit = fnNewsQueries(S.keywords || [], 6);
-  const related = S.broader ? await digestFloorRelatedQueries(env, S.cid, explicit).catch(() => []) : [];
-  const queries = [...new Set([...explicit, ...related])].slice(0, 6);
-  if (!queries.length) throw new Error("Enter at least one search keyword or select broader search");
-  const free = await freeNewsSearch(env, queries, { days: 30, max: 30 });
-  const freeSources = free.map(x => ({ claim: x.title, publisher: x.publisher, url: x.url, date: x.date, tier: "free-news", split: "free", keywordsUsed: [x.q], sourceMethod: x.via || "free-news" }));
+  const titleId = ivRid(parent.properties, "Content Strategy"), explicit = coreQueries(S.keywords || [], 6);
+  let focus = [];
+  if (S.broader) { const context = await newsletterContext(env, S.cid).catch(() => null); focus = focusQueries([context?.fields?.["Research Focus"] || ""], explicit, 6); }
+  const queries = [...new Set([...explicit, ...focus])].slice(0, 10);
+  if (!queries.length) throw new Error("Enter at least one search keyword, or tick Also search Research Focus (it must be filled in on the newsletter's Product Research)");
+  const freeSources = await digestFreeSearch(env, queries, { days: 30, max: 30, feeds: ["bing", "google", "gdelt", "reddit", ...(focus.length ? ["fedreg", "pubmed"] : [])] });
   const prior = (await env.TRADES.get("digest:items:" + S.digestId, "json"))?.items || [], pool = await env.TRADES.get("digest:pool:" + hubAssetId(S.cid), "json").catch(() => []), savedResearch = await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null);
   const known = [...prior, ...(Array.isArray(pool) ? pool : []), ...(savedResearch?.sources || [])];
-  const paid = await digestFloorPerplexity(env, { id: S.id, campaignId: S.cid, createdAt: S.createdAt, runKind: "rescan" }, queries, [...known, ...freeSources], 20);
-  const candidates = digestFloorAppendSources([], [...freeSources, ...(paid.sources || [])]), knownUrls = new Set(known.map(x => memoryUrl(x.url || "")).filter(Boolean)), knownClaims = new Set(known.map(x => digestFloorSourceKey(x).claim).filter(Boolean));
+  const candidates = digestFloorAppendSources([], freeSources), knownUrls = new Set(known.map(x => memoryUrl(x.url || "")).filter(Boolean)), knownClaims = new Set(known.map(x => digestFloorSourceKey(x).claim).filter(Boolean));
   const additions = candidates.filter(x => { const k = digestFloorSourceKey(x); if ((k.url && knownUrls.has(k.url)) || (k.claim && knownClaims.has(k.claim))) return false; if (k.url) knownUrls.add(k.url); if (k.claim) knownClaims.add(k.claim); return true; });
   await digestItemsSave(env, S.digestId, additions, { additive: true, preserveTimestamp: true });
   const after = (await env.TRADES.get("digest:items:" + S.digestId, "json")) || { items: [] };
   const old = new Set(prior.map(x => x.id));
   const addedItems = (after.items || []).filter(x => !old.has(x.id));
   await digestPoolMerge(env, S.cid, { sources: addedItems }, queries);
-  const result = { at: new Date().toISOString(), jobId: S.id, keywords: queries, requestedKeywords: S.keywords || [], broader: !!S.broader, added: addedItems.length, addedItems, freeFound: freeSources.length, paidFound: (paid.sources || []).length, paidCost: paid.cost || "", paidReason: paid.reason || "" };
+  const result = { at: new Date().toISOString(), jobId: S.id, keywords: queries, requestedKeywords: S.keywords || [], broader: !!S.broader, focusQueries: focus, added: addedItems.length, addedItems, freeFound: freeSources.length };
   await env.TRADES.put("digest:rescan:last:" + S.digestId, JSON.stringify(result), { expirationTtl: 90 * 86400 });
   return result;
-}
-function digestFloorAppendBody(body, additions) {
-  if (!(additions || []).length) return body;
-  return String(body || "") + "\n\n## Additional developments found through related-keyword expansion\n\n" + additions.map(s => `- **${s.claim}** — ${s.publisher || "source"}${s.date ? " (" + s.date + ")" : ""} [source](${s.url})`).join("\n");
 }
 // active subscribers on the hub's ActiveCampaign newsletter list (KV hub:aclist:<slug>) — cached 6 h; any failure counts as 0
 async function hubListSubscribers(env, cid) {
@@ -15763,10 +15790,25 @@ async function hubListSubscribers(env, cid) {
   await env.TRADES.put(ck, JSON.stringify({ n, at: Date.now() }), { expirationTtl: 86400 }).catch(() => {});
   return n;
 }
+// Scope (operator 2026-10-28): the title's keywords say WHAT the digest is about; the newsletter's Research Focus (plus a
+// guided regenerate's guidance) says HOW WIDE to look. Mechanical token sets — no model call.
+function digestScope(S) {
+  const f = S.newsletter?.fields || {};
+  return { anchor: scopeTokens([S.titleName, S.productName, ...(S.keywords || S.freeKeywords || [])].join(" ")),
+    focus: scopeTokens([f["Research Focus"] || "", f.Customer || "", S.guidance || ""].join(" ")) };
+}
+// unused records already on this parent that carry into this run and still fit the scope — they count toward the target
+// first, so new research only covers the gap
+async function digestCarriedRelevant(env, S) {
+  const d = (await env.TRADES.get("digest:items:" + S.assetId, "json")) || {}, used = usedIds(d.children), { anchor, focus } = digestScope(S);
+  return (d.items || []).filter(x => recordState(x, used) === "unused" && (x.carriedRuns || 0) < DIGEST_CARRY_RUNS && relevantToScope(x, anchor, focus));
+}
 async function adStep(env, cid, S, invoke) {
   if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};}
   if(S.newsletter.fields['Research Depth']==='Off'){const prior=S.jobId?await env.TRADES.get('digres:'+S.jobId,'json'):null;await newsletterUsage(env,{...(prior||{}),id:prior?.id||'off:'+cid+':'+S.period,campaignId:cid,newsletter:S.newsletter},'research',{status:'skipped',error:'Research Depth Off: no further provider calls'},false);S.step='skip';S.note='Research Depth Off: no further provider calls; operator inputs and last good digest retained.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
+  const free = S.newsletter.fields['Research Depth'] === 'Free';
+  if (S.step === "expand-free" || S.step === "expand-paid") S.step = "widen";   // runs in flight from the old record-floor steps
   if (S.step === "start") {
     await digestMemorySeed(env,cid);
     const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
@@ -15778,8 +15820,19 @@ async function adStep(env, cid, S, invoke) {
     S.titleName = kwTitleOf(title); S.productId = productId; S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
     S.names = [S.productName || S.titleName];
     const kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
-    if (S.newsletter.fields['Research Depth'] === 'Free') { S.freeKeywords = kws; S.step = 'write'; return; }   // free news tier: no paid research job
-    S.keywords=kws;S.marketPlan=await productNotesPrepare(env,cid);
+    S.keywords = kws; S.freeKeywords = kws;
+    S.focusQueries = focusQueries([S.newsletter.fields["Research Focus"] || "", S.guidance || ""], coreQueries(kws, 40), 8);
+    S.step = "free-core"; return;
+  }
+  if (S.step === "free-core") {   // every run, every Research Depth: free news on each of the title's own keywords first
+    const key = "digest:freecore:" + S.assetId + ":" + S.period;
+    if (!await env.TRADES.get(key)) {
+      const found = await digestFreeSearch(env, coreQueries(S.keywords || S.freeKeywords || []), { max: 40 });
+      await env.TRADES.put(key, JSON.stringify(found.map(x => ({ ...x, topicId: S.topicId || "" }))), { expirationTtl: 14 * 86400 });
+    }
+    S.freeCoreKey = key;
+    if (free) { S.step = "write"; return; }   // free news tier: no paid research job
+    S.marketPlan=await productNotesPrepare(env,cid);
     S.marketPlan.topics = S.topicId === "__main" ? [] : S.marketPlan.topics.filter(x => x.id === S.topicId);
     S.marketPlan.gaps = S.topicId === "__main" ? [] : S.marketPlan.gaps.filter(x => x.id === S.topicId);
     S.marketPlan.current = S.topicId === "__main" ? [] : S.marketPlan.current.filter(x => x.topicId === S.topicId);
@@ -15790,7 +15843,7 @@ async function adStep(env, cid, S, invoke) {
     S.marketPlan.apiCursor=S.marketPlan.apiCursor||0;
     if(S.marketPlan.apiCursor<S.marketPlan.gaps.length){const scan=await productNotesEtsy(env,S.marketPlan.gaps[S.marketPlan.apiCursor]);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.apiCursor++;return;}
     const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,
-      guidance: `Digest for title “${S.titleName}”, under product “${S.productName}”, using only the title's placed topic keyword flow. Topic ID: ${S.topicId}.` }), "research start");
+      guidance: `Digest for title “${S.titleName}”, under product “${S.productName}”. The title's topic keywords define WHAT this digest is about; the NEWSLETTER FRAMING's Research Focus defines HOW WIDE to look — rules, money, providers, studies and other developments affecting this customer belong in it even when they do not use the topic keywords. Topic ID: ${S.topicId}.${S.guidance ? `\nOPERATOR GUIDANCE FOR THIS RUN (guided regenerate — follow it): ${S.guidance}` : ""}` }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
   }
@@ -15801,82 +15854,60 @@ async function adStep(env, cid, S, invoke) {
     S.step = "rank"; return;
   }
   if (S.step === "rank" || S.step === "title") { S.step = "write"; return; }   // (older runs) — the title is permanent now
-  if (S.step === "expand-free" || S.step === "expand-paid") {
-    const freeDepth = S.newsletter?.fields?.['Research Depth'] === 'Free';
-    const job = freeDepth ? { id: S.period, campaignId: cid, keywords: S.freeKeywords || [], newsletter: S.newsletter, periodStart: S.periodStart, runKind: S.manual ? 'manual' : 'weekly', periodKey: S.period }
-      : await env.TRADES.get("digres:" + S.jobId, "json");
-    if (!job) throw new Error("research run expired before related-keyword expansion");
-    const runId = job.id || S.period, pendingKey = 'digest:pending:' + cid + ':' + runId, w = await env.TRADES.get(pendingKey, 'json');
-    if (!w) throw new Error("ranked sources expired before related-keyword expansion");
-    S.floor = S.floor || { target: 20, coreItems: 0, relatedKeywords: [] };
-    const finishFloor = async reason => {
-      const memory = await digestMemory(env, cid), count = digestFloorNewCount(memory, w.sources || [], runId);
-      S.floor.items = count; S.floor.expansionItems = Math.max(0, count - (S.floor.coreItems || 0)); S.floor.met = count >= 20; S.floor.exhausted = !S.floor.met;
-      S.floor.reason = reason || (S.floor.met ? "20-item floor met" : "related-keyword expansion exhausted");
-      const used = S.floor.relatedKeywords.length ? S.floor.relatedKeywords.join(", ") : "none available";
-      S.note = `Record floor ${S.floor.met ? 'met' : 'not reached'}: ${count}/20 (${S.floor.coreItems || 0} core, ${S.floor.expansionItems} added by expansion); related keywords tried: ${used}.${S.floor.paidCost ? ' Paid Perplexity expansion: ' + S.floor.paidCost + '.' : S.floor.paidAttempted ? ' Paid Perplexity expansion attempted; ' + (S.floor.paidReason || 'no additional valid sources') + '.' : ' No paid expansion call was made.'}${S.floor.exhausted ? ' Expansion exhausted: ' + S.floor.reason + '.' : ''}`;
-      S.floorReady = true; S.step = 'write'; await env.TRADES.put(pendingKey, JSON.stringify(w));
-    };
-    if (S.step === "expand-free") {
-      const need = Math.max(0, 20 - digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId));
-      if (need && !S.floor.relatedKeywords.length) S.floor.relatedKeywords = await digestFloorRelatedQueries(env, cid, S.keywords || S.freeKeywords || []);
-      if (need && S.floor.relatedKeywords.length) {
-        const free = await freeNewsSearch(env, S.floor.relatedKeywords, { days: 7, max: need });
-        const candidates = (free || []).map(x => ({ claim: x.title, publisher: x.publisher || "", url: x.url, date: x.date || "", tier: "3", split: "free", expansionAdded: true,
-          keywordsUsed: [x.q], sourceMethod: "free-related-search", topicId: S.topicId || "" }));
-        const additions = digestFloorFreshSources(await digestMemory(env, cid), candidates, runId);
-        w.sources = digestFloorAppendSources(w.sources || [], additions); const added = w.sources.filter(x => x.expansionAdded);
-        w.digest = digestFloorAppendBody(w.digest, added); w.expansion = { ...(w.expansion || {}), freeItems: added.length, relatedKeywords: S.floor.relatedKeywords };
-      }
-      const count = digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId);
-      if (count >= 20) { await finishFloor(""); return; }
-      if (!S.floor.relatedKeywords.length) { await finishFloor("no real related keyword phrases were available"); return; }
-      if (freeDepth) { await finishFloor("Research Depth is Free; paid expansion is disabled"); return; }
-      if (!env.PERPLEXITY_API_KEY) { await finishFloor("Perplexity expansion is unavailable"); return; }
-      await env.TRADES.put(pendingKey, JSON.stringify(w)); S.step = "expand-paid"; return;
-    }
-    const need = Math.max(0, 20 - digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId));
-    if (!need) { await finishFloor(""); return; }
-    S.floor.paidAttempted = true;
-    const paidJob = { ...job, id: job.id || runId, campaignId: cid, newsletter: S.newsletter, runKind: S.manual ? 'manual' : 'weekly', periodKey: S.period };
-    const result = await digestFloorPerplexity(env, paidJob, S.floor.relatedKeywords, w.sources || [], need);
-    S.floor.paidCost = result.cost || ""; S.floor.paidReason = result.reason || "";
-    const freshPaid = digestFloorFreshSources(await digestMemory(env, cid), result.sources || [], runId);
-    const before = w.sources.length; w.sources = digestFloorAppendSources(w.sources || [], freshPaid);
-    const added = w.sources.slice(before); w.digest = digestFloorAppendBody(w.digest, added); w.expansion = { ...(w.expansion || {}), paidItems: added.length, paidCost: result.cost || "", relatedKeywords: S.floor.relatedKeywords };
-    await finishFloor(result.reason || ""); return;
-  }
-  if (S.step === "write" || S.step === "pillar") {   // Perplexity ranks + writes (no Claude) → this week's Digest asset under the permanent title
-    const free = S.newsletter && S.newsletter.fields['Research Depth'] === 'Free';
-    const job = free ? { keywords: S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
+  if (S.step === "write" || S.step === "pillar" || S.step === "widen") {   // rank + write (no Claude) → this digest's rolling parent asset
+    const job = free ? { id: S.period, keywords: S.keywords || S.freeKeywords || [] } : await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
     const runId=job.id||S.period,pendingKey='digest:pending:'+cid+':'+runId;
     let w=await env.TRADES.get(pendingKey,'json');
-    if(!w){w=free?await freeNewsDigest(env,S.titleName||S.name,S.freeKeywords||[]):await adPerplexityDigest(env,job,S.names);await env.TRADES.put(pendingKey,JSON.stringify(w));}
+    if (!w) {
+      const core = (S.freeCoreKey && await env.TRADES.get(S.freeCoreKey, "json")) || [];
+      w = free ? { sources: core } : await adPerplexityDigest(env, job, S.names);
+      if (!free) w.sources = digestFloorAppendSources(w.sources || [], core);   // the free core records join the paid pass
+      await env.TRADES.put(pendingKey, JSON.stringify(w));
+    }
     const dedupedCore = digestFloorAppendSources([], w.sources || []);
     if (dedupedCore.length !== (w.sources || []).length) { w.sources = dedupedCore; await env.TRADES.put(pendingKey, JSON.stringify(w)); }
-    if (!S.floorReady) {
-      const coreCount = digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId);
-      S.floor = { target: 20, coreItems: coreCount, relatedKeywords: [], paidAttempted: false };
-      if (coreCount < 20) { S.floor.relatedKeywords = await digestFloorRelatedQueries(env, cid, S.keywords || S.freeKeywords || []); S.step = 'expand-free'; return; }
-      S.floor.items = coreCount; S.floor.expansionItems = 0; S.floor.met = true; S.floor.exhausted = false; S.floor.reason = "20-item floor met by core-keyword research";
-      S.note = `Record floor met: ${coreCount}/20 from core keywords, 0 added by expansion; related keywords tried: none required. No paid expansion call was made.`;
+    if (!S.floorReady && S.step !== "widen") {
+      const fresh = digestFloorNewCount(await digestMemory(env, cid), w.sources || [], runId), carried = (await digestCarriedRelevant(env, S)).length;
+      S.floor = { target: DIGEST_TARGET, coreItems: fresh, carried, widenItems: 0, focusQueries: S.focusQueries || [] };
+      if (fresh + carried < DIGEST_TARGET) { S.step = "widen"; return; }
       S.floorReady = true;
     }
-    S.memory=await digestMemoryCommit(env,cid,runId,[...(w.memoryFindings||[]),...w.sources]);
+    if (S.step === "widen") {   // short of the soft target: widen through Research Focus on FREE sources only — never a second paid call
+      S.floor = S.floor || { target: DIGEST_TARGET, coreItems: 0, carried: 0, widenItems: 0, focusQueries: S.focusQueries || [] };
+      const { anchor, focus } = digestScope(S), core = coreQueries(S.keywords || S.freeKeywords || [], 8), found = [];
+      if ((S.focusQueries || []).length) found.push(...await digestFreeSearch(env, S.focusQueries, { feeds: ["bing", "google", "gdelt", "reddit", "fedreg", "pubmed"], gdeltMax: 6 }));
+      found.push(...await digestFreeSearch(env, core, { feeds: ["fedreg", "pubmed"] }));   // primary sources on the title's own keywords
+      const scoped = found.filter(x => relevantToScope(x, anchor, focus)).map(x => ({ ...x, expansionAdded: true, topicId: S.topicId || "" }));
+      const fresh = digestFloorFreshSources(await digestMemory(env, cid), scoped, runId), before = (w.sources || []).length;
+      w.sources = digestFloorAppendSources(w.sources || [], fresh); S.floor.widenItems = w.sources.length - before;
+      await env.TRADES.put(pendingKey, JSON.stringify(w)); S.floorReady = true; S.step = "write"; return;
+    }
+    // research memory learns only what this digest ranked/showed — reported-but-unranked findings stay discoverable next run
+    S.memory=await digestMemoryCommit(env,cid,runId,w.sources||[]);
     const memory=await digestMemory(env,cid),newKeys=new Set(memory.items.filter(x=>x.firstSeenRun===runId).map(memoryKey));
     w.sources=w.sources.filter(x=>newKeys.has(memoryKey(x))).map(x=>({...x,memoryKind:memory.items.find(i=>memoryKey(i)===memoryKey(x))?.relationship||'new'}));
-    if(!w.sources.length)w.digest='## This week\n\nNo new verified developments were identified. Earlier findings remain in the hub research memory; they have not been recast as new news.';
+    const carried = await digestCarriedRelevant(env, S), total = w.sources.length + carried.length;
+    S.floor = { ...(S.floor || {}), items: w.sources.length, carried: carried.length, total, met: total >= DIGEST_TARGET, thin: total < DIGEST_THIN };
+    S.note = `${total} records (${w.sources.length} new this run${S.floor.widenItems ? ", " + S.floor.widenItems + " from Research Focus widening" : ""}, ${carried.length} carried forward); target about ${DIGEST_TARGET}. No paid gap-fill call.`;
     if(S.marketPlan)S.productNotes=await productNotesSave(env,cid,S.marketPlan,w.productNotes,runId);
-    const usage=await env.TRADES.get('digest:usage:'+cid,'json')||[],entry=usage.find(x=>x.runId===job.id);if(entry){entry.memory=S.memory;entry.productNotes=S.productNotes;await env.TRADES.put('digest:usage:'+cid,JSON.stringify(usage));}
+    const usage=await env.TRADES.get('digest:usage:'+cid,'json')||[],entry=usage.find(x=>x.runId===job.id);if(entry){entry.memory=S.memory;entry.productNotes=S.productNotes;entry.floor=S.floor;await env.TRADES.put('digest:usage:'+cid,JSON.stringify(usage));}
     await researchDigestSave(env,cid,S.titleId,w.sources||[]);
     await digestPoolMerge(env, cid, { sources: w.sources }, job.keywords || []).catch(() => {});
+    if (S.floor.thin) {   // under 5 after free widening: the records stay for curation, but nothing is presented as a digest
+      await digestItemsSave(env, S.assetId, w.sources, { additive: true, runId });
+      S.thin = true; S.note = `Thin: ${total} relevant record${total === 1 ? "" : "s"} after free widening — needs a guided regenerate. The parent body was not rewritten. ` + S.note;
+      S.items = w.sources.length; S.step = "done"; return;
+    }
+    S.thin = false;
+    if (free) w.digest = freeDigestBody(S.titleName || S.name, w.sources);
+    else if (!w.sources.length) w.digest = '## This week\n\nNo new verified developments were identified. Earlier findings remain in the hub research memory; they have not been recast as new news.';
     const label = adPeriod().label;
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
-    await digestItemsSave(env, S.assetId, w.sources, { additive: true });   // append this run's core + expansion findings; preserve prior checks, children and picks
+    await digestItemsSave(env, S.assetId, w.sources, { additive: true, runId });   // append this run's records; carry unused ones forward; preserve checks, children and picks
     const writtenTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
     await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: writtenTitle } }] },
-      "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
+      "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished — every run (incl. a guided regenerate) is reviewed anew
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
@@ -15931,7 +15962,7 @@ async function autoDigestRun(env, invoke) {
       const fresh = handNow || !S || (S.period !== per.key && !(S.manual && !finished));
       if (fresh) {
         if (handNow) {
-          S = { ...item, period: "m" + Date.now(), manual: true, step: "start", startedAt: Date.now(), tries: 0 };
+          S = { ...item, period: "m" + Date.now(), manual: true, guidance: (typeof manualEntry === "object" && manualEntry.guidance) || "", step: "start", startedAt: Date.now(), tries: 0 };
           await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
           manual = manual.filter(x => x !== manualEntry); await env.TRADES.put("digest:manual", JSON.stringify(manual));
         } else {
@@ -21543,6 +21574,7 @@ ${JSON.stringify(products)}`;
         const digests = [];
         for (const r of rows) {
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+          { const used = usedIds(d.children || {}); d.items = refreshPeriodFlags(d.items || [], digestPeriod()).map(x => ({ ...x, state: recordState(x, used) })); }   // flags recomputed for today's period
           const titleIdForSources = ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "");
           const [pool, research] = await Promise.all([env.TRADES.get("digest:pool:" + cid, "json").catch(() => []), titleIdForSources ? env.TRADES.get("digest:sources:" + titleIdForSources, "json").catch(() => null) : null]);
           const sourceRows = [...(d.items || []).map(x => ({ ...x, sourceKind: "finding" })), ...(Array.isArray(pool) ? pool : []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || "")), sourceKind: "pool" })), ...((research?.sources || []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || x.title || "")), claim: x.claim || x.title || "", sourceKind: "research" })))];
@@ -21564,7 +21596,7 @@ ${JSON.stringify(products)}`;
           const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
-            runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "" } : null,
+            runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "", thin: !!autoState.thin, floor: autoState.floor || null, guidance: autoState.guidance || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
               children: generationJob.children || [], startedAt: generationJob.startedAt || 0, finishedAt: generationJob.finishedAt || 0 } : null,
@@ -21626,7 +21658,8 @@ ${JSON.stringify(products)}`;
             const label = level === "premium" ? "Premium issue" : level === "free" ? "Free issue" : "News article";
             const titleOverride = level === "article" ? item.claim.slice(0, 180) : `${label} — ${(dp.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest"}`.slice(0, 190);
             const prior = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Parent Asset", relation: { contains: kwDashId(digestId) } }, { property: "Asset Type", select: { equals: own } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(() => []);
-            const same = prior.find(p => !p.archived && !p.in_trash && hubRichText(p.properties?.["Asset Title"]?.title) === titleOverride);
+            const generated = new Set([...(d.children?.[level] || []).map(x => hubAssetId(x.assetId || "")), ...d.interviewAssets.filter(x => x.consumedAt).map(x => hubAssetId(x.assetId || ""))]);
+            const same = prior.find(p => !p.archived && !p.in_trash && !generated.has(hubAssetId(p.id)) && hubRichText(p.properties?.["Asset Title"]?.title) === titleOverride);   // generated issues are permanent
             assetId = hubAssetId(same?.id || "");
             if (!assetId) {
               const made = await invoke({ action: "createDevAssets", titleId: storyTitleId, title: level === "article" ? item.claim : "Digest", productId: productId || undefined, campaignId: cid, allowMulti: true, parentAssetId: digestId, types: [{ assetType: own, label, titleOverride }] });
@@ -21677,12 +21710,42 @@ ${JSON.stringify(products)}`;
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (cid.length !== 32) return json({ error: "campaignId required" }, 400);
         const assetId = String(body.assetId || "").replace(/-/g, "");
         if (assetId) { const page = await newsletterNotion(env, "pages/" + kwDashId(assetId)); if (page.properties?.["Pillar Type"]?.select?.name !== "Digest" || ivRid(page.properties, "Campaign") !== cid) return json({ error: "Digest parent does not belong to this campaign" }, 400); }
-        const q = (await env.TRADES.get("digest:manual", "json")) || [], entry = assetId ? { cid, assetId } : cid;
-        if (!q.some(x => x === entry || (x && x.cid === cid && x.assetId === assetId))) q.push(entry); await env.TRADES.put("digest:manual", JSON.stringify(q));
+        const guidance = String(body.guidance || "").trim().slice(0, 1500);   // guided regenerate: added to the research brief for this run only
+        if (guidance && !assetId) return json({ error: "A guided regenerate needs the digest parent" }, 400);
+        const q = (await env.TRADES.get("digest:manual", "json")) || [], entry = assetId ? { cid, assetId, ...(guidance ? { guidance } : {}) } : cid;
+        const queuedEntry = q.find(x => x === entry || (x && x.cid === cid && x.assetId === assetId));
+        if (queuedEntry && typeof queuedEntry === "object") { if (guidance) queuedEntry.guidance = guidance; } else if (!queuedEntry) q.push(entry);
+        await env.TRADES.put("digest:manual", JSON.stringify(q));
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         return json({ ok: true, queued: true });   // the */4 cron runs it (a waitUntil kick gets cut off ~30 s after the response)
+      }
+      // digestRecordState {assetId, itemId, state: retired|unused} — Retire removes a record from this digest's additive set: hidden,
+      // never rolled forward or generated, kept in research memory as known (so it isn't re-found) with its source trail.
+      // unused restores a retired or expired record. Soft state only — nothing is deleted.
+      if (body.action === "digestRecordState") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const id = String(body.assetId || "").replace(/-/g, ""), state = ["retired", "unused"].includes(body.state) ? body.state : "";
+        if (!/^[a-f0-9]{32}$/i.test(id) || !body.itemId || !state) return json({ error: "assetId, itemId and state (retired|unused) required" }, 400);
+        const key = "digest:items:" + id, d = (await env.TRADES.get(key, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
+        let item = (d.items || []).find(x => x.id === body.itemId);
+        if (!item) {
+          const parent = await newsletterNotion(env, "pages/" + kwDashId(id)), cid = ivRid(parent.properties || {}, "Campaign"), titleId = ivRid(parent.properties || {}, "Content Strategy");
+          if (parent.properties?.["Pillar Type"]?.select?.name !== "Digest") return json({ error: "Selected asset is not a Digest parent" }, 400);
+          const [pool, research] = await Promise.all([cid ? env.TRADES.get("digest:pool:" + hubAssetId(cid), "json").catch(() => []) : [], titleId ? env.TRADES.get("digest:sources:" + hubAssetId(titleId), "json").catch(() => null) : null]);
+          const found = (Array.isArray(pool) ? pool : []).find(x => x.id === body.itemId) || (research?.sources || []).find(x => x.id === body.itemId || dpId((x.url || "") + "|" + (x.claim || x.title || "")) === body.itemId);
+          if (!found) return json({ error: "Record is no longer available in the digest, pool, or research record" }, 404);
+          item = { ...found, id: body.itemId, claim: found.claim || found.title || "", split: found.split === "premium" ? "premium" : "free" };
+          d.items = [...(d.items || []), item];
+        }
+        const at = new Date().toISOString();
+        if (state === "retired") { Object.assign(item, { retired: true, retiredAt: at }); d.checks = d.checks || {}; delete d.checks[body.itemId]; }
+        else Object.assign(item, { retired: false, expired: false, carriedRuns: 0, restoredAt: at });
+        await env.TRADES.put(key, JSON.stringify(d));
+        const check = ((await env.TRADES.get(key, "json"))?.items || []).find(x => x.id === body.itemId);
+        if (!check || !!check.retired !== (state === "retired")) return json({ error: "Record state readback differs" }, 500);
+        return json({ ok: true, itemId: body.itemId, state });
       }
       // digestCheck {assetId, itemId, target: premium|free|news, on} — the operator's saved checkbox state
       if (body.action === "digestCheck") {
@@ -21698,6 +21761,7 @@ ${JSON.stringify(products)}`;
           selected = { ...selected, id: body.itemId, claim: selected.claim || selected.title || "", split: selected.split === "premium" ? "premium" : "free" };
           d.items = [...(d.items || []), selected];
         }
+        if (selected.retired && body.on) return json({ error: "This record is retired — restore it before selecting it" }, 409);
         d.checks = d.checks || {}; d.checks[body.itemId] = { ...(d.checks[body.itemId] || {}), [t]: !!body.on };
         await env.TRADES.put(key, JSON.stringify(d)); return json({ ok: true, checks: d.checks[body.itemId] });
       }
@@ -21727,7 +21791,7 @@ ${JSON.stringify(products)}`;
         const activeKey = "digest:generate:active:" + id, activeId = await env.TRADES.get(activeKey);
         if (activeId) { const active = await env.TRADES.get("titlejob:state:" + activeId, "json");
           if (active && ["queued", "running", "failed"].includes(active.status)) return json({ ok: true, jobId: activeId, status: active.status, reused: true }); }
-        const picked = t => (d.items || []).filter(x => (d.checks?.[x.id] || {})[t]);
+        const picked = t => (d.items || []).filter(x => !x.retired && (d.checks?.[x.id] || {})[t]);
         d.interviewAssets = Array.isArray(d.interviewAssets) ? d.interviewAssets : [];
         const interviewFor = async map => { if (!map) return null; const list = await ivForTitle(map.titleId).catch(() => []); return list.find(x => x.id === map.interviewId && x.scope === "Asset" && x.assetIds.includes(hubAssetId(map.assetId))) || null; };
         const steps = [];
@@ -56659,7 +56723,7 @@ function drBrief(job) {
 
 NEWSLETTER FRAMING (authoritative Product Research):
 ${newsletterSteering(job.newsletter?.fields)}
-PERIOD: ${job.periodStart||hubCheckPeriodStart('Weekly')} through ${new Date().toISOString().slice(0,10)}. Distinguish older background from this period's developments.
+PERIOD: ${job.periodStart||digestPeriod().periodStart} through ${new Date().toISOString().slice(0,10)}. Distinguish older background from this period's developments.
 TOPIC KEYWORDS: ${kw}
 ${job.memoryBrief||""}
 ${productNotesBrief(job.marketPlan?{...job.marketPlan,evidence:[]}:null)}
@@ -56802,7 +56866,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
       marketPlan:body.marketPlan||null,notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
     const newsletter=await newsletterContext(env,cid);
-    job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=hubCheckPeriodStart('Weekly');
+    job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=digestPeriod().periodStart;   // trailing 7 days (the Saturday-start week left a Sunday run only 2 days)
     await digestMemorySeed(env,cid);job.memoryBrief=await digestMemoryBrief(env,cid);
     job.standing = await drStandingSources(env, cid);
     const depth=newsletter.fields['Research Depth'];
