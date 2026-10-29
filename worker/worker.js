@@ -7,7 +7,7 @@ import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
 import { NEWSLETTER_FIELDS, NEWSLETTER_DEPTHS, newsletterIssueType, newsletterDepth, newsletterSetting, newsletterSteering, newsletterSchema, newsletterBody, newsletterInPeriod, newsletterVerifyUrl } from './newsletter-methodology.mjs';
 import { MARKET_FORMS, memoryUrl, memoryKey, memoryPlan, marketFresh, marketGaps, marketStaleAfter, weeklySlot } from './digest-memory.mjs';
-import { DIGEST_TARGET, DIGEST_THIN, DIGEST_CARRY_RUNS, DIGEST_PERIOD_DAYS, digestPeriod, refreshPeriodFlags, usedIds, recordState, advanceCarry, scopeTokens, relevantToScope, phraseHit, coreQueries, focusQueries, byTier } from './digest-records.mjs';
+import { DIGEST_DEPTHS, DIGEST_TARGET, DIGEST_THIN, DIGEST_CARRY_RUNS, DIGEST_PERIOD_DAYS, digestPeriod, refreshPeriodFlags, usedIds, recordState, advanceCarry, scopeTokens, relevantToScope, phraseHit, coreQueries, focusQueries, byTier } from './digest-records.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -15093,7 +15093,7 @@ async function titleJobsRun(env, invoke) {
           } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
             const k = await invoke({ action: "regenerateTitleKeywords", titleId: S.titleId }); if (!k || k.error) throw new Error((k && k.error) || "no response");
           } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written)
-            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: /^digest$/i.test(step.assetType) ? "Digest parent" : step.assetType, pillar: /^(series|digest)$/i.test(step.assetType) }] });   // Series + Digest parent are parents (pillars)   // Series = a parent (Pillar · Series)
+            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: isDigestParentType(step.assetType) ? DIGEST_PARENT_TYPE : step.assetType, label: isDigestParentType(step.assetType) ? "Digest parent" : step.assetType, pillar: /^series$/i.test(step.assetType) || isDigestParentType(step.assetType) }] });   // Series + Digest parent are parents (pillars)   // Series = a parent (Pillar · Series)
             if (!c || c.error) throw new Error((c && c.error) || "no response");
             const own = await ivCreationTopicalMethod(env, step.assetType);
             if (own) for (const asset of c.created || []) await ivCreateForAsset(env, { assetId: asset.id, titleId: S.titleId, own });
@@ -15301,7 +15301,7 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
   const method=newsletterMethod(await writingMethodsTable(env),kind),context=await newsletterContext(env,campaignId);
   const page=await newsletterNotion(env,'pages/'+kwDashId(assetId));
   if(!newsletterIssueType(page.properties?.['Asset Type']?.select?.name))throw new Error('Not a newsletter child');
-  const methodId=ivRid(page.properties,'Method')||await resolveMethodIdByName('digest');if(!methodId)throw new Error('Existing Digest method record is missing; no issue was written');
+  const methodId=ivRid(page.properties,'Method')||await resolveMethodIdByName(DIGEST_PARENT_TYPE)||await resolveMethodIdByName('digest');if(!methodId)throw new Error('Existing Digest method record is missing; no issue was written');
   const [voice,audience,interviews]=await Promise.all([voiceBlock(env,campaignId),hubAudienceBlock(env,campaignId),ivForTitle(titleId)]);
   const selectedInterview=interviewId?interviews.find(x=>x.id===hubAssetId(interviewId)&&x.scope==='Asset'&&x.assetIds.includes(hubAssetId(assetId))):null;
   const finished=selectedInterview&&selectedInterview.status==='Finished'&&selectedInterview.answers.some(a=>a.trim())?[{questions:selectedInterview.questions,answers:selectedInterview.answers}]:[];
@@ -15542,7 +15542,11 @@ async function digestMigrateCronFlags(env, cid, rows) {
 }
 // Per-digest model pick (operator 2026-10-29: keep Gemini spend to selected digests). KV digest:depth:<assetId> = Deep (Gemini +
 // Perplexity) | Standard (Perplexity only) | Free (free sources only) | Off; absent = use the hub's Research Depth.
-const DIGEST_DEPTHS = ["Deep", "Standard", "Free", "Off"];
+// ONE digest asset type (operator 2026-10-29: "deprecate digest and merge all of it into digest parent"). New parents are written as
+// Asset Type "Digest Parent" with Pillar Type "Digest" (the marker every parent check uses). Reads accept the retired "Digest" value
+// so parents made before the rename keep working; a request for the old type is always turned into a Digest Parent.
+const DIGEST_PARENT_TYPE = "Digest Parent";
+const isDigestParentType = v => /^digest(?: parent)?$/i.test(String(v || "").trim());
 async function digestDepthPick(env, assetId) {
   const v = await env.TRADES.get("digest:depth:" + hubAssetId(assetId)).catch(() => null);
   return DIGEST_DEPTHS.includes(v) ? v : "";
@@ -15670,7 +15674,7 @@ async function adEnsureTitle(env, cid, name, invoke) {
   if (have) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(have), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null);
     if (pg && pg.object !== "error" && !pg.archived && !pg.in_trash) return have; }
   const mains = await hubMainList(env, cid);
-  const ms = await invoke({ action: "searchMethods", query: "" }), dm = ((ms && ms.methods) || []).find(m => /^digest$/i.test(m.name || "") && m.status === "Live");
+  const ms = await invoke({ action: "searchMethods", query: "" }), dm = ((ms && ms.methods) || []).find(m => isDigestParentType(m.name) && m.status === "Live");
   const c = await invoke({ action: "createDevTitle", title: "Weekly Digest", campaignId: cid, productId: mains[0] || undefined, methodId: dm ? dm.id : undefined, status: "Development", skipPillar: true,
     researchInstructions: "The hub's weekly digest — everything important this week across the hub's ★ main offerings. Each week's issue is written into a new Digest asset under this title." });
   if (!c || c.error || !c.id) throw new Error("weekly digest title: " + ((c && c.error) || "no response"));
@@ -15690,7 +15694,7 @@ async function adEnsureBlank(env, cid, titleId, name, invoke) {
   if (have) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(have), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null);
     if (pg && pg.object !== "error" && !pg.archived && !pg.in_trash) return have; }
   const mains = await hubMainList(env, cid);
-  const pa = await invoke({ action: "createAsset", titleId, campId: cid, productId: mains[0] || undefined, assetTitle: `Weekly Digest — next issue (${name})`, assetType: "Digest", assetStatus: "Development",
+  const pa = await invoke({ action: "createAsset", titleId, campId: cid, productId: mains[0] || undefined, assetTitle: `Weekly Digest — next issue (${name})`, assetType: DIGEST_PARENT_TYPE, assetStatus: "Development",
     assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Unwritten", interviewRequired: false });
   if (!pa || pa.error || !pa.id) throw new Error("blank digest asset: " + ((pa && pa.error) || "no id"));
   const id = String(pa.id).replace(/-/g, ""); await env.TRADES.put(key, id); return id;
@@ -18602,8 +18606,8 @@ the one aesthetic risk taken + why:`;
             // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
             { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: false, /* shown again 2026-10-09 (operator): the ★ main products, listed under Main offerings */ products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: "" },
-            { id: "production-digest", phase: "Production", label: "Add one digest", assetCreator: true, presetType: "Digest",
-              done: listed.some(r => /^digest$/i.test(r.properties?.["Asset Type"]?.select?.name || "")), hint: "Create from a researched product and a written, synchronized title" },
+            { id: "production-digest", phase: "Production", label: "Add one Digest Parent", assetCreator: true, presetType: DIGEST_PARENT_TYPE,
+              done: listed.some(r => r.properties?.["Pillar Type"]?.select?.name === "Digest"), hint: "Create from a researched product and a written, synchronized title" },
             { id: "production-interview-stream", phase: "Production", label: "Add one interview stream", assetCreator: true, presetType: "Long Form Topical → YouTube Long Form QA",
               done: listed.some(r => /interview stream|youtube longform|long form topical.*youtube/i.test(r.properties?.["Asset Type"]?.select?.name || "")), hint: "Create from a researched product and a written, synchronized title" },
             { id: "production-assets", phase: "Production", label: "Add new asset types", assetCreator: true, presetType: "",
@@ -21525,7 +21529,7 @@ ${JSON.stringify(products)}`;
         if(body.action==='newsletterSeed')return json(await newsletterSeed(env,body.campaignId));
         if(body.action==='saveNewsletterSettings')return json(await newsletterSaveSetting(env,body));
         if(body.action==='newsletterVerifySources'){
-          const page=await newsletterNotion(env,'pages/'+kwDashId(body.assetId));if(ivRid(page.properties,'Campaign')!==hubAssetId(body.campaignId)||!/^digest$/i.test(page.properties?.['Pillar Type']?.select?.name||page.properties?.['Asset Type']?.select?.name||''))return json({error:'Expected this campaign’s existing Digest parent'},400);
+          const page=await newsletterNotion(env,'pages/'+kwDashId(body.assetId));if(ivRid(page.properties,'Campaign')!==hubAssetId(body.campaignId)||!isDigestParentType(page.properties?.['Pillar Type']?.select?.name||page.properties?.['Asset Type']?.select?.name||''))return json({error:'Expected this campaign’s existing Digest parent'},400);
           const key='digest:items:'+hubAssetId(body.assetId),data=await env.TRADES.get(key,'json');if(!data)return json({ok:true,items:0,verified:0,unverified:0});
           await digestItemsSave(env,body.assetId,data.items,{preserveTimestamp:true});const updated=await env.TRADES.get(key,'json');return json({ok:true,items:updated.items.length,verified:updated.items.filter(x=>x.verified).length,unverified:updated.items.filter(x=>!x.verified).length,outOfPeriod:updated.items.filter(x=>!x.inPeriod).length});
         }
@@ -26003,15 +26007,15 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           // DIGEST PARENT (operator 2026-10-20: "make that into a recognizable asset type … let me choose it when creating the title"):
           // ticking Digest - parent on a title makes THE hub's digest — this title becomes its permanent digest title and this asset its
           // next issue, so Sunday's auto digest writes into it (KV digest:title / digest:asset) instead of keeping a title of its own.
-          const digestParent = pillar && /^digest$/i.test(assetType);
-          if (have.has(assetType.toLowerCase()) && !body.allowMulti) { skipped.push(label); continue; }
+          const digestParent = isDigestParentType(assetType);   // the retired one-shot "digest" type always becomes a Digest Parent
+          if ((digestParent ? have.has("digest") || have.has("digest parent") : have.has(assetType.toLowerCase())) && !body.allowMulti) { skipped.push(label); continue; }
           const props = {
             "Asset Title": { title: [{ type: "text", text: { content: `${String(body.title || "Untitled").slice(0, 150)} — ${label}` } }] },
             "Asset Status": { select: { name: "Development" } },
-            "Asset Class": { select: { name: pillar ? "Pillar" : "Publishable" } },
-            "Asset Type": { select: { name: digestParent ? "Digest" : pillar ? "Pillar" : assetType } },
+            "Asset Class": { select: { name: pillar || digestParent ? "Pillar" : "Publishable" } },
+            "Asset Type": { select: { name: digestParent ? DIGEST_PARENT_TYPE : pillar ? "Pillar" : assetType } },
             "Content Strategy": { relation: [{ id: dashC(titleId) }] },
-            ...(pillar ? { "Pillar Type": { select: { name: assetType } } } : {}),
+            ...(pillar || digestParent ? { "Pillar Type": { select: { name: digestParent ? "Digest" : assetType } } } : {}),
             ...(digestParent ? { "Pillar Readiness": { select: { name: "Unwritten" } } } : {}),
             ...(body.productId ? { Product: { relation: [{ id: dashC(body.productId) }] } } : {}),
             ...(body.campaignId ? { Campaign: { relation: [{ id: dashC(body.campaignId) }] } } : {}),
@@ -35817,188 +35821,24 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           return json({ success: true, created: 1, assets: [{ id: seqAssetId, title: seqAssetTitle }], emailCount, captureForm: captureLine });
         }
 
-        // ── "digest" method: ONE weekly hub-digest issue, written as BOTH
-        // tiers in a single research/generation pass — free (public, what
-        // actually gets sent) and premium (gated, stored in Notion only,
-        // never sent/published while the hub has no paid-subscription
-        // infrastructure). Per operator direction: develop both tiers
-        // together so the premium angle isn't an afterthought once paid
-        // launches, but only the free tier is ever exposed anywhere. The
-        // premium tier lives in its own "Premium Content" property + a
-        // clearly marked page-body section — nothing in the publish/export
-        // path reads it, so gating is by omission, not by any access
-        // control (there is none yet; that's a deliberate later build once
-        // the hub has real traffic/open-rate signal — see the Email
-        // method's Path A note on the same free/paid split).
-        // Grounding chain, in priority order: hub's own committed SEO
-        // Keyword Clusters (the hub-specific signal) -> campaign Research
-        // (News Feed / Trend Round-Up / Trend Intelligence, broader signal)
-        // -> the attached product's Product Research (Offer Structure /
-        // Proof Points / Objections), used ONLY for the premium offer slot
-        // — the free tier never pitches anything.
-        if (/^digest$/i.test(assetType)) {
-          const hasMethod = methodId && methodId !== "__none__";
-          const [clusterRows, researchRows, methodFrameworkText, productPage, productResearch] = await Promise.all([
-            campaignId ? notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dsDash(campaignId) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []) : Promise.resolve([]),
-            campaignId ? notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }).catch(() => []) : Promise.resolve([]),
-            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
-            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
-            hasProduct ? findBestProductResearchRecord(dsHdr, productId).catch(() => null) : Promise.resolve(null),
-          ]);
-
-          const clusterText = clusterRows.map(r => {
-            const name = (r.properties?.Name?.title || []).map(t => t.plain_text).join("");
-            const kw = (r.properties?.["Cluster Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
-            return name ? `- ${name}${kw ? `: ${kw}` : ""}` : "";
-          }).filter(Boolean).join("\n");
-
-          const rtRes = key => { for (const r of researchRows) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
-          const researchBlock = [
-            rtRes("News Feed")          && `News Feed: ${rtRes("News Feed").slice(0, 1200)}`,
-            rtRes("Trend Round-Up")     && `Trend Round-Up: ${rtRes("Trend Round-Up").slice(0, 800)}`,
-            rtRes("Trend Intelligence") && `Trend Intelligence: ${rtRes("Trend Intelligence").slice(0, 800)}`,
-            rtRes("Keywords")           && `Campaign Keywords: ${rtRes("Keywords").slice(0, 400)}`,
-          ].filter(Boolean).join("\n");
-
-          const productName = productPage ? (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
-          const isAffiliate = productPage?.properties?.Site?.select?.name === "Affiliates";
-          const rtp = key => productResearch ? (productResearch.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("") : "";
-          const productBlock = hasProduct ? [
-            productName && `Product: ${productName}${isAffiliate ? " (AFFILIATE PROGRAM — write the offer as a promoter recommending it, never as the product owner)" : ""}`,
-            rtp("Offer Structure") && `Offer Structure: ${rtp("Offer Structure")}`,
-            rtp("Proof Points")    && `Proof Points: ${rtp("Proof Points")}`,
-            rtp("Objections")      && `Objections to pre-empt: ${rtp("Objections")}`,
-            rtp("Benefits")        && `Benefits: ${rtp("Benefits")}`,
-          ].filter(Boolean).join("\n") : "";
-
-          const digestPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are writing ONE issue of a weekly hub digest newsletter — a finished, publish-ready deliverable, not options to pick between.
-
-GROUNDING CHAIN (priority order):
-1. HUB KEYWORD CLUSTERS (committed): ${clusterText || "(none committed yet — use campaign research below)"}
-2. CAMPAIGN RESEARCH: ${researchBlock || "(none on file)"}
-3. FEATURED PRODUCT (premium offer slot ONLY — never mention in the free section): ${productBlock || "(no product attached — write the premium section as pure deep-dive analysis, skip the offer)"}
-
-METHOD FRAMEWORK (voice + structure — follow it exactly):
-${(methodFrameworkText || "").slice(0, 3000) || "(standard weekly-digest framework: scannable free lead + value items, one deeper premium item)"}
-
-TITLE / HUB: ${title}
-${body.researchInstructions ? `OPERATOR DIRECTION: ${body.researchInstructions}\n` : ""}
-This issue has TWO tiers, both written now in one pass, but they serve different purposes:
-
-FREE TIER (public — this is the only part that ever gets sent or published):
-- Pure value, no pitch. A reader who never upgrades should still feel this was worth opening.
-- Lead item first (the single most important thing this week), then 3–6 short "why it matters" items, one line each.
-- Close with one soft line that creates real curiosity about the premium section below, without giving away its content — this is the upgrade hook.
-
-PREMIUM TIER (gated — stored in Notion only, never sent or published at this stage):
-- ONE genuine deep-dive: 300–500 words of real analysis/opinion/insight that goes further than anything in the free section — not a rehash, not "the same thing but longer."
-- If a product is attached, one short offer paragraph reshaping the Offer Structure/Proof Points/Objections above into a real pitch (promoter framing if it's an affiliate program) — otherwise omit it.
-
-Return via the submit_digest_issue tool ONLY — nothing as plain text.`;
-
-          const digestResp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({
-              model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: digestPrompt }],
-              tools: [{
-                name: "submit_digest_issue",
-                description: "Submit one complete weekly digest issue: free-tier public content and premium-tier gated content, both required.",
-                input_schema: {
-                  type: "object",
-                  properties: {
-                    subject: { type: "string" },
-                    preview: { type: "string" },
-                    leadItem: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] },
-                    valueItems: { type: "array", items: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] } },
-                    premiumTeaser: { type: "string" },
-                    premiumHeadline: { type: "string" },
-                    premiumBody: { type: "string" },
-                    premiumOfferPitch: { type: "string" },
-                  },
-                  required: ["subject", "preview", "leadItem", "valueItems", "premiumTeaser", "premiumHeadline", "premiumBody"],
-                },
-              }],
-              tool_choice: { type: "tool", name: "submit_digest_issue" },
-            }),
-          });
-          const digestData = await digestResp.json();
-          if (!digestResp.ok) return json({ error: digestData.error?.message || "Claude API error" }, 502);
-          const digestToolUse = (digestData.content || []).find(b => b.type === "tool_use" && b.name === "submit_digest_issue");
-          const d = digestToolUse?.input;
-          if (!d || !d.leadItem) return json({ error: "No digest generated — try again" }, 502);
-
-          const digestCaptureFormId = String(body.captureFormId || "").trim();
-          const digestCaptureHub = digestCaptureFormId.split("/")[0] || "";
-          const digestCaptureLine = digestCaptureFormId
-            ? [digestCaptureFormId, "ActiveCampaign", "tag: lead-hub-" + digestCaptureHub].join(" · ")
-            : "(no form picked — set one in the Generate Assets modal)";
-
-          const freeMd = `**Subject:** ${d.subject}\n**Preview:** ${d.preview}\n\n### ${d.leadItem.headline}\n${d.leadItem.body}\n\n` +
-            (d.valueItems || []).map(it => `- **${it.headline}** — ${it.body}`).join("\n") +
-            (d.premiumTeaser ? `\n\n${d.premiumTeaser}` : "");
-          const premiumMd = `### 🔒 ${d.premiumHeadline || "Premium deep dive"}\n${d.premiumBody || ""}` +
-            (d.premiumOfferPitch ? `\n\n**Offer:** ${d.premiumOfferPitch}` : "");
-
-          await ensureAssetsDbProperties(dsHdr, { "Premium Content": { type: "rich_text" }, "Capture Form": { type: "rich_text" } }).catch(() => {});
-
-          const digestAssetTitle = (title + " — digest issue").slice(0, 200);
-          const digestProps = {
-            "Asset Title":      { title: [{ type: "text", text: { content: digestAssetTitle } }] },
-            "Asset Status":     { select: { name: "Development" } },
-            "Asset Type":       { select: { name: "digest" } },
-            "Status":           { select: { name: "Ready" } },
-            "Body":             { rich_text: [{ type: "text", text: { content: freeMd.slice(0, 2000) } }] },
-            "Premium Content":  { rich_text: [{ type: "text", text: { content: premiumMd.slice(0, 2000) } }] },
-            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
-            "Capture Form":     { rich_text: [{ type: "text", text: { content: digestCaptureLine.slice(0, 300) } }] },
-            "Platform Name":    { select: { name: "Email" } },
-          };
-          if (campaignId) digestProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
-          if (hasProduct) digestProps["Product"] = { relation: [{ id: dsDash(productId) }] };
-          Object.assign(digestProps, await assetMethodProp(methodId, assetType));
-
-          const digestCreateResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: digestProps }),
-          });
-          const digestCreateOut = await digestCreateResp.json();
-          if (!digestCreateResp.ok || !digestCreateOut.id) return json({ error: digestCreateOut.message || "Digest asset create failed" }, 502);
-          const digestAssetId = digestCreateOut.id.replace(/-/g, "");
-
-          // Full text into the page body — free content first, then a
-          // clearly marked, visually distinct gated section. Readable in
-          // Notion for the operator; nothing outside this page ever reads
-          // the gated half.
-          try {
-            const dRt = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1900) } }] : [];
-            const children = [
-              { object: "block", type: "heading_2", heading_2: { rich_text: dRt("Free tier — publish this") } },
-            ];
-            freeMd.split("\n").forEach(ln => {
-              const line = ln.trim();
-              if (!line) return;
-              if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: dRt(line.replace(/^###\s+/, "")) } });
-              else if (/^[-*]\s+/.test(line)) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: dRt(line.replace(/^[-*]\s+/, "")) } });
-              else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: dRt(line) } });
-            });
-            children.push({ object: "block", type: "divider", divider: {} });
-            children.push({ object: "block", type: "callout", callout: { rich_text: dRt("PREMIUM — GATED. Do not publish or send. Kept here until a paid tier exists."), icon: { emoji: "🔒" } } });
-            premiumMd.split("\n").forEach(ln => {
-              const line = ln.trim();
-              if (!line) return;
-              if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: dRt(line.replace(/^###\s+/, "")) } });
-              else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: dRt(line) } });
-            });
-            for (let i = 0; i < children.length; i += 90) {
-              await fetch(`https://api.notion.com/v1/blocks/${dsDash(digestAssetId)}/children`, {
-                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ children: children.slice(i, i + 90) }),
-              });
-            }
-          } catch (e) { /* Body/Premium Content properties already carry the text; blocks are a bonus */ }
-
-          return json({ success: true, created: 1, assets: [{ id: digestAssetId, title: digestAssetTitle }], captureForm: digestCaptureLine, gated: true });
+        // ── Retired one-shot "digest" (operator 2026-10-29: "deprecate digest and merge all of it into digest parent"). Generate Assets
+        // with the Digest / Digest Parent method no longer writes a both-tiers issue: it creates (or finds) this title's Digest Parent
+        // and queues a run — free-first research, rolling records, curation, permanent Premium/Free issues all live there.
+        if (isDigestParentType(assetType)) {
+          if (!campaignId) return json({ error: "A Digest Parent needs the title's campaign" }, 400);
+          const cidD = String(campaignId).replace(/-/g, ""), tidD = String(titleId || "").replace(/-/g, "");
+          const parents = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: dsDash(tidD) } }, { property: "Pillar Type", select: { equals: "Digest" } }] } }).catch(() => []);
+          let parentId = (parents.find(p => !p.archived && !p.in_trash) || {}).id || "";
+          const selfD = this, invokeD = async b2 => { const token = await signToken(HMAC_SECRET, 900000); const res = await selfD.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b2, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+          if (!parentId) {
+            const made = await invokeD({ action: "createDevAssets", titleId: tidD, title: body.title || "Digest", productId: hasProduct ? productId : undefined, campaignId: cidD, types: [{ assetType: DIGEST_PARENT_TYPE, label: "Digest parent", pillar: true }] });
+            parentId = (made?.created || [])[0]?.id || "";
+            if (!parentId) return json({ error: "Could not create the Digest Parent: " + (made?.error || (made?.failed || []).join(" · ") || "no asset returned") }, 502);
+          }
+          const run = await invokeD({ action: "digestRunNow", campaignId: cidD, assetId: String(parentId).replace(/-/g, "") });
+          if (!run || run.error) return json({ error: "Digest Parent ready, but its run was not queued: " + ((run && run.error) || "no response") }, 502);
+          return json({ success: true, created: parents.length ? 0 : 1, digestParent: String(parentId).replace(/-/g, ""), queued: true, assets: [{ id: String(parentId).replace(/-/g, ""), title: "Digest Parent" }],
+            note: "The one-shot digest is retired — this title's Digest Parent run is queued (see the hub's Digest section)." });
         }
 
         // ── "Template CSV Export"-style table asset: ONE finished Page |
@@ -37882,6 +37722,8 @@ Rules:
 
       // ── createAsset ──────────────────────────────────────────────────
       if (body.action === "createAsset") {
+        if (isDigestParentType(body.assetType) || /^digest$/i.test(String(body.pillarType || "").trim()))   // retired "digest" → Digest Parent
+          Object.assign(body, { assetType: DIGEST_PARENT_TYPE, assetClass: "Pillar", pillarType: "Digest", pillarReadiness: body.pillarReadiness || "Unwritten" });
         const { titleId, campId, productId, assetTitle, platformName, assetType, assetStatus, content,
           assetClass, pillarType, pillarReadiness, pillarSync, interviewRequired, parentAssetId, deploymentStatus } = body;
         if (!titleId || !assetTitle) return json({ error: "titleId and assetTitle required" }, 400);

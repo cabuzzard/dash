@@ -106,3 +106,15 @@ test('model picker: a per-digest pick overrides the hub Research Depth in the ru
   assert.match(source, /if\(job\.depthOverride\)current\.fields=/);
   assert.match(source, /job\.gemini = depth==='Deep'\?await drGeminiStart/);   // only Deep ever starts Gemini
 });
+test('one digest asset type: the retired one-shot "digest" always becomes a Digest Parent', () => {
+  assert.match(source, /const DIGEST_PARENT_TYPE = "Digest Parent";/);
+  assert.match(source, /const isDigestParentType = v => \/\^digest\(\?: parent\)\?\$\/i/);
+  assert.doesNotMatch(source, /"digest" method: ONE weekly hub-digest issue/);           // the both-tiers one-shot writer is gone
+  assert.match(source, /Retired one-shot "digest"[\s\S]{0,4000}action: "digestRunNow"/);   // Generate Assets now queues the parent run
+  assert.match(source, /Object\.assign\(body, \{ assetType: DIGEST_PARENT_TYPE, assetClass: "Pillar", pillarType: "Digest"/);
+  assert.match(source, /"Asset Type": \{ select: \{ name: digestParent \? DIGEST_PARENT_TYPE/);
+  assert.match(source, /done: listed\.some\(r => r\.properties\?\.\["Pillar Type"\]\?\.select\?\.name === "Digest"\)/);
+  const html = fs.readFileSync('index.html', 'utf8');
+  assert.match(html, /return hub2OpenDigestParents\(slug, m\)/);
+  assert.doesNotMatch(html, /return hub2DigestModal\(slug\)|return hub2NewsModal\(slug\)|return hub2FreeNlModal\(slug\)/);
+});

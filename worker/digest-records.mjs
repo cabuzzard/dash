@@ -6,6 +6,8 @@ export const DIGEST_TARGET = 20;          // soft target — never padded to
 export const DIGEST_THIN = 5;             // fewer than this after free widening = thin, not presented as a digest
 export const DIGEST_CARRY_RUNS = 3;       // an unused record is offered for up to 3 further runs (guided regenerates count)
 export const DIGEST_PERIOD_DAYS = 7;
+// per-digest model pick (KV digest:depth:<assetId>): Deep = Gemini + Perplexity, Standard = Perplexity only, Free = free sources only
+export const DIGEST_DEPTHS = ['Deep', 'Standard', 'Free', 'Off'];
 
 // The digest period is the trailing 7 days ending today, matching the 7-day free news search. (The hub checklist's
 // Saturday-start week made a Sunday-night run treat only Saturday + Sunday as "this period".)

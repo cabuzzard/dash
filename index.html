@@ -16629,7 +16629,7 @@ const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // default gra
 let _hub2Grayed = null;
 const hub2IsGrayed = m => _hub2Grayed ? !!_hub2Grayed[String(m.id).toLowerCase()] : HUB2_NOT_BUILT.test(m.name);
 const HUB2_CRON_ROWS = /^digest - (news seo|free newsletter)$/i;   // automated: the hub news cron writes one article + one newsletter issue (AC draft) per digest period (status "Cron")
-const HUB2_PARENT_DRIVEN = /^digest$/i;
+const HUB2_PARENT_DRIVEN = /^digest(?: parent)?$/i;
 const HUB2_SOURCE_ROW = { 'topical - article': 'Topical - SEO Post' };   // child → the row it's written from (its "parent")   // children are due per published parent in the parent's period (operator 2026-10-15)
 // last day of the current period (week ends Friday night, month on its last day) as YYYY-MM-DD
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
@@ -16976,7 +16976,7 @@ function hub2PoolHtml(slug) {
   const runLine = P.run ? `<span style="color:#f6ad55;">⏳ A digest run is ${P.run.step === 'queued' ? 'queued' : 'running (' + esc(P.run.step) + ')'} — research takes 10–30 min; this updates itself.</span>`
     : P.last ? `<span style="color:var(--text3);">Last run: ${esc(P.last.step)}${P.last.note ? ' — ' + esc(P.last.note) : ''}${P.last.at ? ' · ' + new Date(P.last.at).toLocaleString() : ''}</span>` : '';
   const heldLine = (P.republicationHeld || []).length ? `<div style="margin:8px 0;color:#f6ad55;font-size:11px;"><b>Hub updates held — the last good pages are preserved</b>${P.republicationHeld.map(h => `<div>${esc(h.payload?.title || h.assetId)}: ${esc(h.reason)}</div>`).join('')}</div>` : '';
-  const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Queue a Digest parent in this hub; its existing parent asset is updated in place" onclick="hub2DigRunNow('${slug}',this)">▶ Run a digest now</button>${runLine}</div>` + heldLine;
+  const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Queue a Digest parent in this hub; its existing parent asset is updated in place" onclick="hub2DigRunNow('${slug}',this)">▶ Run a Digest Parent now</button>${runLine}</div>` + heldLine;
   const pool = hub2DigestPoolHtml(slug, P);
   if (!P.digests.length) return top + pool + '<div style="font-size:11px;color:var(--text3);">No Digest parents yet — ▶ Run a digest now, tick 📰 Digest parent on a title, or wait for Sunday night’s run.</div>';
   return top + pool + P.digests.map(d => hub2DigHtml(slug, d)).join('');
@@ -17027,7 +17027,7 @@ function hub2DigHtml(slug, d) {
   const offered = sorted(items.filter(x => !x.retired && !x.expired && x.state !== 'used')), usedRows = items.filter(x => !x.retired && x.state === 'used'), gone = items.filter(x => x.retired || x.expired);
   const grp = (label, col, list) => list.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${col};margin:8px 0 2px;">${label} (${list.length})</div>` + list.map(row).join('') : '';
   const link = (id, txt, itemId = '') => id ? `<span style="display:inline-flex;align-items:center;gap:5px;"><a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">${txt}</a><button type="button" style="${B('var(--border2)')}" onclick="event.stopPropagation();hub2DigestPreview('${slug}','${esc(d.assetId)}','${esc(id)}','${esc(itemId)}')">Preview</button></span>` : txt;
-  const kids = [link(d.assetId, 'Weekly Digest parent'), ...ch.premium.map((c, i) => link(c.assetId, '★ Premium issue ' + (i + 1))), ...ch.free.map((c, i) => link(c.assetId, 'Free issue ' + (i + 1))),
+  const kids = [link(d.assetId, 'Digest parent'), ...ch.premium.map((c, i) => link(c.assetId, '★ Premium issue ' + (i + 1))), ...ch.free.map((c, i) => link(c.assetId, 'Free issue ' + (i + 1))),
     ...ch.news.map(c => { const it = items.find(x => x.id === c.itemId); return link(c.assetId, '📰 ' + esc((it ? it.claim : 'news post').slice(0, 50)) + (c.state === 'error' ? ' ✗' : c.assetId ? '' : ' ⏳'), c.itemId); })];
   const ivBar = `<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:8px 0;padding:7px;background:var(--surface2);border-radius:5px;font-size:10.5px;"><b>Issue interviews</b><span>Premium (required):</span>${flagBtn('premium')}<span>Free (optional):</span>${flagBtn('free')}<span style="color:var(--text3);">Questions are generated and appear in the interview queue.</span></div>`;
   const rescan = d.rescan || {}, rescanLine = rescan.status ? `<div style="font-size:10px;color:${rescan.status === 'failed' ? '#f87171' : '#9ca3af'};margin-top:4px;">Rescan ${esc(rescan.status)}${rescan.added !== undefined ? ` · ${rescan.added} new source${rescan.added === 1 ? '' : 's'}` : ''}${rescan.keywords?.length ? ` · searched: ${esc(rescan.keywords.join(', '))}` : ''}${rescan.error ? ` · ${esc(rescan.error)}` : ''}</div>` : '';
@@ -17350,7 +17350,7 @@ async function hub2DigestWrite(btn) {
     const titleName = `Weekly Digest — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${prodName ? ` (${prodName})` : ''}`;
     step('Creating the dated title…');
     if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(x => x.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
-    const digestMethod = (_htMethods || []).find(m => /^digest$/i.test(m.name || ''));
+    const digestMethod = (_htMethods || []).find(m => /^digest(?: parent)?$/i.test(m.name || ''));
     const created = await call('createDevTitle', { title: titleName, campaignId: H2D.cid, productId, methodId: digestMethod ? digestMethod.id : undefined, status: 'Development' });
     if (!created || created.error || !created.id) throw new Error((created && created.error) || 'title not created');
     if (H2D.job && picked.length) call('digestResearch', { op: 'attach', jobId: H2D.job.id, titleId: created.id, sources: picked }).catch(() => {});
@@ -17604,13 +17604,20 @@ async function hub2OffsiteWrite(slug, btn) {
     btn.textContent = '✍ Write another'; btn.disabled = false; hub2ChecklistLoad(slug, true); }
   catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; }
 }
+// Retired one-shot digest (operator 2026-10-29): the checklist's Digest rows (parent, Premium/Free newsletter, News SEO) all open the
+// hub's Digest section — Digest Parents are created from a title's ＋ assets (Digest parent), and their issues/articles are generated
+// from the parent's curated records. The old ＋ Digest research modal, free-newsletter picks and news modal are no longer reachable.
+function hub2OpenDigestParents(slug, m) {
+  const pool = document.getElementById('hub2Pool-' + slug), sec = pool && pool.closest('details');
+  if (sec) { sec.open = true; hub2PoolLoad(slug); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  showToast(m && m.isPillar ? 'Digest Parents live in the Digest section — create one from a title’s ＋ assets (Digest parent), then run it there.'
+    : 'Digest issues and articles are generated from a Digest Parent’s curated records — tick them in the Digest section.', 'success');
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
-  if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);
+  if (/^digest(?: parent)?$/i.test(m.parent)) return hub2OpenDigestParents(slug, m);   // the one-shot digest + its old modals are retired: everything runs from Digest Parents
   if (!m.isPillar && /^topical$/i.test(m.parent) && /seo post/i.test(m.asset)) return hub2TopicalModal(slug);
   if (/^topical - article$/i.test(m.name)) return hub2OffsiteModal(slug);   // off-site, from a Topical SEO Post   // hand-initiated topical SEO posts (idea generator)   // a digest makes its own dated title
-  if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);
-  if (!m.isPillar && /^digest$/i.test(m.parent) && /free/i.test(m.asset) && /newsletter/i.test(m.asset)) return hub2FreeNlModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(hub2GenericGroup(m.parent) ? 'own' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
@@ -18067,7 +18074,7 @@ async function hub2DevAssetsGo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const methods = (_hub2Checklist[slug] || {}).methods || [], picked = [...document.querySelectorAll('.h2da-cb:checked,.h2da-pcb:checked')].map(c => methods.find(m => m.id === c.dataset.id)).filter(Boolean);
   if (!picked.length && !(document.getElementById('h2daSeries') || {}).checked) return 'Tick at least one asset type';
-  const types = picked.map(m => m.isPillar && /^digest$/i.test(m.parent) ? { assetType: 'Digest', label: 'Digest parent', pillar: true }   // the real Digest parent (the hub's digest — the weekly method writes into it)
+  const types = picked.map(m => m.isPillar && /^digest$/i.test(m.parent) ? { assetType: 'Digest Parent', label: 'Digest parent', pillar: true }   // the real Digest parent (the hub's digest — the weekly method writes into it)
     : { assetType: m.aliases.find(a => a !== m.name) || m.asset || m.parent, label: m.asset || m.parent, pillar: !!m.isPillar });
   if ((document.getElementById('h2daSeries') || {}).checked) types.unshift({ assetType: 'Series', label: 'Series', pillar: true });
   const titles = hub2PillarBulkTitles(slug).slice(), prods = hub2BulkProducts(slug), crows = ((_hub2Content[slug] || {}).rows || []), tfails = [];
