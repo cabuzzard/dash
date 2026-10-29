@@ -19038,7 +19038,7 @@ function hubSeriesDraw() {
       <button style="${B}border-color:var(--accent);color:var(--accent);" onclick="hubSeriesAsk()">${S.askMode === 'split' ? 'Split → new run' : 'Ask → new run'}</button></div>` : ''}
     <div style="font-size:11.5px;color:${S.err ? '#f87171' : 'var(--text3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
     ${D ? hubSeriesCatsHtml(B) : ''}
-    ${srcs.map(k => { const list = D.sources[k], open = S.open[k] !== false;
+    ${srcs.map(k => { const list = D.sources[k], open = S.open[k] === true;   // every group starts collapsed (operator 2026-10-29)
       return `<div style="margin:6px 0;border:1px solid var(--border);border-radius:6px;"><div class="hkw-hd" onclick="_series.open['${esc(k)}']=${open ? 'false' : 'true'};hubSeriesDraw()" style="padding:5px 8px;cursor:pointer;font-weight:600;font-size:12px;display:flex;gap:6px;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--text3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
         ${open ? `<div style="padding:0 8px 4px;">${list.map(x => card(k, x)).join('')}</div>` : ''}</div>`; }).join('') || (D ? '<div style="font-size:12px;color:var(--text3);">No ideas found yet — save the title research, add keywords to its topic, or attach a product.</div>' : '')}
     <div style="margin-top:10px;"><button class="modal-btn" onclick="document.getElementById('seriesModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
@@ -19056,7 +19056,7 @@ function hubSeriesCatsHtml(B) {
       <div style="font-size:10.5px;color:var(--text3);margin:6px 0 3px;">Research style — the spec every prompt from this series is built from</div>
       <textarea id="srStyleTa" rows="12" style="width:100%;box-sizing:border-box;font-size:11.5px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:6px;">${esc(D.style || '')}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px;"><button class="modal-btn" onclick="hubSeriesCatsSave()">Save</button><button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text3);" onclick="_series.catEdit=false;hubSeriesDraw()">Cancel</button></div></div>`;
-  const open = S.open.__cats !== false;
+  const open = S.open.__cats === true;
   return `<div style="margin:6px 0 10px;border:1px solid #8ab4f8;border-radius:6px;">
     <div class="hkw-hd" style="padding:5px 8px;font-weight:600;font-size:12px;display:flex;gap:6px;align-items:center;"><span onclick="_series.open.__cats=${open ? 'false' : 'true'};hubSeriesDraw()" style="cursor:pointer;flex:1;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span> 🗂 Categories <span style="font-weight:400;color:var(--text3);">(${cats.length}) · standing lanes — never used up${D.style ? ' · research style set' : ' · no research style yet'}</span></span>
       <select id="srCatKind" class="kw-sel" title="What the 📋 prompt asks ChatGPT to write" style="font-size:10.5px;"><option value="seo">prompt: Topical - SEO Post</option><option value="single">prompt: Single Post</option><option value="carousel">prompt: Carousel</option><option value="youtube">prompt: Topical - YouTube</option></select>
