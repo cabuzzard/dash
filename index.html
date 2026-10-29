@@ -19026,9 +19026,9 @@ function hubSeriesDraw() {
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup></select>
-      ${S.runType === '__paste' ? `<select id="srPasteKind" class="kw-sel" title="What each pasted line becomes">${[['seo', 'each line → a Topical - SEO Post'], ['single', 'each line → a Single Post'], ['youtube', 'each line → a Topical - YouTube'], ['carousel', 'one carousel, a slide per line']].map(([v, l]) => `<option value="${v}"${(S.pasteKind || 'seo') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>` : ''}
-      <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button>
-      ${S.runType === '__paste' ? `<textarea id="srPaste" rows="7" placeholder="One topic per line — each line becomes the title seed and keyword seed of its own asset (bullets and numbers are stripped). Up to 25." style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.paste || '')}</textarea>` : ''}
+      ${S.runType === '__paste' ? `<select id="srPasteTo" class="kw-sel" title="A new run, or add these lines to the end of a run you already pasted" onchange="_series.pasteTo=this.value;_series.paste=document.getElementById('srPaste').value;hubSeriesDraw()"><option value="">＋ new run</option>${(D.lists || []).map(l => `<option value="${esc(l.id)}"${S.pasteTo === l.id ? ' selected' : ''}>add to run: ${esc(l.name)} (${l.items.length})</option>`).join('')}</select>` : ''}
+      <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">${S.runType === '__paste' && S.pasteTo ? 'Add to run' : 'Create run'}</button>
+      ${S.runType === '__paste' ? `<textarea id="srPaste" rows="7" placeholder="One topic per line (bullets and numbers are stripped). The list is saved as a run in this modal — nothing is made until you pick what each line becomes." style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.paste || '')}</textarea>` : ''}
       <div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
     ${D ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid var(--accent);border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">✍ Ask Claude</b><select id="srAskMode" class="kw-sel" onchange="_series.askMode=this.value;_series.askN=undefined;_series.ask=document.getElementById('srAsk').value;hubSeriesDraw()"><option value="ask"${S.askMode !== 'split' ? ' selected' : ''}>write ideas for my ask</option><option value="split"${S.askMode === 'split' ? ' selected' : ''}>split my pasted list</option></select><span style="font-size:10.5px;color:var(--text3);">${S.askMode === 'split' ? 'paste your info → Claude splits it into one idea per item (nothing invented) → a new Run' : 'a specific ask → Claude writes the ideas → a new Run on this Series'}</span>
@@ -19037,7 +19037,7 @@ function hubSeriesDraw() {
       <select id="srAskShape" class="kw-sel"><option value="single"${S.askShape !== 'carousel' ? ' selected' : ''}>single posts</option><option value="carousel"${S.askShape === 'carousel' ? ' selected' : ''}>one carousel</option></select>
       <button style="${B}border-color:var(--accent);color:var(--accent);" onclick="hubSeriesAsk()">${S.askMode === 'split' ? 'Split → new run' : 'Ask → new run'}</button></div>` : ''}
     <div style="font-size:11.5px;color:${S.err ? '#f87171' : 'var(--text3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
-    ${D ? hubSeriesCatsHtml(B) : ''}
+    ${D ? hubSeriesCatsHtml(B) + hubSeriesListsHtml(B, card) : ''}
     ${srcs.map(k => { const list = D.sources[k], open = S.open[k] === true;   // every group starts collapsed (operator 2026-10-29)
       return `<div style="margin:6px 0;border:1px solid var(--border);border-radius:6px;"><div class="hkw-hd" onclick="_series.open['${esc(k)}']=${open ? 'false' : 'true'};hubSeriesDraw()" style="padding:5px 8px;cursor:pointer;font-weight:600;font-size:12px;display:flex;gap:6px;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--text3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
         ${open ? `<div style="padding:0 8px 4px;">${list.map(x => card(k, x)).join('')}</div>` : ''}</div>`; }).join('') || (D ? '<div style="font-size:12px;color:var(--text3);">No ideas found yet — save the title research, add keywords to its topic, or attach a product.</div>' : '')}
@@ -19112,14 +19112,14 @@ function hubSeriesRunPick(rt) {
 function hubSeriesRunInfoText() {
   const S = _series, D = S && S.data; if (!D || !D.runTypes) return '';
   const id = S.runType || (document.getElementById('srRunType') || {}).value || D.runTypes[0].id;
-  if (id === '__paste') return 'Built only from your list — nothing gathered or invented. Each line seeds its asset\'s title and its Keyword Seed (the writer\'s subject, and the first keyword an SEO post must place). Topical posts get their interview flagged.';
+  if (id === '__paste') return 'Your list is saved as a run below (📋), one row per line — nothing gathered or invented, no assets yet. Each row makes its asset when you pick a kind; the line seeds the asset\'s title and its Keyword Seed (the writer\'s subject, and the first keyword an SEO post must place).';
   const rt = D.runTypes.find(r => r.id === id); if (!rt) return '';
   const n = hubSeriesRunPick(rt).length;
   return `${rt.formula} · ${rt.cadence} · from ${rt.sources.join(', ')} · ${n ? n + ' unused idea' + (n === 1 ? '' : 's') + ' ready' : 'no unused ideas in these sources yet'}`;
 }
 function hubSeriesRunInfo() { const el = document.getElementById('srRunInfo'); if (el) el.textContent = hubSeriesRunInfoText(); }
 function hubSeriesRunPickType(v) {   // Paste list adds its own controls, so the modal redraws (keeping any text already pasted)
-  const S = _series; if (!S) return; const ta = document.getElementById('srPaste'); if (ta) S.paste = ta.value;
+  const S = _series; if (!S) return; const ta = document.getElementById('srPaste'); if (ta) S.paste = ta.value; const to = document.getElementById('srPasteTo'); if (to) S.pasteTo = to.value;
   const was = S.runType === '__paste'; S.runType = v; if (was || v === '__paste') hubSeriesDraw(); else hubSeriesRunInfo();
 }
 // ＋ Run → Paste list: lines (bullets / numbering stripped, de-duplicated, max 25). Separate posts = one seriesUseIdea per line
@@ -19127,28 +19127,66 @@ function hubSeriesRunPickType(v) {   // Paste list adds its own controls, so the
 function hubSeriesPasteLines(text) { const seen = new Set(); return String(text || '').split('\n').map(l => l.replace(/^\s*(?:[-*•·]|\d+[.)])\s*/, '').trim()).filter(l => l && !seen.has(l.toLowerCase()) && seen.add(l.toLowerCase())).slice(0, 25); }
 async function hubSeriesPasteRun() {
   const S = _series, D = S && S.data; if (!D) return;
-  S.paste = document.getElementById('srPaste').value; S.pasteKind = document.getElementById('srPasteKind').value;
-  const lines = hubSeriesPasteLines(S.paste), kind = S.pasteKind;
+  S.paste = document.getElementById('srPaste').value; S.pasteTo = document.getElementById('srPasteTo').value;
+  const lines = hubSeriesPasteLines(S.paste).length ? String(S.paste).split('\n') : [];
   if (!lines.length) { S.msg = '✗ Paste a list — one topic per line'; return hubSeriesDraw(); }
+  const to = (D.lists || []).find(l => l.id === S.pasteTo);
+  S.msg = to ? '⏳ Adding to ' + to.name + '…' : '⏳ Saving the run…'; hubSeriesDraw();
+  const r = await call('seriesLists', { titleId: S.tid, op: to ? 'append' : 'create', listId: to ? to.id : undefined, lines }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { S.msg = '✗ ' + ((r && r.error) || 'no response'); return hubSeriesDraw(); }
+  D.lists = r.lists; S.paste = ''; S.pasteTo = to ? r.listId : ''; S.open['__list:' + r.listId] = true;
+  const L = r.lists.find(l => l.id === r.listId) || {};
+  S.msg = (to ? '✓ ' + r.added + ' line' + (r.added === 1 ? '' : 's') + ' added to the end of ' + L.name : '✓ Run "' + L.name + '" saved with ' + r.added + ' line' + (r.added === 1 ? '' : 's')) + (r.skipped ? ' (' + r.skipped + ' already in it, skipped)' : '') + ' — pick what each line becomes below';
+  hubSeriesDraw();
+}
+// 📋 list runs: one collapsed group per saved list, its lines as idea rows (the usual ＋ buttons); Create all makes every unused line
+function hubSeriesListsHtml(B, card) {
+  const S = _series, lists = (S.data && S.data.lists) || []; if (!lists.length) return '';
+  return lists.map(L => { const k = '__list:' + L.id, open = S.open[k] === true, used = L.items.filter(x => S.used && S.used.has(x.id)).length;
+    return `<div style="margin:6px 0;border:1px solid #f5c542;border-radius:6px;"><div class="hkw-hd" style="padding:5px 8px;font-weight:600;font-size:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span onclick="_series.open['${esc(k)}']=${open ? 'false' : 'true'};hubSeriesDraw()" style="cursor:pointer;flex:1;min-width:160px;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span> 📋 ${esc(L.name)} <span style="font-weight:400;color:var(--text3);">(${L.items.length} · ${used} used)</span></span>
+      <button style="${B}" title="Paste more lines onto the end of this run" onclick="hubSeriesListAddTo('${esc(L.id)}')">＋ add to run</button>
+      <select id="srAll_${esc(L.id)}" class="kw-sel" style="font-size:10.5px;"><option value="seo">all unused → Topical - SEO Posts</option><option value="single">all unused → Single Posts</option><option value="youtube">all unused → Topical - YouTube</option><option value="carousel">all unused → one carousel</option></select>
+      <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesListMakeAll('${esc(L.id)}')">Create all</button>
+      <button style="${B}color:#f87171;" title="Delete this run (assets already made from it stay)" onclick="hubSeriesListDelete('${esc(L.id)}')">×</button></div>
+      ${open ? `<div style="padding:0 8px 4px;">${L.items.map(x => card(k, x)).join('') || '<div style="font-size:11.5px;color:var(--text3);padding:4px;">No lines yet.</div>'}</div>` : ''}</div>`; }).join('');
+}
+function hubSeriesListAddTo(listId) { const S = _series; if (!S) return; const ta = document.getElementById('srPaste'); if (ta) S.paste = ta.value; S.runType = '__paste'; S.pasteTo = listId; hubSeriesDraw(); const t = document.getElementById('srPaste'); if (t) { t.scrollIntoView({ block: 'center' }); t.focus(); } }
+async function hubSeriesListDelete(listId) {
+  const S = _series, L = ((S && S.data && S.data.lists) || []).find(l => l.id === listId); if (!L) return;
+  if (!confirm('Delete the run "' + L.name + '" and its ' + L.items.length + ' lines? Assets already made from it stay.')) return;
+  const r = await call('seriesLists', { titleId: S.tid, op: 'delete', listId }).catch(e => ({ error: e.message }));
+  if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response'); else { S.data.lists = r.lists; if (S.pasteTo === listId) S.pasteTo = ''; S.msg = '✓ Run "' + L.name + '" deleted'; }
+  hubSeriesDraw();
+}
+async function hubSeriesListMakeAll(listId) {
+  const S = _series, D = S && S.data, L = ((D && D.lists) || []).find(l => l.id === listId); if (!L) return;
+  const kind = document.getElementById('srAll_' + listId).value, items = L.items.filter(x => !(S.used && S.used.has(x.id)));
+  if (!items.length) { S.msg = '✗ Every line in ' + L.name + ' is already used'; return hubSeriesDraw(); }
+  return hubSeriesPasteMake(items, kind, L.name);
+}
+// make assets from list lines: separate posts = one seriesUseIdea per line (title + blurb from the line, Keyword Seed = the line,
+// interview flagged for topical kinds); one carousel = seriesRun 'paste' (one Run asset, a slide per line)
+async function hubSeriesPasteMake(items, kind, listName) {
+  const S = _series, D = S && S.data; if (!D) return;
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
   if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
   const base = { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug };
-  const idOf = t => 'paste:' + t.toLowerCase().slice(0, 120);
+  const src = 'Paste list: ' + listName;
   if (kind === 'carousel') {
-    S.msg = '⏳ Creating one carousel from ' + lines.length + ' lines…'; hubSeriesDraw();
-    const r = await call('seriesRun', { ...base, runType: 'paste', ideas: lines.map(t => ({ id: idOf(t), t, src: 'Paste list' })), assetType: hubSeriesType(S.slug, 'carousel') }).catch(e => ({ error: e.message }));
+    S.msg = '⏳ Creating one carousel from ' + items.length + ' lines…'; hubSeriesDraw();
+    const r = await call('seriesRun', { ...base, runType: 'paste', ideas: items.slice(0, 25).map(x => ({ id: x.id, t: x.t, src })), assetType: hubSeriesType(S.slug, 'carousel') }).catch(e => ({ error: e.message }));
     if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
-    else { S.used = new Set(r.used || []); S.paste = ''; S.msg = '✓ Paste list run created — one carousel, ' + r.posts + ' slides on one Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
+    else { S.used = new Set(r.used || []); S.msg = '✓ One carousel created — ' + r.posts + ' slides on one Development asset' + (items.length > 25 ? ' (the first 25 lines; run it again for the rest)' : ''); hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
     return hubSeriesDraw();
   }
   const label = { single: 'Single Post', seo: 'Topical - SEO Post', youtube: 'Topical - YouTube' }[kind], made = [], failed = [];
-  for (let i = 0; i < lines.length; i++) {
-    S.msg = '⏳ ' + (i + 1) + ' / ' + lines.length + ' — ' + label + ': ' + lines[i]; hubSeriesDraw();
-    const r = await call('seriesUseIdea', { ...base, ideaId: idOf(lines[i]), idea: lines[i], source: 'Paste list', kind, assetType: hubSeriesType(S.slug, kind), keywordSeed: lines[i] }).catch(e => ({ error: e.message }));
-    if (!r || r.error) failed.push(lines[i] + ' (' + ((r && r.error) || 'no response') + ')'); else { made.push(lines[i]); S.used = new Set(r.used || []); }
+  for (let i = 0; i < items.length; i++) {
+    S.msg = '⏳ ' + (i + 1) + ' / ' + items.length + ' — ' + label + ': ' + items[i].t; hubSeriesDraw();
+    const r = await call('seriesUseIdea', { ...base, ideaId: items[i].id, idea: items[i].t, source: src, kind, assetType: hubSeriesType(S.slug, kind), keywordSeed: items[i].t }).catch(e => ({ error: e.message }));
+    if (!r || r.error) failed.push(items[i].t + ' (' + ((r && r.error) || 'no response') + ')'); else { made.push(items[i].t); S.used = new Set(r.used || []); }
   }
-  S.paste = failed.map(f => f.replace(/ \([^)]*\)$/, '')).join('\n');   // only the lines that failed stay in the box, to retry
-  S.msg = (made.length ? '✓ ' + made.length + ' ' + label + (made.length === 1 ? '' : 's') + ' created from your list' + (kind !== 'single' ? ' (interviews flagged)' : '') : '') + (failed.length ? (made.length ? ' · ' : '') + '✗ ' + failed.length + ' not created: ' + failed.join(' · ') : '');
+  S.msg = (made.length ? '✓ ' + made.length + ' ' + label + (made.length === 1 ? '' : 's') + ' created from ' + listName + (kind !== 'single' ? ' (interviews flagged)' : '') : '') + (failed.length ? (made.length ? ' · ' : '') + '✗ ' + failed.length + ' not created (still unused — Create all again to retry): ' + failed.join(' · ') : '');
   if (made.length) hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug));
   hubSeriesDraw();
 }
@@ -19185,13 +19223,13 @@ async function hubSeriesAsk() {
 }
 async function hubSeriesUse(kind, src, ideaId) {
   const S = _series; if (!S || !S.data) return;
-  const cat = src === '__cat' ? (S.data.cats || []).find(c => c.id === ideaId) : null;
-  const x = cat ? { id: cat.id, t: cat.name + (cat.def ? ' — ' + cat.def : '') } : (S.data.sources[src] || []).find(i => i.id === ideaId); if (!x) return;
-  if (cat) src = 'Category: ' + cat.name;
+  const cat = src === '__cat' ? (S.data.cats || []).find(c => c.id === ideaId) : null, list = /^__list:/.test(src) ? (S.data.lists || []).find(l => l.id === src.slice(7)) : null;
+  const x = cat ? { id: cat.id, t: cat.name + (cat.def ? ' — ' + cat.def : '') } : list ? list.items.find(i => i.id === ideaId) : (S.data.sources[src] || []).find(i => i.id === ideaId); if (!x) return;
+  if (cat) src = 'Category: ' + cat.name; if (list) src = 'Paste list: ' + list.name;
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
   if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
   S.msg = '⏳ Creating…'; hubSeriesDraw();
-  const r = await call('seriesUseIdea', { titleId: S.tid, titleName: row.title || '', seriesAssetId: S.seriesAssetId, ideaId, idea: x.t, source: src, kind, assetType: hubSeriesType(S.slug, kind), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
+  const r = await call('seriesUseIdea', { titleId: S.tid, titleName: row.title || '', seriesAssetId: S.seriesAssetId, ideaId, idea: x.t, source: src, kind, assetType: hubSeriesType(S.slug, kind), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug, ...(list ? { keywordSeed: x.t } : {}) }).catch(e => ({ error: e.message }));
   if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
   else { S.used = new Set(r.used || []); S.msg = '✓ ' + ({ single: 'Single Post', carousel: 'Carousel', seo: 'SEO Post (interview flagged)', youtube: 'YouTube' })[kind] + ' created from the idea — it counts as a Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
   hubSeriesDraw();

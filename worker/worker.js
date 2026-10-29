@@ -21276,6 +21276,28 @@ ${JSON.stringify(products)}`;
       // seriesCats {titleId, op:"get"|"save", style, cats:[{id,name,def}]} — a Series' standing CATEGORIES (each one a lane
       // the series keeps putting out, never "used up") + its RESEARCH STYLE (the spec every ChatGPT prompt is built from).
       // KV series:cats:<titleId>, no expiry.
+      // seriesLists {titleId, op: get|create|append|delete, listId?, name?, lines[]} — Paste list runs saved on a Series (operator
+      // 2026-10-29): the operator's own topic lines, kept until deleted, each line an idea the modal turns into assets. append adds
+      // lines to the END of an existing list; a line already in that list is skipped. KV series:lists:<titleId>, no expiry.
+      if (body.action === "seriesLists") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const tid = String(body.titleId || "").replace(/-/g, ""); if (!tid) return json({ error: "titleId required" }, 400);
+        const key = "series:lists:" + tid, lists = (await env.TRADES.get(key, "json")) || [];
+        if (body.op === "create" || body.op === "append") {
+          const lines = (Array.isArray(body.lines) ? body.lines : []).map(l => String(l).replace(/^\s*(?:[-*•·]|\d+[.)])\s*/, "").trim().slice(0, 500)).filter(Boolean);
+          if (!lines.length) return json({ error: "Paste at least one line" }, 400);
+          let L = body.op === "append" ? lists.find(l => l.id === body.listId) : null;
+          if (body.op === "append" && !L) return json({ error: "That run no longer exists" }, 404);
+          if (!L) { L = { id: "pl" + Date.now().toString(36), name: String(body.name || "").trim().slice(0, 80) || "Paste list · " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }), at: Date.now(), items: [] }; lists.unshift(L); }
+          const have = new Set(L.items.map(i => i.t.toLowerCase())); let n = L.items.reduce((m, i) => Math.max(m, Number(String(i.id).split(":").pop()) || 0), 0), added = 0;
+          for (const t of lines) { if (have.has(t.toLowerCase()) || L.items.length >= 200) continue; have.add(t.toLowerCase()); L.items.push({ id: L.id + ":" + (++n), t }); added++; }
+          L.updatedAt = Date.now();
+          await env.TRADES.put(key, JSON.stringify(lists.slice(0, 30)));
+          return json({ ok: true, lists: lists.slice(0, 30), listId: L.id, added, skipped: lines.length - added });
+        }
+        if (body.op === "delete") { const next = lists.filter(l => l.id !== body.listId); await env.TRADES.put(key, JSON.stringify(next)); return json({ ok: true, lists: next }); }
+        return json({ ok: true, lists });
+      }
       if (body.action === "seriesCats") {
         const tid = String(body.titleId || "").replace(/-/g, ""); if (!tid) return json({ error: "titleId required" }, 400);
         const key = "series:cats:" + tid;
@@ -21296,7 +21318,8 @@ ${JSON.stringify(products)}`;
         if (!body.titleId) return json({ error: "titleId required" }, 400);
         try { const r = await seriesIdeas(env, body.titleId, !!body.force); const used = (await env.TRADES.get("series:used:" + String(body.titleId).replace(/-/g, ""), "json")) || [];
           const cs = (await env.TRADES.get("series:cats:" + String(body.titleId).replace(/-/g, ""), "json")) || { style: "", cats: [] };
-          return json({ ok: true, ...r, used, runTypes: RUN_TYPES, cats: cs.cats || [], style: cs.style || "" }); } catch (e) { return json({ error: e.message }, 500); }
+          const lists = (await env.TRADES.get("series:lists:" + String(body.titleId).replace(/-/g, ""), "json")) || [];
+          return json({ ok: true, ...r, used, runTypes: RUN_TYPES, cats: cs.cats || [], style: cs.style || "", lists }); } catch (e) { return json({ error: e.message }, 500); }
       }
       // seriesUseIdea {titleId, seriesAssetId, ideaId, idea, kind: single|carousel|youtube, assetType, campaignId, productId, slug}
       // → an EMPTY Development child (linked to the Series parent, the idea noted on it); the idea is marked used
