@@ -21541,21 +21541,17 @@ ${JSON.stringify(products)}`;
       }
       // ── Digest parent actions (operator 2026-10-20) ──
       // digestPreview {campaignId,digestId,assetId?|itemId?} — read-only rendered preview + source packet for one digest piece.
-      // listDigestIssues — every generated Premium / Free issue across hubs (operator 2026-10-29: issues need to be viewable outside
-      // their parent; articles are read on the published hub). Newest first; each row carries what digestPreview needs.
-      if (body.action === "listDigestIssues") {
+      // digestIssueInfo {assetId} — is this asset a generated Premium / Free issue, and of which Digest parent and hub? The Publish
+      // modal uses it to offer the issue reader preview (operator 2026-10-29: issues need viewing; articles are read on the hub).
+      if (body.action === "digestIssueInfo") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const id = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
+        const page = await ivPage(id), p = page.properties || {}, type = p["Asset Type"]?.select?.name || "";
+        const digestId = hubAssetId(ivRid(p, "Parent Asset") || "");
+        if (!/^newsletter (paid|free)$/i.test(type) || !digestId) return json({ ok: true, issue: null });
         await hubSitesMerge(env);
-        const types = ["Newsletter paid", "Newsletter Free"];   // the Notion option names (writes of "Newsletter Paid" land on "Newsletter paid")
-        const rows = await notionQuery(ASSETS_DB, { filter: { or: types.map(name => ({ property: "Asset Type", select: { equals: name } })) },
-          sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { throw new Error("issues: " + e.message); });
-        const issues = rows.filter(r => !r.archived && !r.in_trash && ivRid(r.properties || {}, "Parent Asset")).slice(0, 300).map(r => {
-          const p = r.properties || {}, cid = hubAssetId(ivRid(p, "Campaign") || ""), hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === cid) || {};
-          return { assetId: hubAssetId(r.id), digestId: hubAssetId(ivRid(p, "Parent Asset")), campaignId: cid, slug: hub.slug || "", hub: hub.name || "",
-            kind: /paid/i.test(p["Asset Type"]?.select?.name || "") ? "premium" : "free", created: r.created_time,
-            title: hubRichText(p["Asset Title"]?.title), subject: hubRichText(p["Platform Title"]?.rich_text), status: p["Asset Status"]?.select?.name || "" };
-        });
-        return json({ ok: true, issues });
+        const cid = hubAssetId(ivRid(p, "Campaign") || ""), hub = HUB_SITES.find(x => hubAssetId(x.campaignId) === cid) || {};
+        return json({ ok: true, issue: { assetId: id, digestId, campaignId: cid, slug: hub.slug || "", kind: /paid/i.test(type) ? "premium" : "free" } });
       }
       if (body.action === "digestPreview") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);

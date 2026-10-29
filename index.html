@@ -766,14 +766,6 @@
       <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div>
     </div>
 
-    <!-- DIGEST ISSUES (operator 2026-10-29) — every generated Premium / Free issue across hubs, each opening the large reader preview -->
-    <div class="oc-sec" data-ock="digestissues"><div class="oc-hd" onclick="ocToggle(event,this);dissLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
-      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Digest Issues</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Every generated Premium and Free issue, newest first. Preview opens the reader view.</span>
-      <button onclick="dissLoad(true)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>
-    <div class="oc-bd"><div id="dissBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div>
-    </div>
-
     <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
     <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
@@ -2194,6 +2186,7 @@
       <div class="modal-title" id="careGapEditorTitle" style="margin:0;flex:1;">Asset editor</div>
       <button class="modal-btn" onclick="closeCareGapEditor()" style="flex:0 0 auto;background:transparent;border-color:var(--border2);color:var(--text2);">Close ✕</button>
     </div>
+    <div id="careGapIssuePreview" hidden style="padding:8px 14px;border-bottom:1px solid var(--border2);background:var(--surface);font-size:12px;flex:0 0 auto;"></div>
     <div id="careGapTopicalWrite" hidden style="padding:12px 14px;border-bottom:1px solid var(--border2);background:var(--surface);font-size:12px;flex:0 0 auto;max-height:35vh;overflow:auto;"></div>
     <iframe id="careGapEditorFrame" title="Asset editor"></iframe>
   </div>
@@ -4542,27 +4535,6 @@ async function initvSave() {
   const msg = document.getElementById('initvMsg'); if (msg) msg.textContent = 'Saving…';
   const r = await call('saveInfoFlowTable', { name: 'initiatives', table: _initv }).catch(e => ({ error: e.message }));
   if (msg) { msg.style.color = r && !r.error ? 'var(--text3)' : '#f87171'; msg.textContent = r && !r.error ? 'Saved' : 'Not saved: ' + ((r && r.error) || 'no response'); }
-}
-// ── Digest Issues (All Output): worker listDigestIssues → rows; Preview reuses the Digest section's reader modal (hub2DigestPreview). ──
-let _diss = null;
-async function dissLoad(force) {
-  if (_diss && !force) return;
-  const el = document.getElementById('dissBody'); if (el) el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading…</div>';
-  const r = await call('listDigestIssues', {}).catch(e => ({ error: e.message }));
-  if (!r || r.error) { if (el) el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc((r && r.error) || 'no response')}</div>`; return; }
-  _diss = r.issues || []; dissPaint();
-}
-function dissPaint() {
-  const el = document.getElementById('dissBody'); if (!el) return;
-  if (!_diss.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);">No issues yet — generate them from a Digest Parent in a hub’s Digest section.</div>'; return; }
-  const td = 'padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top;';
-  el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${['Date', 'Hub', 'Issue', 'Subject', 'Status', ''].map(h => `<th style="text-align:left;font-size:11px;color:var(--text3);padding:4px 6px;border-bottom:1px solid var(--border2);">${h}</th>`).join('')}</tr></thead><tbody>${_diss.map(x => `<tr>
-    <td style="${td}white-space:nowrap;">${esc(new Date(x.created).toLocaleDateString([], { month: 'short', day: 'numeric' }))}</td>
-    <td style="${td}">${esc(x.hub || x.slug || '—')}</td>
-    <td style="${td}white-space:nowrap;color:${x.kind === 'premium' ? '#f5c542' : '#4ade80'};">${x.kind === 'premium' ? '★ Premium' : 'Free'}</td>
-    <td style="${td}">${esc(x.subject || x.title || '(no subject yet)')}</td>
-    <td style="${td}white-space:nowrap;">${esc(x.status)}</td>
-    <td style="${td}white-space:nowrap;">${x.slug ? `<button onclick="hub2DigestPreview('${esc(x.slug)}','${esc(x.digestId)}','${esc(x.assetId)}','')" style="font-size:11px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">Preview</button>` : ''} <a href="https://www.notion.so/${esc(x.assetId)}" target="_blank" rel="noopener" style="font-size:10.5px;color:var(--text3);">Notion ↗</a></td></tr>`).join('')}</tbody></table></div>`;
 }
 // Collapsible sections (Output / Flow / Pillar / All Output / New Flow): every page load starts them all collapsed
 const OC_OPEN = {};
@@ -11981,10 +11953,21 @@ function openCareGapEditor(campId, assetId, titleId) {
   CARE_GAP_EDITOR_ASSET = String(assetId || '').replace(/-/g, '');
   const generation = ++CARE_GAP_EDITOR_LOAD;
   const writePanel = document.getElementById('careGapTopicalWrite'); writePanel.hidden = true; writePanel.innerHTML = '';
-  if (CARE_GAP_EDITOR_ASSET) careGapTopicalLoad(CARE_GAP_EDITOR_ASSET, generation);
+  const issuePanel = document.getElementById('careGapIssuePreview'); issuePanel.hidden = true; issuePanel.innerHTML = '';
+  if (CARE_GAP_EDITOR_ASSET) { careGapTopicalLoad(CARE_GAP_EDITOR_ASSET, generation); careGapIssueLoad(CARE_GAP_EDITOR_ASSET, generation); }
   document.getElementById('careGapEditorTitle').textContent = assetId ? 'Publish asset' : 'Create asset';
   frame.src = careGapModalUrl(campId, assetId, titleId);
   modal.classList.add('open');
+}
+// A Premium / Free digest issue gets a reader-preview button in its Publish modal (worker digestIssueInfo → the same large
+// previewer the Digest section uses). Other asset types show nothing.
+async function careGapIssueLoad(assetId, generation) {
+  const panel = document.getElementById('careGapIssuePreview');
+  const r = await call('digestIssueInfo', { assetId }).catch(() => null);
+  if (generation !== CARE_GAP_EDITOR_LOAD || assetId !== CARE_GAP_EDITOR_ASSET || !panel) return;
+  const x = r && r.issue; if (!x || !x.slug) { panel.hidden = true; panel.innerHTML = ''; return; }
+  panel.innerHTML = `<button onclick="hub2DigestPreview('${esc(x.slug)}','${esc(x.digestId)}','${esc(x.assetId)}','')" style="font-size:12px;padding:4px 12px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;">📰 Preview ${x.kind === 'premium' ? '★ Premium' : 'Free'} issue</button> <span style="color:var(--text3);font-size:11px;">the reader view of this issue, with its sources</span>`;
+  panel.hidden = false;
 }
 function closeCareGapEditor() {
   const modal = document.getElementById('careGapEditorModal');
@@ -17181,7 +17164,7 @@ function hub2DigestPreviewClose() {
 function hub2DigestPreviewShell(loadingText) {
   let root = document.getElementById('hub2DigestPreviewLayer');
   if (!root) { root = document.createElement('div'); root.id = 'hub2DigestPreviewLayer'; document.body.appendChild(root); }
-  root.style.cssText = 'position:fixed;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(10,10,10,.82);overflow:auto;';
+  root.style.cssText = 'position:fixed;inset:0;z-index:10100;display:flex;align-items:center;justify-content:center;padding:12px;background:rgba(10,10,10,.82);overflow:auto;';
   root.innerHTML = `<div style="width:min(980px,100%);max-height:96vh;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;background:#f7f1e6;color:#2b2620;box-shadow:0 18px 60px rgba(0,0,0,.5);"><div style="padding:16px 20px 12px;border-bottom:1px solid #d9cfbf;flex:none;"><div style="font-size:11px;color:#766d62;letter-spacing:.08em;text-transform:uppercase;">Reader preview · not published</div><h2 data-preview-title style="margin:4px 0 10px;font:600 23px/1.2 Georgia,serif;color:#2b2620;"></h2><dl data-preview-provenance style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px 14px;margin:0;font:12px/1.4 system-ui,sans-serif;"></dl></div><div data-preview-content style="min-height:0;overflow:auto;overscroll-behavior:contain;padding:14px 18px;flex:1;"><div style="font:14px system-ui,sans-serif;color:#70685e;">${esc(loadingText || 'Loading the reader view…')}</div></div><div style="padding:10px 14px;border-top:1px solid #d9cfbf;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f7f1e6;flex:none;"><span data-preview-message aria-live="polite" style="font:12px system-ui,sans-serif;color:#70685e;flex:1;min-width:180px;"></span><button type="button" data-preview-flag style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:transparent;color:#4d3d2c;cursor:pointer;">Flag for interview</button><button type="button" data-preview-publish style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:#8a6d4b;color:#fff;cursor:pointer;">Publish</button><button type="button" onclick="hub2DigestPreviewClose()" style="padding:7px 12px;border:1px solid #8a6d4b;border-radius:6px;background:transparent;color:#4d3d2c;cursor:pointer;">Close</button></div></div>`;
   root.onclick = ev => { if (ev.target === root) hub2DigestPreviewClose(); };
   return root;
