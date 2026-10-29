@@ -21278,7 +21278,8 @@ ${JSON.stringify(products)}`;
       // KV series:cats:<titleId>, no expiry.
       // seriesLists {titleId, op: get|create|append|delete, listId?, name?, lines[]} — Paste list runs saved on a Series (operator
       // 2026-10-29): the operator's own topic lines, kept until deleted, each line an idea the modal turns into assets. append adds
-      // lines to the END of an existing list; a line already in that list is skipped. KV series:lists:<titleId>, no expiry.
+      // lines to the END of an existing list; a line already in that list is skipped. A new run is named after its top line (and that
+      // line stays one of its topics). KV series:lists:<titleId>, no expiry.
       if (body.action === "seriesLists") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const tid = String(body.titleId || "").replace(/-/g, ""); if (!tid) return json({ error: "titleId required" }, 400);
@@ -21288,7 +21289,7 @@ ${JSON.stringify(products)}`;
           if (!lines.length) return json({ error: "Paste at least one line" }, 400);
           let L = body.op === "append" ? lists.find(l => l.id === body.listId) : null;
           if (body.op === "append" && !L) return json({ error: "That run no longer exists" }, 404);
-          if (!L) { L = { id: "pl" + Date.now().toString(36), name: String(body.name || "").trim().slice(0, 80) || "Paste list · " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }), at: Date.now(), items: [] }; lists.unshift(L); }
+          if (!L) { L = { id: "pl" + Date.now().toString(36), name: String(body.name || lines[0] || "").trim().slice(0, 80) || "Paste list · " + new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" }), at: Date.now(), items: [] }; lists.unshift(L); }
           const have = new Set(L.items.map(i => i.t.toLowerCase())); let n = L.items.reduce((m, i) => Math.max(m, Number(String(i.id).split(":").pop()) || 0), 0), added = 0;
           for (const t of lines) { if (have.has(t.toLowerCase()) || L.items.length >= 200) continue; have.add(t.toLowerCase()); L.items.push({ id: L.id + ":" + (++n), t }); added++; }
           L.updatedAt = Date.now();
