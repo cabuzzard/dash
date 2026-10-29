@@ -12256,7 +12256,9 @@ function hubCheckGoal(slug, t) { const g = HUBCHECK_GOALS && (HUBCHECK_GOALS.goa
 // "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
 // + 'Profile parent' (2026-10-23): the Profile collector (Pillar Type "Profile") — one platform profile (Fiverr, Upwork…) per hub
 // + 'Premium parent' (2026-10-24): a Premium Take — the Product parent built from an asset's banked expert-check arguments
-const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent', 'Premium parent'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
+// + the digest issues (2026-10-29): stored as Asset Types "Newsletter paid" / "Newsletter Free", shown as Premium issue / Free issue
+const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent', 'Premium parent', 'Newsletter paid', 'Newsletter Free'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
+const hubCheckLabel = t => /^newsletter paid$/i.test(t) ? 'Premium issue' : /^newsletter free$/i.test(t) ? 'Free issue' : t;
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
   const cid = String(r.campId || '').replace(/-/g, '');
@@ -12314,7 +12316,7 @@ function hubCheckOpen(i, j, kind) {
 // titles on live products; never an out-of-sync one). Parent columns make that parent (Pillar · <name>). The Digest parent has
 // no ＋ — the weekly cron keeps exactly one per hub, and a hand-made one would repoint the hub's digest. Worker createDevAssets.
 function hubCheckTypeSpec(t) { const m = String(t).match(/^(.*) parent$/i); return m ? { assetType: m[1].trim(), pillar: true, label: m[1].trim() } : { assetType: t, pillar: false, label: t }; }
-function hubCheckCanAdd(t) { return !/^digest parent$/i.test(t); }
+function hubCheckCanAdd(t) { return !/^digest parent$/i.test(t) && !/^newsletter (paid|free)$/i.test(t); }   // issues are generated from a Digest Parent, never added empty
 function hubCheckTitles(slug) {
   const seen = new Map();
   for (const r of (DEV2_ROWS || [])) {
@@ -12390,7 +12392,7 @@ function renderHubChecklist() {
   const rwBadge = (n, hi, ci) => n ? `<span style="color:var(--text3);"> · </span><span style="color:#3b82f6;font-weight:700;cursor:pointer;" onclick="hubCheckOpen(${hi},${ci},'flag')" title="Interview finished — the live text is waiting for a ↻ Rewrite">↻${n}</span>` : '';
   const nf = (slug, t) => (flag[slug + '|' + t] || []).length;
   const left = types.filter(t => !cols.includes(t));
-  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>`
+  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option>${left.map(t => `<option value="${esc(t)}">${esc(hubCheckLabel(t))}</option>`).join('')}</select>`
     + `<span style="font-size:11px;color:var(--text3);">${cols.length} column${cols.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
   if (!cols.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
   const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;';
@@ -12404,7 +12406,7 @@ function renderHubChecklist() {
     + (fl ? dot + `<span style="color:#dc2626;font-weight:700;${clickFlag ? 'cursor:pointer;' : ''}${onFlag ? 'text-decoration:underline;' : ''}"${clickFlag ? ` onclick="${clickFlag}"` : ''} title="Flagged — waiting on its interview (a digest: at Review)">⚑${fl}</span>` : '');
   const gsum = list => { const g = list.filter(Boolean); return g.length ? { goal: g.reduce((a, x) => a + x.goal, 0), cadence: 'each method’s own', method: 'sum of the goals' } : null; };
   let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Each cell: <b style="color:#ff7a00;">goal this period</b> · <b>development</b> · <b style="color:#16a34a;">published</b> · <b style="color:#dc2626;">⚑ flagged</b> (an asset waiting on its own interview; a digest at Review) — counts are assets on synced, live titles and products (all-time); goals come from the Current Methods worksheet’s tracked methods and reset each period by cron${HUBCHECK_GOALS && HUBCHECK_GOALS.at ? ' (updated ' + new Date(HUBCHECK_GOALS.at).toLocaleString() + ')' : ''}</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th>`
-    + cols.map((t, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="hubCheckDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,${i})" title="Drag to reorder"><div>${esc(t)}</div><div style="font-weight:400;">${hubCheckCanAdd(t) ? `<button onclick="hubCheckAddAsset(${i})" title="Add an unwritten ${esc(t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+    + cols.map((t, i) => `<th style="${th}cursor:grab;" draggable="true" ondragstart="hubCheckDragStart(event,${i})" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,${i})" title="Drag to reorder"><div>${esc(hubCheckLabel(t))}</div><div style="font-weight:400;">${hubCheckCanAdd(t) ? `<button onclick="hubCheckAddAsset(${i})" title="Add an unwritten ${esc(t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove(${i})" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
     + `<th style="${th}">Total</th></tr></thead><tbody>`;
   hubs.forEach((h, hi) => {
     let tot = 0, totD = 0, totF = 0;
