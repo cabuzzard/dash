@@ -3972,8 +3972,12 @@ async function storyWrite(env, { slotId, strategyId, titleId }) {
   const assetId = hubAssetId(created.id);
   // up to two governed writes; the second only when the first misses the format's areas or budgets
   let areas = [], problems = [], fields = {};
+  const setDescription = text => fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Description": { rich_text: ivRt(text) } } }) }).catch(() => {});
   for (let attempt = 1; attempt <= 2; attempt++) {
+    // the retry is told exactly what the first draft missed (via the subject); the plain slot text is restored after
+    if (attempt === 2) await setDescription(description + ` THE PREVIOUS DRAFT MISSED — fix exactly these: ${problems.join("; ")}. Where the format allows more areas of that kind, split a long area in two instead of cutting meaning.`);
     const w = await writeContractAsset(env, assetId).catch(e => ({ error: e.message }));
+    if (attempt === 2) await setDescription(description);
     if (w.error) {
       await fetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }).catch(() => {});
       await storyLog(env, { slotId, error: w.error, reason: w.reason || "" });
