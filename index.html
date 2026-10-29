@@ -18939,7 +18939,9 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
     const h2 = HUB_SITES.find(x => x.slug === slug) || {};
     const q = await call('queueTitleJob', { titleId: id, name: title, slug, campaignId: h2.campaignId, productId: productId || undefined, keywords: doKw, research: doRes, devAssetTypes: devTypes.length ? devTypes : undefined, pillar: doPil }).catch(e => ({ error: e.message }));
     if (!q || q.error) notes.push('research / pillar not queued: ' + ((q && q.error) || 'no response'));
-    else { queued = true; if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
+    else { queued = true; if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
+      // the job makes a Series / Digest parent first — reload the titles shortly so ✨ ideas shows without waiting for the whole job
+      if (devTypes.some(t => /^(series|digest|digest parent)$/i.test(t))) [20000, 50000].forEach(ms => setTimeout(() => hubTitlesLoad(slug, true).then(() => hubKwRefresh(slug)).catch(() => {}), ms)); }
   }
   _hubKwOpen[slug + '|ti:' + topicId] = true;
   const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doKw && 'keywords', doRes && 'research', devType && devType + ' asset', doPil && 'pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');

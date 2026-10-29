@@ -21212,9 +21212,12 @@ ${JSON.stringify(products)}`;
       }
       if (body.action === "queueTitleJob") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
-        const steps = [...(body.keywords ? [{ action: "keywords", label: "title keywords" }] : []), ...(body.research ? [{ action: "research", label: "title research" }] : []),
-          ...[...(Array.isArray(body.devAssetTypes) ? body.devAssetTypes : []), ...(body.devAssetType ? [body.devAssetType] : [])].slice(0, 12).map(t => ({ action: "devasset", label: "Development asset (" + String(t).slice(0, 60) + ")", assetType: String(t).slice(0, 100) })),
-          ...(body.pillar ? [{ action: "pillar", label: "pillar" }] : [])];
+        // a Series / Digest parent is made FIRST (operator 2026-10-29) — it's an empty record, and the title's ✨ ideas / digest controls
+        // need it; waiting behind keywords + research left it ~10 minutes away. Other child assets still come after the research.
+        const devSteps = [...(Array.isArray(body.devAssetTypes) ? body.devAssetTypes : []), ...(body.devAssetType ? [body.devAssetType] : [])].slice(0, 12).map(t => ({ action: "devasset", label: "Development asset (" + String(t).slice(0, 60) + ")", assetType: String(t).slice(0, 100) }));
+        const isParentStep = x => /^series$/i.test(x.assetType) || isDigestParentType(x.assetType);
+        const steps = [...devSteps.filter(isParentStep), ...(body.keywords ? [{ action: "keywords", label: "title keywords" }] : []), ...(body.research ? [{ action: "research", label: "title research" }] : []),
+          ...devSteps.filter(x => !isParentStep(x)), ...(body.pillar ? [{ action: "pillar", label: "pillar" }] : [])];
         if (!steps.length) return json({ error: "nothing to run" }, 400);
         const id = "tj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
         await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ titleId, name: String(body.name || "Title").slice(0, 200), slug: String(body.slug || ""), cid: String(body.campaignId || "").replace(/-/g, ""), productId: String(body.productId || "").replace(/-/g, ""), styleGuidance: String(body.styleGuidance || "").slice(0, 3000), steps, i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
