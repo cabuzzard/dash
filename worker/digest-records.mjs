@@ -27,11 +27,13 @@ export function refreshPeriodFlags(items, period) {
   return (items || []).map(x => ({ ...x, inPeriod: recordInPeriod(x.date, period) }));
 }
 
-// Item ids used by a generated (done) child, per level.
+// A child's asset exists once Disseminate built it: written (done), waiting for its interview, or its write failed (fix in the
+// Publish modal). Those records count as used; running / error (asset not built) do not.
+export const DIGEST_MADE_STATES = new Set(['done', 'waiting', 'write-failed']);
 export function usedIds(children = {}) {
   const used = new Set();
-  for (const c of [...(children.premium || []), ...(children.free || [])]) if (c && c.state === 'done') for (const id of c.items || []) used.add(id);
-  for (const c of children.news || []) if (c && c.state === 'done' && c.itemId) used.add(c.itemId);
+  for (const c of [...(children.premium || []), ...(children.free || [])]) if (c && DIGEST_MADE_STATES.has(c.state)) for (const id of c.items || []) used.add(id);
+  for (const c of children.news || []) if (c && DIGEST_MADE_STATES.has(c.state) && c.itemId) used.add(c.itemId);
   return used;
 }
 export function recordState(item, used) {

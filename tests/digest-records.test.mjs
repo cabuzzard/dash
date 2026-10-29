@@ -32,8 +32,18 @@ test('record states and the 3-run carry-forward (idempotent per run; used/retire
   assert.equal(R.recordState(d.items.find(x => x.id === 'r'), R.usedIds(d.children)), 'retired');
   assert.equal(R.recordState(d.items.find(x => x.id === 'used'), R.usedIds(d.children)), 'used');
 });
-test('only DONE children mark records used', () => {
+test('a built child (done / waiting / write-failed) marks its records used; running / error do not', () => {
   assert.equal(R.usedIds({ premium: [{ state: 'running', items: ['x'] }], news: [{ state: 'error', itemId: 'y' }] }).size, 0);
+  const u = R.usedIds({ premium: [{ state: 'waiting', items: ['a'] }], free: [{ state: 'write-failed', items: ['b'] }], news: [{ state: 'done', itemId: 'c' }] });
+  assert.deepEqual([...u].sort(), ['a', 'b', 'c']);
+});
+test('Disseminate builds every asset first; interviews and write failures never stop the run', () => {
+  assert.doesNotMatch(source, /Premium generation is waiting for the required interview/);
+  assert.doesNotMatch(source, /Article generation is waiting for the required interview/);
+  const step = source.slice(source.indexOf('async function digestGenerateJobStep('), source.indexOf('// Flag the interview a digest child needs'));
+  assert.match(step, /digestChildWrite\(env, invoke, step\.assetId\)\.catch\(/);
+  assert.match(step, /out\?\.waiting \? "waiting" : out\?\.error \? "write-failed" : "done"/);
+  assert.match(source, /const dc = await digestChildWrite\(env, invokeW, body\.assetId\)/);
 });
 test('mechanical relevance: one title-anchor word, or two Research Focus words', () => {
   const anchor = R.scopeTokens('Medicare advisors near me'), focus = R.scopeTokens('Weekly signals: CMS rule changes, Part D premiums, enrollment deadlines');
@@ -65,7 +75,7 @@ test('digestItemsSave: additive run refreshes flags and carries existing unused 
 });
 test('#5 a generated Premium issue consumes its interview mapping so the next generation is a new asset', async () => {
   const start = source.indexOf('const DIGEST_GENERATE_TTL'), end = source.indexOf('// DIGEST POOL', start);
-  const c = vm.createContext({ Date, JSON, Set }); vm.runInContext(source.slice(start, end), c);
+  const c = vm.createContext({ Date, JSON, Set, DIGEST_MADE_STATES: R.DIGEST_MADE_STATES }); vm.runInContext(source.slice(start, end), c);
   const store = kv(); await store.put('digest:items:dg', JSON.stringify({ items: [{ id: 'i1' }], checks: { i1: { premium: true } }, children: { premium: [], free: [], news: [] },
     interviewAssets: [{ key: 'premium|*', assetId: 'issue1', interviewId: 'iv1' }, { key: 'article|i1', assetId: 'art1' }] }));
   const S = { id: 'job1', assetId: 'dg' }, step = { kind: 'premium', items: [{ id: 'i1' }] };
@@ -121,4 +131,24 @@ test('one digest asset type: the retired one-shot "digest" always becomes a Dige
 test('a parent made before the rename is retyped to Digest Parent on its next run', () => {
   const step = source.slice(source.indexOf('async function adStep('), source.indexOf('async function autoDigestRun('));
   assert.match(step, /kwNotionPatch\(env, S\.assetId, \{ "Asset Type": \{ select: \{ name: DIGEST_PARENT_TYPE \} \} \}\)/);
+});
+test('Disseminate run: every asset is built even when interviews are missing and a write fails', async () => {
+  const start = source.indexOf('const DIGEST_GENERATE_TTL'), end = source.indexOf('// DIGEST POOL', start);
+  const store = kv(), created = [], flagged = [];
+  const c = vm.createContext({ Date, JSON, Set, Error, console, DIGEST_MADE_STATES: R.DIGEST_MADE_STATES, hubAssetId: x => String(x || '').replace(/-/g, ''), kwDashId: x => x,
+    hubRichText: () => '', ASSETS_DB: 'assets', notionQuery: async () => [], hubMainList: async () => ['prod'], ivForTitle: async () => [], ivCreateForAsset: async (env, o) => { flagged.push(o.digestLevel); return {}; } });
+  vm.runInContext(source.slice(start, end), c);
+  c.digestChildWrite = async (env, inv, id) => id === 'aPremium' || id === 'aNews' ? { waiting: true, interviews: [] } : (() => { throw new Error('model timeout'); })();
+  await store.put('digest:items:dg', JSON.stringify({ items: [{ id: 'i1', claim: 'Rates cut' }], checks: { i1: { premium: true, free: true, news: true } }, children: { premium: [], free: [], news: [] } }));
+  const invoke = async b => { if (b.action === 'createDevAssets') { const id = b.types[0].label === 'Premium issue' ? 'aPremium' : b.types[0].label === 'Free issue' ? 'aFree' : 'aNews'; created.push(id); return { created: [{ id }] }; }
+    if (b.action === 'createNewsBlogTitle') return { success: true, titleId: 'tNews', pillarWritten: false, pillarError: 'no pillar' }; return {}; };
+  const S = { id: 'job', assetId: 'dg', cid: 'cid', titleId: 'tDigest', digestName: 'Digest', createdAt: 0 }, env = { TRADES: store };
+  for (const step of [{ action: 'digestIssue', kind: 'premium', items: [{ id: 'i1' }] }, { action: 'digestIssue', kind: 'free', items: [{ id: 'i1' }] }, { action: 'digestNews', kind: 'news', itemId: 'i1', item: { id: 'i1', claim: 'Rates cut' } }])
+    await c.digestGenerateJobStep(env, invoke, 'job', S, step);   // must not throw
+  assert.deepEqual(created, ['aPremium', 'aFree', 'aNews']);
+  assert.deepEqual(flagged.sort(), ['article', 'premium']);
+  const d = await store.get('digest:items:dg', 'json');
+  assert.equal(d.children.premium[0].state, 'waiting'); assert.equal(d.children.free[0].state, 'write-failed'); assert.equal(d.children.free[0].error, 'model timeout');
+  assert.equal(d.children.news[0].state, 'waiting'); assert.match(d.children.news[0].note, /pillar not written/);
+  assert.deepEqual(d.checks.i1, { premium: false, free: false, news: false });   // built → ticks cleared, record used
 });

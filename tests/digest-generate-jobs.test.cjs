@@ -9,7 +9,7 @@ const html = fs.readFileSync('index.html', 'utf8');
 test('digest generation checkpoints findings without clearing checks before success', async () => {
   const start = worker.indexOf('const DIGEST_GENERATE_TTL');
   const end = worker.indexOf('// DIGEST POOL', start);
-  const context = vm.createContext({ Date, JSON, Set });
+  const context = vm.createContext({ Date, JSON, Set, DIGEST_MADE_STATES: new Set(['done', 'waiting', 'write-failed']) });
   vm.runInContext(worker.slice(start, end), context);
   const values = new Map();
   const env = { TRADES: {
@@ -58,7 +58,7 @@ test('manual generation enqueues a durable job and uses titlejob runner with che
 test('shared per-hub lease serializes weekly and manual generation; digest jobs appear in the flyout', async () => {
   const start = worker.indexOf('const DIGEST_GENERATE_TTL');
   const end = worker.indexOf('// DIGEST POOL', start);
-  const context = vm.createContext({ Date, JSON, Set });
+  const context = vm.createContext({ Date, JSON, Set, DIGEST_MADE_STATES: new Set(['done', 'waiting', 'write-failed']) });
   vm.runInContext(worker.slice(start, end), context);
   const values = new Map();
   const env = { TRADES: {

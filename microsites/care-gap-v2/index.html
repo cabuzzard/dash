@@ -8421,6 +8421,10 @@ async function pubDigestCheck(itemId, target, on) {
 async function pubDigestGenerate(btn) {
   const d = PUB_DIG; if (!d) return; btn.disabled = true; btn.textContent = '⏳ Writing the ticked children…';
   try { d.requestId=d.requestId||crypto.randomUUID(); const r = await w('digestGenerate', { assetId: d.assetId, campaignId: CAMPAIGN_ID, requestId:d.requestId });
+    if (r.jobId) {   // Disseminate runs as a background job (2026-10-29): every ticked asset is built first, then written where it can be
+      delete d.requestId; btn.textContent = '⚙ Disseminate started';
+      pubDigestMsg('Building the ticked assets under this digest’s title now — they appear in a minute or two. An issue or article that needs its interview is flagged (answer it in the interview queue); a write problem shows in that asset’s Publish modal, where Write retries it.');
+      return; }
     d.children = r.children || d.children; d.checks = r.checks || d.checks; if(!r.pending&&!(r.errors||[]).length)delete d.requestId; pubDigestPaint();
     if(r.pending){pubDigestMsg('Dissemination is still running; the existing child records are retained. No duplicate write started.');return;}
     const m = r.made || {}, parts = [m.premium && 'Premium issue', m.free && 'Free issue', (m.news || []).length && m.news.length + ' News post' + (m.news.length === 1 ? '' : 's') + ' queued'].filter(Boolean);

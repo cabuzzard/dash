@@ -7,7 +7,7 @@ import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
 import { NEWSLETTER_FIELDS, NEWSLETTER_DEPTHS, newsletterIssueType, newsletterDepth, newsletterSetting, newsletterSteering, newsletterSchema, newsletterBody, newsletterInPeriod, newsletterVerifyUrl } from './newsletter-methodology.mjs';
 import { MARKET_FORMS, memoryUrl, memoryKey, memoryPlan, marketFresh, marketGaps, marketStaleAfter, weeklySlot } from './digest-memory.mjs';
-import { DIGEST_DEPTHS, DIGEST_TARGET, DIGEST_THIN, DIGEST_CARRY_RUNS, DIGEST_PERIOD_DAYS, digestPeriod, refreshPeriodFlags, usedIds, recordState, advanceCarry, scopeTokens, relevantToScope, phraseHit, coreQueries, focusQueries, byTier } from './digest-records.mjs';
+import { DIGEST_MADE_STATES, DIGEST_DEPTHS, DIGEST_TARGET, DIGEST_THIN, DIGEST_CARRY_RUNS, DIGEST_PERIOD_DAYS, digestPeriod, refreshPeriodFlags, usedIds, recordState, advanceCarry, scopeTokens, relevantToScope, phraseHit, coreQueries, focusQueries, byTier } from './digest-records.mjs';
 const hubWriteScope = new AsyncLocalStorage();
 // Every Notion status mutation, including legacy generators and cron jobs, crosses this boundary.
 // The binding environment is immutable for a deployed isolate; hierarchy data is always read fresh.
@@ -14727,24 +14727,28 @@ async function digestGenerateDigestSave(env, S, step, status, extra = {}) {
   let entry = list.find(x => x.jobId === S.id && (step.kind === "news" ? x.itemId === step.itemId : x.kind === step.kind));
   if (!entry) { entry = step.kind === "news" ? { itemId: step.itemId, jobId: S.id, at } : { jobId: S.id, kind: step.kind, items: step.items.map(x => x.id), at }; list.push(entry); }
   Object.assign(entry, extra, { state: status, updatedAt: at });
-  if (status === "done") for (const item of (step.items || [step.item]).filter(Boolean)) {
+  const made = DIGEST_MADE_STATES.has(status);   // the asset exists: written, waiting for its interview, or its write failed
+  if (made) for (const item of (step.items || [step.item]).filter(Boolean)) {
     d.checks = d.checks || {}; d.checks[item.id] = { ...(d.checks[item.id] || {}), [step.kind]: false };
   }
   // generated issues are permanent (operator 2026-10-28): a done Premium/Free issue consumes its interview mapping, so the
   // next generation from this rolling parent prepares its OWN issue asset and interview instead of rewriting this one
-  if (status === "done" && step.kind !== "news" && Array.isArray(d.interviewAssets))
+  if (made && step.kind !== "news" && Array.isArray(d.interviewAssets))
     d.interviewAssets = d.interviewAssets.map(m => m.key === step.kind + "|*" ? { ...m, key: step.kind + "|done:" + S.id, consumedAt: at } : m);
   await env.TRADES.put(key, JSON.stringify(d));
   return entry;
 }
+// Disseminate (operator 2026-10-29): every step BUILDS its asset first — Premium issue, Free issue, one News article per ticked
+// record — under the digest's title. Writing follows through digestChildWrite: a missing interview flags one and leaves the asset
+// waiting; a failed write is recorded on the asset (retry from its Publish modal). Only a failure to create the asset is a step error.
 async function digestGenerateJobStep(env, invoke, jobId, S, step) {
+  const saveState = () => env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
   if (step.action === "digestIssue") {
     const type = step.kind === "premium" ? "Newsletter Paid" : "Newsletter Free";
-    await newsletterMethod(await writingMethodsTable(env), step.kind); // refuse before creating an unmapped issue
     if (!step.assetId) {
       const candidates = await notionQuery(ASSETS_DB, { filter: { and: [
         { property: "Parent Asset", relation: { contains: kwDashId(S.assetId) } },
-        { property: "Asset Type", select: { equals: type } },
+        { property: "Asset Type", select: { equals: step.kind === "premium" ? "Newsletter paid" : "Newsletter Free" } },
       ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
       const exactTitle = `${step.kind === "premium" ? "Premium issue" : "Free issue"} — ${S.digestName}`.slice(0, 190);
       const existing = candidates.find(p => hubRichText(p.properties?.["Asset Title"]?.title) === exactTitle && Date.parse(p.created_time) >= (S.createdAt || 0));   // only this job's own (retry), never an earlier permanent issue
@@ -14757,16 +14761,15 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
         if (!aid) throw new Error((made && (made.error || (made.failed || []).join(" · ") || (made.skipped || []).join(" · "))) || "Issue asset was not created");
         step.assetId = hubAssetId(aid);
       }
-      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
-      await digestGenerateDigestSave(env, S, step, "running", { assetId: step.assetId });
+      await saveState();
     }
-    const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === S.cid) || {};
-    const result = await digestWriteIssue(env, step.kind, step.items, hub.name || "the hub", {
-      assetId: step.assetId, digestId: S.assetId, titleId: S.titleId, campaignId: S.cid, interviewId: step.interviewId || "",
-    });
-    step.outcome = { assetId: step.assetId, written: !!result.written, violations: result.violations || [], kind: step.kind };
+    await digestGenerateDigestSave(env, S, step, "running", { assetId: step.assetId });   // records the child + its findings before writing
+    if (step.kind === "premium" && !step.interviewId) await digestChildInterview(env, { assetId: step.assetId, titleId: S.titleId, level: "premium" });
+    const out = await digestChildWrite(env, invoke, step.assetId).catch(e => ({ error: e.message || String(e) }));
+    const state = out?.waiting ? "waiting" : out?.error ? "write-failed" : "done";
+    step.outcome = { assetId: step.assetId, kind: step.kind, state, written: !!out?.written, violations: out?.violations || [], ...(out?.error ? { error: out.error } : {}) };
     (S.children = S.children || []).push({ ...step.outcome });
-    await digestGenerateDigestSave(env, S, step, "done", { assetId: step.assetId, written: !!result.written, violations: result.violations || [] });
+    await digestGenerateDigestSave(env, S, step, state, { assetId: step.assetId, written: !!out?.written, violations: out?.violations || [], ...(out?.error ? { error: out.error } : { error: "" }) });
     return;
   }
   if (step.action === "digestNews") {
@@ -14776,11 +14779,10 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
         newsTitle: step.item.claim.slice(0, 180), newsBody: step.item.claim,
         newsSource: [step.item.publisher, step.item.url].filter(Boolean).join(" "), newsDate: step.item.date || "",
         allowDuplicate: true, digestJobId: jobId, digestItemId: step.itemId });
-      if (!title || !title.success || !title.titleId) throw new Error("News title: " + ((title && title.error) || "no response"));
-      if (title.pillarWritten === false) throw new Error("News pillar: " + (title.pillarError || "not written"));
+      if (!title || !title.titleId) throw new Error("News title: " + ((title && title.error) || "no response"));
+      if (title.pillarWritten === false) step.pillarNote = "Title pillar not written: " + (title.pillarError || "unknown");   // the asset is still built
       step.titleId = hubAssetId(title.titleId);
-      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
-      await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId });
+      await saveState();
     }
     if (!step.assetId) {
       const existing = await notionQuery(ASSETS_DB, { filter: { and: [
@@ -14798,23 +14800,60 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
         if (!aid) throw new Error("News article: " + (made?.error || made?.failed?.join(" · ") || "no asset"));
         step.assetId = hubAssetId(aid);
       }
-      await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
-      await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId, assetId: step.assetId });
+      await saveState();
     }
-    const articleInterview = (await ivForTitle(step.titleId).catch(() => [])).find(x => x.id === hubAssetId(step.interviewId) && x.scope === "Asset" && x.assetIds.includes(hubAssetId(step.assetId)));
-    if (!articleInterview || articleInterview.status !== "Finished" || !articleInterview.answers.some(a => String(a || "").trim())) throw new Error("Article interview is no longer finished; complete it before generating this article");
-    const interviewText = articleInterview.questions.map((q, i) => articleInterview.answers[i] ? `Q: ${q}\nA: ${articleInterview.answers[i]}` : "").filter(Boolean).join("\n\n");
-    const written = await invoke({ action: "generateTitleAssets", titleId: step.titleId, assetId: step.assetId, replaceAssetId: step.assetId, campaignId: S.cid,
-      productId: S.productId || undefined, title: step.item.claim.slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true,
-      digestInterviewOnly: true, digestInterviewText: interviewText,
-      researchInstructions: `DIGEST ARTICLE: write about this one selected news item only. Use its source and facts, and derive the article's analysis/perspective exclusively from the finished article interview answers. Do not create substitute model opinions. Selected item: ${step.item.claim}\nSource: ${step.item.publisher || ""} ${step.item.url || ""} ${step.item.date || ""}` });
-    if (!written || written.error || written.success === false) throw new Error("News article write: " + (written?.error || "no response"));
-    step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news", written: true };
+    await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId, assetId: step.assetId });
+    if (!step.interviewId) await digestChildInterview(env, { assetId: step.assetId, titleId: step.titleId, level: "article", item: step.item });
+    const out = await digestChildWrite(env, invoke, step.assetId).catch(e => ({ error: e.message || String(e) }));
+    const state = out?.waiting ? "waiting" : out?.error ? "write-failed" : "done";
+    step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news", state, written: !!out?.written, ...(out?.error ? { error: out.error } : {}) };
     (S.children = S.children || []).push({ ...step.outcome });
-    await digestGenerateDigestSave(env, S, step, "done", { titleId: step.titleId, assetId: step.assetId });
+    await digestGenerateDigestSave(env, S, step, state, { titleId: step.titleId, assetId: step.assetId, ...(step.pillarNote ? { note: step.pillarNote } : {}), ...(out?.error ? { error: out.error } : { error: "" }) });
     return;
   }
   throw new Error("Unknown digest generation step: " + step.action);
+}
+// Flag the interview a digest child needs (Premium: required; Article: required, exactly 3 questions) unless one already exists.
+async function digestChildInterview(env, { assetId, titleId, level, item }) {
+  const have = (await ivForTitle(titleId).catch(() => [])).some(x => x.scope === "Asset" && x.assetIds.includes(hubAssetId(assetId)) && x.status !== "Superseded");
+  if (have) return;
+  const own = level === "article" ? "Blog - SEO - News" : level === "premium" ? "Newsletter Paid" : "Newsletter Free";
+  const direction = level === "article" ? `Digest article interview. Source item: ${item?.claim || ""}\nPublisher: ${item?.publisher || ""}\nURL: ${item?.url || ""}\nDate: ${item?.date || ""}` : `Digest ${level} issue interview. Selected findings are the writing subject.`;
+  await ivCreateForAsset(env, { assetId: hubAssetId(assetId), titleId: hubAssetId(titleId), own, direction, digestLevel: level, forceInterview: true }).catch(e => console.error("digest child interview", e.message));
+}
+// One writer for a Disseminate-built child — used by the job and by the Publish modal's Write (writeAsset). Premium / Free issues
+// are written from the findings recorded for that child; a News article from its source record. Premium and Article need a
+// finished interview: without one this returns { waiting } (never an error — the asset exists). Returns null for anything else.
+async function digestChildWrite(env, invoke, assetId) {
+  const id = hubAssetId(assetId), page = await ivPage(id), p = page.properties || {}, type = p["Asset Type"]?.select?.name || "";
+  const kind = /^newsletter paid$/i.test(type) ? "premium" : /^newsletter free$/i.test(type) ? "free" : /^blog - seo - news$/i.test(type) ? "news" : "";
+  const digestId = hubAssetId(ivRid(p, "Parent Asset") || ""); if (!kind || !digestId) return null;
+  const d = (await env.TRADES.get("digest:items:" + digestId, "json")) || {}, entry = (d.children?.[kind] || []).find(x => hubAssetId(x.assetId || "") === id);
+  if (!entry) return null;   // not built by Disseminate — the normal writer handles it
+  const parent = await ivPage(digestId), pp = parent.properties || {}, cid = hubAssetId(ivRid(pp, "Campaign") || ""), digestTitle = hubAssetId(ivRid(pp, "Content Strategy") || "");
+  const ownTitle = hubAssetId(ivRid(p, "Content Strategy") || "") || digestTitle;
+  const ivs = (await ivForTitle(kind === "news" ? ownTitle : digestTitle).catch(() => [])).filter(x => x.scope === "Asset" && x.assetIds.includes(id) && x.status !== "Superseded");
+  const finished = ivs.find(x => x.status === "Finished" && x.answers.some(a => String(a || "").trim()));
+  if ((kind === "premium" || kind === "news") && !finished) return { waiting: true, interviews: ivs.map(x => ({ id: x.id })) };
+  let result;
+  if (kind !== "news") {
+    const ids = new Set(entry.items || []), items = (d.items || []).filter(x => ids.has(x.id));
+    await hubSitesMerge(env); const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === cid) || {};
+    const r = await digestWriteIssue(env, kind, items, hub.name || "the hub", { assetId: id, digestId, titleId: digestTitle, campaignId: cid, interviewId: finished?.id || "" });
+    result = { written: !!r.written, violations: r.violations || [] };
+  } else {
+    const item = (d.items || []).find(x => x.id === entry.itemId) || {};
+    const interviewText = finished.questions.map((q, i) => finished.answers[i] ? `Q: ${q}\nA: ${finished.answers[i]}` : "").filter(Boolean).join("\n\n");
+    const written = await invoke({ action: "generateTitleAssets", titleId: ownTitle, assetId: id, replaceAssetId: id, campaignId: cid,
+      productId: ivRid(pp, "Product") || undefined, title: String(item.claim || "").slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true,
+      digestInterviewOnly: true, digestInterviewText: interviewText,
+      researchInstructions: `DIGEST ARTICLE: write about this one selected news item only. Use its source and facts, and derive the article's analysis/perspective exclusively from the finished article interview answers. Do not create substitute model opinions. Selected item: ${item.claim || ""}\nSource: ${item.publisher || ""} ${item.url || ""} ${item.date || ""}` });
+    if (!written || written.error || written.success === false) throw new Error("News article write: " + (written?.error || "no response"));
+    result = { written: true, violations: [] };
+  }
+  Object.assign(entry, { state: "done", written: result.written, violations: result.violations, error: "", updatedAt: new Date().toISOString() });   // a Publish-modal write also marks the child done
+  await env.TRADES.put("digest:items:" + digestId, JSON.stringify(d));
+  return result;
 }
 // DIGEST POOL (operator 2026-10-16) — KV digest:pool:<cid> = [{ id, claim, publisher, url, date, tier, split, at, tag, status,
 // originHub, keywords, titleId, assetId, error }]. Runs merge additively: unprocessed and processed items remain available.
@@ -21895,14 +21934,13 @@ ${JSON.stringify(products)}`;
         const steps = [];
         for (const kind of ["premium", "free"]) { const items = picked(kind); if (!items.length) continue;
           const map = d.interviewAssets.find(x => x.key === kind + "|*"); let iv = await interviewFor(map);
-          if (kind === "premium" && (!iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim()))) return json({ error: "Premium generation is waiting for the required interview. Use Flag interview for Premium, then finish its answers." }, 409);
-          if (kind === "free" && (!iv || iv.status !== "Finished")) iv = null;
+          if (!iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim())) iv = null;   // no finished interview: the asset is still built; the job flags one and the asset waits
           steps.push({ action: "digestIssue", kind, label: kind === "premium" ? "Premium issue" : "Free issue", items: items.map(x => ({ ...x })), ...(map?.assetId ? { assetId: map.assetId } : {}), ...(iv ? { interviewId: iv.id } : {}) });
         }
         for (const item of picked("news")) {
           const map = d.interviewAssets.find(x => x.key === "article|" + item.id), iv = await interviewFor(map);
-          if (!map || !iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim())) return json({ error: `Article generation is waiting for the required interview for “${String(item.claim || "this item").slice(0, 90)}”. Use Flag interview on that source, then finish its answers.` }, 409);
-          steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item }, titleId: map.titleId, assetId: map.assetId, interviewId: iv.id });
+          const ready = map && iv && iv.status === "Finished" && iv.answers.some(a => String(a || "").trim());   // not ready: the job builds the article and flags its interview
+          steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item }, ...(map ? { titleId: map.titleId, assetId: map.assetId } : {}), ...(ready ? { interviewId: iv.id } : {}) });
         }
         if (!steps.length) return json({ error: "No findings are checked for generation" }, 400);
         for (const s of steps) {
@@ -53970,6 +54008,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
       if (body.action === "writeAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);
+        { const selfW = this, invokeW = async b2 => { const token = await signToken(HMAC_SECRET, 900000); const res = await selfW.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b2, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+          const dc = await digestChildWrite(env, invokeW, body.assetId);   // a Disseminate-built issue / article: written from its digest findings
+          if (dc) return json(dc.waiting ? { needsInterview: true, interviews: dc.interviews } : { ok: true, ...dc }); }
         const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
       }
       if (body.action === "getAssetFullText") {
