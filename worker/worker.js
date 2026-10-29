@@ -15483,6 +15483,22 @@ async function digestMigrateCronFlags(env, cid, rows) {
     await env.TRADES.put(key, JSON.stringify({ runsWeekly: enabled, migratedAt: new Date().toISOString(), migrated: true }));
   }
 }
+// Per-digest model pick (operator 2026-10-29: keep Gemini spend to selected digests). KV digest:depth:<assetId> = Deep (Gemini +
+// Perplexity) | Standard (Perplexity only) | Free (free sources only) | Off; absent = use the hub's Research Depth.
+const DIGEST_DEPTHS = ["Deep", "Standard", "Free", "Off"];
+async function digestDepthPick(env, assetId) {
+  const v = await env.TRADES.get("digest:depth:" + hubAssetId(assetId)).catch(() => null);
+  return DIGEST_DEPTHS.includes(v) ? v : "";
+}
+async function digestSetDepth(env, assetId, depth) {
+  const id = hubAssetId(assetId); if (!/^[a-f0-9]{32}$/i.test(id)) throw new Error("assetId required");
+  if (depth && !DIGEST_DEPTHS.includes(depth)) throw new Error("Model must be Deep, Standard, Free, Off or hub default");
+  const page = await newsletterNotion(env, "pages/" + kwDashId(id));
+  if (page.properties?.["Pillar Type"]?.select?.name !== "Digest") throw new Error("Selected asset is not a Digest parent");
+  if (depth) await env.TRADES.put("digest:depth:" + id, depth); else await env.TRADES.delete("digest:depth:" + id);
+  if (await digestDepthPick(env, id) !== (depth || "")) throw new Error("Model pick readback differs");
+  return { ok: true, assetId: id, depth: depth || "" };
+}
 async function digestWeeklyFlag(env, assetId) {
   const value = await env.TRADES.get(digestCronKey(assetId), "json");
   return value?.runsWeekly === true;
@@ -15842,7 +15858,7 @@ async function adStep(env, cid, S, invoke) {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
     S.marketPlan.apiCursor=S.marketPlan.apiCursor||0;
     if(S.marketPlan.apiCursor<S.marketPlan.gaps.length){const scan=await productNotesEtsy(env,S.marketPlan.gaps[S.marketPlan.apiCursor]);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.apiCursor++;return;}
-    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,
+    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,...(S.depthPick?{depth:S.depthPick}:{}),
       guidance: `Digest for title “${S.titleName}”, under product “${S.productName}”. The title's topic keywords define WHAT this digest is about; the NEWSLETTER FRAMING's Research Focus defines HOW WIDE to look — rules, money, providers, studies and other developments affecting this customer belong in it even when they do not use the topic keywords. Topic ID: ${S.topicId}.${S.guidance ? `\nOPERATOR GUIDANCE FOR THIS RUN (guided regenerate — follow it): ${S.guidance}` : ""}` }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
@@ -15977,7 +15993,8 @@ async function autoDigestRun(env, invoke) {
       const lease = await digestHubLease(env, cid, "auto:" + assetId + ":" + S.period, 300);
       if (!lease) { out.push({ cid, assetId, step: S.step, waiting: "another digest operation in this hub" }); continue; }
       try {
-        const context = await newsletterContext(env, cid); S.newsletter = { productId: context.productId, recordId: context.recordId, fields: context.fields };
+        const context = await newsletterContext(env, cid), pick = await digestDepthPick(env, assetId);   // per-digest model pick beats the hub's Research Depth
+        S.newsletter = { productId: context.productId, recordId: context.recordId, fields: pick ? { ...context.fields, "Research Depth": pick } : context.fields }; S.depthPick = pick; S.depthSource = pick ? "digest" : "hub";
         while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
           const before = S.step, progress = (S.marketPlan?.cursor || 0) + (S.marketPlan?.apiCursor || 0);
           try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
@@ -21582,6 +21599,7 @@ ${JSON.stringify(products)}`;
           const interviewMaps = Array.isArray(d.interviewAssets) ? d.interviewAssets : [], interviewTitles = [...new Set(interviewMaps.map(x => x.titleId).filter(Boolean))];
           const allDigestInterviews = (await Promise.all(interviewTitles.map(tid => ivForTitle(tid).catch(() => [])))).flat();
           d.digestInterviews = allDigestInterviews.filter(x => x.scope === "Asset" && x.assetIds.some(a => interviewMaps.some(z => z.assetId === a))).map(x => ({ id: x.id, status: x.status, scope: x.scope, assetIds: x.assetIds }));
+          d.depthPick = await digestDepthPick(env, id);
           const cronFlag = await env.TRADES.get(digestCronKey(id), "json"), legacyWeekly = String(await env.TRADES.get("digest:asset:" + cid) || "").replace(/-/g, "") === id;
           const autoState = await env.TRADES.get("digest:auto:state:" + id, "json");
           for (const group of ["premium", "free", "news"]) for (const n of (d.children[group] || [])) if (n.jobId) {
@@ -21605,9 +21623,14 @@ ${JSON.stringify(products)}`;
         const oldRun = await env.TRADES.get("digest:auto:state:" + cid, "json"), manualQueue = (await env.TRADES.get("digest:manual", "json")) || [], queued = manualQueue.some(x => x === cid || x?.cid === cid);
         const activeRun = digests.find(d => d.weeklyRun && !["done", "skip", "error"].includes(d.weeklyRun.step))?.weeklyRun || (oldRun && !["done", "skip", "error"].includes(oldRun.step) ? oldRun : null);
         const lastRun = [...digests].filter(d => d.weeklyRun && ["done", "skip", "error"].includes(d.weeklyRun.step)).sort((a,b) => (b.weeklyRun.finishedAt||0)-(a.weeklyRun.finishedAt||0))[0]?.weeklyRun || (oldRun && ["done", "skip", "error"].includes(oldRun.step) ? oldRun : null);
-        return json({ ok: true, digests, run: activeRun ? { step: activeRun.step, startedAt: activeRun.startedAt, assetId: activeRun.assetId || "" } : queued ? { step: "queued" } : null,
+        const hubDepth = await newsletterContext(env, cid).then(c => c.fields["Research Depth"] || "Deep").catch(() => "");   // what "hub default" means in the model picker
+        return json({ ok: true, hubDepth, digests, run: activeRun ? { step: activeRun.step, startedAt: activeRun.startedAt, assetId: activeRun.assetId || "" } : queued ? { step: "queued" } : null,
           last: lastRun ? { step: lastRun.step, note: lastRun.note || lastRun.error || "", at: lastRun.finishedAt || 0 } : null,
           republicationHeld: await hubRepublicationHeld(env, cid) });
+      }
+      if (body.action === "digestSetDepth") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        return json(await digestSetDepth(env, body.assetId, String(body.depth || "")));
       }
       if (body.action === "digestSetWeekly") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
@@ -56866,6 +56889,8 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
       marketPlan:body.marketPlan||null,notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
     const newsletter=await newsletterContext(env,cid);
+    job.depthOverride=DIGEST_DEPTHS.includes(body.depth)&&body.depth!=='Free'?body.depth:'';   // per-digest model pick (digestSetDepth); Free never reaches this research job
+    if(job.depthOverride)newsletter.fields={...newsletter.fields,'Research Depth':job.depthOverride};
     job.newsletter={productId:newsletter.productId,recordId:newsletter.recordId,fields:newsletter.fields};job.periodStart=digestPeriod().periodStart;   // trailing 7 days (the Saturday-start week left a Sunday run only 2 days)
     await digestMemorySeed(env,cid);job.memoryBrief=await digestMemoryBrief(env,cid);
     job.standing = await drStandingSources(env, cid);
@@ -56882,7 +56907,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
   if (!job) return { error: "Research run not found (it may have expired)" };
   const save = () => env.TRADES.put(key, JSON.stringify(job), { expirationTtl: DR_TTL });
   if(['perplexity','status','rank'].includes(op)){
-    const current=await newsletterContext(env,job.campaignId);job.newsletter={productId:current.productId,recordId:current.recordId,fields:current.fields};await save();
+    const current=await newsletterContext(env,job.campaignId);if(job.depthOverride)current.fields={...current.fields,'Research Depth':job.depthOverride};job.newsletter={productId:current.productId,recordId:current.recordId,fields:current.fields};await save();
     if(current.fields['Research Depth']==='Off'){job.gemini={...job.gemini,status:'skipped',error:'Research Depth Off'};job.perplexity={...job.perplexity,status:'skipped',error:'Research Depth Off'};await save();return {success:true,job:drPublic(job),researchOff:true};}
   }
 

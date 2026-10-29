@@ -99,3 +99,10 @@ test('free-search relevance needs the query words together, not scattered', () =
   assert.ok(R.phraseHit('short-term rental rules', 'Commission approves new rules for short-term rentals'.replace('rules for ', '') + ' rules'));
   assert.ok(R.phraseHit('medicare', 'CMS leaders offer advice on Medicare changes'));
 });
+test('model picker: a per-digest pick overrides the hub Research Depth in the run and the research job', () => {
+  assert.match(source, /async function digestDepthPick\(env, assetId\)/);
+  assert.match(source, /fields: pick \? \{ \.\.\.context\.fields, "Research Depth": pick \} : context\.fields/);
+  assert.match(source, /\.\.\.\(S\.depthPick\?\{depth:S\.depthPick\}:\{\}\)/);
+  assert.match(source, /if\(job\.depthOverride\)current\.fields=/);
+  assert.match(source, /job\.gemini = depth==='Deep'\?await drGeminiStart/);   // only Deep ever starts Gemini
+});
