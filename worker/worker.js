@@ -2741,7 +2741,7 @@ async function acV1(env, action, fields) {
 }
 function mdToEmailHtml(md) {
   const esc=x=>String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  const inline=x=>esc(x).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2">$1</a>');
+  const inline=x=>esc(x).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2">$1</a>').replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,:;])/g,'$1<em>$2</em>');
   const out=[],lines=String(md).split('\n');let list=[],listType='ul';
   const flush=()=>{if(list.length){out.push('<'+listType+'>'+list.map(x=>'<li>'+inline(x)+'</li>').join('')+'</'+listType+'>');list=[];}};
   const cells=line=>line.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>x.trim());
@@ -14957,6 +14957,7 @@ async function digestChildWrite(env, invoke, assetId) {
   const digestId = hubAssetId(ivRid(p, "Parent Asset") || ""); if (!kind || !digestId) return null;
   const d = (await env.TRADES.get("digest:items:" + digestId, "json")) || {}, entry = (d.children?.[kind] || []).find(x => hubAssetId(x.assetId || "") === id);
   if (!entry) return null;   // not built by Disseminate — the normal writer handles it
+  if (entry.byRun) throw new Error("This Free issue is written by the digest run — Regenerate the digest to rewrite it (no contract rewrite).");
   const parent = await ivPage(digestId), pp = parent.properties || {}, cid = hubAssetId(ivRid(pp, "Campaign") || ""), digestTitle = hubAssetId(ivRid(pp, "Content Strategy") || "");
   const ownTitle = hubAssetId(ivRid(p, "Content Strategy") || "") || digestTitle;
   const ivs = (await ivForTitle(kind === "news" ? ownTitle : digestTitle).catch(() => [])).filter(x => x.scope === "Asset" && x.assetIds.includes(id) && x.status !== "Superseded");
@@ -15562,9 +15563,9 @@ async function digestItemsSave(env, assetId, sources, options={}) {
   // a run (options.runId) also carries the existing unused records forward one run
   let next={ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items:refreshPeriodFlags(options.additive?[...existing,...items]:items,{periodStart,periodEnd}),periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} };
   if(options.runId)next=advanceCarry(next,options.runId,new Set(items.map(x=>x.id)));
-  // records a run / rescan ADDS arrive ticked for Premium, Free and Article (operator 2026-10-29: "I will un check rather than
-  // check"); a record already on the parent keeps whatever the operator set
-  next.checks={...(next.checks||{})};for(const x of items)if(x&&x.id&&!next.checks[x.id]&&!x.retired)next.checks[x.id]={free:true,news:true};
+  // records arrive unticked (operator 2026-10-30): the issue is already made by the run, and ticking Article MAKES that record's
+  // article post — so nothing is pre-ticked; a record already on the parent keeps whatever the operator set
+  next.checks={...(next.checks||{})};
   await env.TRADES.put(key, JSON.stringify(next));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
@@ -15934,7 +15935,7 @@ async function adSavePillar(env, titleId, text) {
   const h3 = x => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: x } }] } });
   const para = x => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: x } }] } });
   const children = [h3("Pillar Content")];
-  text.split(/\n{2,}/).map(x => x.trim()).filter(Boolean).forEach(x => { for (let i = 0; i < x.length; i += 1900) children.push(para(x.slice(i, i + 1900))); });
+  text.split(/\n{2,}/).map(x => x.trim()).filter(Boolean).forEach(x => children.push({ object: "block", type: "paragraph", paragraph: { rich_text: ivRt(x) } }));   // a long table stays one block
   for (let i = 0; i < children.length; i += 90) {
     const rr = await fetch(`https://api.notion.com/v1/blocks/${kwDashId(titleId)}/children`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ children: children.slice(i, i + 90) }) });
     if (!rr.ok) { const x = await rr.json().catch(() => ({})); throw new Error(x.message || "could not write the pillar"); }
@@ -16176,16 +16177,29 @@ async function digestTopicOf(env, titleId) {
 // aren't narrow enough the operator sharpens those rows. Then the free tier verifies: every cited URL is checked (newsletterVerifyUrl)
 // and the analysis's sources join the run's free news records, so each figure shows ✓ / ⚠. No Perplexity / Gemini call.
 // KV digest:trends:<assetId> = { at, runId, niche, audience, analysis, md, records, searched } (the last run; history keeps 6).
-const DIGEST_TRENDS_SCHEMA = { type: "object", required: ["headline", "trends", "playbook", "sources"], properties: {
-  headline: { type: "string" }, summary: { type: "string" },
-  snapshot: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } },
-  comparison: { type: "object", properties: { title: { type: "string" }, columns: { type: "array", items: { type: "string" } }, rows: { type: "array", items: { type: "array", items: { type: "string" } } }, source: { type: "string" }, url: { type: "string" } } },
-  trends: { type: "array", items: { type: "object", properties: { title: { type: "string" }, status: { type: "string", enum: ["new", "continuing", "changed"] }, whatsHappening: { type: "string" },
-    evidence: { type: "array", items: { type: "object", properties: { figure: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } }, whatItMeans: { type: "string" } } } },
-  playbook: { type: "object", properties: { framing: { type: "string" }, opportunities: { type: "array", items: { type: "object", properties: { name: { type: "string" }, how: { type: "string" }, leadSource: { type: "string" }, offer: { type: "string" } } } }, startHere: { type: "string" } } },
-  watch: { type: "array", items: { type: "object", properties: { item: { type: "string" }, why: { type: "string" }, status: { type: "string" } } } },
-  caveats: { type: "array", items: { type: "string" } },
-  sources: { type: "array", items: { type: "object", properties: { title: { type: "string" }, publisher: { type: "string" }, url: { type: "string" }, date: { type: "string" }, supports: { type: "string" } } } } } };
+// The weekly digest issue (operator 2026-10-30): ONE structured answer to "what is this week's dominant trend in <niche>?" and
+// "how can <audience> take advantage?", shaped exactly like the operator's ChatGPT example, in this order. Every number carries
+// source / URL / period / dataset, and its basis (listing vs sold …) so the two are never mixed silently. Rendered to the Free
+// issue by code (digestIssueMd) — no second writer.
+const DIGEST_TRENDS_SCHEMA = { type: "object", required: ["nicheLabel", "audienceLabel", "summary", "snapshot", "comparison", "trends", "opportunityOutlook", "takeAdvantage", "watch", "news", "caveats", "sources"], properties: {
+  nicheLabel: { type: "string" }, audienceLabel: { type: "string" }, summary: { type: "string" },
+  snapshot: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" }, basis: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } },
+  disagreements: { type: "array", items: { type: "object", properties: { metric: { type: "string" }, a: { type: "object", properties: { figure: { type: "string" }, basis: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } }, b: { type: "object", properties: { figure: { type: "string" }, basis: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } } } },
+  comparison: { type: "object", properties: { title: { type: "string" }, metric: { type: "string" }, basis: { type: "string" }, columns: { type: "array", items: { type: "string" } }, rows: { type: "array", items: { type: "array", items: { type: "string" } } }, whyItMatters: { type: "string" }, sources: { type: "array", items: { type: "object", properties: { source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } } } },
+  trends: { type: "array", items: { type: "object", properties: { title: { type: "string" }, status: { type: "string", enum: ["new", "continuing", "changed"] }, data: { type: "array", items: { type: "object", properties: { figure: { type: "string" }, basis: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } }, whatItMeans: { type: "string" } } } },
+  opportunityOutlook: { type: "array", items: { type: "object", properties: { opportunity: { type: "string" }, outlook: { type: "string" }, consideration: { type: "string" } } } },
+  takeAdvantage: { type: "object", properties: {
+    revenueEngines: { type: "array", items: { type: "object", properties: { name: { type: "string" }, how: { type: "string" } } } },
+    opportunities: { type: "array", items: { type: "object", properties: { name: { type: "string" }, how: { type: "string" }, leadSource: { type: "string" } } } },
+    immediate: { type: "object", properties: { service: { type: "string" }, why: { type: "string" }, components: { type: "array", items: { type: "string" } } } },
+    leadGen: { type: "array", items: { type: "object", properties: { content: { type: "string" }, attracts: { type: "string" }, offer: { type: "string" } } } },
+    calculator: { type: "object", properties: { assumptions: { type: "array", items: { type: "string" } }, lines: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" } } } }, note: { type: "string" } } },
+    authority: { type: "object", properties: { play: { type: "string" }, approved: { type: "array", items: { type: "object", properties: { milestone: { type: "string" }, source: { type: "string" }, url: { type: "string" }, date: { type: "string" } } } }, speculation: { type: "array", items: { type: "string" } } } },
+    priorities: { type: "array", items: { type: "string" } } } },
+  watch: { type: "object", properties: { indicators: { type: "array", items: { type: "object", properties: { item: { type: "string" }, why: { type: "string" } } } }, compareAreas: { type: "array", items: { type: "object", properties: { area: { type: "string" }, why: { type: "string" } } } } } },
+  news: { type: "array", items: { type: "object", properties: { claim: { type: "string" }, publisher: { type: "string" }, url: { type: "string" }, date: { type: "string" } } } },
+  caveats: { type: "array", items: { type: "string" } }, legalLimits: { type: "array", items: { type: "string" } },
+  sources: { type: "array", items: { type: "object", properties: { title: { type: "string" }, publisher: { type: "string" }, url: { type: "string" }, date: { type: "string" }, dataset: { type: "string" }, supports: { type: "string" } } } } } };
 // niche + audience, only from the title's and product's research rows (+ the title's keywords; + Research Focus unless isolated)
 async function digestTrendsContext(env, S) {
   const hdr = ivHdr(), title = await ivPage(S.titleId).catch(() => null), tp = title?.properties || {}, rt = k => hubRichText(tp[k]?.rich_text).trim();
@@ -16197,62 +16211,151 @@ async function digestTrendsContext(env, S) {
   return { niche: niche.slice(0, 3500), audience: audience.slice(0, 2500), questions: rt("Title Questions").slice(0, 1500) };
 }
 async function digestTrendsRun(env, S) {
+  const busy = "digest:trends:busy:" + S.assetId;   // a long searched call can outlast the cron lock — never run it twice at once
+  if (await env.TRADES.get(busy)) return null;
+  await env.TRADES.put(busy, "1", { expirationTtl: 900 });
+  try {
   const ctx = await digestTrendsContext(env, S), key = "digest:trends:" + S.assetId, prev = await env.TRADES.get(key, "json").catch(() => null);
-  const period = S.periodStart || digestPeriod().periodStart, today = new Date().toISOString().slice(0, 10);
-  const last = prev?.analysis ? `\nLAST WEEK'S ANALYSIS (${String(prev.at || "").slice(0, 10)}) — a trend that repeats is an UPDATE (say what changed, status "continuing" or "changed"), never presented as new; carry the watch list forward, updating each item or marking it "no new data":\nTrends: ${(prev.analysis.trends || []).map(t => t.title).join(" | ")}\nWatch list: ${(prev.analysis.watch || []).map(w => w.item).join(" | ")}\n` : "";
-  const prompt = `You are a sharp market analyst writing this week's brief (${period} to ${today}). Use web search for current, specific data. Answer two questions:
+  const period = S.periodStart || digestPeriod().periodStart, now = new Date(), today = now.toISOString().slice(0, 10);
+  const monthYear = now.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "America/Los_Angeles" });
+  const pa = prev?.analysis, last = pa ? `\nLAST RUN (${String(prev.at || "").slice(0, 10)}) — a trend that repeats is an UPDATE (status "continuing" or "changed", say what changed), never presented as new:\nTrends: ${(pa.trends || []).map(t => t.title).join(" | ")}\nWatch list: ${((pa.watch || {}).indicators || []).map(w => w.item).join(" | ")}\n` : "";
+  const prompt = `You are a sharp market analyst writing this week's issue (${period} to ${today}). Use web search for current, specific, sourced data. Answer two questions:
 
-1. What are the dominant trends in this niche right now?
-2. How can this audience take advantage of these trends?
+1. What is the dominant trend in this niche right now (and the 4–6 trends behind it)?
+2. How can this audience take advantage of it?
 
-THE NICHE (from the title's and product's research):
-${ctx.niche || "(no niche research — use the title and keywords)"}
+THE NICHE (from the title's and product's research — use only this to decide the niche):
+${ctx.niche || "(no niche research — use the title and keywords, and say the research is thin in caveats)"}
 
-THE AUDIENCE:
-${ctx.audience || "(no audience research on the title or product — say so in caveats)"}
+THE AUDIENCE (from the same research):
+${ctx.audience || "(no audience research on the title or product — say so in caveats; do not invent one)"}
 ${ctx.questions ? "\nQUESTIONS THIS AUDIENCE ASKS:\n" + ctx.questions + "\n" : ""}${S.guidance ? "\nOPERATOR GUIDANCE FOR THIS RUN: " + S.guidance + "\n" : ""}${last}
-SHAPE (like a strong analyst answer): a snapshot of the key numbers; a comparison table where it helps; 4–6 dominant trends, each with what is happening, its evidence and what it means; a playbook for the audience — specific opportunities, where the leads come from, what to offer — and one clear "start here"; a watch list for next week; honest caveats.
+FILL EVERY SECTION, IN THIS SHAPE:
+- nicheLabel: the niche in 2–6 words, from the research above (it becomes the headline "<nicheLabel> Trends — ${monthYear}"). audienceLabel: who the audience is, in 1–4 words.
+- summary: one paragraph — the dominant trend and where the opportunities are.
+- snapshot: the niche's headline numbers. For a housing market these are exactly: median sale price, time to sell (days on market), % of homes sold above list, % of listings with price cuts. For another niche, its 4–6 equivalent headline metrics.
+- comparison: the same metric across nearby cities/areas (or comparable segments when the niche isn't geographic) as a table (columns + rows), its basis labelled (listing vs sold), and whyItMatters — why this niche's position matters.
+- trends: 4–6 dominant trends, each with its data (figures) and then whatItMeans.
+- opportunityOutlook: rows of Opportunity | Outlook | Primary consideration — these are assessments, not forecasts.
+- takeAdvantage: exactly 3 revenueEngines; opportunities, each with its leadSource; immediate = the single most immediate opportunity named as a service, with its components; leadGen rows (content or lead magnet → customer it attracts → conversion offer); calculator = an illustrative revenue calculator with every assumption listed, figures before splits/fees, and any commission rate stated as negotiable, not fixed; authority = the long-term authority play, with approved/official milestones (sourced) separated from speculation; priorities = the top 3 things for this audience to prioritize.
+- watch: indicators to watch over the next 6–12 months, plus specific areas / zip codes (or segments) to compare.
+- news: this week's specific news items in the niche — each one claim, its publisher, URL and date.
+- caveats (include where the niche/audience research is thin), legalLimits (legal/ethical limits on the playbook where they apply), sources (every source used).
 
-RULES:
-- Every number carries its source name, URL, date/period and what the dataset measures. Never mix listing and sold figures (or similar different datasets) silently; when two sources disagree, give both, labelled.
-- Check the current status and dates of any program, rebate, approval or deadline you cite; never present a closed program as open.
-- Separate approved / official milestones from speculation; label your own assessments as assessments, not forecasts.
-- Include legal or ethical limits where they apply to the playbook.
-- If you can't find a sourced number, leave it out — never invent one. List every source you used in "sources".
+SOURCE RULES — on every number:
+- Every figure carries source name, URL, date/period and dataset, and its basis (e.g. "sold", "listing", "survey", "estimate").
+- Never mix listing and sold figures silently. If two sources disagree, report both in disagreements, labelled.
+- Check the current status and dates of any program, rebate, approval or deadline; never present a closed program as open.
+- Label assessments as assessments. If you can't find a sourced number, leave it out — never invent one.
 Finish by calling trends_analysis with the complete structured answer.`;
   let usage = null, searched = [];
-  const analysis = await hcClaude(env, prompt, "trends_analysis", DIGEST_TRENDS_SCHEMA, 12000, u => { usage = u; }, { search: true, maxUses: 8, stream: true, onResponse: d => { searched = researchEvidence(d); } });
+  const analysis = await hcClaude(env, prompt, "trends_analysis", DIGEST_TRENDS_SCHEMA, 32000, u => { usage = u; }, { search: true, maxUses: 8, stream: true, onResponse: d => { searched = researchEvidence(d); } });
   if (!analysis || !Array.isArray(analysis.trends) || !analysis.trends.length) throw new Error("trends analysis came back empty");
-  // the free verification tier: every cited URL is checked
-  const urls = [...new Set([...(analysis.sources || []).map(x => x.url), ...(analysis.snapshot || []).map(x => x.url), ...(analysis.trends || []).flatMap(t => (t.evidence || []).map(e => e.url))].filter(u => /^https?:\/\//.test(u || "")))].slice(0, 40);
+  analysis.headline = `${String(analysis.nicheLabel || S.titleName || "Market").trim()} Trends — ${monthYear}`;
+  // the free tier: every cited URL is link-checked (✓ loads · ⚠ doesn't) — a link check, not number verification
+  const ta = analysis.takeAdvantage || {}, figs = [...(analysis.snapshot || []), ...(analysis.trends || []).flatMap(t => t.data || []), ...(analysis.disagreements || []).flatMap(x => [x.a || {}, x.b || {}]),
+    ...((analysis.comparison || {}).sources || []), ...((ta.authority || {}).approved || []), ...(analysis.news || []), ...(analysis.sources || [])];
+  const urls = [...new Set(figs.map(x => x.url).filter(u => /^https?:\/\//.test(u || "")))].slice(0, 60);
   const verify = {}; for (const u of urls) { try { const c = await newsletterVerifyUrl(env, u); verify[u] = !!c.verified; } catch (e) { verify[u] = false; } }
-  const records = [];
-  (analysis.trends || []).forEach(t => (t.evidence || []).forEach(e => { if (/^https?:\/\//.test(e.url || "")) records.push({ claim: (t.title + " — " + (e.figure || "")).slice(0, 600), summary: String(t.whatItMeans || "").slice(0, 500), publisher: e.source || "", url: e.url, date: e.period || "", sourceMethod: "trends-analysis", topicId: S.topicId || "" }); }));
-  (analysis.sources || []).forEach(x => { if (/^https?:\/\//.test(x.url || "") && !records.some(r => r.url === x.url)) records.push({ claim: String(x.supports || x.title || x.url).slice(0, 600), publisher: x.publisher || "", url: x.url, date: x.date || "", sourceMethod: "trends-analysis", topicId: S.topicId || "" }); });
-  const md = digestTrendsMd(analysis, verify, ctx);
+  // news records: one claim + publisher + URL + date each — this week's news first, then each trend's sourced figures
+  const records = [], add = r => { if (/^https?:\/\//.test(r.url || "") && r.claim && !records.some(x => x.url === r.url && x.claim === r.claim)) records.push({ ...r, sourceMethod: "trends-analysis", topicId: S.topicId || "" }); };
+  (analysis.news || []).forEach(n => add({ claim: String(n.claim || "").slice(0, 600), publisher: n.publisher || "", url: n.url, date: n.date || "" }));
+  (analysis.trends || []).forEach(t => (t.data || []).forEach(e => add({ claim: (t.title + " — " + (e.figure || "")).slice(0, 600), summary: String(t.whatItMeans || "").slice(0, 500), publisher: e.source || "", url: e.url, date: e.period || "" })));
+  const md = digestIssueMd(analysis, verify);
   const out = { at: new Date().toISOString(), runId: S.period, niche: ctx.niche, audience: ctx.audience, analysis, md, records, verify, searched, usage };
   await env.TRADES.put(key, JSON.stringify(out));
-  const hist = (await env.TRADES.get(key + ":history", "json").catch(() => null)) || []; hist.unshift({ at: out.at, headline: analysis.headline, trends: (analysis.trends || []).map(t => t.title), watch: analysis.watch || [] });
+  const hist = (await env.TRADES.get(key + ":history", "json").catch(() => null)) || []; hist.unshift({ at: out.at, headline: analysis.headline, trends: (analysis.trends || []).map(t => t.title), watch: ((analysis.watch || {}).indicators || []).map(w => w.item) });
   await env.TRADES.put(key + ":history", JSON.stringify(hist.slice(0, 6)));
   return out;
+  } finally { await env.TRADES.delete(busy).catch(() => {}); }
 }
-function digestTrendsMd(a, verify, ctx) {
-  const mark = u => !u ? "" : verify[u] ? " ✓" : " ⚠ unverified", src = (name, u, period) => u ? ` — [${name || "source"}](${u})${period ? ", " + period : ""}${mark(u)}` : (name ? " — " + name : "");
-  const L = [`# ${a.headline || "This week's trends"}`];
+// The Free issue, rendered by code from the structured answer — exactly the example's order. A number whose link didn't load
+// is marked unverified; a ✓ only means the source link loads.
+function digestIssueMd(a, verify) {
+  const cell = x => String(x == null ? "" : x).replace(/\|/g, "/").replace(/\n+/g, " ").trim();
+  const mark = u => !u ? " _(no source link — unverified)_" : verify[u] ? " ✓" : " ⚠ unverified";
+  const cite = x => { const bits = [x.source || x.publisher || "", x.period || x.date || "", x.dataset ? "dataset: " + x.dataset : ""].filter(Boolean);
+    return (x.url ? ` — [${cell(x.source || x.publisher || "source")}](${x.url})${bits.slice(1).length ? ", " + bits.slice(1).join(", ") : ""}` : bits.length ? " — " + bits.join(", ") : "") + mark(x.url); };
+  const basis = x => x.basis ? ` _(${cell(x.basis)})_` : "";
+  const table = (head, rows) => rows.length ? ["| " + head.map(cell).join(" | ") + " |", "| " + head.map(() => "---").join(" | ") + " |", ...rows.map(r => "| " + head.map((_, i) => cell(r[i])).join(" | ") + " |")].join("\n") : "";
+  const ta = a.takeAdvantage || {}, L = [`# ${a.headline}`];
   if (a.summary) L.push("", a.summary);
-  if ((a.snapshot || []).length) { L.push("", "## Snapshot"); a.snapshot.forEach(x => L.push(`- **${x.label}: ${x.value}**${x.dataset ? " (" + x.dataset + ")" : ""}${src(x.source, x.url, x.period)}`)); }
-  const c = a.comparison; if (c && (c.rows || []).length && (c.columns || []).length) { L.push("", "## " + (c.title || "Comparison"), "", "| " + c.columns.join(" | ") + " |", "| " + c.columns.map(() => "---").join(" | ") + " |"); c.rows.forEach(r => L.push("| " + r.join(" | ") + " |")); if (c.source || c.url) L.push("", "Source" + src(c.source, c.url)); }
+  if ((a.snapshot || []).length) { L.push("", "## Snapshot"); a.snapshot.forEach(x => L.push(`- **${cell(x.label)}: ${cell(x.value)}**${basis(x)}${cite(x)}`)); }
+  if ((a.disagreements || []).length) { L.push("", "**Where sources disagree:**"); a.disagreements.forEach(x => L.push(`- ${cell(x.metric)}: ${cell(x.a?.figure)}${basis(x.a || {})}${cite(x.a || {})} · vs · ${cell(x.b?.figure)}${basis(x.b || {})}${cite(x.b || {})}`)); }
+  const c = a.comparison || {};
+  if ((c.rows || []).length && (c.columns || []).length) {
+    L.push("", "## " + (c.title || "How nearby areas compare"));
+    if (c.metric || c.basis) L.push("", `_${[c.metric && "Metric: " + c.metric, c.basis && "Basis: " + c.basis].filter(Boolean).join(" · ")}_`);
+    L.push("", table(c.columns, c.rows));
+    if ((c.sources || []).length) L.push("", "Sources: " + c.sources.map(x => cite(x).replace(/^ — /, "")).join("; "));
+    if (c.whyItMatters) L.push("", "**Why this position matters:** " + c.whyItMatters);
+  }
   L.push("", "## The dominant trends");
-  (a.trends || []).forEach((t, i) => { L.push("", `### ${i + 1}. ${t.title}${t.status && t.status !== "new" ? " _(" + t.status + ")_" : ""}`); if (t.whatsHappening) L.push("", t.whatsHappening);
-    (t.evidence || []).forEach(e => L.push(`- ${e.figure}${e.dataset ? " (" + e.dataset + ")" : ""}${src(e.source, e.url, e.period)}`)); if (t.whatItMeans) L.push("", "**What it means:** " + t.whatItMeans); });
-  const p = a.playbook || {}; L.push("", "## How to take advantage"); if (p.framing) L.push("", p.framing);
-  (p.opportunities || []).forEach((o, i) => L.push("", `**${i + 1}. ${o.name}** — ${o.how || ""}${o.leadSource ? "  \n_Lead source:_ " + o.leadSource : ""}${o.offer ? "  \n_Offer:_ " + o.offer : ""}`));
-  if (p.startHere) L.push("", "**Start here:** " + p.startHere);
-  if ((a.watch || []).length) { L.push("", "## What to watch"); a.watch.forEach(w => L.push(`- **${w.item}**${w.why ? " — " + w.why : ""}${w.status ? " _(" + w.status + ")_" : ""}`)); }
-  if ((a.caveats || []).length) { L.push("", "## Caveats"); a.caveats.forEach(x => L.push("- " + x)); }
-  L.push("", "## My take — DRAFT", "", "_(Yours to write — confirm before publishing.)_");
-  if ((a.sources || []).length) { L.push("", "## Sources"); a.sources.forEach(x => L.push(`- ${x.title || x.url}${x.publisher ? " — " + x.publisher : ""}${x.date ? ", " + x.date : ""}${x.url ? " — " + x.url + mark(x.url) : ""}`)); }
+  (a.trends || []).forEach((t, i) => { L.push("", `### ${i + 1}. ${t.title}${t.status && t.status !== "new" ? " _(" + t.status + ")_" : ""}`);
+    (t.data || []).forEach(e => L.push(`- ${cell(e.figure)}${basis(e)}${cite(e)}`)); if (t.whatItMeans) L.push("", "**What it means:** " + t.whatItMeans); });
+  if ((a.opportunityOutlook || []).length) { L.push("", "## Opportunity outlook", "", "_Assessments, not forecasts._", "", table(["Opportunity", "Outlook", "Primary consideration"], a.opportunityOutlook.map(o => [o.opportunity, o.outlook, o.consideration]))); }
+  L.push("", `## How ${a.audienceLabel || "you"} can take advantage`);
+  if ((ta.revenueEngines || []).length) { L.push("", "### Three revenue engines"); ta.revenueEngines.forEach((e, i) => L.push(`${i + 1}. **${cell(e.name)}** — ${cell(e.how)}`)); }
+  if ((ta.opportunities || []).length) { L.push("", "### Opportunities and where the leads come from"); ta.opportunities.forEach(o => L.push(`- **${cell(o.name)}** — ${cell(o.how)}${o.leadSource ? " · _Lead source:_ " + cell(o.leadSource) : ""}`)); }
+  const im = ta.immediate || {};
+  if (im.service) { L.push("", "### Most immediate opportunity: " + im.service); if (im.why) L.push("", im.why); (im.components || []).forEach(x => L.push("- " + cell(x))); }
+  if ((ta.leadGen || []).length) L.push("", "### Lead generation", "", table(["Content / lead magnet", "Customer attracted", "Conversion offer"], ta.leadGen.map(x => [x.content, x.attracts, x.offer])));
+  const calc = ta.calculator || {};
+  if ((calc.lines || []).length) {
+    L.push("", "### Illustrative revenue calculator", "", "_Illustration only — figures are before splits and fees; any commission rate is negotiable, not fixed._");
+    if ((calc.assumptions || []).length) { L.push("", "**Assumptions:**"); calc.assumptions.forEach(x => L.push("- " + cell(x))); }
+    L.push("", table(["Line", "Amount"], calc.lines.map(x => [x.label, x.value]))); if (calc.note) L.push("", calc.note);
+  }
+  const au = ta.authority || {};
+  if (au.play || (au.approved || []).length || (au.speculation || []).length) {
+    L.push("", "### Long-term authority play"); if (au.play) L.push("", au.play);
+    if ((au.approved || []).length) { L.push("", "**Approved / official milestones:**"); au.approved.forEach(x => L.push(`- ${cell(x.milestone)}${cite({ source: x.source, url: x.url, period: x.date })}`)); }
+    if ((au.speculation || []).length) { L.push("", "**Speculation (not approved — assessment only):**"); au.speculation.forEach(x => L.push("- " + cell(x))); }
+  }
+  if ((ta.priorities || []).length) { L.push("", "### What to prioritize"); ta.priorities.slice(0, 3).forEach((x, i) => L.push(`${i + 1}. ${cell(x)}`)); }
+  const w = a.watch || {};
+  if ((w.indicators || []).length || (w.compareAreas || []).length) {
+    L.push("", "## What to watch over the next 6–12 months"); (w.indicators || []).forEach(x => L.push(`- **${cell(x.item)}** — ${cell(x.why)}`));
+    if ((w.compareAreas || []).length) { L.push("", "**Areas to compare:**"); w.compareAreas.forEach(x => L.push(`- **${cell(x.area)}** — ${cell(x.why)}`)); }
+  }
+  if ((a.news || []).length) { L.push("", "## News this week"); a.news.forEach(n => L.push(`- ${cell(n.claim)}${cite({ source: n.publisher, url: n.url, period: n.date })}`)); }
+  if ((a.caveats || []).length || (a.legalLimits || []).length) { L.push("", "## Caveats"); (a.caveats || []).forEach(x => L.push("- " + cell(x))); (a.legalLimits || []).forEach(x => L.push("- **Legal / ethical limit:** " + cell(x))); }
+  if ((a.sources || []).length) { L.push("", "## Sources"); a.sources.forEach(x => L.push(`- ${cell(x.title || x.url)}${x.publisher ? " — " + cell(x.publisher) : ""}${x.date ? ", " + cell(x.date) : ""}${x.dataset ? " · dataset: " + cell(x.dataset) : ""}${x.url ? " — " + x.url + mark(x.url) : ""}`)); }
+  L.push("", "_✓ means the source link loads; it does not verify the number itself. ⚠ marks a link that could not be checked — treat those figures as unverified._");
   return L.join("\n");
+}
+// The run's ONE Free issue (operator 2026-10-30): a "Newsletter Free" child at Development, written from the rendered issue (Body
+// + page blocks) — never through the contract writer. A rerun replaces the run-built issue in place while it is still Development
+// and untouched since it was written; otherwise (published, or edited by the operator) the new issue is a new asset.
+async function digestRunIssue(env, S, invoke, md, headline) {
+  const hdr = ivHdr(), key = "digest:items:" + S.assetId;
+  let d = (await env.TRADES.get(key, "json")) || {}; d.children = d.children || { premium: [], free: [], news: [] }; d.children.free = d.children.free || [];
+  let entry = [...d.children.free].reverse().find(c => c.byRun && c.assetId), page = null;
+  if (entry) {
+    page = await newsletterNotion(env, "pages/" + kwDashId(entry.assetId)).catch(() => null);
+    const fresh = page && !page.archived && !page.in_trash && page.properties?.["Asset Status"]?.select?.name === "Development" && Date.parse(page.last_edited_time) <= (entry.writtenAt || 0) + 120000;
+    if (!fresh) { entry = null; page = null; }
+  }
+  if (!entry) {
+    await hubSitesMerge(env); const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === S.cid) || {};
+    const made = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.digestName || headline, productId: S.productId || undefined, campaignId: S.cid, slug: hub.slug || undefined,
+      allowMulti: true, parentAssetId: S.assetId, types: [{ assetType: "Newsletter Free", label: "Free issue", titleOverride: headline.slice(0, 190) }] });
+    const aid = ((made && made.created) || [])[0]?.id;
+    if (!aid) throw new Error("Free issue was not created: " + ((made && (made.error || (made.failed || []).join(" · ") || (made.skipped || []).join(" · "))) || "no response"));
+    page = await newsletterNotion(env, "pages/" + kwDashId(aid));
+    entry = { assetId: hubAssetId(aid), kind: "free", items: [], byRun: true };
+  } else {   // replace the old run-built content
+    const kids = await fetch(`https://api.notion.com/v1/blocks/${kwDashId(entry.assetId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+    for (const b of kids.results || []) await fetch("https://api.notion.com/v1/blocks/" + b.id, { method: "DELETE", headers: hdr }).catch(() => {});
+  }
+  const blocks = md.split(/\n{2,}/).map(x => x.trim()).filter(Boolean).map(x => ({ object: "block", type: "paragraph", paragraph: { rich_text: ivRt(x) } }));
+  await saveExistingAssetWriting(page, { "Asset Title": { title: [{ type: "text", text: { content: headline.slice(0, 190) } }] }, "Platform Title": { rich_text: ivRt(headline) }, Body: { rich_text: ivRt(md) } }, blocks);
+  d = (await env.TRADES.get(key, "json")) || d; d.children = d.children || { premium: [], free: [], news: [] }; d.children.free = d.children.free || [];
+  const now = new Date().toISOString(), rec = { ...entry, state: "done", written: true, violations: [], error: "", headline, runId: S.period, writtenAt: Date.now(), at: now, updatedAt: now };
+  const at = d.children.free.findIndex(c => hubAssetId(c.assetId || "") === entry.assetId);
+  if (at >= 0) d.children.free[at] = rec; else d.children.free.push(rec);
+  await env.TRADES.put(key, JSON.stringify(d));
+  return rec.assetId;
 }
 // Scope (operator 2026-10-28): the title's keywords say WHAT the digest is about; the newsletter's Research Focus (plus a
 // guided regenerate's guidance) says HOW WIDE to look. Mechanical token sets — no model call.
@@ -16315,7 +16418,8 @@ async function adStep(env, cid, S, invoke) {
     S.step='market';return;
   }
   if (S.step === "trends") {   // ONE Claude call with web search answers the two questions; its sources join the records
-    const t = await digestTrendsRun(env, S); S.trendsAt = t.at; S.trendsRecords = t.records.length; S.step = "write"; return;
+    const t = await digestTrendsRun(env, S); if (!t) return;   // another tick is mid-call
+    S.trendsAt = t.at; S.trendsRecords = t.records.length; S.step = "write"; return;
   }
   if(S.step==='market') {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
@@ -16387,6 +16491,7 @@ async function adStep(env, cid, S, invoke) {
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
     await digestItemsSave(env, S.assetId, w.sources, { additive: true, runId });   // append this run's records; carry unused ones forward; preserve checks, children and picks
+    if (trendsDoc && trendsDoc.md) { S.issueId = await digestRunIssue(env, S, invoke, trendsDoc.md, trendsDoc.analysis.headline); S.note = "Free issue written (" + trendsDoc.analysis.headline + "). " + (S.note || ""); }
     // operator 2026-10-29: a finished run puts the digest at REVIEW (written, not yet generated — one Disseminate clears it), and an
     // operator-edited title is kept: only an automatic "Digest — …" / "Weekly Digest — …" title (or none) is re-dated per run
     const autoTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
@@ -22136,7 +22241,7 @@ ${JSON.stringify(products)}`;
           digests.push({ queued: handQueue.some(x => x && typeof x === "object" && x.assetId === id), assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
             topicId: dTopic.topicId || "", isolated: dIsolated, trends: await (async () => { const t = await env.TRADES.get("digest:trends:" + id, "json").catch(() => null); if (!t) return null;
-              return { at: t.at, headline: t.analysis?.headline || "", startHere: t.analysis?.playbook?.startHere || "", trends: (t.analysis?.trends || []).map(x => ({ title: x.title, status: x.status || "new" })),
+              return { at: t.at, headline: t.analysis?.headline || "", startHere: t.analysis?.takeAdvantage?.immediate?.service || t.analysis?.playbook?.startHere || "", trends: (t.analysis?.trends || []).map(x => ({ title: x.title, status: x.status || "new" })),
                 niche: t.niche || "", audience: t.audience || "", sources: (t.analysis?.sources || []).map(x => ({ title: x.title || x.url, url: x.url, publisher: x.publisher || "", date: x.date || "", ok: !!(t.verify || {})[x.url] })), searched: (t.searched || []).length }; })(), productName: dTopic.product ? kwTitleOf(dTopic.product) : "", productId: dTopic.productId || "",
             runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "", thin: !!autoState.thin, floor: autoState.floor || null, guidance: autoState.guidance || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
@@ -22342,24 +22447,25 @@ ${JSON.stringify(products)}`;
           const priorId = await env.TRADES.get(requestKey);
           if (priorId) { const prior = await env.TRADES.get("titlejob:state:" + priorId, "json"); if (prior) return json({ ok: true, jobId: priorId, status: prior.status, reused: true }); }
         }
-        const activeKey = "digest:generate:active:" + id, activeId = await env.TRADES.get(activeKey);
+        const onlyIds = Array.isArray(body.itemIds) ? new Set(body.itemIds.map(String)) : null;   // a tick: make just this record's article
+        const activeKey = "digest:generate:active:" + id, activeId = onlyIds ? null : await env.TRADES.get(activeKey);
         if (activeId) { const active = await env.TRADES.get("titlejob:state:" + activeId, "json");
           if (active && ["queued", "running", "failed"].includes(active.status)) return json({ ok: true, jobId: activeId, status: active.status, reused: true }); }
         const picked = t => (d.items || []).filter(x => !x.retired && (d.checks?.[x.id] || {})[t]);
         d.interviewAssets = Array.isArray(d.interviewAssets) ? d.interviewAssets : [];
         const interviewFor = async map => { if (!map) return null; const list = await ivForTitle(map.titleId).catch(() => []); return list.find(x => x.id === map.interviewId && x.scope === "Asset" && x.assetIds.includes(hubAssetId(map.assetId))) || null; };
-        const steps = [];
-        for (const kind of ["premium", "free"]) { const items = picked(kind); if (!items.length) continue;
+        const steps = [], built = new Set(((d.children || {}).news || []).filter(c => c.state !== "write-failed" && c.state !== "error").map(c => c.itemId));
+        for (const kind of []) { const items = picked(kind); if (!items.length) continue;   // no issue steps (operator 2026-10-30): the run writes the Free issue
           const map = d.interviewAssets.find(x => x.key === kind + "|*"); let iv = await interviewFor(map);
           if (!iv || iv.status !== "Finished" || !iv.answers.some(a => String(a || "").trim())) iv = null;   // no finished interview: the asset is still built; the job flags one and the asset waits
           steps.push({ action: "digestIssue", kind, label: kind === "premium" ? "Premium issue" : "Free issue", items: items.map(x => ({ ...x })), ...(map?.assetId ? { assetId: map.assetId } : {}), ...(iv ? { interviewId: iv.id } : {}) });
         }
-        for (const item of picked("news")) {
+        for (const item of picked("news").filter(x => (!onlyIds || onlyIds.has(String(x.id))) && !built.has(x.id))) {
           const map = d.interviewAssets.find(x => x.key === "article|" + item.id), iv = await interviewFor(map);
           const ready = map && iv && iv.status === "Finished" && iv.answers.some(a => String(a || "").trim());   // not ready: the job builds the article and flags its interview
           steps.push({ action: "digestNews", kind: "news", label: "News SEO: " + String(item.claim || "").slice(0, 70), itemId: item.id, item: { ...item }, ...(map ? { titleId: map.titleId, assetId: map.assetId } : {}), ...(ready ? { interviewId: iv.id } : {}) });
         }
-        if (!steps.length) return json({ error: "No findings are checked for generation" }, 400);
+        if (!steps.length) return json({ error: onlyIds ? "That record already has its article" : "No ticked records without an article" }, 400);
         for (const s of steps) {
           if (s.kind === "premium" || s.kind === "free") newsletterMethod(await writingMethodsTable(env), s.kind);
         }
@@ -22374,10 +22480,9 @@ ${JSON.stringify(products)}`;
             d.children[group].push(s.kind === "news" ? { jobId, itemId: s.itemId, state: "queued", at: new Date().toISOString() } : { jobId, kind: s.kind, items: s.items.map(x => x.id), state: "queued", at: new Date().toISOString() });
         }
         await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
-        await kwNotionPatch(env, id, { "Asset Status": { select: { name: "Development" } } }).catch(e => console.error("digest review clear", e.message));   // one generation clears Review (operator 2026-10-29)
         const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.includes(jobId)) q.push(jobId);
         await env.TRADES.put("titlejob:queue", JSON.stringify(q));
-        await env.TRADES.put(activeKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
+        if (!onlyIds) await env.TRADES.put(activeKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
         await env.TRADES.put("digest:generate:last:" + id, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
         if (requestKey) await env.TRADES.put(requestKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
         d.operations = { ...(d.operations || {}), ...(requestId ? { [requestId]: { ok: true, pending: true, jobId, status: "queued" } } : {}) };
