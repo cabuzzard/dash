@@ -15199,6 +15199,108 @@ async function runThumbnailJobStep(env, invoke, step, checkpoint) {
   }
   step.outcome='generated';delete step.error;
 }
+// ── Title clean-out (operator 2026-10-29): every hub title under Keywords' "Titles with no topic" (title → product → topic; no
+// product or a product with no topic = no topic) is grouped into a Paste-list run on a Series that sits on a "<Group> — Consulting
+// Call" title, on an existing synced product where one fits, else on a new topic + product. Source titles are then deleted.
+// HARD RULE: a Published asset is never deleted — it is moved onto the group's new title first, and a title still holding a
+// Published asset is never deleted. Jobs live in KV cleanup:queue / cleanup:job:<id>; the */4 cron runs them (200 s per tick).
+//   report {slugs}      → cleanup:report:<slug> (no-topic titles + their assets, products + research state, topics, clusters)
+//   apply  {ops, vars}  → one op per pass, logged on the job: topic · product · title · series · run · moveAsset · deleteTitle
+async function titleCleanupTick(env, invoke) {
+  if (await env.TRADES.get("cleanup:lock")) return { busy: true };
+  await env.TRADES.put("cleanup:lock", "1", { expirationTtl: 300 });
+  try {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 200000) {
+      const q = (await env.TRADES.get("cleanup:queue", "json")) || []; if (!q.length) break;
+      const id = q[0], key = "cleanup:job:" + id, J = await env.TRADES.get(key, "json");
+      if (!J || J.done) { await env.TRADES.put("cleanup:queue", JSON.stringify(q.filter(x => x !== id))); continue; }
+      if (J.kind === "report") { J.result = []; for (const slug of J.slugs || []) { try { J.result.push(await cleanupReport(env, invoke, slug)); } catch (e) { J.result.push({ slug, error: e.message }); } } J.done = true; }
+      else if (J.kind === "apply") {
+        J.vars = J.vars || {}; J.log = J.log || []; J.i = J.i || 0;
+        const op = (J.ops || [])[J.i];
+        if (!op) J.done = true;
+        else { try { J.log.push({ i: J.i, op: op.op, key: op.key || "", ok: true, ...(await cleanupOp(env, invoke, J, op)) }); } catch (e) { J.log.push({ i: J.i, op: op.op, key: op.key || "", error: e.message || String(e) }); }
+          J.i++; if (J.i >= J.ops.length) J.done = true; }
+      } else J.done = true;
+      J.at = Date.now(); await env.TRADES.put(key, JSON.stringify(J));
+      if (J.done) await env.TRADES.put("cleanup:queue", JSON.stringify(((await env.TRADES.get("cleanup:queue", "json")) || []).filter(x => x !== id)));
+    }
+  } finally { await env.TRADES.delete("cleanup:lock"); }
+  return { ok: true };
+}
+async function cleanupReport(env, invoke, slug) {
+  await hubSitesMerge(env).catch(() => {});
+  const hub = HUB_SITES.find(h => h.slug === slug); if (!hub) throw new Error("no hub " + slug);
+  const cid = hubAssetId(hub.campaignId);
+  const [dev, prods, strat, kc] = await Promise.all([invoke({ action: "getDevAssetsTable" }), invoke({ action: "getCampaignProducts", campaignId: cid }),
+    invoke({ action: "getCampaignStrategies", campaignId: cid }), invoke({ action: "getKeywordClusters", campaignId: cid })]);
+  if (dev.error) throw new Error("rows: " + dev.error);
+  const rows = (dev.rows || []).filter(r => hubAssetId(r.campId) === cid), titles = new Map();
+  for (const r of rows) {
+    if (!r.titleId || r.kind === "interview") continue;
+    const t = titles.get(r.titleId) || { id: r.titleId, title: r.title || "", status: r.titleStatus || "", productId: r.productId || "", product: r.product || "", productStatus: r.productStatus || "",
+      topic: r.keywordTopic || "", res: !!r.titleHasResearch, oos: !!r.titleOutOfSync, assets: [] };
+    if (r.kind === "asset" && r.assetId) t.assets.push({ id: r.assetId, type: r.rawAssetType || r.assetType || "", status: r.assetStatus || "", pillarType: r.pillarType || "", name: r.assetName || "" });
+    titles.set(r.titleId, t);
+  }
+  const state = Object.fromEntries(((strat && strat.products) || []).map(x => [hubAssetId(x.productId), x.researchState]));
+  const topics = [...((kc && kc.committed) || []), ...((kc && kc.staged) || [])].map(t => ({ id: hubAssetId(t.id), name: t.name || "", staged: !!t.staged }));
+  const out = { slug, cid, at: Date.now(), noTopic: [...titles.values()].filter(t => !t.topic),
+    products: ((prods && prods.products) || []).map(x => ({ id: hubAssetId(x.id), name: x.name, topicId: x.topicId || "", stack: x.stack || "", status: x.status || "", outOfSync: !!x.outOfSync, research: state[hubAssetId(x.id)] || "" })),
+    topics, clusters: ((kc && kc.topicClusters) || {}).clusters || [], assign: ((kc && kc.topicClusters) || {}).assign || {} };
+  await env.TRADES.put("cleanup:report:" + slug, JSON.stringify(out), { expirationTtl: 14 * 86400 });
+  return { slug, noTopic: out.noTopic.length, products: out.products.length, topics: topics.length };
+}
+async function cleanupOp(env, invoke, J, op) {
+  const V = J.vars, ref = (k, f) => (V[k] || {})[f] || "", must = (x, what) => { if (!x) throw new Error(what + " missing"); return x; };
+  const ok = r => { if (!r || r.error) throw new Error((r && r.error) || "no response"); return r; };
+  if (op.op === "topic") {   // a new keyword topic, its name as its seed keyword, in a cluster
+    const id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const r = ok(await invoke({ action: "kwHubApply", campaignId: op.campaignId, name: op.hubName || "", ops: [{ op: "newTopics", mode: "one", keywords: [String(op.keyword || op.name).toLowerCase()], ids: [id], name: op.name, cluster: op.cluster || "", move: false }] }));
+    if (r.errors && r.errors.length) throw new Error(r.errors.join(" · "));
+    V[op.key] = { ...(V[op.key] || {}), topicId: id, topicName: op.name }; return { topicId: id };
+  }
+  if (op.op === "product") {
+    const topicId = must(op.topicId || ref(op.key, "topicId"), "topic");
+    const r = ok(await invoke({ action: "createProduct", title: op.name, campaignId: op.campaignId, stack: op.stack || ref(op.key, "topicName") || op.name, topicId, status: "Planning", keywords: String(op.keyword || "").toLowerCase() || undefined }));
+    V[op.key] = { ...(V[op.key] || {}), productId: hubAssetId(r.id), topicId }; return { productId: r.id };
+  }
+  if (op.op === "title") {
+    const productId = must(op.productId || ref(op.key, "productId"), "product"), topicId = op.topicId || ref(op.key, "topicId");
+    const r = ok(await invoke({ action: "createDevTitle", title: op.name, campaignId: op.campaignId, productId, status: "Development", skipPillar: true }));
+    const titleId = hubAssetId(r.id);
+    if (topicId) await invoke({ action: "setTitleTopic", titleId, topicId }).catch(() => {});
+    V[op.key] = { ...(V[op.key] || {}), titleId, productId }; return { titleId };
+  }
+  if (op.op === "series") {
+    const titleId = must(ref(op.key, "titleId"), "title");
+    const r = ok(await invoke({ action: "createDevAssets", titleId, title: op.name, productId: ref(op.key, "productId") || undefined, campaignId: op.campaignId, slug: op.slug || undefined, types: [{ assetType: "Series", label: "Series", pillar: true }] }));
+    const seriesAssetId = hubAssetId(((r.created || [])[0] || {}).id || ""); if (!seriesAssetId) throw new Error("Series asset not created: " + ((r.failed || []).join(" · ") || "unknown"));
+    V[op.key].seriesAssetId = seriesAssetId; return { seriesAssetId };
+  }
+  if (op.op === "run") {
+    const titleId = must(ref(op.key, "titleId"), "title");
+    const r = ok(await invoke({ action: "seriesLists", titleId, op: "create", name: op.name, lines: op.lines || [] }));
+    return { listId: r.listId, added: r.added, skipped: r.skipped };
+  }
+  if (op.op === "moveAsset") {   // a Published (or kept) asset → the group's new title + product; status and live page unchanged
+    const titleId = must(op.titleId || ref(op.key, "titleId"), "target title"), productId = op.productId || ref(op.key, "productId");
+    const props = { "Content Strategy": { relation: [{ id: kwDashId(titleId) }] }, ...(productId ? { "Product": { relation: [{ id: kwDashId(productId) }] } } : {}) };
+    const r = await hubNotionFetch("https://api.notion.com/v1/pages/" + kwDashId(hubAssetId(op.assetId)), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("move failed: " + (d.message || r.status)); }
+    return { assetId: op.assetId, titleId };
+  }
+  if (op.op === "deleteTitle") {   // never with a Published asset still on it
+    const t = await ivPage(hubAssetId(op.titleId)).catch(() => null); if (!t || t.archived || t.in_trash) return { skipped: "already gone" };
+    for (const a of (t.properties?.Assets?.relation || [])) {
+      const pg = await ivPage(hubAssetId(a.id)).catch(() => null);
+      if (pg && !pg.archived && !pg.in_trash && pg.properties?.["Asset Status"]?.select?.name === "Published") return { skipped: "has a Published asset — title kept", assetId: hubAssetId(a.id) };
+    }
+    ok(await invoke({ action: "deleteTitle", titleId: hubAssetId(op.titleId) })); return { deleted: hubAssetId(op.titleId) };
+  }
+  throw new Error("unknown op " + op.op);
+}
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
   await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 480 });   // > the 210 s budget + one long step
@@ -55120,6 +55222,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("kwHubRestructureTick", kwHubRestructureTick(env));
       cw("kwHubMainMigrateTick", kwHubMainMigrateTick(env));
       cw("kwHubPlaceTick", kwHubPlaceTick(env));
+      cw("titleCleanupTick", (async () => { const q = (await env.TRADES.get("cleanup:queue", "json")) || []; if (!q.length) return;
+        const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        await titleCleanupTick(env, invoke); })());
       cw("titleJobsRun", (async () => { const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.length) return;
         const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
