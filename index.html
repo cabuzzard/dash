@@ -766,6 +766,14 @@
       <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div>
     </div>
 
+    <!-- ALL HUBS DIGESTS (operator 2026-10-29) — every hub's Digest Parents, each the hub Digest section's own panel, collapsed until opened -->
+    <div class="oc-sec" data-ock="alldigests"><div class="oc-hd" onclick="ocToggle(event,this);allDigLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs Digests</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every Digest Parent on every hub, grouped by hub. Open one to see its records, runs, model, isolate, regenerate and Disseminate.</span>
+      <button onclick="event.stopPropagation();allDigLoad(true)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>
+    <div class="oc-bd"><div id="allDigBody"><div style="font-size:12px;color:var(--text3);">Open to load.</div></div></div>
+    </div>
+
     <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
     <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
@@ -17091,13 +17099,31 @@ async function hub2PoolLoad(slug, force) {
   try { const r = await call('getDigests', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     const pool = await call('getDigestPool', { campaignId: h.campaignId }).catch(e => ({ error: e.message }));
     _hub2Pool[slug] = { hubDepth: r.hubDepth || '', digests: r.digests || [], pool: pool && !pool.error ? (pool.items || []) : [], poolError: pool && pool.error || '', run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
-    if (r.digests && r.digests[0] && _hub2DigOpen[slug + '|' + r.digests[0].assetId] === undefined) _hub2DigOpen[slug + '|' + r.digests[0].assetId] = true;   // newest open
     clearTimeout(_hub2Pool[slug].timer); const genBusy = (_hub2Pool[slug].digests || []).some(d => (d.generationJob && ['queued','running'].includes(d.generationJob.status)) || (d.rescan && ['queued','running'].includes(d.rescan.status)));
     if (r.run || genBusy) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), genBusy ? 10000 : 60000); }
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
   hub2PoolPaint(slug);
 }
-function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) hubKeepInputs(el, () => { el.innerHTML = hub2PoolHtml(slug); }); if (_hubDigRow && _hubDigRow.slug === slug) hubDigestRowPaint(); }
+function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) hubKeepInputs(el, () => { el.innerHTML = hub2PoolHtml(slug); }); if (_hubDigRow && _hubDigRow.slug === slug) hubDigestRowPaint(); allDigPaint(slug); }
+// All Output → All Hubs Digests (operator 2026-10-29): every hub's Digest Parents, each the same collapsible panel as the hub's Digest
+// section (collapsed until opened). Loaded on first open; each hub's block repaints with that hub's Digest section.
+let _allDigLoaded = false;
+async function allDigLoad(force) {
+  if (_allDigLoaded && !force) return; _allDigLoaded = true;
+  const el = document.getElementById('allDigBody'); if (!el) return;
+  const hubs = HUB_SITES.filter(h => h.campaignId);
+  el.innerHTML = hubs.map(h => `<div style="margin:6px 0 12px;"><div style="font-weight:700;font-size:13px;margin:0 0 5px;">📰 ${esc(h.name || h.slug)}</div><div id="allDigests-${esc(h.slug)}"><div style="font-size:11px;color:var(--text3);">Loading…</div></div></div>`).join('');
+  await Promise.all(hubs.map(h => hub2PoolLoad(h.slug, !!force).catch(() => {})));
+  hubs.forEach(h => allDigPaint(h.slug));
+}
+function allDigPaint(slug) {
+  const el = document.getElementById('allDigests-' + slug); if (!el) return;
+  const P = _hub2Pool[slug];
+  hubKeepInputs(el, () => { el.innerHTML = !P || P.loading ? '<div style="font-size:11px;color:var(--text3);">Loading…</div>'
+    : P.error ? `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`
+    : !(P.digests || []).length ? '<div style="font-size:11px;color:var(--text3);">No Digest Parents on this hub.</div>'
+    : P.digests.map(d => hub2DigHtml(slug, d)).join(''); });
+}
 // A re-render (the Digest section reloads itself every 10-60 s while a run or generation is going) must not wipe what the operator
 // is typing (operator 2026-10-29: "the digest modal keeps re loading … losing all of my work"): every input / textarea / select with
 // an id keeps its value, checkbox state, focus and cursor, and every <details> keeps its open state, across the repaint.
@@ -17116,12 +17142,12 @@ function hubKeepInputs(root, paint) {
   root.scrollTop = scroll;
 }
 // typing marks a field as the operator's own, so a repaint keeps it even after it loses focus
-document.addEventListener('input', e => { const t = e.target; if (t && t.id && t.closest && t.closest('[id^="hub2Pool-"], #hubDigRowModal')) t.dataset.dirty = '1'; }, true);
+document.addEventListener('input', e => { const t = e.target; if (t && t.id && t.closest && t.closest('[id^="hub2Pool-"], #hubDigRowModal, [id^="allDigests-"]')) t.dataset.dirty = '1'; }, true);
 // 📰 digest on a Keywords title row (operator 2026-10-29): that title's Digest Parent in a modal — the same panel as the hub's Digest
 // section (records, Retire, model, guided regenerate, Disseminate). Every control there re-paints the section, which re-paints this.
 let _hubDigRow = null;
 async function hubDigestRowOpen(slug, assetId) {
-  _hubDigRow = { slug, assetId: String(assetId).replace(/-/g, '') };
+  _hubDigRow = { slug, assetId: String(assetId).replace(/-/g, '') }; _hub2DigOpen[slug + '|' + _hubDigRow.assetId] = true;   // the modal shows its digest open
   let m = document.getElementById('hubDigRowModal');
   if (!m) { m = document.createElement('div'); m.id = 'hubDigRowModal'; m.className = 'modal-bg'; m.onclick = e => { if (e.target === m) hubDigestRowClose(); }; document.body.appendChild(m); }
   m.classList.add('open'); hubDigestRowPaint();
@@ -17358,7 +17384,7 @@ async function hub2DigRetire(slug, assetId, itemId, retired, input) {
 // Guided regenerate = a new run of this digest (same queued pipeline) with the operator's guidance added to the research brief.
 // The digest panel can be on the page twice (the hub's Digest section and the Keywords 📰 digest modal) with the same element ids —
 // a control reads the field next to the button that was clicked, never the first copy in the document (operator 2026-10-29).
-function hubNear(el, id) { const root = el && el.closest && el.closest('#hubDigRowModal, [id^="hub2Pool-"]'); let x = null; try { x = root ? root.querySelector('#' + CSS.escape(id)) : null; } catch (e) {} return x || document.getElementById(id); }
+function hubNear(el, id) { const root = el && el.closest && el.closest('#hubDigRowModal, [id^="hub2Pool-"], [id^="allDigests-"]'); let x = null; try { x = root ? root.querySelector('#' + CSS.escape(id)) : null; } catch (e) {} return x || document.getElementById(id); }
 async function hub2DigestRegenerate(slug, assetId, button) {
   const hub = HUB_SITES.find(x => x.slug === slug), ta = hubNear(button, 'hub2RegenGuide-' + slug + '-' + assetId), guidance = (ta?.value || '').trim();
   if (!hub) return; if (!guidance) return showToast('Say what to change first — the guidance steers the new run.', 'error');
