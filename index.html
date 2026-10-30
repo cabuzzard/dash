@@ -763,13 +763,12 @@
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Initiatives</h2>
       <span style="font-size:11.5px;color:var(--text2);">Questions and notes per initiative. Edit the Question column; add rows below.</span><span id="initvMsg" style="font-size:11px;color:var(--text3);"></span></div>
     <div class="oc-bd"><div id="initvBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div>
-      <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div>
-    </div>
-
-    <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
+      <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button>
+      <div style="margin-top:14px;">
+<style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
       .allrow-tbl > tbody > tr.allrow-h:hover > td { background:var(--border2) !important; }   /* row highlight on the Digest / Series headings */</style>
     <!-- ALL HUBS DIGESTS (operator 2026-10-29) — every hub's Digest Parents, each the hub Digest section's own panel, collapsed until opened -->
-    <div class="oc-sec" data-ock="alldigests"><div class="oc-hd" onclick="ocToggle(event,this);allDigLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+    <div class="oc-sec" data-ock="alldigests"><div class="oc-hd" onclick="ocToggle(event,this);allDigLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:14px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs Digests</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every Digest Parent on every hub, grouped by hub. Open one to see its records, runs, model, isolate, regenerate and Disseminate.</span>
       <button onclick="event.stopPropagation();allDigLoad(true)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>
@@ -777,14 +776,17 @@
     </div>
 
     <!-- ALL HUBS SERIES (operator 2026-10-29) — every hub's Series parents, each opening its ✨ ideas panel inline -->
-    <div class="oc-sec" data-ock="allseries"><div class="oc-hd" onclick="ocToggle(event,this);allSerLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+    <div class="oc-sec" data-ock="allseries"><div class="oc-hd" onclick="ocToggle(event,this);allSerLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:14px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs Series</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every Series parent on every hub, sorted by hub. Open one for its runs, Paste list, Ask Claude, categories and ideas.</span>
       <button onclick="event.stopPropagation();allSerLoad(true)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>
     <div class="oc-bd"><div id="allSerBody"><div style="font-size:12px;color:var(--text3);">Open to load.</div></div></div>
     </div>
 
-    <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
+      </div></div>
+    </div>
+
+        <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
     <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
       <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
