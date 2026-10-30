@@ -775,6 +775,14 @@
     <div class="oc-bd"><div id="allDigBody"><div style="font-size:12px;color:var(--text3);">Open to load.</div></div></div>
     </div>
 
+    <!-- ALL HUBS SERIES (operator 2026-10-29) — every hub's Series parents, each opening its ✨ ideas panel inline -->
+    <div class="oc-sec" data-ock="allseries"><div class="oc-hd" onclick="ocToggle(event,this);allSerLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs Series</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every Series parent on every hub, sorted by hub. Open one for its runs, Paste list, Ask Claude, categories and ideas.</span>
+      <button onclick="event.stopPropagation();allSerLoad(true)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>
+    <div class="oc-bd"><div id="allSerBody"><div style="font-size:12px;color:var(--text3);">Open to load.</div></div></div>
+    </div>
+
     <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
     <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
@@ -19159,8 +19167,9 @@ async function hubSeriesNewGo(slug) {
   await hubTitlesLoad(slug, true); hubKwRefresh(slug); return true;
 }
 let _series = null;
-async function hubSeriesOpen(slug, tid, seriesAssetId, force) {
-  _series = Object.assign(_series && _series.tid === tid ? _series : {}, { slug, tid, seriesAssetId, busy: 'Gathering ideas from your research…', data: _series && _series.tid === tid ? _series.data : null });
+async function hubSeriesOpen(slug, tid, seriesAssetId, force, target) {   // target: draw inline into that element (All Hubs Series) instead of the modal
+  const keep = _series && _series.tid === tid;
+  _series = Object.assign(keep ? _series : {}, { slug, tid, seriesAssetId, busy: 'Gathering ideas from your research…', data: keep ? _series.data : null }, target !== undefined ? { target } : keep ? {} : { target: '' });
   hubSeriesDraw();
   try { const r = await call('seriesIdeas', { titleId: tid, force: !!force }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); _series.data = r; _series.used = new Set(r.used || []); _series.busy = ''; }
   catch (e) { _series.busy = ''; _series.err = e.message; }
@@ -19174,8 +19183,11 @@ function hubSeriesType(slug, kind) {   // topical choices bind to their Current 
   return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel' })[kind];
 }
 function hubSeriesDraw() {
-  const S = _series; if (!S) return; let m = document.getElementById('seriesModal');
+  const S = _series; if (!S) return; let m = S.target ? document.getElementById(S.target) : document.getElementById('seriesModal');
+  if (!m && S.target) return;   // its All Hubs Series row was closed
   if (!m) { m = document.createElement('div'); m.id = 'seriesModal'; m.className = 'modal-bg'; m.onclick = e => { if (e.target === m) m.classList.remove('open'); }; document.body.appendChild(m); }
+  const aRow = (Array.isArray(DEV2_ROWS) ? DEV2_ROWS : []).find(r => r.assetId && String(r.assetId).replace(/-/g, '') === String(S.seriesAssetId || '').replace(/-/g, ''));
+  const titleEd = S.seriesAssetId ? `<div style="display:flex;gap:6px;align-items:center;margin:4px 0 8px;"><span style="font-size:10.5px;color:var(--text3);">Title</span><input id="srTitleEd" value="${esc(S.titleEdit ?? ((aRow && aRow.assetName) || (S.data && S.data.name) || ''))}" oninput="_series.titleEdit=this.value" onkeydown="if(event.key==='Enter'){event.preventDefault();hubSeriesRename()}" style="flex:1;min-width:200px;font-size:12px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);"><button style="font-size:10.5px;padding:1px 9px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;" onclick="hubSeriesRename()">Save title</button></div>` : '';
   const D = S.data, B = 'font-size:10.5px;padding:1px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;white-space:nowrap;';
   const card = (src, x) => { const used = S.used && S.used.has(x.id);
     return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);${used ? 'opacity:.55;' : ''}">
@@ -19184,8 +19196,8 @@ function hubSeriesDraw() {
   const order = ['Claude asks', 'Your interviews', 'Pain points', 'Benefits & proof', 'Emotional benefits', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
   const srcs = D ? order.filter(k => (D.sources[k] || []).length).concat(Object.keys(D.sources).filter(k => !order.includes(k) && D.sources[k].length)) : [];
   S.open = S.open || {};
-  m.innerHTML = `<div class="modal" style="max-width:780px;max-height:88vh;overflow:auto;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>
+  m.innerHTML = `<div ${S.target ? 'style="padding:2px 0;"' : 'class="modal" style="max-width:780px;max-height:88vh;overflow:auto;"'}>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;${S.target ? 'font-size:13px;' : ''}">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>${titleEd}
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup></select>
@@ -19204,8 +19216,58 @@ function hubSeriesDraw() {
     ${srcs.map(k => { const list = D.sources[k], open = S.open[k] === true;   // every group starts collapsed (operator 2026-10-29)
       return `<div style="margin:6px 0;border:1px solid var(--border);border-radius:6px;"><div class="hkw-hd" onclick="_series.open['${esc(k)}']=${open ? 'false' : 'true'};hubSeriesDraw()" style="padding:5px 8px;cursor:pointer;font-weight:600;font-size:12px;display:flex;gap:6px;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--text3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
         ${open ? `<div style="padding:0 8px 4px;">${list.map(x => card(k, x)).join('')}</div>` : ''}</div>`; }).join('') || (D ? '<div style="font-size:12px;color:var(--text3);">No ideas found yet — save the title research, add keywords to its topic, or attach a product.</div>' : '')}
-    <div style="margin-top:10px;"><button class="modal-btn" onclick="document.getElementById('seriesModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
-  m.classList.add('open');
+    <div style="margin-top:10px;"><button class="modal-btn" onclick="${S.target ? 'allSerToggle(_allSerOpen)' : "document.getElementById('seriesModal').classList.remove('open')"}" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
+  if (!S.target) m.classList.add('open');
+}
+// ✎ a Series parent's own Asset Title (operator 2026-10-29)
+async function hubSeriesRename() {
+  const S = _series; if (!S || !S.seriesAssetId) return; const title = String(S.titleEdit ?? (document.getElementById('srTitleEd') || {}).value ?? '').trim(); if (!title) return showToast('Type a title first', 'error');
+  const r = await call('updatePublishFields', { assetId: S.seriesAssetId, title }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Title not saved: ' + ((r && r.error) || 'no response'), 'error');
+  const row = (Array.isArray(DEV2_ROWS) ? DEV2_ROWS : []).find(x => x.assetId && String(x.assetId).replace(/-/g, '') === String(S.seriesAssetId).replace(/-/g, '')); if (row) row.assetName = title;
+  S.titleEdit = undefined; showToast('✓ Series title saved', 'success'); hubSeriesDraw(); if (_allSerLoaded) allSerRender();
+}
+// All Output → All Hubs Series (operator 2026-10-29: "an identical section for all series assets"): one row per Series parent —
+// Hub · Series · Product · Status — sorted by hub; a row opens that Series' ✨ ideas panel inline (runs, Paste list, Ask Claude,
+// categories, ideas — the same panel as the Keywords ✨ ideas modal). Read from the All Output rows.
+let _allSerLoaded = false, _allSerOpen = '';
+async function allSerLoad(force) {
+  if (_allSerLoaded && !force) return; _allSerLoaded = true;
+  const el = document.getElementById('allSerBody'); if (el && (!Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length || force)) el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading every hub&#39;s series…</div>';
+  if (force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length) { try { const r = await devAssetsTable(); if (r && !r.error) { DEV2_ROWS = r.rows || []; DEV2_APPS = r.apps || DEV2_APPS; } } catch (e) {} }
+  allSerRender();
+}
+function allSerRows() {
+  const seen = new Set(), out = [];
+  for (const r of (Array.isArray(DEV2_ROWS) ? DEV2_ROWS : [])) {
+    if (r.kind !== 'asset' || !r.assetId || !/^series$/i.test(r.pillarType || '') || /^delete$/i.test(r.assetStatus || '')) continue;
+    const id = String(r.assetId).replace(/-/g, ''); if (seen.has(id)) continue; seen.add(id);
+    const h = hubCheckHubOf(r); if (!h) continue;
+    out.push({ slug: h.slug, hub: h.name || h.slug, assetId: id, titleId: String(r.titleId || '').replace(/-/g, ''), name: r.assetName || r.title || 'Series', product: r.product || '', status: r.assetStatus || '' });
+  }
+  return out.sort((a, b) => a.hub.localeCompare(b.hub) || a.name.localeCompare(b.name));
+}
+function allSerRender() {
+  const el = document.getElementById('allSerBody'); if (!el) return;
+  const rows = allSerRows(), TH = 'text-align:left;font-size:11px;color:var(--text3);padding:5px 8px;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--surface2);', TD = 'padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;';
+  if (_allSerOpen && !rows.some(r => r.assetId === _allSerOpen)) _allSerOpen = '';
+  const body = rows.map(r => { const open = _allSerOpen === r.assetId;
+    return `<tr style="cursor:pointer;${open ? 'background:var(--surface2);' : ''}" onclick="allSerToggle('${esc(r.assetId)}')">
+      <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
+      <td style="${TD}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.name)}</td>
+      <td style="${TD}max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.product)}">${esc(r.product || '—')}</td>
+      <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.status)}</td></tr>`
+      + (open ? `<tr><td colspan="4" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
+  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${rows.length} series across ${new Set(rows.map(r => r.slug)).size} hubs</div><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Hub</th><th style="${TH}">Series</th><th style="${TH}">Product</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="4" style="${TD}color:var(--text3);">No Series parents on any hub.</td></tr>`}</tbody></table></div>`;
+  if (_allSerOpen && _series && _series.target === 'allSerPanel') hubSeriesDraw();   // the open row's panel survives the table repaint
+}
+async function allSerToggle(assetId) {
+  if (_allSerOpen === assetId) { _allSerOpen = ''; if (_series && _series.target === 'allSerPanel') _series = null; return allSerRender(); }
+  const r = allSerRows().find(x => x.assetId === assetId); if (!r) return;
+  _allSerOpen = assetId; if (_series && _series.target === 'allSerPanel') _series = null; allSerRender();
+  if (!(_hubTitles[r.slug] && _hubTitles[r.slug].rows)) { try { await hubTitlesLoad(r.slug); } catch (e) {} }
+  if (_allSerOpen !== assetId) return;
+  hubSeriesOpen(r.slug, r.titleId, r.assetId, false, 'allSerPanel');
 }
 // 🗂 Categories: a Series' standing lanes (e.g. the 8 deal stories) — each keeps producing outputs, never "used up".
 // 📋 copies a ChatGPT prompt built from the category + the series' RESEARCH STYLE (the spec), shaped for the output kind;
