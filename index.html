@@ -12157,7 +12157,8 @@ function dev2EditApply(r, k, v) {
   });
 }
 const DEV2_KIND = { product: 'Product', title: 'Title', asset: 'Asset', interview: 'Interview' };
-function dev2Val(r, col) { if(col === 'hubSection')return String(r.hubSectionDisplay || ''); if (col === 'kind') return DEV2_KIND[r.kind] || (r.assetId ? 'Asset' : r.titleId ? 'Title' : r.productId ? 'Product' : ''); if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); if (col === 'inputApp') return appLabel(r.inputApp); return String(r[col] == null ? '' : r[col]); }
+function dev2Val(r, col) { if (col === 'assetType' && r.assetId && r.assetClass !== 'Pillar') return String(r.rawAssetType || r.assetType || '');   // ASSET TYPE column = the asset's own Asset Type (operator 2026-10-30), never its Method name; parents keep their "<type> parent" label
+  if(col === 'hubSection')return String(r.hubSectionDisplay || ''); if (col === 'kind') return DEV2_KIND[r.kind] || (r.assetId ? 'Asset' : r.titleId ? 'Title' : r.productId ? 'Product' : ''); if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); if (col === 'inputApp') return appLabel(r.inputApp); return String(r[col] == null ? '' : r[col]); }
 // ★ column: toggle a product's ★ main-offering status on its hub (same worker action as the hub card's ★), then repaint every row of it
 async function dev2MainToggle(productId, campId, btn) {
   const nid = x => String(x || '').replace(/-/g, ''), rows = (DEV2_ROWS || []).filter(r => nid(r.productId) === nid(productId) && nid(r.campId) === nid(campId)); if (!rows.length) return;
@@ -13167,7 +13168,7 @@ function renderDev2() {
       ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(r.assetId)}" target="_blank" rel="noopener" title="${esc(titleText || r.assetName || 'Untitled')} — open in the publish modal" style="${titleClip}padding:3px 0;color:var(--accent);text-decoration:none;">${esc(titleText || r.assetName || 'Open asset')}</a>`
       : `<span title="${esc(titleText || 'Untitled')}" style="${titleClip}">${esc(titleText || 'Untitled')}</span>`;
     const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(r.assetName || 'Untitled')} — click to edit" style="padding:0;border:0;background:transparent;color:var(--text);font:inherit;cursor:pointer;display:inline-block;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;text-align:left;">${esc(r.assetName || 'Untitled')}</button><a href="https://www.notion.so/${esc(String(r.assetId).replace(/-/g, ''))}" target="_blank" rel="noopener" title="Open this asset in Notion" style="font-size:9.5px;color:var(--text3);text-decoration:none;margin-left:4px;vertical-align:middle;">↗</a>` : dash;
-    const assetTypeCell = r.assetId ? esc(r.assetType || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
+    const assetTypeCell = r.assetId ? esc(dev2Val(r, 'assetType') || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
     // admin tool (pass its own campId as the query param — that's how it
