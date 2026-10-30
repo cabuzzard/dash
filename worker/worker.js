@@ -1429,6 +1429,19 @@ async function cronRunningNow(env) {
     if (nb) out.push({ kind: "Hub news", label: hubName(nb), detail: "writing a news post", since: "" });
     for (const { key, v } of await scan("lfrender:")) if (v && /queued|running|render/i.test(v.status || "") && ago(v.at || v.started) < 3 * 3600000) out.push({ kind: "Long-form render", label: key.slice(9), detail: `${v.status}${v.msg ? " — " + String(v.msg).slice(0, 120) : ""}`, since: v.started || v.at });
     for (const { key, v } of await scan("hf:asset:")) if (v && /render/i.test(v.status || "") && ago(v.ts) < 3 * 3600000) out.push({ kind: "Reel render (HeyGen)", label: key.slice(9), detail: v.status, since: v.ts });
+    // digest runs (operator 2026-10-30: "post those statuses in the cron tab") — each step with its time, Pacific
+    const pt = t => new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" });
+    const DSTEP = { start: "start", "free-core": "free news search", trends: "call 1 · trends", advantage: "call 2 · take advantage", write: "writing the Free issue", done: "done ✓", skip: "skipped", error: "error ✗" };
+    for (const { key, v } of await scan("digest:auto:state:")) {
+      if (!v || !v.startedAt) continue;
+      const active = !["done", "skip", "error"].includes(v.step), recent = ago(v.finishedAt || v.startedAt) < 12 * 3600000;
+      if (!active && !recent) continue;
+      const log = (v.stepLog || []).map(x => `${DSTEP[x.step] || x.step} ${pt(x.at)}`).join(" → ");
+      out.push({ kind: active ? "Digest run" : "Digest run · finished", label: hubName(v.cid) + " — " + (v.digestName || key.slice(18)),
+        detail: (log || ("started " + pt(v.startedAt) + " · now: " + (DSTEP[v.step] || v.step))) + (active && log ? " · now: " + (DSTEP[v.step] || v.step) : "") + (!active && v.finishedAt ? ` · took ${Math.round((v.finishedAt - v.startedAt) / 60000)} min` : "") + (v.tries ? ` · retry ${v.tries}/3: ${String(v.lastError || "").slice(0, 120)}` : "") + (v.step === "error" ? " · " + String(v.error || v.lastError || "").slice(0, 160) : ""),
+        since: active ? v.startedAt : "" });
+    }
+    for (const q of (await env.TRADES.get("digest:manual", "json").catch(() => null)) || []) out.push({ kind: "Digest run · queued", label: hubName(q && q.cid || q) + (q && q.assetId ? " — digest " + q.assetId.slice(0, 8) : ""), detail: "starts on the next 4-min tick" + (q && q.guidance ? " · guidance: " + String(q.guidance).slice(0, 100) : ""), since: "" });
   } catch (e) { out.push({ kind: "error", label: "KV scan", detail: e.message }); }
   try { if (env.KWDB) { const r = await env.KWDB.prepare("SELECT id, name, keywords, level, started_at FROM kw_runs WHERE status = 'running' LIMIT 20").all();
     for (const x of (r.results || [])) out.push({ kind: "Keyword run", label: x.name || ("run " + x.id), detail: `${x.keywords || 0} keywords · depth ${x.level || 0}`, since: x.started_at }); } } catch (e) {}
@@ -16707,7 +16720,7 @@ async function autoDigestRun(env, invoke) {
         let firstStep = true;
         while (!["done", "skip", "error"].includes(S.step) && (Date.now() - t0 < 120000 || (firstStep && S.manual))) { firstStep = false;
           const before = S.step, progress = (S.marketPlan?.cursor || 0) + (S.marketPlan?.apiCursor || 0);
-          try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
+          try { await adStep(env, cid, S, invoke); S.tries = 0; if (S.step !== before) (S.stepLog = S.stepLog || [{ step: before, at: S.startedAt || Date.now() }]).push({ step: S.step, at: Date.now() }); } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
           await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
           if (S.step === before && !(S.step === "market" && (S.marketPlan.cursor + (S.marketPlan.apiCursor || 0)) > progress)) break;
         }
