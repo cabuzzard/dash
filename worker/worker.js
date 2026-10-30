@@ -15558,6 +15558,9 @@ async function digestItemsSave(env, assetId, sources, options={}) {
   // a run (options.runId) also carries the existing unused records forward one run
   let next={ ...prev, at:options.preserveTimestamp&&prev.at||new Date().toISOString(),verificationAt:new Date().toISOString(),items:refreshPeriodFlags(options.additive?[...existing,...items]:items,{periodStart,periodEnd}),periodStart,periodEnd,checks:prev.checks||{},children:prev.children||{premium:[],free:[],news:[]} };
   if(options.runId)next=advanceCarry(next,options.runId,new Set(items.map(x=>x.id)));
+  // records a run / rescan ADDS arrive ticked for Premium, Free and Article (operator 2026-10-29: "I will un check rather than
+  // check"); a record already on the parent keeps whatever the operator set
+  next.checks={...(next.checks||{})};for(const x of items)if(x&&x.id&&!next.checks[x.id]&&!x.retired)next.checks[x.id]={premium:true,free:true,news:true};
   await env.TRADES.put(key, JSON.stringify(next));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
