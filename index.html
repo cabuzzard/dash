@@ -19238,28 +19238,56 @@ async function allSerLoad(force) {
   if (force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length) { try { const r = await devAssetsTable(); if (r && !r.error) { DEV2_ROWS = r.rows || []; DEV2_APPS = r.apps || DEV2_APPS; } } catch (e) {} }
   allSerRender();
 }
+// children of a Series = assets under it (Parent Asset) or on its title — counted from the All Output rows (no extra calls)
+const _allSerF = { sort: 'pub', dir: -1, chip: 'all', hub: '', q: '' };
 function allSerRows() {
-  const seen = new Set(), out = [];
-  for (const r of (Array.isArray(DEV2_ROWS) ? DEV2_ROWS : [])) {
+  const all = Array.isArray(DEV2_ROWS) ? DEV2_ROWS : [], nid = x => String(x || '').replace(/-/g, ''), seen = new Set(), out = [];
+  const kids = {}; all.forEach(r => { if (r.kind !== 'asset' || !r.assetId || /^delete$/i.test(r.assetStatus || '')) return; const id = nid(r.assetId);
+    [nid(r.parentAssetId), 't:' + nid(r.titleId)].forEach(k => { if (k && k !== 't:') (kids[k] = kids[k] || new Map()).set(id, r); }); });
+  for (const r of all) {
     if (r.kind !== 'asset' || !r.assetId || !/^series$/i.test(r.pillarType || '') || /^delete$/i.test(r.assetStatus || '')) continue;
-    const id = String(r.assetId).replace(/-/g, ''); if (seen.has(id)) continue; seen.add(id);
+    const id = nid(r.assetId); if (seen.has(id)) continue; seen.add(id);
     const h = hubCheckHubOf(r); if (!h) continue;
-    out.push({ slug: h.slug, hub: h.name || h.slug, assetId: id, titleId: String(r.titleId || '').replace(/-/g, ''), name: r.assetName || r.title || 'Series', product: r.product || '', status: r.assetStatus || '' });
+    const ch = new Map([...(kids[id] || new Map()), ...(kids['t:' + nid(r.titleId)] || new Map())]); ch.delete(id);
+    const list = [...ch.values()].filter(x => !/^series$/i.test(x.pillarType || ''));
+    const pub = list.filter(x => x.assetStatus === 'Published').length, dev = list.filter(x => x.assetStatus && !['Published', 'Idea'].includes(x.assetStatus)).length;
+    const last = list.reduce((m, x) => [x.datePublished, x.dateCreated].filter(Boolean).reduce((a, d) => d > a ? d : a, m), '');
+    out.push({ slug: h.slug, hub: h.name || h.slug, assetId: id, titleId: nid(r.titleId), name: r.assetName || r.title || 'Series', product: r.product || '', status: r.assetStatus || '', pub, dev, kids: list.length, last });
   }
-  return out.sort((a, b) => a.hub.localeCompare(b.hub) || a.name.localeCompare(b.name));
+  return out;
 }
+function allSerView(rows) {
+  const F = _allSerF, q = F.q.trim().toLowerCase(), since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const keep = r => (!F.hub || r.slug === F.hub) && (!q || (r.name + ' ' + r.product + ' ' + r.hub).toLowerCase().includes(q))
+    && (F.chip === 'all' || (F.chip === 'pub' && r.pub > 0) || (F.chip === 'empty' && r.kids === 0) || (F.chip === 'active' && (r.pub > 0 || r.dev > 0) && r.last >= since));
+  const key = { hub: r => r.hub, name: r => r.name, product: r => r.product, pub: r => r.pub, dev: r => r.dev, last: r => r.last || '', status: r => r.status }[F.sort] || (r => r.pub);
+  return rows.filter(keep).sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y)); return (c * F.dir) || a.hub.localeCompare(b.hub) || a.name.localeCompare(b.name); });
+}
+function allSerSet(k, v) { const F = _allSerF; if (k === 'sort') { if (F.sort === v) F.dir = -F.dir; else { F.sort = v; F.dir = ['pub', 'dev', 'last'].includes(v) ? -1 : 1; } } else F[k] = v; allSerRender(); }
 function allSerRender() {
   const el = document.getElementById('allSerBody'); if (!el) return;
-  const rows = allSerRows(), TH = 'text-align:left;font-size:11px;color:var(--text3);padding:5px 8px;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--surface2);', TD = 'padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;';
+  const all = allSerRows(), rows = allSerView(all), F = _allSerF, since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const TH = 'text-align:left;font-size:11px;color:var(--text3);padding:5px 8px;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--surface2);cursor:pointer;user-select:none;', TD = 'padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;';
   if (_allSerOpen && !rows.some(r => r.assetId === _allSerOpen)) _allSerOpen = '';
+  const n = { all: all.length, active: all.filter(r => (r.pub > 0 || r.dev > 0) && r.last >= since).length, pub: all.filter(r => r.pub > 0).length, empty: all.filter(r => r.kids === 0).length };
+  const chip = (k, label) => `<button onclick="allSerSet('chip','${k}')" style="font-size:11px;padding:2px 9px;border-radius:12px;cursor:pointer;border:1px solid ${F.chip === k ? 'var(--accent)' : 'var(--border2)'};background:${F.chip === k ? 'var(--accent)' : 'transparent'};color:${F.chip === k ? '#fff' : 'var(--text2)'};">${label} (${n[k]})</button>`;
+  const hubs = [...new Map(all.map(r => [r.slug, r.hub])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const bar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0 0 8px;">${chip('all', 'All')}${chip('active', 'Active · 30 days')}${chip('pub', 'Has published')}${chip('empty', 'Not started')}
+    <select class="kw-sel" style="font-size:11px;" onchange="allSerSet('hub',this.value)"><option value="">All hubs</option>${hubs.map(([sl, nm]) => `<option value="${esc(sl)}"${F.hub === sl ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select>
+    <input id="allSerQ" placeholder="search series / product" value="${esc(F.q)}" oninput="_allSerF.q=this.value;clearTimeout(window._allSerQT);window._allSerQT=setTimeout(()=>{allSerRender();const i=document.getElementById('allSerQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="font-size:11.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);min-width:180px;">
+    <span style="font-size:11px;color:var(--text3);">${rows.length} shown · ${n.active} active · ${n.empty} not started · ${n.all} total</span></div>`;
+  const hd = (k, label, right) => `<th style="${TH}${right ? 'text-align:right;' : ''}" onclick="allSerSet('sort','${k}')" title="Sort">${label}${F.sort === k ? (F.dir < 0 ? ' ▼' : ' ▲') : ''}</th>`;
+  const num = (v, col) => `<td style="${TD}text-align:right;font-variant-numeric:tabular-nums;font-weight:${v ? 700 : 400};color:${v ? col : 'var(--text3)'};">${v || '·'}</td>`;
   const body = rows.map(r => { const open = _allSerOpen === r.assetId;
     return `<tr class="allrow-h" style="cursor:pointer;${open ? 'background:var(--surface2);' : ''}" onclick="allSerToggle('${esc(r.assetId)}')">
       <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
-      <td style="${TD}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.name)}</td>
-      <td style="${TD}max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.product)}">${esc(r.product || '—')}</td>
+      <td style="${TD}max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.name)}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.name)}</td>
+      <td style="${TD}max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.product)}">${esc(r.product || '—')}</td>
+      ${num(r.pub, '#4ade80')}${num(r.dev, '#ff7a00')}
+      <td style="${TD}white-space:nowrap;color:${r.last && r.last >= since ? 'var(--text)' : 'var(--text3)'};font-size:11px;">${r.last ? esc(new Date(r.last + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: r.last.slice(0, 4) === String(new Date().getFullYear()) ? undefined : 'numeric' })) : '—'}</td>
       <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.status)}</td></tr>`
-      + (open ? `<tr><td colspan="4" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
-  el.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${rows.length} series across ${new Set(rows.map(r => r.slug)).size} hubs</div><div style="overflow-x:auto;"><table class="allrow-tbl" style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Hub</th><th style="${TH}">Series</th><th style="${TH}">Product</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="4" style="${TD}color:var(--text3);">No Series parents on any hub.</td></tr>`}</tbody></table></div>`;
+      + (open ? `<tr><td colspan="7" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
+  el.innerHTML = bar + `<div style="overflow-x:auto;"><table class="allrow-tbl" style="width:100%;border-collapse:collapse;"><thead><tr>${hd('hub', 'Hub')}${hd('name', 'Series')}${hd('product', 'Product')}${hd('pub', 'Published', 1)}${hd('dev', 'In dev', 1)}${hd('last', 'Last activity')}${hd('status', 'Status')}</tr></thead><tbody>${body || `<tr><td colspan="7" style="${TD}color:var(--text3);">No series match.</td></tr>`}</tbody></table></div>`;
   if (_allSerOpen && _series && _series.target === 'allSerPanel') hubSeriesDraw();   // the open row's panel survives the table repaint
 }
 async function allSerToggle(assetId) {
