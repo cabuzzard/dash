@@ -17128,18 +17128,18 @@ function allDigPaint(slug) {
 }
 // A re-render (the Digest section reloads itself every 10-60 s while a run or generation is going) must not wipe what the operator
 // is typing (operator 2026-10-29: "the digest modal keeps re loading … losing all of my work"): every input / textarea / select with
-// an id keeps its value, checkbox state, focus and cursor, and every <details> keeps its open state, across the repaint.
+// an id keeps its value, checkbox state, focus and cursor, and the scroll position, across the repaint.
 function hubKeepInputs(root, paint) {
   if (!root) return paint();
   const keep = {}; root.querySelectorAll('input[id], textarea[id], select[id]').forEach(x => { keep[x.id] = { v: x.value, c: x.checked, dirty: x.dataset.dirty === '1' || x === document.activeElement || (x.type !== 'checkbox' && x.defaultValue !== x.value) }; });
   const act = document.activeElement && root.contains(document.activeElement) ? { id: document.activeElement.id, s: document.activeElement.selectionStart, e: document.activeElement.selectionEnd } : null;
-  const opened = [...root.querySelectorAll('details')].map(d => d.open);
   const scroll = root.scrollTop;
   paint();
   const inRoot = id => { try { return root.querySelector('#' + CSS.escape(id)); } catch (e) { return null; } };
   Object.entries(keep).forEach(([id, k]) => { const x = inRoot(id); if (!x || !k.dirty) return;
     if (x.type === 'checkbox' || x.type === 'radio') x.checked = k.c; else x.value = k.v; x.dataset.dirty = '1'; });
-  root.querySelectorAll('details').forEach((d, i) => { if (opened[i] !== undefined) d.open = opened[i]; });
+  // <details> open state is NOT restored here: the digest rows track their own (_hub2DigOpen), and setting .open fires their toggle
+  // handlers, which repaint — that looped into a flicker (operator 2026-10-29: "the expanded modal is shimmering on and off")
   if (act && act.id) { const x = inRoot(act.id); if (x) { x.focus(); try { if (act.s != null) x.setSelectionRange(act.s, act.e); } catch (e) {} } }
   root.scrollTop = scroll;
 }
