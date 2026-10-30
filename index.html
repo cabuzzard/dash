@@ -587,6 +587,7 @@
 .hkw-act{display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;width:200px;flex-shrink:0;}
 .hkw-act>:first-child{margin-right:auto;}   /* the dot sits at the left edge, the buttons at the right */
   .ao2-tbl tbody tr:hover > td { background: rgba(138,180,248,.10); }
+  .ao2-tres > .modal { max-width: none !important; max-height: none !important; overflow: visible !important; box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; background: transparent !important; width: auto !important; }
   .amf-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; display: none; }
   .amf-bg.open { display: block; }
   .amf { position: absolute; top: 0; right: 0; bottom: 0; width: min(1180px, 94vw); background: var(--surface); border-left: 1px solid var(--border2); box-shadow: -12px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; }
@@ -5038,13 +5039,21 @@ function ao2TitleBar(slug, tid) {
   const close = "document.getElementById('hcModal').classList.remove('open');";
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid var(--border2);';
-  bar.innerHTML = `<button style="${B('#8ab4f8')}" title="Title research — built from its keyword topic" onclick="${close}hubTitleResOpen('${slug}','${esc(realId)}')">🔬 Research</button>`
+  bar.innerHTML = `<button style="${B('#8ab4f8')}" title="Jump to this title's research (below)" onclick="document.getElementById('titleResModal').scrollIntoView({behavior:'smooth',block:'start'})">🔬 Research ↓</button>`
     + `<button style="${B('#4ade80')}" title="Create assets — write the pillar (if not yet) and add empty Development assets of the checklist types you pick" onclick="${close}hubKwTitleAssets('${slug}','${esc(realId)}')">＋ Assets</button>`
     + (series ? `<button style="${B('#f5c542')}" title="Series topic generator — ideas from your research, search questions, autocomplete, Reddit, Digest, interviews" onclick="${close}hubSeriesOpen('${slug}','${esc(realId)}','${esc(series.assetId)}')">✨ Series ideas</button>` : '')
     + (digest ? `<button style="${B('#60a5fa')}" title="This title's Digest Parent — its records, runs, model and Disseminate" onclick="${close}hubDigestRowOpen('${slug}','${esc(digest.assetId)}')">📰 Digest</button>` : '')
     + `<a href="https://www.notion.so/${esc(kwNid(realId))}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--accent);align-self:center;">Notion ↗</a>`
     + `<button style="${B('#f87171')}margin-left:auto;" title="Delete this title and its assets (refused while any of its assets is Published)" onclick="ao2TitleDelete('${slug}','${esc(realId)}')">🗑 Delete</button>`;
   h3.insertAdjacentElement('afterend', bar);
+  // Title research, inline: hubTitleResDraw paints into #titleResModal — give it a slot here (any old floating copy goes first)
+  document.querySelectorAll('body > #titleResModal').forEach(x => x.remove());
+  m.style.maxWidth = '760px'; m.style.maxHeight = '92vh'; m.style.overflow = 'auto';
+  const slot = document.createElement('div');
+  slot.style.cssText = 'margin-top:16px;padding-top:12px;border-top:1px solid var(--border2);';
+  slot.innerHTML = '<div id="titleResModal" class="ao2-tres"></div>';
+  m.appendChild(slot);
+  hubTitleResOpen(slug, realId);
 }
 async function ao2TitleDelete(slug, tid) {   // never with a Published asset on it — the worker's deleteTitle trashes every asset of the title
   const rows = ((_hubTitles[slug] || {}).rows || []).filter(r => kwNid(r.titleId) === kwNid(tid));
