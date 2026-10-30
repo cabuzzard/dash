@@ -3640,7 +3640,9 @@ function hubSectionOf(props) {
   if (o === "news" || o === "articles" || o === "offers" || o === "interactive" || o === "cta") return o;
   if (o === "main offering" || o === "main") return "main";
   if (o === "unlisted") return null;   // taken out of every section on purpose (2026-10-08) — never falls back to the type default
+  if (o === "sub page" || o === "subpage") return "subpage";
   const at = String(props?.["Asset Type"]?.select?.name || "").trim();
+  if (isSubPageType(at)) return "subpage";   // a top-level hub page linked from the hub's top nav (2026-10-29)
   if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return "news";
   if (/\bseo post\b/i.test(at)) return "articles";
   const qa = /^QA\s*[–-]\s*(.+)$/i.exec(at);
@@ -5690,8 +5692,124 @@ async function publishOfferAssetBlog(env, hdr, page) {
 const HUB_FEED_SECTIONS = new Set(['news', 'articles', 'offers']);
 const hubAssetId = value => String(value || '').replace(/-/g, '');
 const hubRichText = runs => (runs || []).map(t => t.plain_text ?? t.text?.content ?? '').join('').trim();
+// ── Sub Page (operator 2026-10-29: "an asset that becomes a sub page on a hub and is entered into the hub top navigation … a top
+// level web page"). Published → web/hub/<slug>/<page-slug>/index.html in the single-article layout (hub tokens + fonts) with the
+// asset's Thumbnail featured across the top, and an entry in web/hub/<slug>/pages.json [{assetId, slug, label, title}] — the hub's
+// home page appends those to its top nav at load, and every Sub Page builds its own header nav from the same file, so a page added
+// later shows everywhere without re-rendering the others. Nav text = the asset's Nav Label (else its title). The slug is kept per
+// asset; it never takes a reserved directory or another page's slug. Unpublish removes the page and its entry.
+const SUBPAGE_RESERVED = new Set(['blog', 'offers', 'sales', 'privacy', 'assets', 'fonts', 'images', 'img', 'css', 'js', 'news', 'articles', 'studio', 'api']);
+function isSubPageType(type) { return /^sub ?page$/i.test(String(type || '').trim()); }
+async function hubSubPages(t, hub) {
+  const { text } = await t.getFile(`web/hub/${hub.slug}/pages.json`); let list = [];
+  try { list = text ? JSON.parse(text) : []; } catch (e) { throw new Error('Invalid hub pages.json'); }
+  return Array.isArray(list) ? list.filter(x => x && x.slug) : [];
+}
+async function publishSubPage(env, hdr, page, hub) {
+  const p = page.properties || {}, aid = hubAssetId(page.id);
+  const t = await hubSiteTarget({ env, hdr, dash: ivDash, campaignId: hub.campaignId, sub: 'blog' }); if (t.error) throw new Error(t.error);
+  const { s, campName } = t, root = `web/hub/${hub.slug}`;
+  const title = hubRichText(p['Platform Title']?.rich_text) || hubRichText(p['Asset Title']?.title) || 'Page';
+  const label = (hubRichText(p['Nav Label']?.rich_text) || title).trim().slice(0, 40);
+  const desc = hubRichText(p.Description?.rich_text).trim().slice(0, 300), hero = p.Thumbnail?.url || '';
+  const parts = offerBlogParts(p, env.__hubPublication?.source?.assetId === aid ? env.__hubPublication.source.blocks : await offerBlogBlocks(hdr, page.id));
+  const list = await hubSubPages(t, hub), mine = list.find(x => hubAssetId(x.assetId) === aid);
+  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  const base = slugify(label) || slugify(title) || 'page';
+  let slug = mine ? mine.slug : base;
+  for (let n = 2; !mine && (SUBPAGE_RESERVED.has(slug) || list.some(x => x.slug === slug) || (await t.getFile(`${root}/${slug}/index.html`)).sha); n++) slug = base + '-' + n;
+  const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/|\/)[^)\s]*)\)/g, '<a href="$2">$1</a>');
+  const para = raw => { const x = String(raw || '').trim(), ls = x.split('\n').map(l => l.trim()).filter(Boolean);
+    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')) + '</li>').join('') + '</ul>';
+    if (ls.length && ls.every(l => /^\d+[.)]\s+/.test(l))) return '<ol>' + ls.map(l => '<li>' + md(l.replace(/^\d+[.)]\s+/, '')) + '</li>').join('') + '</ol>';
+    if (/^###\s+/.test(x)) { const [h, ...rest] = x.split('\n'); return '<h3>' + md(h.replace(/^###\s+/, '')) + '</h3>' + (rest.join('\n').trim() ? para(rest.join('\n')) : ''); }
+    return '<p>' + md(x) + '</p>'; };
+  const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
+  const fontsImport = s.fontQuery ? `@import url('https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap');`
+    : `@import url('https://fonts.googleapis.com/css2?family=${fontParam(s.headlineFont)}:wght@600;700&family=${fontParam(s.bodyFont)}:wght@400;500&display=swap');`;
+  const headlineStack = s.headlineStack || `'${esc(s.headlineFont)}', Georgia, serif`, bodyStack = s.bodyStack || `'${esc(s.bodyFont)}', Georgia, serif`;
+  const next = [...list.filter(x => hubAssetId(x.assetId) !== aid)];
+  const entry = { assetId: aid, slug, label, title, ...(env.__hubPublication?.stamp || {}) };
+  if (mine) next.splice(list.indexOf(mine), 0, entry); else next.push(entry);   // a republish keeps its place in the nav; a new page goes last
+  const navLinks = next.map(x => `<a href="../${esc(x.slug)}/"${x.slug === slug ? ' aria-current="page"' : ''}>${esc(x.label || x.title)}</a>`).join('');
+  const body = `${(parts.intro ? String(parts.intro).split(/\n{2,}/).map(para).join('\n') : '')}
+${(parts.sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(para).join('\n')}`).join('\n')}
+${parts.conclusion ? `<p>${md(parts.conclusion)}</p>` : ''}
+${(parts.cta && parts.cta.href) ? `<p class="cta"><a href="${esc(parts.cta.href)}">${esc(parts.cta.label || 'Get started')}</a></p>` : ''}`;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)} — ${esc(campName)}</title>
+${desc ? `<meta name="description" content="${esc(desc)}">` : ''}
+<meta property="og:title" content="${esc(title)}">${desc ? `\n<meta property="og:description" content="${esc(desc)}">` : ''}${hero ? `\n<meta property="og:image" content="${esc(hero)}">` : ''}
+<style>
+${fontsImport}
+:root { --bg:${s.bg}; --ink:${s.ink}; --accent:${s.accent}; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:${bodyStack}; line-height:1.7; }
+header.site { max-width:1100px; margin:0 auto; padding:22px 24px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
+header.site .brand { color:var(--ink); text-decoration:none; font-family:${headlineStack}; font-weight:700; font-size:1.15rem; margin-right:auto; }
+header.site nav { display:flex; gap:18px; flex-wrap:wrap; }
+header.site nav a { color:var(--ink); opacity:.75; text-decoration:none; font-size:.82rem; letter-spacing:.06em; text-transform:uppercase; }
+header.site nav a:hover, header.site nav a[aria-current] { opacity:1; color:var(--accent); }
+.feature { max-width:1100px; margin:28px auto 0; padding:0 24px; }
+.feature img { width:100%; aspect-ratio:21/9; object-fit:cover; border-radius:14px; display:block; }
+.wrap { max-width:760px; margin:0 auto; padding:40px 24px 80px; }
+h1, h2, h3 { font-family:${headlineStack}; color:var(--ink); line-height:1.25; }
+h1 { font-size:2.3rem; margin:0 0 18px; }
+h2 { font-size:1.45rem; margin:40px 0 14px; color:var(--accent); }
+h3 { font-size:1.15rem; margin:28px 0 10px; }
+p, li { font-size:1.08rem; }
+p { margin:0 0 18px; }
+a { color:var(--accent); }
+.lede { font-size:1.2rem; opacity:.85; margin-bottom:28px; }
+.cta a { display:inline-block; background:var(--accent); color:#fff; padding:14px 28px; border-radius:8px; text-decoration:none; font-weight:700; margin-top:14px; }
+footer.site { max-width:1100px; margin:0 auto; padding:24px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+@media (max-width:640px) { h1 { font-size:1.8rem; } .feature img { aspect-ratio:16/9; } }
+</style>
+</head>
+<body>
+<header class="site"><a class="brand" href="../">${esc(campName)}</a><nav id="subnav"><a href="../">Home</a>${navLinks}</nav></header>
+${hero ? `<div class="feature"><img src="${esc(hero)}" alt="${esc(title)}"></div>` : ''}
+<main class="wrap">
+<h1>${esc(title)}</h1>
+${desc ? `<p class="lede">${esc(desc)}</p>` : ''}
+${body}
+</main>
+<footer class="site">${esc(campName)}</footer>
+<script>
+// the hub's current Sub Pages (pages added after this one was built show here too)
+fetch('../pages.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(list => {
+  if (!Array.isArray(list) || !list.length) return;
+  const here = ${JSON.stringify(slug)}, nav = document.getElementById('subnav'), e = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  nav.innerHTML = '<a href="../">Home</a>' + list.filter(x => x && /^[a-z0-9-]+$/.test(x.slug || '')).map(x => '<a href="../' + x.slug + '/"' + (x.slug === here ? ' aria-current="page"' : '') + '>' + e(x.label || x.title) + '</a>').join('');
+}).catch(() => {});
+</script>
+</body>
+</html>`;
+  if (mine && mine.slug !== slug) await t.deleteFile(`${root}/${mine.slug}/index.html`);
+  await t.putFile(`${root}/${slug}/index.html`, html, `Sub page: ${title}`);
+  await t.putFile(`${root}/pages.json`, JSON.stringify(next, null, 2) + '\n', `Sub pages: ${mine ? 'update' : 'add'} ${label}`);
+  const liveUrl = `https://cabuzzard.github.io/dash/${root}/${slug}/`;
+  const saved = await hubNotionFetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ properties: { 'Content URL': { url: liveUrl }, 'Deployment Status': { select: { name: 'Deployed' } } } }) });
+  if (!saved.ok) throw new Error('Sub page published but asset fields could not be saved');
+  return { published: true, liveUrl, slug, navLabel: label };
+}
+async function removeSubPage(env, hdr, page) {
+  const p = page.properties || {}, hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id)); if (!hub) return null;
+  const t = await hubSiteTarget({ env, hdr, dash: ivDash, campaignId: hub.campaignId, sub: 'blog' }); if (t.error) throw new Error(t.error);
+  const aid = hubAssetId(page.id), list = await hubSubPages(t, hub), mine = list.find(x => hubAssetId(x.assetId) === aid); if (!mine) return null;
+  await t.deleteFile(`web/hub/${hub.slug}/${mine.slug}/index.html`);
+  await t.putFile(`web/hub/${hub.slug}/pages.json`, JSON.stringify(list.filter(x => x !== mine), null, 2) + '\n', `Sub pages: remove ${mine.label || mine.slug}`);
+  return { slug: mine.slug, label: mine.label };
+}
 function hubPublishableType(type) {
-  return /\bseo post\b|\boffer\b/i.test(type || '') || /^blog (post|article)$/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || '')) || /^QA\s*[?-]/i.test(type || '');
+  return isSubPageType(type) || /\bseo post\b|\boffer\b/i.test(type || '') || /^blog (post|article)$/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || '')) || /^QA\s*[?-]/i.test(type || '');
 }
 async function hubNotionFetch(url,options={}) {
   for(let attempt=0;;attempt++){
@@ -5736,7 +5854,7 @@ async function hubFeedEntries(rows, manifest, hub, env, model) {
 function hubRoutedState(a, expectedSlug, listingEntry) {
   if (!a) return { hubPublish: '', hubLive: false, hubRoutedSection: '', hubSectionDisplay: '' };
   const st = a.status || '', sec = a.hubSectionKey || '';
-  const label = ({news:'News',articles:'Articles',offers:'Offers',interactive:'Interactive',cta:'CTA',main:'Main Offering',email:'Email'})[sec] || sec;
+  const label = ({news:'News',articles:'Articles',offers:'Offers',interactive:'Interactive',cta:'CTA',main:'Main Offering',email:'Email',subpage:'Sub Page'})[sec] || sec;
   const off = hubPublish => ({ hubPublish, hubLive: false, hubRoutedSection: '', hubSectionDisplay: label ? label + ' \u00b7 not on hub' : '' });
   if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return off('\u26a0 Different hub');
   if (!expectedSlug) return off('Not a content hub');
@@ -5768,6 +5886,7 @@ async function removeHubAssetListings(env, hdr, page, directories = ['blog','off
   const p = page.properties || {}, cid = p.Campaign?.relation?.[0]?.id;
   if (!HUB_SITES.some(h => hubAssetId(h.campaignId) === hubAssetId(cid))) return { removed:0, removedEntries:[] };
   const aid = hubAssetId(page.id), reports = [];
+  if (directories.includes('blog')) { const gone = await removeSubPage(env, hdr, page); if (gone) reports.push({ ...gone, directory: 'subpage' }); }
   for (const sub of directories) {
     const t = await hubSiteTarget({env,hdr,dash:ivDash,campaignId:cid,sub});
     if (t.error) throw new Error(t.error);
@@ -5804,6 +5923,7 @@ async function publishHubAssetToLiveSite(env, hdr, page) {
   if (!sec || sec === 'email') throw new Error('Choose a hub section before publishing this page to the hub');
   const hub = HUB_SITES.find(h=>hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id));
   if (!hub || (p['Content Hub']?.select?.name && p['Content Hub'].select.name !== hub.slug)) throw new Error('The Content Hub must match this asset’s campaign');
+  if (sec === 'subpage') return publishSubPage(env,hdr,page,hub);
   if (sec === 'offers' && offerBlogAsset(p)) return publishOfferAssetBlog(env,hdr,page);
   const parts = offerBlogParts(p,env.__hubPublication?.source?.assetId === hubAssetId(page.id) ? env.__hubPublication.source.blocks : await offerBlogBlocks(hdr,page.id));
   const result = await publishSeoPostToLiveSite({env,hdr,dash:ivDash,campaignId:hub.campaignId,assetId:hubAssetId(page.id),
@@ -42635,7 +42755,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if(['Publish','Published'].includes(status)){const page=await ivPage(assetId);if(/^newsletter paid$/i.test(page.properties?.['Asset Type']?.select?.name||''))return json({error:'paid_newsletter_review_only',reason:'Premium newsletters have no send target; use Development or Review.'},400);}
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
-        if(status==='Published'&&body.publishToHub!==false){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
+        if(status==='Published'&&body.publishToHub!==false){const page=await ivPage(assetId);if(['news','articles','offers','subpage'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
         const props = {};
         const hasHubSwitch = typeof body.publishToHub === 'boolean';
         let hubBefore=null, hubSync=null;
@@ -43592,7 +43712,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const dId = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
         if(body.statusOnly===true&&!['Idea','Development','Review','Publish','Published'].includes(status))return json({error:'Invalid asset status'},400);
-        if(status==='Published'&&body.statusOnly!==true){const page=await ivPage(assetId);if(['news','articles','offers'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
+        if(status==='Published'&&body.statusOnly!==true){const page=await ivPage(assetId);if(['news','articles','offers','subpage'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
         const ar = await hubNotionFetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
         const savedAsset = await ar.json();

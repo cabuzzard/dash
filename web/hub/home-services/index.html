@@ -464,6 +464,17 @@ const HUB = {
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
+// Sub Pages (2026-10-29): top-level pages published from the dashboard are listed in ./pages.json — each one is appended to the
+// top nav. Missing or empty file = no extra links (never a dead link).
+async function addSubPageNav() {
+  try {
+    const r = await fetch("./pages.json", { cache: "no-store" }); if (!r.ok) return;
+    const list = await r.json(); if (!Array.isArray(list)) return;
+    for (const x of list) { if (!x || !/^[a-z0-9-]+$/.test(x.slug || "")) continue;
+      const a = document.createElement("a"); a.href = "./" + x.slug + "/"; a.textContent = x.label || x.title || x.slug; $("nav").appendChild(a); }
+  } catch (e) { /* no extra links */ }
+}
+
 function renderChrome() {
   document.title = HUB.brand + " — " + HUB.hero.headline.replace(/\.$/, "");
   const brand = $("brand");
@@ -786,6 +797,7 @@ async function renderHubOffers() {
     }
   } catch (e) { /* baked defaults stand */ }
   renderChrome();
+  addSubPageNav();
   renderHero();
   renderHubJournal();
   renderHubArticles();
