@@ -2158,7 +2158,7 @@ async function writingMethodsTable(env) {
 }
 function writingRows(table) {
   const id=name=>table.columns.find(c=>ivNorm(c.name)===ivNorm(name))?.id;
-  return table.rows.map(r=>{const c=r.cells||{};return {name:c.cname01||c.cmuzq36hb77sq||c.c1||'',aliases:String(c.cmatch01||'').split(';').map(ivNorm),
+  return table.rows.map(r=>{const c=r.cells||{};return {id:r.id,name:c.cname01||c.cmuzq36hb77sq||c.c1||'',aliases:String(c.cmatch01||'').split(';').map(ivNorm),
     contractText:String(c[id('contract')]||''),inputs:String(c[id('inputs')]||''),mapped:String(c[id('mapped')]||'').trim(),
     keep:String(c[id('keep my words')]||'').trim(),purpose:String(c[id('purpose')]||'').trim()};});
 }
@@ -2394,6 +2394,92 @@ async function assetWriterInfo(env,page) {
 // it applies to every asset written by that row and is handed to the writer with the contract. KV writeguide:<row name>.
 const writeGuideKey = rowName => 'writeguide:' + ivNorm(rowName || '').slice(0, 200);
 async function writeRuleGuidance(env, rowName) { if (!rowName) return ''; return String((await env.TRADES.get(writeGuideKey(rowName)).catch(() => '')) || '').trim(); }
+// ── ASSET SPECS (operator 2026-10-30): the Asset modal's four sections, each a spec on the asset's Current Methods row —
+// rules = "contract" · flow = "inputs" · preview = "preview spec" · fields = "field spec". From the modal the operator writes guidance →
+// one Claude call drafts the section → it is STAGED (KV specstage:<rowKey>:<section>) beside the live text → only Commit writes the row.
+// An asset type with no row gets one on its first commit. AI drafts options; the operator commits (CLAUDE.md: AI is a filter, not a source).
+const SPEC_SECTIONS = { rules: { col: 'contract', id: 'cwcontract01', label: 'Writing rules' }, flow: { col: 'inputs', id: 'cwinputs01', label: 'Information flow' },
+  preview: { col: 'preview spec', id: 'cwpreview01', label: 'Preview' }, fields: { col: 'field spec', id: 'cwfields01', label: 'Fields' } };
+const SPEC_PACKET_SOURCES = 'method (its Notes + recipe page) · contract · inputs · title (Title, Notes) · pillar (the title\'s pillar content) · research (the title\'s research: intent, questions, angle, audience) · voice (hub voice) · hub.audience (+ hub.design when inputs ask for design / image spec / visual) · product (facts: Name, Description, Price, Offer Structure, Transformation, Unique Angle, Product Tier, Type, Keywords + its 🔬 product research) · interview (the operator\'s answered interview questions for this title / asset) · platform (Platform Name) · subject (the asset\'s Description, its page note, Keyword Seed) · hubPosts (topical posts: the hub\'s published posts for related links) · currentFields';
+const SPEC_RULE_FORMS = 'Rule forms the validator checks (use them exactly where they apply): "required" (any rule — empty fails unless the rule says optional / may be omitted) · "≤ N characters" · "at least N words" · "N–M words" · "exactly N lines" · "exactly N tags, comma-separated" · "at least N Q&A pairs" (Q: … A: …) · "each: a | b | c" (pipe-separated columns per line). Anything else is guidance the writer follows but nobody checks.';
+const SPEC_PROTECTED = ['Status', 'Asset Status', 'Hub Section', 'Content Hub', 'Publishing Date', 'Deployment Status', 'Site URL', 'Content URL', 'Method'];
+const specKey = (rowKey, section) => 'specstage:' + String(rowKey || '').slice(0, 120) + ':' + section;
+async function specContext(env, assetId) {
+  const page = await ivPage(assetId); if (!page?.properties || page.archived) throw new Error('Asset unavailable');
+  const p = page.properties, type = p['Asset Type']?.select?.name || '', m = await writingMethod(env, page).catch(() => ({}));
+  const table = await writingMethodsTable(env), raw = m.row ? table.rows.find(r => r.id === m.row.id) : null;
+  const colId = name => table.columns.find(c => ivNorm(c.name) === ivNorm(name))?.id;
+  const cell = sec => raw ? String(raw.cells?.[colId(SPEC_SECTIONS[sec].col) || SPEC_SECTIONS[sec].id] || '') : '';
+  return { page, p, type, m, table, raw, colId, cell, rowKey: raw ? raw.id : 'new:' + ivNorm(m.name || type || 'asset') };
+}
+async function specState(env, ctx) {
+  const out = {};
+  for (const sec of Object.keys(SPEC_SECTIONS)) out[sec] = { current: ctx.cell(sec), staged: await env.TRADES.get(specKey(ctx.rowKey, sec), 'json').catch(() => null) };
+  return { row: ctx.raw ? { id: ctx.raw.id, name: ctx.m.row?.name || '', mapped: ctx.m.row?.mapped || '', aliases: String(ctx.raw.cells?.cmatch01 || '') } : null,
+    proposedRow: ctx.raw ? null : { name: ctx.m.name || ctx.type, aliases: ctx.type }, sections: out };
+}
+async function specDraft(env, assetId, section, guidance) {
+  const S = SPEC_SECTIONS[section]; if (!S) throw new Error('section must be rules, flow, preview or fields');
+  const ctx = await specContext(env, assetId), { p, type, m, raw } = ctx;
+  const recipe = m.methodId ? await extractBlocksTextRecursive(ivHdr(), ivDash(m.methodId)).catch(() => '') : '';
+  const fields = writingFieldValues(p), filled = Object.fromEntries(Object.entries(fields).filter(([k, v]) => String(v || '').trim() && !/^(url|usr|Last Edited)$/i.test(k)).map(([k, v]) => [k, String(v).slice(0, 600)]));
+  const others = Object.fromEntries(Object.keys(SPEC_SECTIONS).filter(k => k !== section).map(k => [SPEC_SECTIONS[k].label, ctx.cell(k)]));
+  const rowNotes = raw ? ['c2', 'cmodal01', 'cfields01', 'cwriting01', 'cmuzt1yxzz3i1'].map(id => { const c = ctx.table.columns.find(x => x.id === id); const v = String(raw.cells?.[id] || '').trim(); return v && c ? c.name + ': ' + v.slice(0, 2500) : ''; }).filter(Boolean).join('\n') : '';
+  const ask = { rules: 'Write the WRITING RULES (the contract): one line per field the writer must produce, exactly "Field Name — rule". Field names are Notion property names on the asset (use the ones it already has where they fit; a new name becomes a new text property). Never include ' + SPEC_PROTECTED.join(', ') + '. ' + SPEC_RULE_FORMS,
+    flow: 'Write the INFORMATION FLOW (the inputs): which packet sources this asset type is written from, in priority order, one per line as "source — what it contributes / how the writer uses it". Only these sources exist: ' + SPEC_PACKET_SOURCES + '. Say which are required and which are optional. Mention design / image spec only if the asset is visual.',
+    preview: 'Write the PREVIEW SPEC: how a finished asset of this type is laid out when displayed — the order of its fields as blocks (headline, body, tiers, FAQ, caption, image…), what each block looks like (heading level, list, table, card, character limits a reader sees), and the platform frame it imitates (e.g. a Fiverr gig page, a blog post, an Instagram post). One block per line.',
+    fields: 'Write the FIELD SPEC: every field the operator edits for this asset type, one per line as "Field Name — input (single line / paragraph / long text / list / table / select: a | b) — what goes in it". Start with the contract\'s fields in order, then any non-written fields the operator sets by hand (images, links, tags). Never include ' + SPEC_PROTECTED.join(', ') + '.' }[section];
+  const prompt = `You draft one section of the specification for an ASSET TYPE in a content system. Every asset of this type is written and shown from it.
+
+ASSET TYPE: ${type || '(none)'} · METHOD: ${m.name || '(none)'} · PLATFORM: ${fields['Platform Name'] || '(none)'}
+WRITING-RULES ROW: ${raw ? (m.row?.name || '') + (m.row?.mapped ? ' (mapped: ' + m.row.mapped + ')' : '') : 'none yet — your draft will create it'}
+
+${ask}
+
+CURRENT ${S.label.toUpperCase()} (keep what is right; change only what the guidance or the evidence calls for):
+${ctx.cell(section) || '(empty)'}
+
+THE OPERATOR'S GUIDANCE (follow it — it overrides everything below):
+${String(guidance || '').trim() || '(none — draft from the evidence)'}
+
+EVIDENCE
+- The method's notes: ${hubRichText(m.method?.properties?.Notes?.rich_text).slice(0, 3000) || '(none)'}
+- The method's recipe page: ${String(recipe || '').slice(0, 9000) || '(none)'}
+- The row's own notes: ${rowNotes || '(none)'}
+- The other sections of this spec: ${JSON.stringify(others).slice(0, 6000)}
+- A real asset of this type — its filled fields now: ${JSON.stringify(filled).slice(0, 9000)}
+
+Return the section text exactly as it should be saved (no preamble), and a short rationale for the operator: what you kept, what you changed and why.`;
+  const out = await hcClaude(env, prompt, 'stage_spec', { type: 'object', additionalProperties: false, required: ['text', 'rationale'],
+    properties: { text: { type: 'string', description: 'The section, ready to save' }, rationale: { type: 'string', description: '2-5 sentences for the operator' } } }, 6000);
+  let text = String(out?.text || '').trim(); if (!text) throw new Error('Claude returned an empty draft');
+  const problems = [];
+  if (section === 'rules') { const c = parseWritingContract(text); if (c.some(f => !f.name)) problems.push('some lines are not "Field Name — rule"');
+    const bad = c.filter(f => SPEC_PROTECTED.some(x => ivNorm(x) === ivNorm(f.name))).map(f => f.name); if (bad.length) problems.push('protected fields: ' + bad.join(', ')); }
+  const staged = { text, rationale: String(out?.rationale || ''), guidance: String(guidance || '').trim(), at: new Date().toISOString(), assetId: hubAssetId(assetId), problems };
+  await env.TRADES.put(specKey(ctx.rowKey, section), JSON.stringify(staged), { expirationTtl: 60 * 60 * 24 * 30 });
+  return { section, rowKey: ctx.rowKey, staged };
+}
+async function specCommit(env, assetId, section, opts = {}) {
+  const S = SPEC_SECTIONS[section]; if (!S) throw new Error('bad section');
+  const ctx = await specContext(env, assetId), st = await env.TRADES.get(specKey(ctx.rowKey, section), 'json');
+  if (!st || !String(st.text || '').trim()) throw new Error('Nothing staged for ' + S.label);
+  const text = String(opts.text != null ? opts.text : st.text).trim();   // the operator may edit the staged text before committing
+  if (section === 'rules') { const c = parseWritingContract(text); if (!c.length || c.some(f => !f.name)) throw new Error('Every rules line must be "Field Name — rule"');
+    const bad = c.filter(f => SPEC_PROTECTED.some(x => ivNorm(x) === ivNorm(f.name))).map(f => f.name); if (bad.length) throw new Error('Protected fields can\'t be written: ' + bad.join(', ')); }
+  const table = await writingMethodsTable(env);   // fresh read — write only this row's one cell
+  const colOf = (name, id) => { let c = table.columns.find(x => ivNorm(x.name) === ivNorm(name)); if (!c) { c = { id, name }; table.columns.push(c); } return c.id; };
+  const col = colOf(S.col, S.id);
+  let row = ctx.raw ? table.rows.find(r => r.id === ctx.raw.id) : null;
+  if (!row) { const name = ctx.m.name || ctx.type || 'Asset'; row = { id: 'rspec' + Date.now().toString(36), cells: { cname01: name, cmuzq36hb77sq: name, cmatch01: [ctx.type, ctx.m.name].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join('; ') } }; table.rows.push(row); }
+  row.cells = row.cells || {}; row.cells[col] = text;
+  if (section === 'rules' && opts.mapped === true) row.cells[colOf('mapped', 'cwmapped01')] = 'yes';
+  table.at = Date.now(); await env.TRADES.put('infoflow:table:currentmethods', JSON.stringify(table));
+  await env.TRADES.delete(specKey(ctx.rowKey, section));
+  const log = (await env.TRADES.get('spec:commits', 'json').catch(() => null)) || [];
+  await env.TRADES.put('spec:commits', JSON.stringify([{ at: new Date().toISOString(), row: row.id, rowName: row.cells.cname01 || '', section, assetId: hubAssetId(assetId), before: ctx.cell(section).slice(0, 4000), after: text.slice(0, 4000) }, ...log].slice(0, 200)));
+  return { ok: true, row: row.id, section, text };
+}
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   const [writing,info]=await Promise.all([assetWritingState(page),assetWriterInfo(env,page)]),p=page.properties;
@@ -54668,7 +54754,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const parentId = ivRid(p, "Parent Asset"), parent = parentId ? await ivPage(parentId).catch(() => null) : null;
         return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
             platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "" },
-          dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])) });
+          dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })) });
+      }
+      // assetSpec {assetId, op: state | draft | commit | discard, section?, guidance?, text?, mapped?} — the Asset modal's four spec sections
+      if (body.action === "assetSpec") {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
+        try {
+          if (body.op === "draft") { const r = await specDraft(env, body.assetId, body.section, body.guidance); return json({ ok: true, ...r }); }
+          if (body.op === "commit") { const r = await specCommit(env, body.assetId, body.section, { text: body.text, mapped: body.mapped === true }); return json(r); }
+          if (body.op === "discard") { const ctx = await specContext(env, body.assetId); await env.TRADES.delete(specKey(ctx.rowKey, body.section)); return json({ ok: true }); }
+          return json(await specState(env, await specContext(env, body.assetId)));
+        } catch (e) { return json({ error: e.message }, 400); }
       }
       if (body.action === "writeRuleGuidanceSave") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);

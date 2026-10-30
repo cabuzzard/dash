@@ -596,6 +596,8 @@
   .amf-tabs button { font-size: 12.5px; padding: 7px 12px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: transparent; color: var(--text2); cursor: pointer; white-space: nowrap; }
   .amf-tabs button.on { background: var(--surface2); border-color: var(--border2); color: var(--text); font-weight: 600; }
   .amf-bd { flex: 1; overflow: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+  .am-spec-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 720px) { .am-spec-cmp { grid-template-columns: 1fr; } }
   .amf-preview { max-width: 760px; margin: 0 auto; font-size: 14.5px; color: var(--text); }
   @media (max-width: 720px) { .amf { width: 100vw; border-left: none; } .amf-hd { padding: 12px; } .amf-bd { padding: 12px 16px; } }
 </style>
@@ -4658,7 +4660,7 @@ async function ao2Load() {
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
-const AO2_DEFAULT_W = { asset: 170, product: 220, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
+const AO2_DEFAULT_W = { asset: 90, product: 220, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
 let AO2_RESIZING = false;
 function ao2Widths() { try { return JSON.parse(localStorage.getItem('ao2ColW') || '{}') || {}; } catch (e) { return {}; } }
 function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || 140); }
@@ -4717,6 +4719,7 @@ function ao2Render() {
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
     + `<button style="${btn}" title="Group the rows under collapsible headers, one tier per sort level" onclick="ao2View().group=!ao2View().group;ao2Render()">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>`
+    + `<button style="${btn}border-color:#8ab4f8;color:#8ab4f8;" title="Stage Claude drafts of all four spec sections (writing rules, information flow, preview, fields) for EVERY asset type in All Output — nothing is committed" onclick="amDraftAll(this)">✨ Draft all asset types</button>`
     + `<span style="font-size:11px;color:var(--text3);">${rows.length} of ${AO2_ROWS.length} rows${filtered ? ' · filtered' : ''}${S.length ? ' · sorted by ' + S.map(s => esc(ao2ColLabel(s.col)) + (s.asc === false ? ' ↓' : ' ↑')).join(', then ') : ''}</span></div>`;
   const panel = !AO2_PANEL ? '' : `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:8px;">`
     + V.F.map((f, i) => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text2);width:52px;">Filter ${i + 1}</span>`
@@ -4732,7 +4735,7 @@ function ao2Render() {
   const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
-  const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button><button onclick="openCareGapEditor('${esc(x.campId)}','${esc(x.id)}','')" title="The care-gap Publish modal — for what isn't native yet: images, templates, video, Buffer, publishing" style="font-size:11px;padding:1px 6px;margin-left:4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;">📤 care-gap</button>` : '')
+  const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button>` : '')
     : c.key === 'product' && x.product && x.productId ? ao2Dot(x.sProd) + `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
     : c.key === 'title' && x.type === 'Product' ? ao2Dot(x.sProd) + `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
     : c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
@@ -4866,7 +4869,79 @@ function amDraw() {
       <button style="${B()}align-self:flex-start;" onclick="amClose()" title="Close (Esc)">✕</button></div>
     <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
-  P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
+  const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields';
+  P.innerHTML = hd + `<div class="amf-bd">${AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
+}
+// ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
+// text → ✓ Commit (writes the asset's Current Methods row) or ✕ Discard. Worker assetSpec. rules = contract · flow = inputs ·
+// preview = preview spec · fields = field spec.
+const AM_SPEC_LABEL = { rules: 'Writing rules', flow: 'Information flow', preview: 'Preview spec', fields: 'Field spec' };
+const AM_SPEC_HINT = { rules: 'e.g. Platform Title ≤ 80 characters starting "I will"; three pricing tiers; FAQ of at least 4 Q&A pairs…',
+  flow: 'e.g. write from the product facts and the interview first; the pillar only for background; no hub voice…',
+  preview: 'e.g. show it like a Fiverr gig page: title, three tier cards side by side, description, FAQ accordion…',
+  fields: 'e.g. Pricing Tiers as a table (tier | price | days | revisions | what you get); Search Tags as 5 chips…' };
+function amSpecHtml(sec) {
+  const S = (AM.data.spec && AM.data.spec.sections) || {}, st = S[sec] || {}, g = st.staged, busy = AM.specBusy === sec, row = AM.data.spec && AM.data.spec.row;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const where = row ? `the <b>${esc(row.name)}</b> row of Current Methods — every asset it covers` : AM.data.spec && AM.data.spec.proposedRow ? `a new Current Methods row "<b>${esc(AM.data.spec.proposedRow.name)}</b>" (created on commit) — every <b>${esc(AM.data.spec.proposedRow.aliases)}</b> asset` : 'this asset type';
+  let html = `<div class="am-spec" style="border:1px solid #8ab4f8;border-radius:10px;padding:12px;margin-bottom:16px;background:rgba(138,180,248,.05);">
+    <div style="font-size:12.5px;margin-bottom:6px;"><b>✨ ${AM_SPEC_LABEL[sec]} — tell Claude what it should be</b> <span style="font-size:11px;color:var(--text3);">· applies to ${where}. Claude drafts it; nothing changes until you commit.</span></div>
+    <textarea id="amSpecG-${sec}" rows="3" style="${IN}" placeholder="${esc(AM_SPEC_HINT[sec])}">${esc((AM.specG || {})[sec] != null ? AM.specG[sec] : (g && g.guidance) || '')}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;"><button style="${B('#8ab4f8')}" ${busy ? 'disabled' : ''} onclick="amSpecDraft('${sec}')">${busy ? '⏳ Claude is drafting…' : '✨ Send to Claude'}</button>
+      <span style="font-size:11px;color:var(--text3);">one Claude call · reads the method, its recipe, the row's notes, the other three sections and a real asset of this type</span></div>`;
+  if (g) {
+    html += `<div style="margin-top:12px;border-top:1px dashed var(--border2);padding-top:10px;">
+      <div style="font-size:12px;margin-bottom:6px;"><b style="color:#f59e0b;">● Staged draft</b> <span style="font-size:11px;color:var(--text3);">${esc(new Date(g.at).toLocaleString())} — edit it here if you like, then commit</span></div>
+      ${g.rationale ? `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${esc(g.rationale)}</div>` : ''}
+      ${(g.problems || []).length ? `<div style="font-size:12px;color:#f87171;margin-bottom:8px;">⚠ ${esc(g.problems.join(' · '))}</div>` : ''}
+      <div class="am-spec-cmp"><div><div style="font-size:11px;color:var(--text3);margin-bottom:3px;">STAGED (will be saved)</div><textarea id="amSpecT-${sec}" rows="${Math.min(22, Math.max(6, String(g.text).split('\n').length + 1))}" style="${IN}border-color:#f59e0b;">${esc(g.text)}</textarea></div>
+        <div><div style="font-size:11px;color:var(--text3);margin-bottom:3px;">LIVE NOW</div><pre style="${IN}white-space:pre-wrap;margin:0;min-height:120px;color:var(--text2);">${esc(st.current || '(empty)')}</pre></div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button style="${B('#4ade80')}" onclick="amSpecCommit('${sec}', this)">✓ Commit</button><button style="${B('#f87171')}" onclick="amSpecDiscard('${sec}', this)">✕ Discard</button>
+        ${sec === 'rules' && !(row && /^yes$/i.test(row.mapped || '')) ? `<label style="font-size:12px;display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="checkbox" id="amSpecMapped" checked> turn the writer on for this row (mapped = yes)</label>` : ''}</div></div>`;
+  } else if ((sec === 'preview' || sec === 'fields') && st.current) html += `<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;color:var(--text2);">Live ${AM_SPEC_LABEL[sec].toLowerCase()}</summary><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0;">${esc(st.current)}</pre></details>`;
+  return html + '</div>';
+}
+async function amSpecDraft(sec) {
+  if (!AM) return; const g = (document.getElementById('amSpecG-' + sec) || {}).value || ''; AM.specG = { ...(AM.specG || {}), [sec]: g };
+  AM.specBusy = sec; amDraw();
+  const r = await call('assetSpec', { assetId: AM.id, op: 'draft', section: sec, guidance: g }).catch(e => ({ error: e.message }));
+  if (!AM) return; AM.specBusy = '';
+  if (!r || r.error) { AM.log = '✗ Draft failed: ' + ((r && r.error) || 'no response'); amDraw(); return; }
+  AM.data.spec.sections[sec].staged = r.staged; AM.log = '● ' + AM_SPEC_LABEL[sec] + ' draft staged — review it, then ✓ Commit'; amDraw();
+}
+async function amSpecCommit(sec, btn) {
+  if (!AM) return; const t = document.getElementById('amSpecT-' + sec), mp = document.getElementById('amSpecMapped');
+  if (!confirm('Commit this ' + AM_SPEC_LABEL[sec].toLowerCase() + '? It replaces the live one for every asset this row covers.')) return;
+  btn.disabled = true; const r = await call('assetSpec', { assetId: AM.id, op: 'commit', section: sec, text: t ? t.value : undefined, mapped: sec === 'rules' && !!(mp && mp.checked) }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { btn.disabled = false; AM.log = '✗ Not committed: ' + ((r && r.error) || 'no response'); amDraw(); return; }
+  AM.log = '✓ ' + AM_SPEC_LABEL[sec] + ' committed'; AM.specG = { ...(AM.specG || {}), [sec]: '' }; AM.changed = true; await amLoad();
+}
+async function amSpecDiscard(sec, btn) {
+  if (!AM || !confirm('Discard this staged draft?')) return; btn.disabled = true;
+  await call('assetSpec', { assetId: AM.id, op: 'discard', section: sec }).catch(() => {}); AM.data.spec.sections[sec].staged = null; AM.log = 'Draft discarded'; amDraw();
+}
+// ✨ Draft every asset type (operator 2026-10-30: "write the writing rules for every asset type") — one representative asset per Asset
+// Type across ALL of All Output, four sections each, staged only (nothing committed). Skips sections that already have a staged draft.
+async function amDraftAll(btn) {
+  const d = await devAssetsTable().catch(e => ({ error: e.message })); if (!d || d.error) return showToast('Table not loaded', 'error');
+  const byType = {}; (d.rows || []).forEach(r => { if (r.kind !== 'asset' || !r.assetId) return; const t = String(r.rawAssetType || '').trim(); if (!t) return;
+    const cur = byType[t]; if (!cur || (/^published$/i.test(r.assetStatus || '') && !/^published$/i.test(cur.assetStatus || ''))) byType[t] = r; });
+  const types = Object.keys(byType).sort(), secs = ['rules', 'flow', 'preview', 'fields'];
+  if (!types.length) return showToast('No asset types found', 'error');
+  if (!confirm('Draft all four sections for ' + types.length + ' asset types?\n\nUp to ' + types.length * 4 + ' Claude calls (types already staged are skipped). Every draft is STAGED only — nothing is committed until you open an asset and press ✓ Commit.\n\n' + types.join(', '))) return;
+  btn.disabled = true; let done = 0, fail = 0, skip = 0;
+  const jobs = []; types.forEach(t => secs.forEach(sec => jobs.push([t, sec])));
+  const state = {}, run = async () => { while (jobs.length) { const [t, sec] = jobs.shift(), id = kwNid(byType[t].assetId);
+    try {
+      if (!state[id]) state[id] = await call('assetSpec', { assetId: id, op: 'state' });
+      if (state[id] && state[id].sections && state[id].sections[sec] && state[id].sections[sec].staged) { skip++; }
+      else { const r = await call('assetSpec', { assetId: id, op: 'draft', section: sec, guidance: '' }); if (!r || r.error) fail++; else done++; }
+    } catch (e) { fail++; }
+    btn.textContent = `✨ Drafting… ${done + fail + skip}/${types.length * 4}`; } };
+  await Promise.all([run(), run(), run()]);
+  btn.disabled = false; btn.textContent = '✨ Draft all asset types';
+  showToast(`Staged ${done} drafts${skip ? ' · ' + skip + ' already staged' : ''}${fail ? ' · ' + fail + ' failed' : ''} — open an asset's ✎ to review and commit`, fail ? 'error' : 'success');
 }
 function amFieldsHtml() {
   const d = AM.data.dry || {}, C = amContract(), dirtyN = Object.keys(AM.dirty).length;
@@ -4880,11 +4955,11 @@ function amFieldsHtml() {
       ${big ? `<textarea rows="${/^body$|^offer page$|^page$/i.test(f.name) ? 16 : 5}" style="${IN}resize:vertical;" oninput="amEdit('${esc(f.name)}', this.value)">${esc(v)}</textarea>`
         : `<input style="${IN}" value="${esc(v)}" oninput="amEdit('${esc(f.name)}', this.value)">`}</div>`; }).join('');
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-      <button style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
+      <button id="amSaveBtn" style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
       <button style="${B('#8ab4f8')}" onclick="amWrite(this)" title="Run the writer for this asset — it reads the Information flow tab's packet and follows the Writing rules tab (one model call, plus one corrective pass when a rule fails)">✍ Write${String(amFieldVal('Body') || '').trim() ? ' (rewrite)' : ''}</button>
       <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${(AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;
 }
-function amEdit(name, v) { if (!AM) return; AM.dirty[name] = v; const b = document.querySelector('#amPanel .amf-bd button'); if (b) { const n = Object.keys(AM.dirty).length; b.disabled = !n; b.textContent = '💾 Save ' + n + ' field' + (n === 1 ? '' : 's'); } }
+function amEdit(name, v) { if (!AM) return; AM.dirty[name] = v; const b = document.getElementById('amSaveBtn'); if (b) { const n = Object.keys(AM.dirty).length; b.disabled = !n; b.textContent = '💾 Save ' + n + ' field' + (n === 1 ? '' : 's'); } }
 async function amSaveFields(btn) {
   if (!AM || !Object.keys(AM.dirty).length) return; btn.disabled = true; btn.textContent = 'Saving…';
   const r = await call('saveAssetFields', { assetId: AM.id, fields: AM.dirty }).catch(e => ({ error: e.message }));
