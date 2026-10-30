@@ -4659,9 +4659,10 @@ function ao2Render() {
       + (f.col ? `<select style="${sel}" onchange="ao2Set('F.${i}.val',this.value)">${valOpts(f)}</select>` : '') + `</div>`).join('')
     + V.S.map((s, i) => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text2);width:52px;">${i ? 'then by' : 'Sort by'}</span>`
       + `<select style="${sel}" onchange="ao2Set('S.${i}.col',this.value)">${colOpts(s.col)}</select>`
-      + `<select style="${sel}" onchange="ao2Set('S.${i}.asc',this.value==='1')"><option value="1" ${s.asc !== false ? 'selected' : ''}>A → Z</option><option value="0" ${s.asc === false ? 'selected' : ''}>Z → A</option></select></div>`).join('')
+      + `<select style="${sel}" onchange="ao2Set('S.${i}.asc',this.value==='1')"><option value="1" ${s.asc !== false ? 'selected' : ''}>A → Z</option><option value="0" ${s.asc === false ? 'selected' : ''}>Z → A</option></select>`
+      + `<label title="With Group by sort on: give this level its own collapsible heading. Off, it only orders the rows inside the headings above it." style="display:flex;align-items:center;gap:4px;color:var(--text2);cursor:pointer;"><input type="checkbox" ${s.head !== false ? 'checked' : ''} onchange="ao2Set('S.${i}.head',this.checked)"> Header</label></div>`).join('')
     + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${V.S.length < AO2_MAX ? `<button style="${btn}" onclick="ao2AddSort()">＋ sort level</button>` : ''}<button style="${btn}" onclick="ao2Clear()">Clear filters</button></div>`
-    + `<div style="color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks sort too (Ctrl- or Shift-click adds a level, again flips it, a third time removes it; Alt-click removes it). Drag a header to reorder the columns.</div></div>`;
+    + `<div style="color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level with Header ticked is a collapsible header tier — unticked levels only order the rows inside them. Header clicks sort too (Ctrl- or Shift-click adds a level, again flips it, a third time removes it; Alt-click removes it). Drag a header to reorder the columns.</div></div>`;
   const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder" style="${th}">${esc(c.label)}${arrow}</th>`; }).join('');
@@ -4671,19 +4672,20 @@ function ao2Render() {
   const rowHtml = x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
   if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'Record not found in the table data.'}</td></tr>`;
-  else if (!V.group || !S.length) body = rows.map(rowHtml).join('');
-  else {   // one collapsible header tier per sort level, collapsed until opened
-    const keyAt = (x, d) => S.slice(0, d + 1).map(s => s.col + '=' + ao2Val(x, s.col)).join('|');
+  const G = S.filter(s => s.head !== false);   // only the levels ticked Header make header tiers
+  if (rows.length && (!V.group || !G.length)) body = rows.map(rowHtml).join('');
+  else if (rows.length) {   // one collapsible header tier per Header level, collapsed until opened
+    const keyAt = (x, d) => G.slice(0, d + 1).map(s => s.col + '=' + ao2Val(x, s.col)).join('|');
     let prev = [];
     rows.forEach(x => {
-      for (let d = 0; d < S.length; d++) {
+      for (let d = 0; d < G.length; d++) {
         const k = keyAt(x, d); if (prev[d] === k) continue;
         prev = prev.slice(0, d); prev[d] = k;
-        if (d && !S.slice(0, d).every((s, j) => AO2_OPEN[keyAt(x, j)])) continue;
-        const n = rows.filter(y => keyAt(y, d) === k).length, v = ao2Val(x, S[d].col), gi = AO2_GKEYS.push(k) - 1;
-        body += `<tr onclick="ao2Toggle(${gi})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:5px 10px;padding-left:${10 + d * 16}px;font-size:11.5px;border-bottom:1px solid var(--border);">${AO2_OPEN[k] ? '▼' : '▶'} <span style="color:var(--text3);">${esc(ao2ColLabel(S[d].col))}:</span> <b>${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'}</b> <span style="color:var(--text3);">(${n})</span></td></tr>`;
+        if (d && !G.slice(0, d).every((s, j) => AO2_OPEN[keyAt(x, j)])) continue;
+        const n = rows.filter(y => keyAt(y, d) === k).length, v = ao2Val(x, G[d].col), gi = AO2_GKEYS.push(k) - 1;
+        body += `<tr onclick="ao2Toggle(${gi})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:5px 10px;padding-left:${10 + d * 16}px;font-size:11.5px;border-bottom:1px solid var(--border);">${AO2_OPEN[k] ? '▼' : '▶'} <span style="color:var(--text3);">${esc(ao2ColLabel(G[d].col))}:</span> <b>${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'}</b> <span style="color:var(--text3);">(${n})</span></td></tr>`;
       }
-      if (S.every((s, j) => AO2_OPEN[keyAt(x, j)])) body += rowHtml(x);
+      if (G.every((s, j) => AO2_OPEN[keyAt(x, j)])) body += rowHtml(x);
     });
   }
   el.innerHTML = bar + panel + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
