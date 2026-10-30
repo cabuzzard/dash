@@ -4591,7 +4591,7 @@ function ocToggle(ev, hd) {
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
-const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
@@ -4613,13 +4613,16 @@ async function ao2Load() {
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
-    return [{ id, src: t, title: t.title || '', type: 'Title', topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
+      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', product: x.product && x.product !== 'No Product' ? x.product : '', productId: nid(x.assetProductId || x.productId), platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+    const pr = t.productId ? all.find(y => y.kind === 'product' && nid(y.productId) === nid(t.productId)) : null;
+    const prodRow = pr ? [{ id: nid(pr.productId), src: pr, title: pr.product || '', type: 'Product', product: pr.product || '', productId: nid(pr.productId), assetType: '', status: pr.status || pr.productStatus || '',
+      topic: pr.keywordTopic || '', topicId: pr.keywordTopicId || '', cluster: pr.keywordCluster || '', campId: t.campId || pr.campId || '', hub: slugs([pr]) }] : [];
+    return [{ id, src: t, title: t.title || '', type: 'Title', product: t.productId && t.product !== 'No Product' ? t.product || '' : '', productId: nid(t.productId), topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...prodRow, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
-const AO2_DEFAULT_W = { asset: 170, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
+const AO2_DEFAULT_W = { asset: 170, product: 220, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
 let AO2_RESIZING = false;
 function ao2Widths() { try { return JSON.parse(localStorage.getItem('ao2ColW') || '{}') || {}; } catch (e) { return {}; } }
 function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || 140); }
@@ -4694,6 +4697,8 @@ function ao2Render() {
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
   const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button><button onclick="openCareGapEditor('${esc(x.campId)}','${esc(x.id)}','')" title="The care-gap Publish modal — for what isn't native yet: images, templates, video, Buffer, publishing" style="font-size:11px;padding:1px 6px;margin-left:4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;">📤 care-gap</button>` : '')
+    : c.key === 'product' && x.product && x.productId ? `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
+    : c.key === 'title' && x.type === 'Product' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
     : c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
@@ -4920,6 +4925,66 @@ function amFlowHtml() {
     + sec('Hub voice', P.voice) + sec('Hub audience', P.hub && P.hub.audience) + (P.hub && P.hub.design ? sec('Hub design', P.hub.design, 'the method asks for design') : '')
     + sec('Interview', P.interview, 'answered questions') + sec('Platform', P.platform) + sec('This asset — subject', P.subject)
     + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Current fields', P.currentFields, 'what is on the asset now');
+}
+// ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
+// stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research
+// (hubResOpen — keywords, isolate, re-run), ＋ title (hubKwTitleAdd) and delete. Delete is refused while ANY asset on the product or
+// its titles is Published (never delete published assets) — archiveProduct itself trashes every title and asset under the product.
+let _pm = null;
+async function pmOpen(productId, campId) {
+  const pid = kwNid(productId), h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(campId));
+  if (!pid) return; if (!h) return showToast('This product’s campaign isn’t a content hub', 'error');
+  hcModal(`<h3 style="margin:0 0 4px;">📦 Product</h3><div style="font-size:12px;color:var(--text3);">Loading the ${esc(h.slug)} keywords…</div>`);
+  if (!_hubKw[h.slug] || _hubKw[h.slug].error) { delete _hubKw[h.slug]; await hubKwLoad(h.slug); }
+  if (!_hubResState[h.slug]) { const st = await call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null); if (st && !st.error) { const m = {}; (st.products || []).forEach(p => { m[p.productId] = p.researchState; }); _hubResState[h.slug] = m; } }
+  const K = _hubKw[h.slug], p = K && !K.error && (K.products || []).find(x => kwNid(x.id) === pid);
+  if (!p) { hcModal(`<h3 style="margin:0 0 4px;">📦 Product</h3><div style="font-size:12px;color:#f87171;">This product isn’t in the ${esc(h.slug)} hub’s products${K && K.error ? ' (' + esc(K.error) + ')' : ''}.</div>${HC_CANCEL}`); return; }
+  _pm = { slug: h.slug, pid, topicId: p.topicId || '', campId: h.campaignId };
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
+  const L = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
+  const topics = [...K.staged, ...K.committed], sync = hubKwSyncState(h.slug, p);
+  const syncTxt = sync === 'in' ? ['#4ade80', 'In sync — research current'] : sync === 'out' ? ['#ff7a00', 'Out of sync — something upstream changed; re-run its research'] : sync === 'noresearch' ? ['#ff7a00', 'No research yet — run 🔬 Research'] : ['var(--text3)', 'Research state unknown'];
+  const B = c => `font-size:12px;padding:5px 11px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  hcModal(`<h3 style="margin:0 0 4px;">📦 ${esc(p.name || 'Product')}</h3>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;"><span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${syncTxt[0]};"></span>${esc(syncTxt[1])}</span>
+      <a href="https://www.notion.so/${esc(pid)}" target="_blank" rel="noopener" style="color:var(--accent);">Notion ↗</a><span style="color:var(--text3);">${esc(h.slug)}</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <button style="${B('#8ab4f8')}" title="This product's research — keywords, 🔒 isolate, re-run" onclick="document.getElementById('hcModal').classList.remove('open');hubResOpen('${h.slug}','${esc(p.id)}')">🔬 Research</button>
+      <button style="${B('#4ade80')}" title="Add a title for this product (Planning)" onclick="document.getElementById('hcModal').classList.remove('open');hubKwTitleAdd('${h.slug}','${esc(p.topicId || '__main')}','${esc(p.id)}')">＋ Title</button></div>
+    <label style="${L}">Name</label><input id="hkEditName" value="${esc(p.name || '')}" style="${IN}">
+    <label style="${L}">Description</label><textarea id="hkEditDesc" rows="4" placeholder="What it is, who it's for — the blurb" style="${IN}resize:vertical;">${esc(p.description || '')}</textarea>
+    <label style="${L}">Stage</label><select id="hkEditStage" style="${IN}">${p.stage ? '' : '<option value="" selected>— no stage —</option>'}${HUB_STAGES.map(([s]) => `<option value="${s}" ${s === p.stage ? 'selected' : ''}>${s}</option>`).join('')}</select>
+    <label style="${L}">Keyword topic — where it lives in the hub</label><select id="pmTopic" style="${IN}">${p.topicId ? '' : '<option value="" selected>— no topic —</option>'}<option value="__main" ${p.topicId === '__main' ? 'selected' : ''}>★ Main Keywords</option>${topics.map(t => `<option value="${esc(t.id)}" ${kwNid(t.id) === kwNid(p.topicId) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 12px;cursor:pointer;"><input type="checkbox" id="hkEditMain" ${(K.mainIds || []).includes(pid) ? 'checked' : ''}><span style="color:#f5c542;">★</span> Main offering of this hub</label>
+    <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 0 12px;"><b>Raw</b> — just an idea · <b>Keyword Research</b> — work on its keyword topics · <b>Development</b> — research + titles. Moving topic marks it out of sync (re-run its research).</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="modal-btn" onclick="hcModalRun(this, pmSave)">Save</button>${HC_CANCEL}
+      <button class="modal-btn" style="margin-left:auto;background:transparent;border-color:#f87171;color:#f87171;" onclick="hcModalRun(this, pmDelete)">🗑 Delete product</button></div>`);
+}
+async function pmSave() {
+  const P = _pm; if (!P) return 'Not loaded';
+  const r = await hubKwEditProductSave(P.slug, P.pid); if (r !== true) return r;   // name · description · stage · ★ main — Content Hubs 2's own save
+  const to = (document.getElementById('pmTopic') || {}).value || '';
+  if (to && kwNid(to) !== kwNid(P.topicId)) {
+    if (to === '__main') { const m = await call('setHubMainOffering', { campaignId: P.campId, productId: P.pid, op: 'add' }).catch(e => ({ error: e.message })); if (!m || m.error) return 'Saved, but not moved to Main: ' + ((m && m.error) || 'no response'); }
+    else { const m = await call('attachProductToTopic', { productId: P.pid, topicId: to, campaignId: P.campId, markOutOfSync: true }).catch(e => ({ error: e.message })); if (!m || m.error) return 'Saved, but not moved: ' + ((m && m.error) || 'no response'); }
+  }
+  await pmReload(P); showToast('✓ Product saved', 'success'); return true;
+}
+async function pmDelete() {
+  const P = _pm, K = P && _hubKw[P.slug]; if (!P || !K) return 'Not loaded';
+  const d = await devAssetsTable().catch(e => ({ error: e.message })); if (!d || d.error) return 'Could not check for Published assets — not deleted';
+  const titleIds = new Set((d.rows || []).filter(r => r.titleId && kwNid(r.productId) === P.pid).map(r => kwNid(r.titleId)));
+  const pub = (d.rows || []).filter(r => r.kind === 'asset' && /^published$/i.test(r.assetStatus || '') && (kwNid(r.productId) === P.pid || kwNid(r.assetProductId) === P.pid || titleIds.has(kwNid(r.titleId))));
+  if (pub.length) return 'Not deleted — ' + pub.length + ' Published asset' + (pub.length === 1 ? '' : 's') + ' on this product or its titles (published assets are never deleted): ' + pub.slice(0, 3).map(r => r.assetName).join(' · ') + (pub.length > 3 ? ' …' : '');
+  const name = ((K.products || []).find(x => kwNid(x.id) === P.pid) || {}).name || 'this product';
+  if (!confirm('Delete "' + name + '"?\n\nThe product is archived and removed from the hub’s ★ main offerings — AND its ' + titleIds.size + ' title' + (titleIds.size === 1 ? '' : 's') + ' and their (unpublished) assets go to Notion’s trash.')) return 'Not deleted';
+  const res = await call('archiveProduct', { productId: P.pid, campaignId: P.campId }).catch(e => ({ error: e.message }));
+  if (!res || res.error) return (res && res.error) || 'Not deleted';
+  await pmReload(P); showToast('✓ "' + name + '" deleted — ' + (res.titlesGone || 0) + ' titles, ' + (res.assetsGone || 0) + ' assets to trash', 'success'); return true;
+}
+async function pmReload(P) {
+  delete _kwTopicCache[kwNid(P.campId)]; delete _hubKw[P.slug]; await hubKwLoad(P.slug);
+  if (document.getElementById('ao2Body')) { _devTblLast = null; await ao2Load(); }
 }
 // Title cell buttons (operator 2026-10-30): ✎ = Content Hubs 2's Edit title modal · 🔬 = its Title research modal — the same functions
 function ao2TitleBtns(tid, campId) {
