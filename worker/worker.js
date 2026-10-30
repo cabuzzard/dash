@@ -15599,6 +15599,9 @@ async function digestMigrateCronFlags(env, cid, rows) {
 // so parents made before the rename keep working; a request for the old type is always turned into a Digest Parent.
 const DIGEST_PARENT_TYPE = "Digest Parent";
 const isDigestParentType = v => /^digest(?: parent)?$/i.test(String(v || "").trim());
+// All Output label: a Digest parent shows as ONE type, "Digest Parent", whether it was labelled from its Pillar Type ("Digest" + " parent")
+// or from its method / Asset Type ("Digest Parent") — operator 2026-10-29: the two spellings were two rows / columns.
+const canonDigestParent = t => /^digest parent$/i.test(String(t || "").trim()) ? DIGEST_PARENT_TYPE : t;
 async function digestDepthPick(env, assetId) {
   const v = await env.TRADES.get("digest:depth:" + hubAssetId(assetId)).catch(() => null);
   return DIGEST_DEPTHS.includes(v) ? v : "";
@@ -19812,7 +19815,7 @@ Return: {
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
-          assetType: a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+          assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
@@ -19864,7 +19867,7 @@ Return: {
               // differently (e.g. Method "Blog - SEO - News" vs a legacy
               // Asset Type of "SEO Post") — the bulk thumbnail-generation
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
-              assetType: a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+              assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",

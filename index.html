@@ -12291,6 +12291,11 @@ function hubCheckSave() { try { localStorage.setItem(HUBCHECK_KEY, JSON.stringif
 function hubCheckCols(types, cells, dev) {
   if (HUBCHECK_COLS) return HUBCHECK_COLS;
   try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) HUBCHECK_COLS = v; } catch (e) {}
+  if (HUBCHECK_COLS) {   // one Digest Parent type (2026-10-29): a saved "Digest parent" column becomes "Digest Parent"; a duplicate is dropped
+    const canon = t => /^digest parent$/i.test(String(t || '').trim()) ? 'Digest Parent' : t, seen = new Set();
+    const fix = list => list.map(e => hubCheckIsGroup(e) ? { ...e, cols: fix(e.cols) } : canon(e)).filter(e => hubCheckIsGroup(e) || (!seen.has(e) && seen.add(e)));
+    HUBCHECK_COLS = fix(HUBCHECK_COLS);
+  }
   if (!HUBCHECK_COLS) HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t)));   // default: types with something deployed or in development
   let offered = []; try { const v = localStorage.getItem(HUBCHECK_ALWAYS_KEY); offered = v === '1' ? ['Client Studio', 'listing', 't shirt'] : JSON.parse(v || '[]'); } catch (e) {}
   const fresh = HUBCHECK_ALWAYS.filter(t => !offered.includes(t));
