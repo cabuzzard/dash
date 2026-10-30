@@ -17162,7 +17162,7 @@ function allDigRender() {
   const depthCell = r => { const own = r.d.depthPick || ''; return own ? `<b>${esc(own)}</b>` : `<span style="color:var(--text3);">hub default${r.hubDepth ? ' · ' + esc(r.hubDepth) : ''}</span>`; };
   const cronCell = r => { const d = r.d, w = d.weeklyRun || {}, live = w.step && !['done', 'skip', 'error'].includes(w.step);
     return `<span style="color:${d.runsWeekly ? '#f6ad55' : 'var(--text3)'};">${d.runsWeekly ? 'Weekly · Sun night' : 'Off'}</span>`
-      + (live ? ` <span style="color:#60a5fa;">· running (${esc(w.step)})</span>` : w.finishedAt ? ` <span style="color:var(--text3);">· last ${esc(w.step || '')} ${when(w.finishedAt)}</span>` : ''); };
+      + (live && w.step !== 'start' ? ` <span style="color:#60a5fa;">· running (${esc(w.step)})</span>` : d.queued || live ? ` <span style="color:#60a5fa;" title="Waiting its turn — the */4 cron starts it; one digest per hub runs at a time">· queued (next run)</span>` : w.finishedAt ? ` <span style="color:var(--text3);">· last ${esc(w.step || '')} ${when(w.finishedAt)}</span>` : ''); };
   const allOn = rows.length && rows.every(r => _allDigSel.has(key(r)));
   const btn = 'font-size:11px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;';
   const bar = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-size:11.5px;">

@@ -22104,7 +22104,7 @@ ${JSON.stringify(products)}`;
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (cid.length !== 32) return json({ error: "campaignId required" }, 400);
         const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: kwDashId(cid) } }, { property: "Pillar Type", select: { equals: "Digest" } }] },
           sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { throw new Error("digests: " + e.message); });
-        const digests = [];
+        const digests = [], handQueue = (await env.TRADES.get("digest:manual", "json")) || [];
         for (const r of rows) {
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
           { const used = usedIds(d.children || {}); d.items = refreshPeriodFlags(d.items || [], digestPeriod()).map(x => ({ ...x, state: recordState(x, used) })); }   // flags recomputed for today's period
@@ -22129,7 +22129,7 @@ ${JSON.stringify(products)}`;
           }
           const generationId = await env.TRADES.get("digest:generate:last:" + id), generationJob = generationId ? await env.TRADES.get("titlejob:state:" + generationId, "json") : null;
           const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
-          digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
+          digests.push({ queued: handQueue.some(x => x && typeof x === "object" && x.assetId === id), assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
             topicId: dTopic.topicId || "", isolated: dIsolated, trends: await (async () => { const t = await env.TRADES.get("digest:trends:" + id, "json").catch(() => null); if (!t) return null;
               return { at: t.at, headline: t.analysis?.headline || "", startHere: t.analysis?.playbook?.startHere || "", trends: (t.analysis?.trends || []).map(x => ({ title: x.title, status: x.status || "new" })),
@@ -26500,7 +26500,10 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
               const dcid = nidC(body.campaignId), curAsset = await env.TRADES.get("digest:asset:" + dcid);
               const curPage = curAsset ? await fetch("https://api.notion.com/v1/pages/" + dashC(curAsset), { headers: hdrC }).then(x => x.json()).catch(() => null) : null;
               if (!curAsset || !curPage || curPage.object === "error" || curPage.archived || curPage.in_trash) { await env.TRADES.put("digest:title:" + dcid, nidC(titleId)); await env.TRADES.put("digest:asset:" + dcid, nidC(j.id)); }
-              const mq = (await env.TRADES.get("digest:manual", "json")) || []; if (!mq.includes(dcid)) { mq.push(dcid); await env.TRADES.put("digest:manual", JSON.stringify(mq)); }   // and write it now (same pipeline as the cron)
+              // and write it now (same pipeline as the cron) — queued as THIS parent, never the hub: a hub-level entry went to a sibling
+              // digest when the new page wasn't in Notion's query yet (operator 2026-10-30: a new digest showed nothing while another ran)
+              const mq = (await env.TRADES.get("digest:manual", "json")) || [], newId = nidC(j.id);
+              if (!mq.some(x => x && typeof x === "object" && x.assetId === newId)) { mq.push({ cid: dcid, assetId: newId }); await env.TRADES.put("digest:manual", JSON.stringify(mq)); }
               created[created.length - 1].digest = true;
             }
             if (t.note) await fetch(`https://api.notion.com/v1/blocks/${j.id}/children`, { method: "PATCH", headers: hdrC, body: JSON.stringify({ children: [{ object: "block", type: "callout", callout: { icon: { emoji: "💡" }, rich_text: ivRt(String(t.note)) } }] }) }).catch(() => {});
