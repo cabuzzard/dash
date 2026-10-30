@@ -4332,7 +4332,7 @@ async function claudeStream(env, payload, extraHeaders) {
     return res(false, r.status, d);
   }
   const reader = r.body.getReader(), dec = new TextDecoder();
-  let buf = "", stop = null, err = null; const blocks = [];
+  let buf = "", stop = null, err = null, usage = null; const blocks = [];
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -4343,11 +4343,12 @@ async function claudeStream(env, payload, extraHeaders) {
       const line = ev.split("\n").find(l => l.startsWith("data:"));
       if (!line) continue;
       let e; try { e = JSON.parse(line.slice(5).trim()); } catch (x) { continue; }
-      if (e.type === "content_block_start") blocks[e.index] = { ...e.content_block, _json: "" };
+      if (e.type === "message_start") usage = { ...(e.message && e.message.usage || {}) };
+      else if (e.type === "content_block_start") blocks[e.index] = { ...e.content_block, _json: "" };
       else if (e.type === "content_block_delta" && blocks[e.index]) {
         if (e.delta.type === "input_json_delta") blocks[e.index]._json += e.delta.partial_json || "";
         else if (e.delta.type === "text_delta") blocks[e.index].text = (blocks[e.index].text || "") + (e.delta.text || "");
-      } else if (e.type === "message_delta") stop = (e.delta && e.delta.stop_reason) || stop;
+      } else if (e.type === "message_delta") { stop = (e.delta && e.delta.stop_reason) || stop; if (e.usage) usage = { ...(usage || {}), ...e.usage }; }
       else if (e.type === "error") err = e.error;
     }
   }
@@ -4360,7 +4361,7 @@ async function claudeStream(env, payload, extraHeaders) {
     return { ...rest, input };
   });
   if (broken) return res(false, 502, { error: { message: stop === "max_tokens" ? "The reply hit the length limit before it finished — try fewer items or shorter answers" : "The reply came back incomplete — try again" } });
-  return res(true, 200, { content, stop_reason: stop });
+  return res(true, 200, { content, stop_reason: stop, usage });
 }
 async function lfInterviewPlan(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, "");
@@ -14387,7 +14388,10 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
 // kwHubCleanApply / kwHubCleanUndo: run / reverse the plan in chunks (KV hubclean:run:<cid> holds progress + undo).
 const HC_BRIDGE_SUFFIX = " — Introductory Call", HC_BRIDGE_TYPE = "Topic bridge", HC_UNCL = "Unclassified";
 async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage, options = {}) {
-  const r = await (env.__researchRequest?researchModelFetch.bind(null,env):fetch)("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+  // options.stream: a long searched answer (the weekly trends analysis) runs past 100 s, and non-streamed Anthropic answers
+  // "error code: 524" (operator 2026-10-30: both real-estate digests failed this way) — claudeStream keeps bytes flowing
+  const send = options.stream ? (u, o) => claudeStream(env, JSON.parse(o.body)) : (env.__researchRequest?researchModelFetch.bind(null,env):fetch);
+  const r = await send("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [...(options.search?[{type:"web_search_20250305",name:"web_search",max_uses:options.maxUses||3}]:[]), { name, description: options.search?"Return the requested research sections after source search.":"Return the result.", input_schema: schema }], tool_choice: options.search?{type:"auto"}:{ type: "tool", name },
       messages: [{ role: "user", content: prompt }] }) });
   const d = await r.json(); if(options.onResponse)await options.onResponse(d); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
@@ -16217,7 +16221,7 @@ RULES:
 - If you can't find a sourced number, leave it out — never invent one. List every source you used in "sources".
 Finish by calling trends_analysis with the complete structured answer.`;
   let usage = null, searched = [];
-  const analysis = await hcClaude(env, prompt, "trends_analysis", DIGEST_TRENDS_SCHEMA, 12000, u => { usage = u; }, { search: true, maxUses: 8, onResponse: d => { searched = researchEvidence(d); } });
+  const analysis = await hcClaude(env, prompt, "trends_analysis", DIGEST_TRENDS_SCHEMA, 12000, u => { usage = u; }, { search: true, maxUses: 8, stream: true, onResponse: d => { searched = researchEvidence(d); } });
   if (!analysis || !Array.isArray(analysis.trends) || !analysis.trends.length) throw new Error("trends analysis came back empty");
   // the free verification tier: every cited URL is checked
   const urls = [...new Set([...(analysis.sources || []).map(x => x.url), ...(analysis.snapshot || []).map(x => x.url), ...(analysis.trends || []).flatMap(t => (t.evidence || []).map(e => e.url))].filter(u => /^https?:\/\//.test(u || "")))].slice(0, 40);
