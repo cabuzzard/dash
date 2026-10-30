@@ -4580,7 +4580,7 @@ function ocToggle(ev, hd) {
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
-const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
@@ -4593,14 +4593,17 @@ async function ao2Load() {
   const r = await devAssetsTable().catch(e => ({ error: e.message }));
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc((r && r.error) || 'no response')}</div>`; return; }
   const nid = x => String(x || '').replace(/-/g, ''), all = r.rows || [];
-  AO2_ROWS = AO2_TITLE_IDS.map(id => {
-    const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return null;
+  AO2_ROWS = AO2_TITLE_IDS.flatMap(id => {
+    const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return [];
     const t = mine.find(x => x.kind === 'title') || mine[0];
-    const hubs = [...new Set(mine.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))];
+    const slugs = rows => [...new Set(rows.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))].join(', ');
+    const hubs = slugs(mine);
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
-    return { id, title: t.title || '', type: 'Title', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs.join(', '), dev: n('Development'), publish: n('Publish'), pub: n('Published') };
-  }).filter(Boolean);
+    const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
+      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+    return [{ id, title: t.title || '', type: 'Title', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
+  });
   ao2Render();
 }
 function ao2Render() {
