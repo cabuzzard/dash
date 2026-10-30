@@ -4971,7 +4971,7 @@ function amSchemaHtml() {
       ['Row defaults', 'keep: ' + ((d.styleSource || {}).rowKeep || '—') + ' · purpose: ' + ((d.styleSource || {}).rowPurpose || '—')], ['This asset', 'Interview Keep: ' + (a.interviewKeep || '—') + ' · Write Purpose: ' + (a.writePurpose || '—')],
       ['Keep rule (sent)', d.keepRule], ['Purpose rule (sent)', d.purposeRule], ['SEO keywords to place', (d.seoKeywords || []).join('; ')]]) : '—', false);
   // 6. rule guidance
-  html += box('6 · Your rule guidance (KV writeguide)', d.rules ? (d.rules.guidance ? pre(d.rules.guidance) : 'none') : '—', false);
+  html += box('6 · Your rule guidance on this row (KV writerule:guide) — the hub writing guide reaches the writer inside the packet voice', d.rules ? (d.rules.guidance ? pre(d.rules.guidance) : 'none') : '—', false);
   // 7. instruction + style text actually sent
   html += box('7 · What the writer is told — instruction + style text (sent before the packet)', pre((d.instruction || '') + '\n\n' + ((d.style && d.style.text) || '')), false);
   // 8. contract as validated

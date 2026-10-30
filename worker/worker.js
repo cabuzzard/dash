@@ -2394,8 +2394,8 @@ async function assetWriterInfo(env,page) {
     writerAvailable:!mapping.reason,writerError:mapping.reason||'',mapping};
 }
 // Rule guidance (Asset modal, operator 2026-10-30): the operator's own notes on a writing-rules row (Current Methods), one per row —
-// it applies to every asset written by that row and is handed to the writer with the contract. KV writeguide:<row name>.
-const writeGuideKey = rowName => 'writeguide:' + ivNorm(rowName || '').slice(0, 200);
+// it applies to every asset written by that row and is handed to the writer with the contract. KV writerule:guide:<row name> (writeguide:<campaignId> is the HUB writing guide — a different thing).
+const writeGuideKey = rowName => 'writerule:guide:' + ivNorm(rowName || '').slice(0, 200);
 async function writeRuleGuidance(env, rowName) { if (!rowName) return ''; return String((await env.TRADES.get(writeGuideKey(rowName)).catch(() => '')) || '').trim(); }
 // ── ASSET SPECS (operator 2026-10-30): the Asset modal's four sections, each a spec on the asset's Current Methods row —
 // rules = "contract" · flow = "inputs" · preview = "preview spec" · fields = "field spec". From the modal the operator writes guidance →
