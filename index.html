@@ -4590,7 +4590,31 @@ function ocToggle(ev, hd) {
   if (!closed && sec.dataset.ock === 'alloutput2') ao2Load();
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
-const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
+// Entry criteria (operator 2026-10-30): a title is in All Output 2 only when ticked "→ AO2" in All Output — the whole title set comes
+// with it (its product + every asset). One shared list: KV infoflow:table:ao2titles (generic table store), rows = {id: titleId, cells: {t: title}}.
+const AO2_SEED = [{ id: '4011f7d3a4bb81df8ce6e769c9c53cac', cells: { t: 'Done-For-You Notion AI Content System — Fiverr Gigs' } }];
+let AO2_SET = null, AO2_SET_ROWS = [];
+async function ao2SetLoad(force) {
+  if (AO2_SET && !force) return AO2_SET;
+  const r = await call('getInfoFlowTable', { name: 'ao2titles' }).catch(e => ({ error: e.message }));
+  if (!r || r.error) throw new Error('AO2 list not loaded: ' + ((r && r.error) || 'no response'));
+  const t = r.table || {}, has = Array.isArray(t.rows) && (t.columns || []).some(c => c.id === 't');
+  AO2_SET_ROWS = has ? t.rows : AO2_SEED.map(x => ({ id: x.id, cells: { ...x.cells } }));
+  AO2_SET = new Set(AO2_SET_ROWS.map(x => kwNid(x.id)));
+  if (!has) await call('saveInfoFlowTable', { name: 'ao2titles', table: { columns: [{ id: 't', name: 'Title' }], rows: AO2_SET_ROWS } }).catch(() => {});
+  return AO2_SET;
+}
+async function ao2SetToggle(titleId, title, on, cb) {
+  const id = kwNid(titleId); if (cb) cb.disabled = true;
+  try { await ao2SetLoad(); } catch (e) { showToast(e.message, 'error'); if (cb) { cb.disabled = false; cb.checked = !on; } return; }
+  const before = AO2_SET_ROWS.slice();
+  AO2_SET_ROWS = on ? (AO2_SET.has(id) ? AO2_SET_ROWS : [...AO2_SET_ROWS, { id, cells: { t: title || '' } }]) : AO2_SET_ROWS.filter(x => kwNid(x.id) !== id);
+  const r = await call('saveInfoFlowTable', { name: 'ao2titles', table: { columns: [{ id: 't', name: 'Title' }], rows: AO2_SET_ROWS } }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AO2_SET_ROWS = before; showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); if (cb) { cb.disabled = false; cb.checked = !on; } return; }
+  AO2_SET = new Set(AO2_SET_ROWS.map(x => kwNid(x.id)));
+  showToast(on ? '→ All Output 2: "' + (title || 'title') + '" and its product + assets' : 'Removed from All Output 2', 'success');
+  renderDev2(); if (AO2_ROWS) ao2Load();
+}
 const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
@@ -4605,7 +4629,8 @@ async function ao2Load() {
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc((r && r.error) || 'no response')}</div>`; return; }
   const nid = x => String(x || '').replace(/-/g, ''), all = r.rows || [];
   const nameOf = {}; all.forEach(x => { if (x.kind === 'asset' && x.assetId) nameOf[nid(x.assetId)] = x.assetName || ''; });   // Parent Asset id → that asset's name
-  AO2_ROWS = AO2_TITLE_IDS.flatMap(id => {
+  try { await ao2SetLoad(); } catch (e) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc(e.message)}</div>`; return; }
+  AO2_ROWS = [...AO2_SET].flatMap(id => {
     const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return [];
     const t = mine.find(x => x.kind === 'title') || mine[0];
     const slugs = rows => [...new Set(rows.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))].join(', ');
@@ -4707,7 +4732,7 @@ function ao2Render() {
   const tip = (x, c) => c.key === 'parent' || c.key === 'asset' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
   const rowHtml = x => `<tr class="ao2-row">${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
-  if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'Record not found in the table data.'}</td></tr>`;
+  if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'No titles yet — tick → AO2 on a title in All Output.'}</td></tr>`;
   const G = S.filter(s => s.head !== false);   // only the levels ticked Header make header tiers
   if (rows.length && (!V.group || !G.length)) body = rows.map(rowHtml).join('');
   else if (rows.length) {   // one collapsible header tier per Header level, collapsed until opened
@@ -12549,6 +12574,8 @@ const DEV2_COLS = [
   { key: 'keywordCluster', label: 'Keyword cluster' },
   { key: 'keywordTopic',   label: 'Keyword topic' },
   { key: 'title',        label: 'Title' },
+  { key: 'recordTitle',  label: 'Record title' },   // the row's own name — asset / title / product / interview (operator 2026-10-30)
+  { key: 'ao2',          label: '→ AO2' },   // ticked = this title's whole set (product + assets) is in All Output 2
   { key: 'assetName',    label: 'Asset name' },
   { key: 'assetType',    label: 'Asset type' },
   { key: 'status',       label: 'Record status' },
@@ -12677,7 +12704,9 @@ function dev2EditApply(r, k, v) {
   });
 }
 const DEV2_KIND = { product: 'Product', title: 'Title', asset: 'Asset', interview: 'Interview' };
-function dev2Val(r, col) { if (col === 'assetType' && r.assetId && r.assetClass !== 'Pillar') return String(r.rawAssetType || r.assetType || '');   // ASSET TYPE column = the asset's own Asset Type (operator 2026-10-30), never its Method name; parents keep their "<type> parent" label
+function dev2Val(r, col) { if (col === 'recordTitle') return String(r.kind === 'product' ? r.product || '' : r.kind === 'title' ? r.title || '' : r.assetName || (r.assetId ? '' : r.titleId ? r.title || '' : r.product || ''));
+  if (col === 'ao2') return r.titleId && AO2_SET && AO2_SET.has(kwNid(r.titleId)) ? 'yes' : '';
+  if (col === 'assetType' && r.assetId && r.assetClass !== 'Pillar') return String(r.rawAssetType || r.assetType || '');   // ASSET TYPE column = the asset's own Asset Type (operator 2026-10-30), never its Method name; parents keep their "<type> parent" label
   if(col === 'hubSection')return String(r.hubSectionDisplay || ''); if (col === 'kind') return DEV2_KIND[r.kind] || (r.assetId ? 'Asset' : r.titleId ? 'Title' : r.productId ? 'Product' : ''); if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); if (col === 'inputApp') return appLabel(r.inputApp); return String(r[col] == null ? '' : r[col]); }
 // ★ column: toggle a product's ★ main-offering status on its hub (same worker action as the hub card's ★), then repaint every row of it
 async function dev2MainToggle(productId, campId, btn) {
@@ -13187,6 +13216,7 @@ function productsRender() {
 }
 async function loadDev2() {
   hpInit();
+  if (!AO2_SET) ao2SetLoad().then(() => { if (DEV2_ROWS && DEV2_ROWS.length) renderDev2(); }).catch(() => {});   // the → AO2 ticks
   const el = document.getElementById('dev2Content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
@@ -13709,6 +13739,8 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${r.keywordCluster ? esc(r.keywordCluster) : dash}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.keywordTopic ? esc(r.keywordTopic) : dash}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.titleId ? `<input type="checkbox" title="Select this title for bulk actions" ${DEV2_SEL_T.has(r.titleId) ? 'checked' : ''} onclick="dev2ToggleRec('t','${esc(r.titleId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${titleCell}</td>
+      <td style="padding:6px 10px;font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(dev2Val(r, 'recordTitle'))}">${esc(dev2Val(r, 'recordTitle'))}</td>
+      <td style="padding:6px 8px;text-align:center;">${r.titleId ? `<input type="checkbox" title="Send this title's whole set — its product and every asset — to All Output 2 (untick to remove)" ${AO2_SET && AO2_SET.has(kwNid(r.titleId)) ? 'checked' : ''} onclick="ao2SetToggle('${esc(r.titleId)}', ${esc(JSON.stringify(r.title || ''))}, this.checked, this)">` : ''}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : (r.status === 'Review' || r.status === 'Flagged') ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Finished' ? 'rgba(58,154,91,.22)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
