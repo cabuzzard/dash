@@ -15766,7 +15766,7 @@ async function digestMemoryTest(env,cid) {const m=await digestMemory(env,cid);re
 async function productNotesTest(env,cid) {const [topics,notes]=await Promise.all([productNotesTopics(env,cid),productNotesRead(env,cid)]);return {campaignId:cid,databaseId:await productNotesDb(env),topics:topics.map(t=>({...t,notes:notes.filter(n=>n.topicId===t.id)})),staleCount:notes.filter(n=>!marketFresh(n)&&n.status!=='Retired').length,gaps:marketGaps(topics,notes)};}
 async function digestVerifyAsset(env,id,title) {
   const page=await newsletterNotion(env,'pages/'+kwDashId(id));
-  if(hubRichText(page.properties?.['Asset Title']?.title)!==title||page.properties?.['Asset Status']?.select?.name!=='Development'||page.properties?.['Pillar Readiness']?.select?.name!=='Ready')throw new Error('Digest asset readback differs');
+  if(hubRichText(page.properties?.['Asset Title']?.title)!==title||page.properties?.['Asset Status']?.select?.name!=='Review'||page.properties?.['Pillar Readiness']?.select?.name!=='Ready')throw new Error('Digest asset readback differs');
   return true;
 }
 async function productFromMarketNote(env,cid,noteId) {
@@ -16291,9 +16291,13 @@ async function adStep(env, cid, S, invoke) {
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
     await adSavePillar(env, S.assetId, w.digest);   // operator holds belong in digest diagnostics, never customer-facing copy
     await digestItemsSave(env, S.assetId, w.sources, { additive: true, runId });   // append this run's records; carry unused ones forward; preserve checks, children and picks
-    const writtenTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
-    await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: writtenTitle } }] },
-      "Asset Status": { select: { name: "Development" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished — every run (incl. a guided regenerate) is reviewed anew
+    // operator 2026-10-29: a finished run puts the digest at REVIEW (written, not yet generated — one Disseminate clears it), and an
+    // operator-edited title is kept: only an automatic "Digest — …" / "Weekly Digest — …" title (or none) is re-dated per run
+    const autoTitle = S.legacyWeekly ? `Weekly Digest — ${label} (${S.name})` : `Digest — ${label} (${S.titleName})`;
+    const curTitle = hubRichText((await newsletterNotion(env, "pages/" + kwDashId(S.assetId)).catch(() => null))?.properties?.["Asset Title"]?.title);
+    const writtenTitle = !curTitle.trim() || /^(weekly )?digest\b\s*[—–-]/i.test(curTitle.trim()) ? autoTitle : curTitle;
+    await kwNotionPatch(env, S.assetId, { ...(writtenTitle !== curTitle ? { "Asset Title": { title: [{ type: "text", text: { content: writtenTitle } }] } } : {}),
+      "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished — every run (incl. a guided regenerate) is reviewed anew
     // operator 2026-10-22: the digest parent is a built asset — each weekly run UPDATES this same asset in place
     // (adSavePillar clears the old content first). No new asset, no blank "next issue" placeholder.
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
@@ -22272,6 +22276,7 @@ ${JSON.stringify(products)}`;
             d.children[group].push(s.kind === "news" ? { jobId, itemId: s.itemId, state: "queued", at: new Date().toISOString() } : { jobId, kind: s.kind, items: s.items.map(x => x.id), state: "queued", at: new Date().toISOString() });
         }
         await env.TRADES.put("titlejob:state:" + jobId, JSON.stringify(S), { expirationTtl: DIGEST_GENERATE_TTL });
+        await kwNotionPatch(env, id, { "Asset Status": { select: { name: "Development" } } }).catch(e => console.error("digest review clear", e.message));   // one generation clears Review (operator 2026-10-29)
         const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.includes(jobId)) q.push(jobId);
         await env.TRADES.put("titlejob:queue", JSON.stringify(q));
         await env.TRADES.put(activeKey, jobId, { expirationTtl: DIGEST_GENERATE_TTL });
