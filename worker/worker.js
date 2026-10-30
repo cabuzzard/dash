@@ -16193,7 +16193,7 @@ async function adStep(env, cid, S, invoke) {
     const flow = await titleTopicKeywords(env, hdr, title.properties || {}), productId = ivRid(title.properties, "product") || ivRid(title.properties, "Product");
     if (!flow.keywords || !flow.topicId) { S.step = "skip"; S.note = "digest title has no placed topic keyword set"; return; }
     const product = productId ? await newsletterNotion(env, "pages/" + kwDashId(productId)).catch(() => null) : null;
-    S.titleName = kwTitleOf(title); S.productId = productId; S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
+    S.titleName = kwTitleOf(title) || hubRichText(title.properties?.Title?.title).trim(); S.productId = productId;   // Content Strategy titles name their title property "Title" (kwTitleOf reads "Name") S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
     S.names = [S.productName || S.titleName];
     S.isolated = flow.topicId !== "__main" && (await isoTopics(env, cid)).includes(hubAssetId(flow.topicId));
     let kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
