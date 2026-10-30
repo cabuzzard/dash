@@ -17528,7 +17528,7 @@ async function hub2DigGenerate(slug, assetId, btn) {
   const requestId = _hub2DigestRequests[assetId] || (_hub2DigestRequests[assetId] = (crypto.randomUUID ? crypto.randomUUID() : 'dg-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
   const r = await call('digestGenerate', { assetId, campaignId: h.campaignId, slug, requestId }).catch(e => ({ error: e.message }));
   if (!r || r.error) { showToast('Generate failed: ' + ((r && r.error) || 'no response'), 'error'); btn.disabled = false; return; }
-  if (r.jobId) { delete _hub2DigestRequests[assetId]; _hubJobs.mine.add(r.jobId); showToast(`Article job ${r.status || 'queued'} — safe to leave this page.`, 'success');   // a later Disseminate is a new request hubJobsOpen(); hub2PoolLoad(slug, true); return; }
+  if (r.jobId) { delete _hub2DigestRequests[assetId]; _hubJobs.mine.add(r.jobId); showToast(`Article job ${r.status || 'queued'} — safe to leave this page.`, 'success'); hubJobsOpen(); hub2PoolLoad(slug, true); return; }   // (requestId cleared: a later Disseminate is a new request)
   const m = r.made || {}, parts = [m.premium && 'premium issue', m.free && 'free issue', (m.news || []).length && (m.news.length + ' news post' + (m.news.length === 1 ? '' : 's') + ' queued')].filter(Boolean);
   showToast((parts.length ? '✓ ' + parts.join(' · ') + ' — at Development' : 'Nothing generated') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length ? 'error' : 'success');
   if ((m.news || []).length) setTimeout(hubJobsPoll, 1500);
