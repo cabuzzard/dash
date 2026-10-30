@@ -17242,7 +17242,7 @@ async function hub2DigestSetWeekly(slug, assetId, runsWeekly, input) {
   catch (e) { if (input) { input.checked = !runsWeekly; input.disabled = false; } alert(e.message || String(e)); }
 }
 async function hub2DigestMoveOpen(slug, assetId, button) {
-  const host = document.getElementById('hub2DigestMove-' + slug + '-' + assetId); if (!host) return;
+  const host = hubNear(button, 'hub2DigestMove-' + slug + '-' + assetId); if (!host) return;
   if (button) { button.disabled = true; button.textContent = 'Loading titles…'; }
   try {
     const r = await call('digestMoveTargets', {}); if (!r || r.error || !Array.isArray(r.titles)) throw new Error(r?.error || 'Could not load destination titles');
@@ -17255,7 +17255,7 @@ async function hub2DigestMoveOpen(slug, assetId, button) {
 }
 async function hub2DigestMove(slug, assetId, select) {
   const titleId = select && select.value; if (!titleId) return;
-  select.disabled = true; const msg = document.getElementById('hub2DigestMoveMsg-' + slug + '-' + assetId);
+  select.disabled = true; const msg = hubNear(select, 'hub2DigestMoveMsg-' + slug + '-' + assetId);
   try {
     const r = await call('digestMove', { assetId, titleId }); if (!r || r.error || r.ok === false) throw new Error(r?.error || 'Digest move failed');
     if (msg) msg.textContent = r.noOp ? (r.message || 'No change.') : 'Moved ✓';
@@ -17356,8 +17356,11 @@ async function hub2DigRetire(slug, assetId, itemId, retired, input) {
   await hub2PoolLoad(slug, true);
 }
 // Guided regenerate = a new run of this digest (same queued pipeline) with the operator's guidance added to the research brief.
+// The digest panel can be on the page twice (the hub's Digest section and the Keywords 📰 digest modal) with the same element ids —
+// a control reads the field next to the button that was clicked, never the first copy in the document (operator 2026-10-29).
+function hubNear(el, id) { const root = el && el.closest && el.closest('#hubDigRowModal, [id^="hub2Pool-"]'); let x = null; try { x = root ? root.querySelector('#' + CSS.escape(id)) : null; } catch (e) {} return x || document.getElementById(id); }
 async function hub2DigestRegenerate(slug, assetId, button) {
-  const hub = HUB_SITES.find(x => x.slug === slug), ta = document.getElementById('hub2RegenGuide-' + slug + '-' + assetId), guidance = (ta?.value || '').trim();
+  const hub = HUB_SITES.find(x => x.slug === slug), ta = hubNear(button, 'hub2RegenGuide-' + slug + '-' + assetId), guidance = (ta?.value || '').trim();
   if (!hub) return; if (!guidance) return showToast('Say what to change first — the guidance steers the new run.', 'error');
   if (button) { button.disabled = true; button.textContent = 'Queued…'; }
   try { const r = await call('digestRunNow', { campaignId: hub.campaignId, assetId, guidance }); if (!r || r.error || r.ok === false) throw new Error(r?.error || 'Could not queue the regenerate');
@@ -17365,7 +17368,7 @@ async function hub2DigestRegenerate(slug, assetId, button) {
   catch (e) { if (button) { button.disabled = false; button.textContent = '↻ Regenerate with guidance'; } showToast(e.message || String(e), 'error'); }
 }
 async function hub2DigestRescan(slug, assetId, button) {
-  const hub = HUB_SITES.find(x => x.slug === slug), keys = document.getElementById('hub2RescanKeys-' + slug + '-' + assetId), broad = document.getElementById('hub2RescanBroad-' + slug + '-' + assetId);
+  const hub = HUB_SITES.find(x => x.slug === slug), keys = hubNear(button, 'hub2RescanKeys-' + slug + '-' + assetId), broad = hubNear(button, 'hub2RescanBroad-' + slug + '-' + assetId);
   if (!hub) return;
   if (button) { button.disabled = true; button.textContent = 'Queued…'; }
   try {
