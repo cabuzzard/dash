@@ -17112,13 +17112,15 @@ async function allDigLoad(force) {
   if (_allDigLoaded && !force) return; _allDigLoaded = true;
   const el = document.getElementById('allDigBody'); if (!el) return;
   const hubs = HUB_SITES.filter(h => h.campaignId);
-  el.innerHTML = hubs.map(h => `<div style="margin:6px 0 12px;"><div style="font-weight:700;font-size:13px;margin:0 0 5px;">📰 ${esc(h.name || h.slug)}</div><div id="allDigests-${esc(h.slug)}"><div style="font-size:11px;color:var(--text3);">Loading…</div></div></div>`).join('');
+  // each hub is its own collapsed group (operator 2026-10-29); the count fills in once that hub's digests load
+  el.innerHTML = hubs.map(h => `<details style="margin:4px 0;border:1px solid var(--border);border-radius:6px;"><summary style="cursor:pointer;padding:6px 8px;font-weight:700;font-size:13px;">📰 ${esc(h.name || h.slug)} <span id="allDigN-${esc(h.slug)}" style="font-weight:400;font-size:11px;color:var(--text3);"></span></summary><div id="allDigests-${esc(h.slug)}" style="padding:2px 8px 8px;"><div style="font-size:11px;color:var(--text3);">Loading…</div></div></details>`).join('');
   await Promise.all(hubs.map(h => hub2PoolLoad(h.slug, !!force).catch(() => {})));
   hubs.forEach(h => allDigPaint(h.slug));
 }
 function allDigPaint(slug) {
   const el = document.getElementById('allDigests-' + slug); if (!el) return;
-  const P = _hub2Pool[slug];
+  const P = _hub2Pool[slug], n = document.getElementById('allDigN-' + slug);
+  if (n) n.textContent = P && P.digests ? '(' + P.digests.length + ' digest' + (P.digests.length === 1 ? '' : 's') + ')' : '';
   hubKeepInputs(el, () => { el.innerHTML = !P || P.loading ? '<div style="font-size:11px;color:var(--text3);">Loading…</div>'
     : P.error ? `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`
     : !(P.digests || []).length ? '<div style="font-size:11px;color:var(--text3);">No Digest Parents on this hub.</div>'
