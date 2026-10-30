@@ -16358,7 +16358,11 @@ async function autoDigestRun(env, invoke) {
       const lease = await digestHubLease(env, cid, "auto:" + assetId + ":" + S.period, 300);
       if (!lease) { out.push({ cid, assetId, step: S.step, waiting: "another digest operation in this hub" }); continue; }
       try {
-        const context = await newsletterContext(env, cid), pick = await digestDepthPick(env, assetId);   // per-digest model pick beats the hub's Research Depth
+        let context;
+        try { context = await newsletterContext(env, cid); }   // a hub-context failure is recorded on this run (it used to abort every digest, silently)
+        catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = "newsletter context: " + (e.message || e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; S.finishedAt = Date.now(); }
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); console.error("autoDigest " + assetId + ": " + S.lastError); out.push({ cid, assetId, step: S.step, error: S.lastError }); continue; }
+        const pick = await digestDepthPick(env, assetId);   // per-digest model pick beats the hub's Research Depth
         S.newsletter = { productId: context.productId, recordId: context.recordId, fields: pick ? { ...context.fields, "Research Depth": pick } : context.fields }; S.depthPick = pick; S.depthSource = pick ? "digest" : "hub";
         let firstStep = true;
         while (!["done", "skip", "error"].includes(S.step) && (Date.now() - t0 < 120000 || (firstStep && S.manual))) { firstStep = false;
