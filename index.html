@@ -4976,7 +4976,7 @@ async function pmOpen(productId, campId) {
       <a href="https://www.notion.so/${esc(pid)}" target="_blank" rel="noopener" style="color:var(--accent);">Notion ↗</a><span style="color:var(--text3);">${esc(h.slug)}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
       <button style="${B('#8ab4f8')}" title="This product's research — keywords, 🔒 isolate, re-run" onclick="document.getElementById('hcModal').classList.remove('open');hubResOpen('${h.slug}','${esc(p.id)}')">🔬 Research</button>
-      <button style="${B('#4ade80')}" title="Add a title for this product (Planning)" onclick="document.getElementById('hcModal').classList.remove('open');hubKwTitleAdd('${h.slug}','${esc(p.topicId || '__main')}','${esc(p.id)}')">＋ Title</button></div>
+      <button style="${B('#4ade80')}" title="Add a title for this product — created at Development and put straight into All Output 2" onclick="document.getElementById('hcModal').classList.remove('open');hubKwTitleAdd('${h.slug}','${esc(p.topicId || '__main')}','${esc(p.id)}',true)">＋ Title</button></div>
     <label style="${L}">Name</label><input id="hkEditName" value="${esc(p.name || '')}" style="${IN}">
     <label style="${L}">Description</label><textarea id="hkEditDesc" rows="4" placeholder="What it is, who it's for — the blurb" style="${IN}resize:vertical;">${esc(p.description || '')}</textarea>
     <label style="${L}">Stage</label><select id="hkEditStage" style="${IN}">${p.stage ? '' : '<option value="" selected>— no stage —</option>'}${HUB_STAGES.map(([s]) => `<option value="${s}" ${s === p.stage ? 'selected' : ''}>${s}</option>`).join('')}</select>
@@ -19679,7 +19679,9 @@ function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d 
   else if (typeof d === 'object') hubKwMoveProduct(slug, d.p, el.dataset.pdrop); else hubKwMoveTopic(slug, d, el.dataset.drop || ''); }
 // ＋ title on a topic: title · guidance · product (this topic's, ★ main offerings, any other) · ☐ research · ☐ pillar (type).
 // createDevTitle (Planning) → its Topic ID = this topic → [generateTitleResearch] → [writeTitlePillar with the pillar type]
-function hubKwTitleAdd(slug, topicId, presetPid) {
+let _hubKwTaAo2 = false;   // set when ＋ Title comes from All Output 2's Product modal: the new title goes on the AO2 list
+function hubKwTitleAdd(slug, topicId, presetPid, ao2) {
+  _hubKwTaAo2 = !!ao2;
   const K = _hubKw[slug]; if (!K) return;
   const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).filter(p => hubKwSyncState(slug, p) === 'in' || (presetPid && nid(p.id) === nid(presetPid))).sort((a, b) => String(a.name).localeCompare(String(b.name)));   // in-sync products only (+ the product it was opened from)
   const t = [...K.staged, ...K.committed].find(x => x.id === topicId), tname = topicId === '__main' ? 'Main' : (t ? t.name : 'topic');
@@ -19736,6 +19738,7 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
   const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Development', skipPillar: true, researchInstructions: guide || undefined });
   if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
   const id = String(r.id).replace(/-/g, ''), notes = []; _hubKwRecent.add(id);
+  if (_hubKwTaAo2) { _hubKwTaAo2 = false; await ao2SetToggle(id, title, true); }   // from the AO2 Product modal → straight onto the AO2 list
   msg('Placing it in the topic…');
   const s = await call('setTitleTopic', { titleId: id, topicId: topicId === '__main' ? '__main' : String(topicId).replace(/-/g, '') }).catch(e => ({ error: e.message }));
   if (!s || s.error) notes.push('topic not set: ' + ((s && s.error) || 'no response'));
@@ -20611,6 +20614,7 @@ async function hubTitlesLoad(slug, force) {
     _hubTitles[slug] = { organize: org, rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags, products: (prods && prods.products) || [], groupOrder: (prods && prods.groupOrder) || [] };
   } catch (e) { _hubTitles[slug] = { error: e.message }; }
   hubTitlesRefresh(slug);
+  if (force && AO2_ROWS && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); }   // new titles / assets show in All Output 2 too
 }
 function hubTitlesRefresh(slug) {
   if (typeof hubAssetsPaint === 'function') hubAssetsPaint(slug);
