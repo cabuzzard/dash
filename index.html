@@ -19274,7 +19274,7 @@ function allSerView(rows) {
   const F = _allSerF, q = F.q.trim().toLowerCase(), since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
   const keep = r => (!F.hub || r.slug === F.hub) && (!q || (r.name + ' ' + r.product + ' ' + r.hub).toLowerCase().includes(q))
     && (F.chip === 'all' || (F.chip === 'pub' && r.pub > 0) || (F.chip === 'empty' && r.kids === 0) || (F.chip === 'active' && (r.pub > 0 || r.dev > 0) && r.last >= since));
-  const key = { hub: r => r.hub, name: r => r.name, product: r => r.product, pub: r => r.pub, dev: r => r.dev, last: r => r.last || '', status: r => r.status }[F.sort] || (r => r.pub);
+  const key = { hub: r => r.hub, name: r => r.name, product: r => r.product, kids: r => r.kids, pub: r => r.pub, dev: r => r.dev, last: r => r.last || '', status: r => r.status }[F.sort] || (r => r.pub);
   return rows.filter(keep).sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y)); return (c * F.dir) || a.hub.localeCompare(b.hub) || a.name.localeCompare(b.name); });
 }
 // a Published / In dev count → the All Output table filtered to that Series' children (its title's assets, the Series itself left out)
@@ -19302,7 +19302,7 @@ function allSerOpenKids(assetId, kind) {
   const target = document.getElementById('dev2Content'); if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   showToast((kind === 'pub' ? 'Published' : 'In development') + ' assets of ' + r.name, 'success');
 }
-function allSerSet(k, v) { const F = _allSerF; if (k === 'sort') { if (F.sort === v) F.dir = -F.dir; else { F.sort = v; F.dir = ['pub', 'dev', 'last'].includes(v) ? -1 : 1; } } else F[k] = v; allSerRender(); }
+function allSerSet(k, v) { const F = _allSerF; if (k === 'sort') { if (F.sort === v) F.dir = -F.dir; else { F.sort = v; F.dir = ['kids', 'pub', 'dev', 'last'].includes(v) ? -1 : 1; } } else F[k] = v; allSerRender(); }
 function allSerRender() {
   const el = document.getElementById('allSerBody'); if (!el) return;
   const all = allSerRows(), rows = allSerView(all), F = _allSerF, since = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -19322,11 +19322,12 @@ function allSerRender() {
       <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
       <td style="${TD}max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.name)}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.name)}</td>
       <td style="${TD}max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.product)}">${esc(r.product || '—')}</td>
+      <td style="${TD}text-align:right;font-variant-numeric:tabular-nums;" ${r.kids ? `title="Open every asset of this Series in the All Output table" onclick="event.stopPropagation();openTitleAssets('${esc(r.titleId)}','Series','Assets of ' + ${esc(JSON.stringify(r.name))})"` : ''}>${r.kids ? `<span style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:700;">${r.kids}</span>` : '<span style="color:var(--text3);">·</span>'}</td>
       ${num(r.pub, '#4ade80', r, 'pub')}${num(r.dev, '#ff7a00', r, 'dev')}
       <td style="${TD}white-space:nowrap;color:${r.last && r.last >= since ? 'var(--text)' : 'var(--text3)'};font-size:11px;">${r.last ? esc(new Date(r.last + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: r.last.slice(0, 4) === String(new Date().getFullYear()) ? undefined : 'numeric' })) : '—'}</td>
       <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.status)}</td></tr>`
-      + (open ? `<tr><td colspan="7" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
-  el.innerHTML = bar + `<div style="overflow-x:auto;"><table class="allrow-tbl" style="width:100%;border-collapse:collapse;"><thead><tr>${hd('hub', 'Hub')}${hd('name', 'Series')}${hd('product', 'Product')}${hd('pub', 'Published', 1)}${hd('dev', 'In dev', 1)}${hd('last', 'Last activity')}${hd('status', 'Status')}</tr></thead><tbody>${body || `<tr><td colspan="7" style="${TD}color:var(--text3);">No series match.</td></tr>`}</tbody></table></div>`;
+      + (open ? `<tr><td colspan="8" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
+  el.innerHTML = bar + `<div style="overflow-x:auto;"><table class="allrow-tbl" style="width:100%;border-collapse:collapse;"><thead><tr>${hd('hub', 'Hub')}${hd('name', 'Series')}${hd('product', 'Product')}${hd('kids', 'Assets', 1)}${hd('pub', 'Published', 1)}${hd('dev', 'In dev', 1)}${hd('last', 'Last activity')}${hd('status', 'Status')}</tr></thead><tbody>${body || `<tr><td colspan="8" style="${TD}color:var(--text3);">No series match.</td></tr>`}</tbody></table></div>`;
   if (_allSerOpen && _series && _series.target === 'allSerPanel') hubSeriesDraw();   // the open row's panel survives the table repaint
 }
 async function allSerToggle(assetId) {
