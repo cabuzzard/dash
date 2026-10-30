@@ -793,7 +793,7 @@
         <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
     <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
+      <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — parents (Digest, Series…) count whenever they exist, same as All Output — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
     <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
     <div class="oc-sec" data-ock="hubproductsTable"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 id="hubProductsTableTitle" style="margin:0;font-size:16px;">Products</h2>
@@ -12301,7 +12301,8 @@ function hubCheckData() {
     const h = hubCheckHubOf(r); if (!h) continue;
     // parents (Series / Digest / Sales…) all share the raw type 'Pillar' — use their own name so each gets its column
     const t = / parent$/i.test(r.assetType || '') ? r.assetType : (r.rawAssetType || r.assetType || ''); if (!t || !r.assetStatus || r.assetStatus === 'Idea') continue;   // Idea status never counts
-    if (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic) continue;   // only assets on synced, live, placed titles + products
+    if (/^delete$/i.test(r.assetStatus)) continue;
+    if (!/ parent$/i.test(t) && (!HUBCHECK_LIVE.has(r.titleStatus) || !HUBCHECK_LIVE.has(r.productStatus) || r.titleOutOfSync || r.keywordOutOfSync || !r.keywordTopic)) continue;   // only assets on synced, live, placed titles + products — a PARENT (Digest / Series …) counts whenever it exists, the same set All Output lists (operator 2026-10-30)
     types.add(t);
     const k = h.slug + '|' + t;
     if (r.rewriteDue) (rw[k] = rw[k] || []).push(r);   // interview finished, live text not rewritten yet (blue ↻)
