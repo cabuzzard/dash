@@ -4607,12 +4607,86 @@ async function ao2Load() {
   });
   ao2Render();
 }
+// Filter & sort (same model as All Output): 2 filter slots {col, val, neg}, up to 7 sort levels {col, asc}, Group by sort.
+// 💾 Save keeps the view in this browser (ao2View); ↺ Revert goes back to the saved one.
+const AO2_MAX = 7, AO2_BLANK = '__blank__', AO2_OPEN = {};
+let AO2_V = null, AO2_PANEL = false;
+function ao2Default() { return { F: [{ col: '', val: '', neg: false }, { col: '', val: '', neg: false }], S: [], group: false }; }
+function ao2View() { if (!AO2_V) { try { AO2_V = JSON.parse(localStorage.getItem('ao2View') || 'null'); } catch (e) {} if (!AO2_V || !Array.isArray(AO2_V.F)) AO2_V = ao2Default(); } return AO2_V; }
+function ao2Val(x, k) { return String(x[k] ?? '').trim(); }
+function ao2Pass(x, f) { if (!f.col || !f.val) return true; const v = ao2Val(x, f.col), hit = f.val === AO2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
+function ao2ColLabel(k) { const c = AO2_COLS.find(c => c.key === k); return c ? c.label : k; }
+function ao2Rows() {
+  const V = ao2View(), S = V.S.filter(s => AO2_COLS.some(c => c.key === s.col)).slice(0, AO2_MAX);
+  const rows = AO2_ROWS.filter(x => ao2Pass(x, V.F[0]) && ao2Pass(x, V.F[1]));
+  if (S.length) rows.sort((a, b) => { for (const s of S) { const av = ao2Val(a, s.col), bv = ao2Val(b, s.col); if (!av !== !bv) return av ? -1 : 1;   // blanks last
+    const c = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }); if (c) return s.asc === false ? -c : c; } return 0; });
+  return { rows, S };
+}
+function ao2SetSort(k, ev) {   // click: sort by this column · Ctrl/Shift-click: add a level (again flips, third time removes) · Alt-click: remove this level
+  const V = ao2View(), i = V.S.findIndex(s => s.col === k);
+  if (ev && ev.altKey) { if (i >= 0) V.S.splice(i, 1); }
+  else if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) { if (i < 0) { if (V.S.length < AO2_MAX) V.S.push({ col: k, asc: true }); } else if (V.S[i].asc !== false) V.S[i].asc = false; else V.S.splice(i, 1); }
+  else V.S = [{ col: k, asc: i === 0 && V.S.length === 1 ? V.S[0].asc === false : true }];
+  ao2Render();
+}
+function ao2Set(path, v) { const V = ao2View(), [a, i, f] = path.split('.'); V[a][+i][f] = v; if (a === 'F' && f === 'col') V.F[+i].val = ''; if (a === 'S' && f === 'col' && !v) V.S.splice(+i, 1); ao2Render(); }
+function ao2AddSort() { const V = ao2View(); if (V.S.length < AO2_MAX) V.S.push({ col: AO2_COLS[0].key, asc: true }); ao2Render(); }
+function ao2Save(btn) { try { localStorage.setItem('ao2View', JSON.stringify(ao2View())); } catch (e) {} if (btn) { const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); } }
+function ao2Revert() { AO2_V = null; ao2Render(); }
+function ao2Clear() { const V = ao2View(); V.F = ao2Default().F; ao2Render(); }
+function ao2Toggle(i) { const k = (AO2_GKEYS || [])[i]; if (k === undefined) return; if (AO2_OPEN[k]) delete AO2_OPEN[k]; else AO2_OPEN[k] = 1; ao2Render(); }
+let AO2_GKEYS = [];
 function ao2Render() {
   const el = document.getElementById('ao2Body'); if (!el || !AO2_ROWS) return;
-  const cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k));
-  const th = 'cursor:grab;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
-  el.innerHTML = `<table style="border-collapse:collapse;font-size:12px;"><thead><tr>${cols.map(c => `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" title="Drag to reorder" style="${th}">${esc(c.label)}</th>`).join('')}</tr></thead>`
-    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x) : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>` : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
+  const V = ao2View(), cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k)), { rows, S } = ao2Rows();
+  const btn = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;';
+  const colOpts = cur => `<option value="">—</option>` + AO2_COLS.map(c => `<option value="${c.key}" ${c.key === cur ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
+  const valOpts = f => { const vals = [...new Set(AO2_ROWS.map(x => ao2Val(x, f.col)).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return `<option value="">(any)</option><option value="${AO2_BLANK}" ${f.val === AO2_BLANK ? 'selected' : ''}>(blank)</option>` + vals.map(v => `<option value="${esc(v)}" ${v === f.val ? 'selected' : ''}>${esc(v)}</option>`).join(''); };
+  const filtered = V.F.some(f => f.col && f.val);
+  const bar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">`
+    + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
+    + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
+    + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
+    + `<button style="${btn}" title="Group the rows under collapsible headers, one tier per sort level" onclick="ao2View().group=!ao2View().group;ao2Render()">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>`
+    + `<span style="font-size:11px;color:var(--text3);">${rows.length} of ${AO2_ROWS.length} rows${filtered ? ' · filtered' : ''}${S.length ? ' · sorted by ' + S.map(s => esc(ao2ColLabel(s.col)) + (s.asc === false ? ' ↓' : ' ↑')).join(', then ') : ''}</span></div>`;
+  const panel = !AO2_PANEL ? '' : `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:8px;">`
+    + V.F.map((f, i) => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text2);width:52px;">Filter ${i + 1}</span>`
+      + `<select style="${sel}" onchange="ao2Set('F.${i}.col',this.value)">${colOpts(f.col)}</select>`
+      + `<select style="${sel}" onchange="ao2Set('F.${i}.neg',this.value==='1')"><option value="0" ${!f.neg ? 'selected' : ''}>is</option><option value="1" ${f.neg ? 'selected' : ''}>is not</option></select>`
+      + (f.col ? `<select style="${sel}" onchange="ao2Set('F.${i}.val',this.value)">${valOpts(f)}</select>` : '') + `</div>`).join('')
+    + V.S.map((s, i) => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text2);width:52px;">${i ? 'then by' : 'Sort by'}</span>`
+      + `<select style="${sel}" onchange="ao2Set('S.${i}.col',this.value)">${colOpts(s.col)}</select>`
+      + `<select style="${sel}" onchange="ao2Set('S.${i}.asc',this.value==='1')"><option value="1" ${s.asc !== false ? 'selected' : ''}>A → Z</option><option value="0" ${s.asc === false ? 'selected' : ''}>Z → A</option></select></div>`).join('')
+    + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${V.S.length < AO2_MAX ? `<button style="${btn}" onclick="ao2AddSort()">＋ sort level</button>` : ''}<button style="${btn}" onclick="ao2Clear()">Clear filters</button></div>`
+    + `<div style="color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks sort too (Ctrl- or Shift-click adds a level, again flips it, a third time removes it; Alt-click removes it). Drag a header to reorder the columns.</div></div>`;
+  const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
+  const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
+    return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder" style="${th}">${esc(c.label)}${arrow}</th>`; }).join('');
+  const cell = (x, c) => c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
+    : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>`
+    : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
+  const rowHtml = x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${cell(x, c)}</td>`).join('')}</tr>`;
+  let body = ''; AO2_GKEYS = [];
+  if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'Record not found in the table data.'}</td></tr>`;
+  else if (!V.group || !S.length) body = rows.map(rowHtml).join('');
+  else {   // one collapsible header tier per sort level, collapsed until opened
+    const keyAt = (x, d) => S.slice(0, d + 1).map(s => s.col + '=' + ao2Val(x, s.col)).join('|');
+    let prev = [];
+    rows.forEach(x => {
+      for (let d = 0; d < S.length; d++) {
+        const k = keyAt(x, d); if (prev[d] === k) continue;
+        prev = prev.slice(0, d); prev[d] = k;
+        if (d && !S.slice(0, d).every((s, j) => AO2_OPEN[keyAt(x, j)])) continue;
+        const n = rows.filter(y => keyAt(y, d) === k).length, v = ao2Val(x, S[d].col), gi = AO2_GKEYS.push(k) - 1;
+        body += `<tr onclick="ao2Toggle(${gi})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:5px 10px;padding-left:${10 + d * 16}px;font-size:11.5px;border-bottom:1px solid var(--border);">${AO2_OPEN[k] ? '▼' : '▶'} <span style="color:var(--text3);">${esc(ao2ColLabel(S[d].col))}:</span> <b>${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'}</b> <span style="color:var(--text3);">(${n})</span></td></tr>`;
+      }
+      if (S.every((s, j) => AO2_OPEN[keyAt(x, j)])) body += rowHtml(x);
+    });
+  }
+  el.innerHTML = bar + panel + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 // Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
 function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }
