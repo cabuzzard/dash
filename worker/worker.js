@@ -26392,8 +26392,12 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdrC, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
             const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || "Notion " + r.status);
             created.push({ id: nidC(j.id), label }); have.add(assetType.toLowerCase());
-            if (digestParent && body.campaignId) {   // this title + asset are now the hub's digest (the weekly run fills this asset)
-              const dcid = nidC(body.campaignId); await env.TRADES.put("digest:title:" + dcid, nidC(titleId)); await env.TRADES.put("digest:asset:" + dcid, nidC(j.id));
+            if (digestParent && body.campaignId) {   // the hub's FIRST digest becomes its canonical one; later Digest Parents are extra
+              // digests and never repoint it (operator 2026-10-29: a new real-estate digest took over the AI hub's canonical digest,
+              // so the hub's newsletter context refused and no digest on the hub could run)
+              const dcid = nidC(body.campaignId), curAsset = await env.TRADES.get("digest:asset:" + dcid);
+              const curPage = curAsset ? await fetch("https://api.notion.com/v1/pages/" + dashC(curAsset), { headers: hdrC }).then(x => x.json()).catch(() => null) : null;
+              if (!curAsset || !curPage || curPage.object === "error" || curPage.archived || curPage.in_trash) { await env.TRADES.put("digest:title:" + dcid, nidC(titleId)); await env.TRADES.put("digest:asset:" + dcid, nidC(j.id)); }
               const mq = (await env.TRADES.get("digest:manual", "json")) || []; if (!mq.includes(dcid)) { mq.push(dcid); await env.TRADES.put("digest:manual", JSON.stringify(mq)); }   // and write it now (same pipeline as the cron)
               created[created.length - 1].digest = true;
             }
