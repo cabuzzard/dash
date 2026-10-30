@@ -17111,20 +17111,20 @@ let _allDigLoaded = false;
 async function allDigLoad(force) {
   if (_allDigLoaded && !force) return; _allDigLoaded = true;
   const el = document.getElementById('allDigBody'); if (!el) return;
-  const hubs = HUB_SITES.filter(h => h.campaignId);
-  // each hub is its own collapsed group (operator 2026-10-29); the count fills in once that hub's digests load
-  el.innerHTML = hubs.map(h => `<details style="margin:4px 0;border:1px solid var(--border);border-radius:6px;"><summary style="cursor:pointer;padding:6px 8px;font-weight:700;font-size:13px;">📰 ${esc(h.name || h.slug)} <span id="allDigN-${esc(h.slug)}" style="font-weight:400;font-size:11px;color:var(--text3);"></span></summary><div id="allDigests-${esc(h.slug)}" style="padding:2px 8px 8px;"><div style="font-size:11px;color:var(--text3);">Loading…</div></div></details>`).join('');
+  // one collapsible row per digest, "Hub — Digest title", sorted by hub (operator 2026-10-29); a hub with no digests adds no row
+  const hubs = HUB_SITES.filter(h => h.campaignId).sort((x, y) => String(x.name || x.slug).localeCompare(String(y.name || y.slug)));
+  el.innerHTML = `<div id="allDigMsg" style="font-size:11px;color:var(--text3);margin-bottom:4px;">Loading every hub's digests…</div>` + hubs.map(h => `<div id="allDigests-${esc(h.slug)}"></div>`).join('');
   await Promise.all(hubs.map(h => hub2PoolLoad(h.slug, !!force).catch(() => {})));
   hubs.forEach(h => allDigPaint(h.slug));
+  const n = hubs.reduce((a, h) => a + (((_hub2Pool[h.slug] || {}).digests) || []).length, 0), m = document.getElementById('allDigMsg');
+  if (m) m.textContent = n + ' digest' + (n === 1 ? '' : 's') + ' across ' + hubs.length + ' hubs';
 }
 function allDigPaint(slug) {
   const el = document.getElementById('allDigests-' + slug); if (!el) return;
-  const P = _hub2Pool[slug], n = document.getElementById('allDigN-' + slug);
-  if (n) n.textContent = P && P.digests ? '(' + P.digests.length + ' digest' + (P.digests.length === 1 ? '' : 's') + ')' : '';
-  hubKeepInputs(el, () => { el.innerHTML = !P || P.loading ? '<div style="font-size:11px;color:var(--text3);">Loading…</div>'
-    : P.error ? `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`
-    : !(P.digests || []).length ? '<div style="font-size:11px;color:var(--text3);">No Digest Parents on this hub.</div>'
-    : P.digests.map(d => hub2DigHtml(slug, d)).join(''); });
+  const P = _hub2Pool[slug], h = HUB_SITES.find(x => x.slug === slug) || {}, hubName = h.name || slug;
+  hubKeepInputs(el, () => { el.innerHTML = !P || P.loading ? ''
+    : P.error ? `<div style="font-size:11px;color:#f87171;margin:4px 0;">${esc(hubName)} — ${esc(P.error)}</div>`
+    : (P.digests || []).map(d => hub2DigHtml(slug, { ...d, title: hubName + ' — ' + (d.title || 'Digest') })).join(''); });
 }
 // A re-render (the Digest section reloads itself every 10-60 s while a run or generation is going) must not wipe what the operator
 // is typing (operator 2026-10-29: "the digest modal keeps re loading … losing all of my work"): every input / textarea / select with
