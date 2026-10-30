@@ -19263,6 +19263,20 @@ function allSerView(rows) {
   const key = { hub: r => r.hub, name: r => r.name, product: r => r.product, pub: r => r.pub, dev: r => r.dev, last: r => r.last || '', status: r => r.status }[F.sort] || (r => r.pub);
   return rows.filter(keep).sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y)); return (c * F.dir) || a.hub.localeCompare(b.hub) || a.name.localeCompare(b.name); });
 }
+// a Published / In dev count → the All Output table filtered to that Series' children (its title's assets, the Series itself left out)
+function allSerOpenKids(assetId, kind) {
+  const r = allSerRows().find(x => x.assetId === assetId); if (!r) return;
+  const st = kind === 'pub' ? [{ col: 'status', val: 'Published' }] : [{ col: 'status', val: 'Published', neg: true }, { col: 'status', val: 'Idea', neg: true }];
+  // session-only navigation (no dev2SaveState) — Revert restores the saved All Output view
+  DEV2_F = [{ col: 'titleId', val: r.titleId }, { col: 'kind', val: 'Asset' }, { col: 'pillarType', val: 'Series', neg: true }, ...st];
+  dev2OnFilterChange();
+  const panel = document.getElementById('dev2Panel'); if (panel) panel.style.display = '';
+  dev2DrawPanel();
+  const sec = document.querySelector('.oc-sec[data-ock="alloutput"]'), bd = sec && sec.querySelector('.oc-bd');
+  if (bd && bd.style.display === 'none') ocToggle(null, sec.querySelector('.oc-hd'));
+  const target = document.getElementById('dev2Content'); if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showToast((kind === 'pub' ? 'Published' : 'In development') + ' assets of ' + r.name, 'success');
+}
 function allSerSet(k, v) { const F = _allSerF; if (k === 'sort') { if (F.sort === v) F.dir = -F.dir; else { F.sort = v; F.dir = ['pub', 'dev', 'last'].includes(v) ? -1 : 1; } } else F[k] = v; allSerRender(); }
 function allSerRender() {
   const el = document.getElementById('allSerBody'); if (!el) return;
@@ -19277,13 +19291,13 @@ function allSerRender() {
     <input id="allSerQ" placeholder="search series / product" value="${esc(F.q)}" oninput="_allSerF.q=this.value;clearTimeout(window._allSerQT);window._allSerQT=setTimeout(()=>{allSerRender();const i=document.getElementById('allSerQ');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="font-size:11.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);min-width:180px;">
     <span style="font-size:11px;color:var(--text3);">${rows.length} shown · ${n.active} active · ${n.empty} not started · ${n.all} total</span></div>`;
   const hd = (k, label, right) => `<th style="${TH}${right ? 'text-align:right;' : ''}" onclick="allSerSet('sort','${k}')" title="Sort">${label}${F.sort === k ? (F.dir < 0 ? ' ▼' : ' ▲') : ''}</th>`;
-  const num = (v, col) => `<td style="${TD}text-align:right;font-variant-numeric:tabular-nums;font-weight:${v ? 700 : 400};color:${v ? col : 'var(--text3)'};">${v || '·'}</td>`;
+  const num = (v, col, r, kind) => `<td style="${TD}text-align:right;font-variant-numeric:tabular-nums;font-weight:${v ? 700 : 400};color:${v ? col : 'var(--text3)'};${v ? 'cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;' : ''}"${v ? ` title="Open these in the All Output table" onclick="event.stopPropagation();allSerOpenKids('${esc(r.assetId)}','${kind}')"` : ''}>${v || '·'}</td>`;
   const body = rows.map(r => { const open = _allSerOpen === r.assetId;
     return `<tr class="allrow-h" style="cursor:pointer;${open ? 'background:var(--surface2);' : ''}" onclick="allSerToggle('${esc(r.assetId)}')">
       <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
       <td style="${TD}max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.name)}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.name)}</td>
       <td style="${TD}max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.product)}">${esc(r.product || '—')}</td>
-      ${num(r.pub, '#4ade80')}${num(r.dev, '#ff7a00')}
+      ${num(r.pub, '#4ade80', r, 'pub')}${num(r.dev, '#ff7a00', r, 'dev')}
       <td style="${TD}white-space:nowrap;color:${r.last && r.last >= since ? 'var(--text)' : 'var(--text3)'};font-size:11px;">${r.last ? esc(new Date(r.last + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric', year: r.last.slice(0, 4) === String(new Date().getFullYear()) ? undefined : 'numeric' })) : '—'}</td>
       <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.status)}</td></tr>`
       + (open ? `<tr><td colspan="7" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);"><div id="allSerPanel"></div></td></tr>` : ''); }).join('');
