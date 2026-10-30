@@ -2303,12 +2303,12 @@ async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,h
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
   return {ok:true,fields:[main.name],violations:[],written:true,style:{keep:'Q&A',purpose:style.purpose,keptPct,band:WRITE_KEEP['Q&A'].band,questions:qa.length,duplicatesDropped:dropped,seoHeadings:seo&&heads.some((h,i)=>h!==qa[i][0]),intro:!!intro,keepReading:more.length,grammarFixed:cleaned}};
 }
-async function writeContractAsset(env,assetId) {
+async function writeContractAsset(env,assetId,opts={}) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
   await governingFlow(env);
   const page=await ivPage(assetId);if(!page?.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   if(/^newsletter (paid|free)$/i.test(page.properties?.['Asset Type']?.select?.name||''))return {error:'newsletter_requires_disseminate',reason:'Newsletter issues are written only by Disseminate on their Digest parent.'};
-  const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason};
+  const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason,...(opts.dryRun?{rowName:mapping.row?.name||'',methodName:mapping.name||''}:{})};
   const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
   const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
   // The packet carries only what a text writer needs (operator 2026-10-22: "it's supposed to read spec"). The hub's
@@ -2342,11 +2342,15 @@ async function writeContractAsset(env,assetId) {
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
-  if(style.keep==='Q&A')return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
+  if(style.keep==='Q&A'&&!opts.dryRun)return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
   // 2026-10-24: the SEO keywords the check scores are handed to the writer, and the ONE corrective pass covers every problem the checks
   // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
   const seoKws=style.purpose==='SEO'?[...new Set([...(keywordSeed?keywordSeed.split(/\s*;\s*/).filter(Boolean).slice(0,3):[]),...kwSplit(String(packet.product?.properties?.Keywords||''))])]:[],seoList=seoCoverage(seoKws,'','').missing;
-  const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'');
+  const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
+  const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
+    +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'');
+  if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
+    rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A'};
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   const band=WRITE_KEEP[style.keep].band,mainOf=f=>f.Body||f['Offer Page']||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
@@ -2386,6 +2390,10 @@ async function assetWriterInfo(env,page) {
   return {writer:mapping.reason?'':'contract',methodId:mapping.methodId,methodName:mapping.name,type:page.properties?.['Asset Type']?.select?.name||'',
     writerAvailable:!mapping.reason,writerError:mapping.reason||'',mapping};
 }
+// Rule guidance (Asset modal, operator 2026-10-30): the operator's own notes on a writing-rules row (Current Methods), one per row —
+// it applies to every asset written by that row and is handed to the writer with the contract. KV writeguide:<row name>.
+const writeGuideKey = rowName => 'writeguide:' + ivNorm(rowName || '').slice(0, 200);
+async function writeRuleGuidance(env, rowName) { if (!rowName) return ''; return String((await env.TRADES.get(writeGuideKey(rowName)).catch(() => '')) || '').trim(); }
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   const [writing,info]=await Promise.all([assetWritingState(page),assetWriterInfo(env,page)]),p=page.properties;
@@ -54648,6 +54656,40 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const resp=await hubNotionFetch('https://api.notion.com/v1/pages/'+ivDash(body.assetId),{headers:hdr});
         const page=await resp.json(); if(!resp.ok||page.archived||page.in_trash)return json({error:page.message||'Asset unavailable'},404);
         return json({...await hubAssetRoutedState(env,page),status:page.properties?.['Asset Status']?.select?.name||''});
+      }
+      // ── ASSET MODAL (operator 2026-10-30) — the dash's asset editor / writer. assetModal {assetId}: the asset (getAsset), its writing
+      // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
+      // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
+      // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "assetModal") {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
+        const w = await getWritableAsset(env, body.assetId), p = w.page.properties || {};
+        const dry = await writeContractAsset(env, body.assetId, { dryRun: true }).catch(e => ({ error: e.message }));
+        const parentId = ivRid(p, "Parent Asset"), parent = parentId ? await ivPage(parentId).catch(() => null) : null;
+        return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
+            platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "" },
+          dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])) });
+      }
+      if (body.action === "writeRuleGuidanceSave") {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
+        const page = await ivPage(body.assetId), m = await writingMethod(env, page); if (!m.row) return json({ error: "This asset has no writing-rules row" }, 400);
+        const text = String(body.text == null ? "" : body.text).slice(0, 8000).trim();
+        if (text) await env.TRADES.put(writeGuideKey(m.row.name), text); else await env.TRADES.delete(writeGuideKey(m.row.name));
+        return json({ ok: true, row: m.row.name, guidance: text });
+      }
+      if (body.action === "saveAssetFields") {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
+        const page = await ivPage(body.assetId), m = await writingMethod(env, page), allowed = new Set(m.contract.map(f => f.name));
+        const protectedF = new Set(["status", "asset status", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
+        const props = {}, skipped = [];
+        for (const [k, v] of Object.entries(body.fields || {})) {
+          const t = page.properties?.[k]?.type, val = String(v == null ? "" : v);
+          if (!allowed.has(k) || protectedF.has(ivNorm(k)) || !t || !["rich_text", "title", "select"].includes(t) || val.length > 190000) { skipped.push(k); continue; }
+          props[k] = t === "select" ? { select: val ? { name: val } : null } : { [t]: ivRt(val) };
+        }
+        if (Object.keys(props).length) await kwNotionPatch(env, body.assetId, props);
+        const w = await getWritableAsset(env, body.assetId);
+        return json({ ok: true, saved: Object.keys(props), skipped, violations: w.writing.violations || [], hasWriting: w.writing.hasWriting });
       }
       if (body.action === "getAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);

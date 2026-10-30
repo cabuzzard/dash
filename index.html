@@ -587,6 +587,16 @@
 .hkw-act{display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;width:200px;flex-shrink:0;}
 .hkw-act>:first-child{margin-right:auto;}   /* the dot sits at the left edge, the buttons at the right */
   .ao2-tbl tbody tr:hover > td { background: rgba(138,180,248,.10); }
+  .amf-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; display: none; }
+  .amf-bg.open { display: block; }
+  .amf { position: absolute; top: 0; right: 0; bottom: 0; width: min(1180px, 94vw); background: var(--surface); border-left: 1px solid var(--border2); box-shadow: -12px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; }
+  .amf-hd { display: flex; gap: 12px; align-items: center; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+  .amf-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .amf-tabs button { font-size: 12.5px; padding: 7px 12px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: transparent; color: var(--text2); cursor: pointer; white-space: nowrap; }
+  .amf-tabs button.on { background: var(--surface2); border-color: var(--border2); color: var(--text); font-weight: 600; }
+  .amf-bd { flex: 1; overflow: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+  .amf-preview { max-width: 760px; margin: 0 auto; font-size: 14.5px; color: var(--text); }
+  @media (max-width: 720px) { .amf { width: 100vw; border-left: none; } .amf-hd { padding: 12px; } .amf-bd { padding: 12px 16px; } }
 </style>
 </head>
 <body>
@@ -4581,7 +4591,7 @@ function ocToggle(ev, hd) {
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
-const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
@@ -4609,7 +4619,7 @@ async function ao2Load() {
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
-const AO2_DEFAULT_W = { title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
+const AO2_DEFAULT_W = { asset: 80, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
 let AO2_RESIZING = false;
 function ao2Widths() { try { return JSON.parse(localStorage.getItem('ao2ColW') || '{}') || {}; } catch (e) { return {}; } }
 function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || 140); }
@@ -4683,12 +4693,13 @@ function ao2Render() {
   const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
-  const cell = (x, c) => c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
+  const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Open the Asset modal — fields, preview, writing rules, information flow" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button>` : '')
+    : c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
     : c.key === 'title' && x.type === 'Title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
-  const tip = (x, c) => c.key === 'parent' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
+  const tip = (x, c) => c.key === 'parent' || c.key === 'asset' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
   const rowHtml = x => `<tr class="ao2-row">${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
   if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'Record not found in the table data.'}</td></tr>`;
@@ -4733,6 +4744,183 @@ async function ao2SetParent(id, inp) {
   showToast(hit ? 'Parent set ✓' : 'Parent cleared ✓', 'success'); ao2Render();
 }
 function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
+// ══ ASSET MODAL (operator 2026-10-30) — the dash's asset-level editor / writer, built here (not care-gap). A right-hand flyout,
+// full width on a phone. Tabs: ✎ Fields (the asset's contract fields + ✍ Write) · 👁 Preview (the layout) · 📏 Writing rules
+// (the rules row, live ✓/✗, Keep / Purpose, the operator's guidance on the rules) · 🧭 Information flow (the exact packet the writer
+// receives — worker assetModal, a dry run: no model call, no writes). Phase 1 = the core every asset type shares.
+let AM = null;
+const AM_STATUSES = ['Idea', 'Development', 'Review', 'Publish'];
+function amMd(src) {   // small, safe markdown → HTML for the preview (headings, lists, tables, bold / italic / links, paragraphs)
+  const inl = t => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])[*_]([^*_\n]+)[*_](?=$|[\s).,:;!?])/g, '$1<i>$2</i>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent);">$1</a>');
+  const out = [], lines = String(src || '').replace(/\r/g, '').split('\n'); let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    let m;
+    if ((m = /^(#{1,4})\s+(.*)$/.exec(l))) { const n = m[1].length; out.push(`<h${n + 1} style="margin:${n === 1 ? 18 : 14}px 0 6px;">${inl(m[2])}</h${n + 1}>`); i++; continue; }
+    if (/^\s*([-*•]|\d+[.)])\s+/.test(l)) { const ord = /^\s*\d/.test(l), items = [];
+      while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) items.push('<li>' + inl(lines[i++].replace(/^\s*([-*•]|\d+[.)])\s+/, '')) + '</li>');
+      out.push(`<${ord ? 'ol' : 'ul'} style="margin:6px 0 10px 20px;padding:0;">${items.join('')}</${ord ? 'ol' : 'ul'}>`); continue; }
+    if (/^\s*\|/.test(l)) { const rows = []; while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()), body = rows.filter(r => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
+      out.push(`<div style="overflow-x:auto;margin:8px 0;"><table style="border-collapse:collapse;font-size:12.5px;">${body.map((r, k) => `<tr>${cells(r).map(c => `<${k ? 'td' : 'th'} style="border:1px solid var(--border2);padding:4px 8px;text-align:left;">${inl(c)}</${k ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</table></div>`); continue; }
+    if (/^\s*>/.test(l)) { const q = []; while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, ''));
+      out.push(`<blockquote style="margin:8px 0;padding:4px 12px;border-left:3px solid var(--border2);color:var(--text2);">${inl(q.join(' '))}</blockquote>`); continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) { out.push('<hr style="border:none;border-top:1px solid var(--border2);margin:14px 0;">'); i++; continue; }
+    const para = []; while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*([-*•]|\d+[.)])\s|\s*\||\s*>)/.test(lines[i])) para.push(lines[i++]);
+    out.push(`<p style="margin:0 0 10px;line-height:1.6;">${inl(para.join(' '))}</p>`);
+  }
+  return out.join('');
+}
+function amEnsure() {
+  let bg = document.getElementById('amBg'); if (bg) return bg;
+  bg = document.createElement('div'); bg.id = 'amBg'; bg.className = 'amf-bg';
+  bg.innerHTML = '<div class="amf" id="amPanel" role="dialog" aria-label="Asset"></div>';
+  bg.addEventListener('mousedown', e => { if (e.target === bg) amClose(); });
+  document.body.appendChild(bg);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && AM && document.getElementById('amBg').classList.contains('open')) amClose(); });
+  return bg;
+}
+function amClose() {
+  if (AM && AM.dirty && Object.keys(AM.dirty).length && !confirm('Close without saving your field edits?')) return;
+  const bg = document.getElementById('amBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = '';
+  const changed = AM && AM.changed; AM = null;
+  if (changed && typeof ao2Load === 'function' && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); }
+}
+async function amOpen(assetId, tab) {
+  amEnsure().classList.add('open'); document.body.style.overflow = 'hidden';
+  AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false };
+  amDraw(); await amLoad();
+}
+async function amLoad() {
+  const id = AM && AM.id; if (!id) return;
+  const r = await call('assetModal', { assetId: id }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return;
+  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else AM.data = r;
+  amDraw();
+}
+function amTab(t) { if (!AM) return; AM.tab = t; amDraw(); }
+function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
+  const cf = (d.packet && d.packet.currentFields) || {}; if (name in cf) return cf[name];
+  return ({ 'Platform Title': a.platformTitle, 'Post Caption': a.postCaption, Hashtags: a.hashtags, Body: a.body })[name] || ''; }
+function amContract() { const d = AM.data.dry || {}; return (d.rules && d.rules.contract) || []; }
+function amViol(name) { return (AM.data.asset.violations || []).filter(v => v.startsWith(name + ':')).map(v => v.slice(name.length + 1).trim()); }
+function amDraw() {
+  const P = document.getElementById('amPanel'); if (!P || !AM) return;
+  const B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12px;padding:5px 11px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
+  if (!AM.data) { P.innerHTML = `<div class="amf-hd"><b>Asset</b><button style="${B()}margin-left:auto;" onclick="amClose()">✕</button></div><div style="padding:18px;font-size:13px;color:${AM.log ? '#f87171' : 'var(--text3)'};">${esc(AM.busy || AM.log)}</div>`; return; }
+  const a = AM.data.asset, d = AM.data.dry || {}, unmapped = !!d.error;
+  const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
+  const statusSel = a.status === 'Published' ? chip('Published', 'Published — publishing controls come in Phase 3', '#4ade80')
+    : `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
+  const tabs = [['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow']];
+  const hd = `<div class="amf-hd">
+      <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}
+          ${chip(d.rules ? '📏 ' + d.rules.row : unmapped ? '📏 no writing rules' : '', unmapped ? d.reason : 'Writing-rules row (Current Methods)', unmapped ? '#f59e0b' : '')}
+          ${a.platformName ? chip(a.platformName, 'Platform Name') : ''}${a.parentTitle ? chip('↑ ' + a.parentTitle, 'Parent Asset') : ''}
+          ${a.contentHub ? chip(a.contentHub, 'Content Hub') : ''}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Notion ↗</a></div></div>
+      <button style="${B()}align-self:flex-start;" onclick="amClose()" title="Close (Esc)">✕</button></div>
+    <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
+  P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
+}
+function amFieldsHtml() {
+  const d = AM.data.dry || {}, C = amContract(), dirtyN = Object.keys(AM.dirty).length;
+  const B = c => `font-size:12.5px;padding:6px 13px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
+  if (d.error) return `<div style="font-size:13px;line-height:1.6;"><b style="color:#f59e0b;">No writing rules apply to this asset yet.</b><br>${esc(d.reason || d.error)}<br><span style="color:var(--text3);">The writer needs a Current Methods row for this asset's method / type with a contract, inputs and mapped = yes (Information Flow → Current Methods).</span></div>`;
+  const rows = C.map(f => { const v = amFieldVal(f.name), viol = amViol(f.name), big = /^(body|offer page|page|faq|pricing tiers|description|story areas)$/i.test(f.name) || String(v).length > 160;
+    return `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><label style="font-size:12px;font-weight:700;">${esc(f.name)}</label>
+        <span style="font-size:11px;color:${viol.length ? '#f87171' : '#4ade80'};">${viol.length ? '✗ ' + esc(viol.join(' · ')) : (String(v).trim() ? '✓' : '')}</span>${f.name in AM.dirty ? '<span style="font-size:10.5px;color:#f59e0b;">● unsaved</span>' : ''}</div>
+      <div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">${esc(f.rule)}</div>
+      ${big ? `<textarea rows="${/^body$|^offer page$|^page$/i.test(f.name) ? 16 : 5}" style="${IN}resize:vertical;" oninput="amEdit('${esc(f.name)}', this.value)">${esc(v)}</textarea>`
+        : `<input style="${IN}" value="${esc(v)}" oninput="amEdit('${esc(f.name)}', this.value)">`}</div>`; }).join('');
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <button style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
+      <button style="${B('#8ab4f8')}" onclick="amWrite(this)" title="Run the writer for this asset — it reads the Information flow tab's packet and follows the Writing rules tab (one model call, plus one corrective pass when a rule fails)">✍ Write${String(amFieldVal('Body') || '').trim() ? ' (rewrite)' : ''}</button>
+      <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${(AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;
+}
+function amEdit(name, v) { if (!AM) return; AM.dirty[name] = v; const b = document.querySelector('#amPanel .amf-bd button'); if (b) { const n = Object.keys(AM.dirty).length; b.disabled = !n; b.textContent = '💾 Save ' + n + ' field' + (n === 1 ? '' : 's'); } }
+async function amSaveFields(btn) {
+  if (!AM || !Object.keys(AM.dirty).length) return; btn.disabled = true; btn.textContent = 'Saving…';
+  const r = await call('saveAssetFields', { assetId: AM.id, fields: AM.dirty }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Not saved: ' + ((r && r.error) || 'no response'); amDraw(); return; }
+  AM.log = '✓ Saved ' + r.saved.length + ' field' + (r.saved.length === 1 ? '' : 's') + (r.skipped.length ? ' · not saved (not a contract field of this asset): ' + r.skipped.join(', ') : '');
+  AM.dirty = {}; AM.changed = true; await amLoad();
+}
+async function amWrite(btn) {
+  if (!AM) return; if (Object.keys(AM.dirty).length && !confirm('Writing replaces the contract fields — your unsaved edits will be lost. Write anyway?')) return;
+  const id = AM.id, since = new Date(Date.now() - 15000).toISOString(); btn.disabled = true; btn.textContent = '✍ Writing… (1–3 min)';
+  AM.log = '⏳ Writing — reading the packet, one model call (plus one corrective pass if a rule fails)…'; amDraw();
+  let r = await call('writeAsset', { assetId: id }).catch(e => ({ error: e.message, lost: true }));
+  if (r && r.lost) { const L = await call('writeAssetLast', { assetId: id, since }).catch(() => null); if (L && L.run) r = { ok: true, written: L.run.written, violations: L.run.violations || [], fromLog: true }; }
+  if (!AM || AM.id !== id) return;
+  if (r && r.needsInterview) AM.log = '🎤 This asset needs its interview answered first — open it from the title’s interviews, then Write again.';
+  else if (!r || r.error) AM.log = '✗ Not written: ' + ((r && (r.reason || r.error)) || 'no response');
+  else AM.log = (r.written ? '✓ Written — every rule passes' : '✓ Written · ' + (r.violations || []).length + ' rule' + ((r.violations || []).length === 1 ? '' : 's') + ' still failing: ' + (r.violations || []).join(' · '))
+    + (r.style && r.style.keptPct != null ? ' · kept ' + r.style.keptPct + '% of the interview wording' : '') + (r.style && r.style.corrected ? ' · corrected once' : '');
+  AM.dirty = {}; AM.changed = true; AM.tab = 'fields'; await amLoad();
+}
+async function amSetStatus(sel) {
+  const to = sel.value, a = AM && AM.data && AM.data.asset; if (!a || to === a.status) return;
+  sel.disabled = true; const r = await call('updateAssetStatus', { assetId: AM.id, status: to, statusOnly: true }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Status not changed: ' + ((r && r.error) || 'no response'); amDraw(); return; }
+  a.status = to; AM.changed = true; AM.log = '✓ Status → ' + to; amDraw();
+}
+function amPreviewHtml() {
+  const C = amContract(), names = C.map(f => f.name), get = n => String(amFieldVal(n) || '');
+  const main = ['Body', 'Offer Page', 'Page'].find(n => names.includes(n) && get(n).trim()) || '';
+  const title = get('Platform Title') || AM.data.asset.assetTitle, extras = names.filter(n => n !== main && n !== 'Platform Title' && get(n).trim());
+  return `<div class="amf-preview"><h1 style="font-size:24px;line-height:1.25;margin:0 0 6px;">${esc(title)}</h1>
+    ${get('Description') ? `<p style="color:var(--text2);margin:0 0 14px;">${esc(get('Description'))}</p>` : ''}
+    ${main ? amMd(get(main)) : '<p style="color:var(--text3);">Nothing written yet — ✍ Write on the Fields tab.</p>'}
+    ${extras.filter(n => n !== 'Description').map(n => `<div style="margin-top:18px;padding-top:10px;border-top:1px dashed var(--border2);"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:4px;">${esc(n)}</div>${amMd(get(n))}</div>`).join('')}</div>`;
+}
+function amRulesHtml() {
+  const d = AM.data.dry || {}, a = AM.data.asset, ws = a.writeStyle || {};
+  if (d.error) return `<div style="font-size:13px;line-height:1.6;"><b style="color:#f59e0b;">No writing rules apply.</b><br>${esc(d.reason || d.error)}${d.rowName ? '<br>Closest row: ' + esc(d.rowName) : ''}</div>`;
+  const R = d.rules, sel = (id, cur, opts, def) => `<select id="${id}" style="font-size:12px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"><option value="" ${cur ? '' : 'selected'}>row default${def ? ' (' + esc(def) + ')' : ''}</option>${opts.map(o => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  return `<div style="font-size:12.5px;line-height:1.55;">
+    <div style="margin-bottom:12px;">These rules come from the <b>${esc(R.row)}</b> row of Current Methods (method <b>${esc(d.method.name || '—')}</b>). Every asset that row covers is written to them.</div>
+    <div style="border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-bottom:14px;">${R.contract.map((f, i) => { const v = amViol(f.name);
+      return `<div style="display:grid;grid-template-columns:minmax(110px,180px) 1fr auto;gap:10px;padding:8px 10px;${i ? 'border-top:1px solid var(--border);' : ''}"><b>${esc(f.name)}</b><span style="color:var(--text2);">${esc(f.rule)}</span><span style="color:${v.length ? '#f87171' : '#4ade80'};white-space:nowrap;" title="${esc(v.join(' · '))}">${v.length ? '✗' : '✓'}</span></div>`; }).join('')}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <label>Keep my words ${sel('amKeep', ws.own && ws.own.keep ? ws.keep : '', ws.keeps || [], (ws.default || {}).keep)}</label>
+      <label>Purpose ${sel('amPurpose', ws.own && ws.own.purpose ? ws.purpose : '', ws.purposes || [], (ws.default || {}).purpose)}</label>
+      <button style="font-size:12px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="amSaveStyle(this)">Save for this asset</button>
+      <span style="font-size:11px;color:var(--text3);">now: ${esc(ws.keep || '')} · ${esc(ws.purpose || '')}${d.style ? ' · keeps ' + d.style.band.join('–') + '% of interview wording' : ''}</span></div>
+    <div style="margin-bottom:6px;"><b>Your guidance on these rules</b> <span style="font-size:11px;color:var(--text3);">— handed to the writer with the contract for <b>every</b> ${esc(R.row)} asset. Your direction, not a source of facts.</span></div>
+    <textarea id="amGuide" rows="6" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;" placeholder="e.g. Lead with the outcome, not the tool. No more than 3 bullets per section. Always name the price tier in the first paragraph.">${esc(R.guidance || '')}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin:6px 0 16px;"><button style="font-size:12px;padding:4px 10px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;" onclick="amSaveGuide(this)">💾 Save guidance</button><span id="amGuideMsg" style="font-size:11px;color:var(--text3);"></span></div>
+    <details><summary style="cursor:pointer;color:var(--text2);">What the writer is told (instruction + style + your guidance)</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:var(--surface2);padding:10px;border-radius:6px;margin-top:6px;">${esc(d.instruction + '\n\n' + (d.style ? d.style.text : ''))}</pre></details>
+    <div style="font-size:11px;color:var(--text3);margin-top:10px;">Inputs the row asks for: ${esc(R.inputs || '—')}. Changing the contract itself stays in Information Flow → Current Methods.</div></div>`;
+}
+async function amSaveStyle(btn) {
+  btn.disabled = true; const r = await call('writeStyle', { assetId: AM.id, keep: document.getElementById('amKeep').value, purpose: document.getElementById('amPurpose').value }).catch(e => ({ error: e.message }));
+  btn.disabled = false; AM.log = !r || r.error ? '✗ Not saved: ' + ((r && r.error) || 'no response') : '✓ Keep ' + r.keep + ' · Purpose ' + r.purpose; await amLoad();
+}
+async function amSaveGuide(btn) {
+  btn.disabled = true; const m = document.getElementById('amGuideMsg'); m.textContent = 'Saving…';
+  const r = await call('writeRuleGuidanceSave', { assetId: AM.id, text: document.getElementById('amGuide').value }).catch(e => ({ error: e.message }));
+  btn.disabled = false; if (!r || r.error) { m.style.color = '#f87171'; m.textContent = 'Not saved: ' + ((r && r.error) || 'no response'); return; }
+  m.style.color = '#4ade80'; m.textContent = r.guidance ? '✓ Saved — applies to every ' + r.row + ' asset from the next write' : '✓ Cleared';
+  if (AM.data.dry && AM.data.dry.rules) AM.data.dry.rules.guidance = r.guidance;
+}
+function amFlowHtml() {
+  const d = AM.data.dry || {}; if (d.error) return `<div style="font-size:13px;"><b style="color:#f59e0b;">No packet</b> — the writer can't run for this asset: ${esc(d.reason || d.error)}</div>`;
+  const P = d.packet || {}, txt = v => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+  const sec = (label, v, note) => { const t = txt(v || '').trim(); return `<details style="border:1px solid var(--border2);border-radius:8px;margin-bottom:8px;"><summary style="cursor:pointer;padding:8px 10px;font-size:12.5px;"><b>${esc(label)}</b> <span style="color:${t ? 'var(--text3)' : '#f59e0b'};font-size:11px;">${t ? t.length.toLocaleString() + ' chars' : 'empty'}${note ? ' · ' + esc(note) : ''}</span></summary>${t ? `<pre style="white-space:pre-wrap;font-size:11.5px;margin:0;padding:10px;border-top:1px solid var(--border);max-height:50vh;overflow:auto;">${esc(t)}</pre>` : ''}</details>`; };
+  return `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Exactly what the writer receives for this asset, in order — nothing else is a source. Read live from Notion / KV (no model call).</div>`
+    + sec('Method — ' + ((P.method || {}).name || ''), [(P.method || {}).notes, (P.method || {}).page].filter(Boolean).join('\n\n'), 'the recipe')
+    + sec('Contract', P.contract, 'the writing rules') + sec('Inputs', P.inputs)
+    + sec('Title', P.title && P.title.properties, 'its own properties') + sec('Pillar', P.title && P.title.pillar)
+    + sec('Title research', P.research) + sec('Product facts', P.product && P.product.properties) + sec('Product research', P.product && P.product.research)
+    + sec('Hub voice', P.voice) + sec('Hub audience', P.hub && P.hub.audience) + (P.hub && P.hub.design ? sec('Hub design', P.hub.design, 'the method asks for design') : '')
+    + sec('Interview', P.interview, 'answered questions') + sec('Platform', P.platform) + sec('This asset — subject', P.subject)
+    + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Current fields', P.currentFields, 'what is on the asset now');
+}
 // Title cell buttons (operator 2026-10-30): ✎ = Content Hubs 2's Edit title modal · 🔬 = its Title research modal — the same functions
 function ao2TitleBtns(tid, campId) {
   const b = 'font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;';
