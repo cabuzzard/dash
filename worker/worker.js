@@ -15282,7 +15282,7 @@ async function cleanupOp(env, invoke, J, op) {
   if (op.op === "run") {
     const titleId = must(ref(op.key, "titleId"), "title");
     const r = ok(await invoke({ action: "seriesLists", titleId, op: "create", name: op.name, lines: op.lines || [] }));
-    return { listId: r.listId, added: r.added, skipped: r.skipped };
+    V[op.key].listId = r.listId; return { listId: r.listId, added: r.added, skipped: r.skipped };
   }
   if (op.op === "moveAsset") {   // a Published (or kept) asset → the group's new title + product; status and live page unchanged
     const titleId = must(op.titleId || ref(op.key, "titleId"), "target title"), productId = op.productId || ref(op.key, "productId");
@@ -15291,7 +15291,8 @@ async function cleanupOp(env, invoke, J, op) {
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("move failed: " + (d.message || r.status)); }
     return { assetId: op.assetId, titleId };
   }
-  if (op.op === "deleteTitle") {   // never with a Published asset still on it
+  if (op.op === "deleteTitle") {   // never with a Published asset still on it — and never before its group's run exists
+    if (op.key && !ref(op.key, "listId")) return { skipped: "its group's run was not created — title kept" };
     const t = await ivPage(hubAssetId(op.titleId)).catch(() => null); if (!t || t.archived || t.in_trash) return { skipped: "already gone" };
     for (const a of (t.properties?.Assets?.relation || [])) {
       const pg = await ivPage(hubAssetId(a.id)).catch(() => null);
