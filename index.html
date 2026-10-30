@@ -17152,12 +17152,13 @@ function allDigRender() {
       <td style="${TD}width:26px;" onclick="event.stopPropagation()"><input type="checkbox" ${_allDigSel.has(k) ? 'checked' : ''} onchange="allDigPick('${esc(k)}',this.checked)"></td>
       <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
       <td style="${TD}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.d.title || 'Digest')}${r.d.isolated ? ' <span title="Its topic is isolated" style="color:#8ab4f8;">🔒</span>' : ''}</td>
+      <td style="${TD}max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="${esc(r.d.productName || '')}">${esc(r.d.productName || '—')}</td>
       <td style="${TD}white-space:nowrap;">${depthCell(r)}</td>
       <td style="${TD}white-space:nowrap;">${cronCell(r)}</td>
       <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.d.status || '')}</td></tr>`
-      + (open ? `<tr><td colspan="6" class="alldig-x" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);">${hub2DigHtml(r.slug, r.d)}</td></tr>` : ''); }).join('');
+      + (open ? `<tr><td colspan="7" class="alldig-x" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);">${hub2DigHtml(r.slug, r.d)}</td></tr>` : ''); }).join('');
   hubKeepInputs(el, () => { el.innerHTML = bar + (errs.length ? `<div style="font-size:11px;color:#f87171;margin-bottom:6px;">${esc(errs.join(' · '))}</div>` : '')
-    + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}width:26px;"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="allDigPickAll(this.checked)" title="Select all"></th><th style="${TH}">Hub</th><th style="${TH}">Digest</th><th style="${TH}">Research level</th><th style="${TH}">Cron</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="6" style="${TD}color:var(--text3);">${loading ? 'Loading…' : 'No Digest Parents on any hub.'}</td></tr>`}</tbody></table></div>`; });
+    + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}width:26px;"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="allDigPickAll(this.checked)" title="Select all"></th><th style="${TH}">Hub</th><th style="${TH}">Digest</th><th style="${TH}">Product</th><th style="${TH}">Research level</th><th style="${TH}">Cron</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="7" style="${TD}color:var(--text3);">${loading ? 'Loading…' : 'No Digest Parents on any hub.'}</td></tr>`}</tbody></table></div>`; });
 }
 function allDigToggle(k) { const i = k.indexOf('|'), slug = k.slice(0, i), aid = k.slice(i + 1); if (_allDigExp.has(k)) _allDigExp.delete(k); else { _allDigExp.add(k); _hub2DigOpen[slug + '|' + aid] = true; } allDigRender(); }
 function allDigPick(k, on) { if (on) _allDigSel.add(k); else _allDigSel.delete(k); allDigRender(); }

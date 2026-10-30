@@ -22035,7 +22035,7 @@ ${JSON.stringify(products)}`;
           const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
-            topicId: dTopic.topicId || "", isolated: dIsolated,
+            topicId: dTopic.topicId || "", isolated: dIsolated, productName: dTopic.product ? kwTitleOf(dTopic.product) : "", productId: dTopic.productId || "",
             runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "", thin: !!autoState.thin, floor: autoState.floor || null, guidance: autoState.guidance || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
