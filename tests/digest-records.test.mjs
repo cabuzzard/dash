@@ -146,7 +146,7 @@ test('Disseminate run: every asset is built even when interviews are missing and
   for (const step of [{ action: 'digestIssue', kind: 'premium', items: [{ id: 'i1' }] }, { action: 'digestIssue', kind: 'free', items: [{ id: 'i1' }] }, { action: 'digestNews', kind: 'news', itemId: 'i1', item: { id: 'i1', claim: 'Rates cut' } }])
     await c.digestGenerateJobStep(env, invoke, 'job', S, step);   // must not throw
   assert.deepEqual(created, ['aPremium', 'aFree', 'aNews']);
-  assert.deepEqual(flagged.sort(), ['article', 'premium']);
+  assert.deepEqual(flagged, []);   // no automatic interviews (2026-10-29): issues and articles are written pure AI
   const d = await store.get('digest:items:dg', 'json');
   assert.equal(d.children.premium[0].state, 'waiting'); assert.equal(d.children.free[0].state, 'write-failed'); assert.equal(d.children.free[0].error, 'model timeout');
   assert.equal(d.children.news[0].state, 'waiting'); assert.match(d.children.news[0].note, /pillar not written/);

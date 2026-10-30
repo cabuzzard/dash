@@ -14388,7 +14388,7 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
 const HC_BRIDGE_SUFFIX = " — Introductory Call", HC_BRIDGE_TYPE = "Topic bridge", HC_UNCL = "Unclassified";
 async function hcClaude(env, prompt, name, schema, maxTokens = 8000, onUsage, options = {}) {
   const r = await (env.__researchRequest?researchModelFetch.bind(null,env):fetch)("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [...(options.search?[{type:"web_search_20250305",name:"web_search",max_uses:3}]:[]), { name, description: options.search?"Return the requested research sections after source search.":"Return the result.", input_schema: schema }], tool_choice: options.search?{type:"auto"}:{ type: "tool", name },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [...(options.search?[{type:"web_search_20250305",name:"web_search",max_uses:options.maxUses||3}]:[]), { name, description: options.search?"Return the requested research sections after source search.":"Return the result.", input_schema: schema }], tool_choice: options.search?{type:"auto"}:{ type: "tool", name },
       messages: [{ role: "user", content: prompt }] }) });
   const d = await r.json(); if(options.onResponse)await options.onResponse(d); if(onUsage)await onUsage(d.usage||null); if (!r.ok) throw new Error(d.error?.message || "Claude error");
   return (((d.content || []).find(b => b.type === "tool_use") || {}).input) || {};
@@ -14887,7 +14887,7 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
       await saveState();
     }
     await digestGenerateDigestSave(env, S, step, "running", { assetId: step.assetId });   // records the child + its findings before writing
-    if (step.kind === "premium" && !step.interviewId) await digestChildInterview(env, { assetId: step.assetId, titleId: S.titleId, level: "premium" });
+    // no automatic interview (operator 2026-10-29: "dont automatically flag interview") — the issue is written pure AI
     const out = await digestChildWrite(env, invoke, step.assetId).catch(e => ({ error: e.message || String(e) }));
     const state = out?.waiting ? "waiting" : out?.error ? "write-failed" : "done";
     step.outcome = { assetId: step.assetId, kind: step.kind, state, written: !!out?.written, violations: out?.violations || [], ...(out?.error ? { error: out.error } : {}) };
@@ -14926,7 +14926,7 @@ async function digestGenerateJobStep(env, invoke, jobId, S, step) {
       await saveState();
     }
     await digestGenerateDigestSave(env, S, step, "running", { titleId: step.titleId, assetId: step.assetId });
-    if (!step.interviewId) await digestChildInterview(env, { assetId: step.assetId, titleId: step.titleId, level: "article", item: step.item });
+    // no automatic interview — the article is written pure AI; Flag interview stays a manual button
     const out = await digestChildWrite(env, invoke, step.assetId).catch(e => ({ error: e.message || String(e) }));
     const state = out?.waiting ? "waiting" : out?.error ? "write-failed" : "done";
     step.outcome = { assetId: step.assetId, titleId: step.titleId, itemId: step.itemId, kind: "news", state, written: !!out?.written, ...(out?.error ? { error: out.error } : {}) };
@@ -14957,7 +14957,7 @@ async function digestChildWrite(env, invoke, assetId) {
   const ownTitle = hubAssetId(ivRid(p, "Content Strategy") || "") || digestTitle;
   const ivs = (await ivForTitle(kind === "news" ? ownTitle : digestTitle).catch(() => [])).filter(x => x.scope === "Asset" && x.assetIds.includes(id) && x.status !== "Superseded");
   const finished = ivs.find(x => x.status === "Finished" && x.answers.some(a => String(a || "").trim()));
-  if ((kind === "premium" || kind === "news") && !finished) return { waiting: true, interviews: ivs.map(x => ({ id: x.id })) };
+  // pure AI first (operator 2026-10-29): no interview gate — a finished interview, when there is one, feeds the write
   let result;
   if (kind !== "news") {
     const ids = new Set(entry.items || []), items = (d.items || []).filter(x => ids.has(x.id));
@@ -14966,10 +14966,10 @@ async function digestChildWrite(env, invoke, assetId) {
     result = { written: !!r.written, violations: r.violations || [] };
   } else {
     const item = (d.items || []).find(x => x.id === entry.itemId) || {};
-    const interviewText = finished.questions.map((q, i) => finished.answers[i] ? `Q: ${q}\nA: ${finished.answers[i]}` : "").filter(Boolean).join("\n\n");
+    const interviewText = finished ? finished.questions.map((q, i) => finished.answers[i] ? `Q: ${q}\nA: ${finished.answers[i]}` : "").filter(Boolean).join("\n\n") : "";
     const written = await invoke({ action: "generateTitleAssets", titleId: ownTitle, assetId: id, replaceAssetId: id, campaignId: cid,
       productId: ivRid(pp, "Product") || undefined, title: String(item.claim || "").slice(0, 180), assetType: "Blog - SEO - News", count: 1, developmentOnly: true,
-      digestInterviewOnly: true, digestInterviewText: interviewText,
+      digestInterviewOnly: !!interviewText, digestInterviewText: interviewText,
       researchInstructions: `DIGEST ARTICLE: write about this one selected news item only. Use its source and facts, and derive the article's analysis/perspective exclusively from the finished article interview answers. Do not create substitute model opinions. Selected item: ${item.claim || ""}\nSource: ${item.publisher || ""} ${item.url || ""} ${item.date || ""}` });
     if (!written || written.error || written.success === false) throw new Error("News article write: " + (written?.error || "no response"));
     result = { written: true, violations: [] };
@@ -15560,7 +15560,7 @@ async function digestItemsSave(env, assetId, sources, options={}) {
   if(options.runId)next=advanceCarry(next,options.runId,new Set(items.map(x=>x.id)));
   // records a run / rescan ADDS arrive ticked for Premium, Free and Article (operator 2026-10-29: "I will un check rather than
   // check"); a record already on the parent keeps whatever the operator set
-  next.checks={...(next.checks||{})};for(const x of items)if(x&&x.id&&!next.checks[x.id]&&!x.retired)next.checks[x.id]={premium:true,free:true,news:true};
+  next.checks={...(next.checks||{})};for(const x of items)if(x&&x.id&&!next.checks[x.id]&&!x.retired)next.checks[x.id]={free:true,news:true};
   await env.TRADES.put(key, JSON.stringify(next));
 }
 async function digestWriteBlocks(env, assetId, heading, text) {
@@ -15584,15 +15584,16 @@ async function digestWriteIssue(env,kind,items,hubName,{assetId,digestId,titleId
   const selectedInterview=interviewId?interviews.find(x=>x.id===hubAssetId(interviewId)&&x.scope==='Asset'&&x.assetIds.includes(hubAssetId(assetId))):null;
   const finished=selectedInterview&&selectedInterview.status==='Finished'&&selectedInterview.answers.some(a=>a.trim())?[{questions:selectedInterview.questions,answers:selectedInterview.answers}]:[];
   const productAngles=(await productNotesRead(env,campaignId)).filter(n=>marketFresh(n)&&items.some(i=>i.topicId===n.topicId));
-  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,productAngles,finishedInterviews:finished,operatorAnalysis:finished.flatMap(x=>x.questions.map((q,i)=>({question:q,answer:x.answers[i]||""}))).filter(x=>x.answer.trim())};
+  const trendsDoc=await env.TRADES.get('digest:trends:'+hubAssetId(digestId),'json').catch(()=>null);
+  const {keys,schema}=newsletterSchema(method.contract),packet={version:1,trendsAnalysis:trendsDoc?{answered:trendsDoc.at,niche:trendsDoc.niche,audience:trendsDoc.audience,analysis:trendsDoc.analysis,verifiedUrls:trendsDoc.verify}:null,method:method.name,contract:method.contractText,inputs:method.inputs,recipe:method.rules,hub:hubName,audience,voice,product:context.fields,findings:items,productAngles,finishedInterviews:finished,operatorAnalysis:finished.flatMap(x=>x.questions.map((q,i)=>({question:q,answer:x.answers[i]||""}))).filter(x=>x.answer.trim())};
   let usage=null;
   const instructions='Method instructs; the process executes. Return exactly the worksheet contract fields as strings. Text only. '+
     'Frame the issue for the Subscriber Benefit, Value Proposition and Customer, in the operator voice. '+
-    'Use only ticked findings and finished interviews. PRODUCT ANGLES are read-only product opportunities, not evidence of news. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
+    'Use only the TRENDS ANALYSIS, ticked findings and finished interviews. PRODUCT ANGLES are read-only product opportunities, not evidence of news. Every factual claim must cite a finding URL; clearly label your own analysis or recommendation. '+
     'Unverified or out-of-period findings must never be presented as verified current developments. Data & Signals may use numbers ONLY from verified findings and must cite them. '+
     'Omit unsupported sections instead of padding; Feature Analysis and Subscriber Extra can be empty. Never invent news, statistics, sources or research. '+
     (kind==='premium'?'Premium value comes first from the operator curation (these ticked findings) and their sourcing, second from analysis: lead with the curated findings in the order given (primary sources first) and what each means, then the operator analysis. suggestedSplit is only a research suggestion. ':'')+
-    (kind==='premium'?'The finished interview answers are the required source for operator analysis and judgment. Build Feature Analysis and recommendations from those answers; do not substitute model interpretation for missing operator answers. ':kind==='free'?(finished.length?'Use the finished interview answers for any operator point of view. ':'No interview was supplied: compile only the selected findings and do not invent an operator perspective. '):'')+
+    'TRENDS ANALYSIS in the packet is this week\'s answer to the two questions (dominant trends in the niche; how the audience can take advantage): build the issue on it — its snapshot numbers, trends and playbook — with the ticked findings as curated news. Only use figures that carry a source URL, and only state as verified those whose URL is in verifiedUrls as true. '+(kind==='premium'?'Operator analysis: use finished interview answers when present; when there are none, add a section headed "My take — DRAFT (confirm before publish)" left for the operator, and never present model interpretation as the operator\'s opinion. ':kind==='free'?(finished.length?'Use the finished interview answers for any operator point of view. ':'No interview was supplied: compile only the selected findings and do not invent an operator perspective. '):'')+
     (kind==='premium'?'Target 1,000–1,800 words across the sections, shorter when credible material is thin. ':'Target 300–500 words across Executive Summary and Call to Action. ')+
     'Do not repeat all sections in Body: return Body as an empty string; the worker assembles the returned section fields into Body in contract order without another model call.';
   const generated=await hcClaude(env,instructions+'\n\nNEWSLETTER WRITING PACKET\n'+JSON.stringify(packet),'newsletter_contract',schema,8000,u=>{usage=u;});
@@ -16164,6 +16165,91 @@ async function digestTopicOf(env, titleId) {
   const prod = productId ? await ivPage(productId).catch(() => null) : null;
   return { topicId: hubAssetId(hubRichText(prod?.properties?.["Topic ID"]?.rich_text) || hubRichText(t.properties?.["Topic ID"]?.rich_text)), productId, title: t, product: prod };
 }
+// ══ TRENDS ANALYSIS (operator 2026-10-29: "every week I want to ask what are the dominant trends in (hyper niche) — how can
+// (audience) take advantage of these trends?"; "basic chat prompt, structured response, provide sources"; "then add verification
+// free tier"). Every digest run answers those two questions in ONE Claude call with web search and a structured response (the
+// ChatGPT Concord workup is the shape). The niche and audience come only from the title's and product's research rows — when they
+// aren't narrow enough the operator sharpens those rows. Then the free tier verifies: every cited URL is checked (newsletterVerifyUrl)
+// and the analysis's sources join the run's free news records, so each figure shows ✓ / ⚠. No Perplexity / Gemini call.
+// KV digest:trends:<assetId> = { at, runId, niche, audience, analysis, md, records, searched } (the last run; history keeps 6).
+const DIGEST_TRENDS_SCHEMA = { type: "object", required: ["headline", "trends", "playbook", "sources"], properties: {
+  headline: { type: "string" }, summary: { type: "string" },
+  snapshot: { type: "array", items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } },
+  comparison: { type: "object", properties: { title: { type: "string" }, columns: { type: "array", items: { type: "string" } }, rows: { type: "array", items: { type: "array", items: { type: "string" } } }, source: { type: "string" }, url: { type: "string" } } },
+  trends: { type: "array", items: { type: "object", properties: { title: { type: "string" }, status: { type: "string", enum: ["new", "continuing", "changed"] }, whatsHappening: { type: "string" },
+    evidence: { type: "array", items: { type: "object", properties: { figure: { type: "string" }, source: { type: "string" }, url: { type: "string" }, period: { type: "string" }, dataset: { type: "string" } } } }, whatItMeans: { type: "string" } } } },
+  playbook: { type: "object", properties: { framing: { type: "string" }, opportunities: { type: "array", items: { type: "object", properties: { name: { type: "string" }, how: { type: "string" }, leadSource: { type: "string" }, offer: { type: "string" } } } }, startHere: { type: "string" } } },
+  watch: { type: "array", items: { type: "object", properties: { item: { type: "string" }, why: { type: "string" }, status: { type: "string" } } } },
+  caveats: { type: "array", items: { type: "string" } },
+  sources: { type: "array", items: { type: "object", properties: { title: { type: "string" }, publisher: { type: "string" }, url: { type: "string" }, date: { type: "string" }, supports: { type: "string" } } } } } };
+// niche + audience, only from the title's and product's research rows (+ the title's keywords; + Research Focus unless isolated)
+async function digestTrendsContext(env, S) {
+  const hdr = ivHdr(), title = await ivPage(S.titleId).catch(() => null), tp = title?.properties || {}, rt = k => hubRichText(tp[k]?.rich_text).trim();
+  const rec = S.productId ? await findBestProductResearchRecord(hdr, S.productId).catch(() => null) : null, rp = rec?.properties || {}, pr = k => hubRichText(rp[k]?.rich_text).trim();
+  const niche = [S.titleName && "Title: " + S.titleName, S.productName && "Product: " + S.productName, (S.keywords || []).length && "Keywords: " + S.keywords.slice(0, 20).join(", "),
+    rt("Title Intent") && "Title intent: " + rt("Title Intent"), rt("Title Angle") && "Title angle: " + rt("Title Angle"), pr("Niche") && "Product niche: " + pr("Niche"),
+    !S.isolated && S.newsletter?.fields?.["Research Focus"] && "How wide to look (Research Focus): " + S.newsletter.fields["Research Focus"]].filter(Boolean).join("\n");
+  const audience = [rt("Title Audience") && "Title audience: " + rt("Title Audience"), pr("Customer") && "Product customer: " + pr("Customer"), pr("Pain Points") && "Their pain points: " + pr("Pain Points")].filter(Boolean).join("\n");
+  return { niche: niche.slice(0, 3500), audience: audience.slice(0, 2500), questions: rt("Title Questions").slice(0, 1500) };
+}
+async function digestTrendsRun(env, S) {
+  const ctx = await digestTrendsContext(env, S), key = "digest:trends:" + S.assetId, prev = await env.TRADES.get(key, "json").catch(() => null);
+  const period = S.periodStart || digestPeriod().periodStart, today = new Date().toISOString().slice(0, 10);
+  const last = prev?.analysis ? `\nLAST WEEK'S ANALYSIS (${String(prev.at || "").slice(0, 10)}) — a trend that repeats is an UPDATE (say what changed, status "continuing" or "changed"), never presented as new; carry the watch list forward, updating each item or marking it "no new data":\nTrends: ${(prev.analysis.trends || []).map(t => t.title).join(" | ")}\nWatch list: ${(prev.analysis.watch || []).map(w => w.item).join(" | ")}\n` : "";
+  const prompt = `You are a sharp market analyst writing this week's brief (${period} to ${today}). Use web search for current, specific data. Answer two questions:
+
+1. What are the dominant trends in this niche right now?
+2. How can this audience take advantage of these trends?
+
+THE NICHE (from the title's and product's research):
+${ctx.niche || "(no niche research — use the title and keywords)"}
+
+THE AUDIENCE:
+${ctx.audience || "(no audience research on the title or product — say so in caveats)"}
+${ctx.questions ? "\nQUESTIONS THIS AUDIENCE ASKS:\n" + ctx.questions + "\n" : ""}${S.guidance ? "\nOPERATOR GUIDANCE FOR THIS RUN: " + S.guidance + "\n" : ""}${last}
+SHAPE (like a strong analyst answer): a snapshot of the key numbers; a comparison table where it helps; 4–6 dominant trends, each with what is happening, its evidence and what it means; a playbook for the audience — specific opportunities, where the leads come from, what to offer — and one clear "start here"; a watch list for next week; honest caveats.
+
+RULES:
+- Every number carries its source name, URL, date/period and what the dataset measures. Never mix listing and sold figures (or similar different datasets) silently; when two sources disagree, give both, labelled.
+- Check the current status and dates of any program, rebate, approval or deadline you cite; never present a closed program as open.
+- Separate approved / official milestones from speculation; label your own assessments as assessments, not forecasts.
+- Include legal or ethical limits where they apply to the playbook.
+- If you can't find a sourced number, leave it out — never invent one. List every source you used in "sources".
+Finish by calling trends_analysis with the complete structured answer.`;
+  let usage = null, searched = [];
+  const analysis = await hcClaude(env, prompt, "trends_analysis", DIGEST_TRENDS_SCHEMA, 12000, u => { usage = u; }, { search: true, maxUses: 8, onResponse: d => { searched = researchEvidence(d); } });
+  if (!analysis || !Array.isArray(analysis.trends) || !analysis.trends.length) throw new Error("trends analysis came back empty");
+  // the free verification tier: every cited URL is checked
+  const urls = [...new Set([...(analysis.sources || []).map(x => x.url), ...(analysis.snapshot || []).map(x => x.url), ...(analysis.trends || []).flatMap(t => (t.evidence || []).map(e => e.url))].filter(u => /^https?:\/\//.test(u || "")))].slice(0, 40);
+  const verify = {}; for (const u of urls) { try { const c = await newsletterVerifyUrl(env, u); verify[u] = !!c.verified; } catch (e) { verify[u] = false; } }
+  const records = [];
+  (analysis.trends || []).forEach(t => (t.evidence || []).forEach(e => { if (/^https?:\/\//.test(e.url || "")) records.push({ claim: (t.title + " — " + (e.figure || "")).slice(0, 600), summary: String(t.whatItMeans || "").slice(0, 500), publisher: e.source || "", url: e.url, date: e.period || "", sourceMethod: "trends-analysis", topicId: S.topicId || "" }); }));
+  (analysis.sources || []).forEach(x => { if (/^https?:\/\//.test(x.url || "") && !records.some(r => r.url === x.url)) records.push({ claim: String(x.supports || x.title || x.url).slice(0, 600), publisher: x.publisher || "", url: x.url, date: x.date || "", sourceMethod: "trends-analysis", topicId: S.topicId || "" }); });
+  const md = digestTrendsMd(analysis, verify, ctx);
+  const out = { at: new Date().toISOString(), runId: S.period, niche: ctx.niche, audience: ctx.audience, analysis, md, records, verify, searched, usage };
+  await env.TRADES.put(key, JSON.stringify(out));
+  const hist = (await env.TRADES.get(key + ":history", "json").catch(() => null)) || []; hist.unshift({ at: out.at, headline: analysis.headline, trends: (analysis.trends || []).map(t => t.title), watch: analysis.watch || [] });
+  await env.TRADES.put(key + ":history", JSON.stringify(hist.slice(0, 6)));
+  return out;
+}
+function digestTrendsMd(a, verify, ctx) {
+  const mark = u => !u ? "" : verify[u] ? " ✓" : " ⚠ unverified", src = (name, u, period) => u ? ` — [${name || "source"}](${u})${period ? ", " + period : ""}${mark(u)}` : (name ? " — " + name : "");
+  const L = [`# ${a.headline || "This week's trends"}`];
+  if (a.summary) L.push("", a.summary);
+  if ((a.snapshot || []).length) { L.push("", "## Snapshot"); a.snapshot.forEach(x => L.push(`- **${x.label}: ${x.value}**${x.dataset ? " (" + x.dataset + ")" : ""}${src(x.source, x.url, x.period)}`)); }
+  const c = a.comparison; if (c && (c.rows || []).length && (c.columns || []).length) { L.push("", "## " + (c.title || "Comparison"), "", "| " + c.columns.join(" | ") + " |", "| " + c.columns.map(() => "---").join(" | ") + " |"); c.rows.forEach(r => L.push("| " + r.join(" | ") + " |")); if (c.source || c.url) L.push("", "Source" + src(c.source, c.url)); }
+  L.push("", "## The dominant trends");
+  (a.trends || []).forEach((t, i) => { L.push("", `### ${i + 1}. ${t.title}${t.status && t.status !== "new" ? " _(" + t.status + ")_" : ""}`); if (t.whatsHappening) L.push("", t.whatsHappening);
+    (t.evidence || []).forEach(e => L.push(`- ${e.figure}${e.dataset ? " (" + e.dataset + ")" : ""}${src(e.source, e.url, e.period)}`)); if (t.whatItMeans) L.push("", "**What it means:** " + t.whatItMeans); });
+  const p = a.playbook || {}; L.push("", "## How to take advantage"); if (p.framing) L.push("", p.framing);
+  (p.opportunities || []).forEach((o, i) => L.push("", `**${i + 1}. ${o.name}** — ${o.how || ""}${o.leadSource ? "  \n_Lead source:_ " + o.leadSource : ""}${o.offer ? "  \n_Offer:_ " + o.offer : ""}`));
+  if (p.startHere) L.push("", "**Start here:** " + p.startHere);
+  if ((a.watch || []).length) { L.push("", "## What to watch"); a.watch.forEach(w => L.push(`- **${w.item}**${w.why ? " — " + w.why : ""}${w.status ? " _(" + w.status + ")_" : ""}`)); }
+  if ((a.caveats || []).length) { L.push("", "## Caveats"); a.caveats.forEach(x => L.push("- " + x)); }
+  L.push("", "## My take — DRAFT", "", "_(Yours to write — confirm before publishing.)_");
+  if ((a.sources || []).length) { L.push("", "## Sources"); a.sources.forEach(x => L.push(`- ${x.title || x.url}${x.publisher ? " — " + x.publisher : ""}${x.date ? ", " + x.date : ""}${x.url ? " — " + x.url + mark(x.url) : ""}`)); }
+  return L.join("\n");
+}
 // Scope (operator 2026-10-28): the title's keywords say WHAT the digest is about; the newsletter's Research Focus (plus a
 // guided regenerate's guidance) says HOW WIDE to look. Mechanical token sets — no model call.
 function digestScope(S) {
@@ -16181,7 +16267,7 @@ async function adStep(env, cid, S, invoke) {
   if(!S.newsletter){const context=await newsletterContext(env,cid);S.newsletter={productId:context.productId,recordId:context.recordId,fields:context.fields};}
   if(S.newsletter.fields['Research Depth']==='Off'){const prior=S.jobId?await env.TRADES.get('digres:'+S.jobId,'json'):null;await newsletterUsage(env,{...(prior||{}),id:prior?.id||'off:'+cid+':'+S.period,campaignId:cid,newsletter:S.newsletter},'research',{status:'skipped',error:'Research Depth Off: no further provider calls'},false);S.step='skip';S.note='Research Depth Off: no further provider calls; operator inputs and last good digest retained.';return;}
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
-  const free = S.newsletter.fields['Research Depth'] === 'Free';
+  const free = S.newsletter.fields['Research Depth'] === 'Free' || S.trendsMode !== false;   // the trends analysis replaces the paid research (2026-10-29)
   if (S.step === "expand-free" || S.step === "expand-paid") S.step = "widen";   // runs in flight from the old record-floor steps
   if (S.step === "start") {
     await digestMemorySeed(env,cid);
@@ -16195,7 +16281,7 @@ async function adStep(env, cid, S, invoke) {
     const product = productId ? await newsletterNotion(env, "pages/" + kwDashId(productId)).catch(() => null) : null;
     S.titleName = kwTitleOf(title) || hubRichText(title.properties?.Title?.title).trim(); S.productId = productId;   // Content Strategy titles name their title property "Title" (kwTitleOf reads "Name") S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
     S.names = [S.productName || S.titleName];
-    S.isolated = flow.topicId !== "__main" && (await isoTopics(env, cid)).includes(hubAssetId(flow.topicId));
+    S.isolated = flow.topicId !== "__main" && (await isoTopics(env, cid)).includes(hubAssetId(flow.topicId)); S.trendsMode = true;
     let kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
     if (S.isolated) {   // 🔒 its own research only: product + title research become the framing; product keywords join the topic's
       const tp = title.properties || {}, rt = k => hubRichText(tp[k]?.rich_text);
@@ -16217,12 +16303,15 @@ async function adStep(env, cid, S, invoke) {
       await env.TRADES.put(key, JSON.stringify(found.map(x => ({ ...x, topicId: S.topicId || "" }))), { expirationTtl: 14 * 86400 });
     }
     S.freeCoreKey = key;
-    if (free) { S.step = "write"; return; }   // free news tier: no paid research job
+    if (free) { S.step = S.trendsMode !== false ? "trends" : "write"; return; }   // free news, then the two-question trends analysis
     S.marketPlan=await productNotesPrepare(env,cid);
     S.marketPlan.topics = S.topicId === "__main" ? [] : S.marketPlan.topics.filter(x => x.id === S.topicId);
     S.marketPlan.gaps = S.topicId === "__main" ? [] : S.marketPlan.gaps.filter(x => x.id === S.topicId);
     S.marketPlan.current = S.topicId === "__main" ? [] : S.marketPlan.current.filter(x => x.topicId === S.topicId);
     S.step='market';return;
+  }
+  if (S.step === "trends") {   // ONE Claude call with web search answers the two questions; its sources join the records
+    const t = await digestTrendsRun(env, S); S.trendsAt = t.at; S.trendsRecords = t.records.length; S.step = "write"; return;
   }
   if(S.step==='market') {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
@@ -16246,7 +16335,8 @@ async function adStep(env, cid, S, invoke) {
     let w=await env.TRADES.get(pendingKey,'json');
     if (!w) {
       const core = (S.freeCoreKey && await env.TRADES.get(S.freeCoreKey, "json")) || [];
-      w = free ? { sources: core } : await adPerplexityDigest(env, job, S.names);
+      const tr = S.trendsAt ? await env.TRADES.get("digest:trends:" + S.assetId, "json").catch(() => null) : null;
+      w = free ? { sources: [...((tr && tr.records) || []), ...core] } : await adPerplexityDigest(env, job, S.names);
       if (!free) w.sources = digestFloorAppendSources(w.sources || [], core);   // the free core records join the paid pass
       await env.TRADES.put(pendingKey, JSON.stringify(w));
     }
@@ -16279,13 +16369,15 @@ async function adStep(env, cid, S, invoke) {
     const usage=await env.TRADES.get('digest:usage:'+cid,'json')||[],entry=usage.find(x=>x.runId===job.id);if(entry){entry.memory=S.memory;entry.productNotes=S.productNotes;entry.floor=S.floor;await env.TRADES.put('digest:usage:'+cid,JSON.stringify(usage));}
     await researchDigestSave(env,cid,S.titleId,w.sources||[]);
     await digestPoolMerge(env, cid, { sources: w.sources }, job.keywords || []).catch(() => {});
-    if (S.floor.thin) {   // under 5 after free widening: the records stay for curation, but nothing is presented as a digest
+    if (S.floor.thin && !S.trendsAt) {   // under 5 after free widening (and no trends analysis): the records stay for curation, nothing is presented as a digest
       await digestItemsSave(env, S.assetId, w.sources, { additive: true, runId });
       S.thin = true; S.note = `Thin: ${total} relevant record${total === 1 ? "" : "s"} after free widening — needs a guided regenerate. The parent body was not rewritten. ` + S.note;
       S.items = w.sources.length; S.step = "done"; return;
     }
     S.thin = false;
-    if (free) w.digest = freeDigestBody(S.titleName || S.name, w.sources);
+    const trendsDoc = S.trendsAt ? await env.TRADES.get("digest:trends:" + S.assetId, "json").catch(() => null) : null;
+    if (trendsDoc && trendsDoc.md) w.digest = trendsDoc.md;   // the parent IS this week's trends analysis
+    else if (free) w.digest = freeDigestBody(S.titleName || S.name, w.sources);
     else if (!w.sources.length) w.digest = '## This week\n\nNo new verified developments were identified. Earlier findings remain in the hub research memory; they have not been recast as new news.';
     const label = adPeriod().label;
     S.hubRepublicationHeld = await hubRepublicationHeld(env, cid);
@@ -22039,7 +22131,9 @@ ${JSON.stringify(products)}`;
           const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
-            topicId: dTopic.topicId || "", isolated: dIsolated, productName: dTopic.product ? kwTitleOf(dTopic.product) : "", productId: dTopic.productId || "",
+            topicId: dTopic.topicId || "", isolated: dIsolated, trends: await (async () => { const t = await env.TRADES.get("digest:trends:" + id, "json").catch(() => null); if (!t) return null;
+              return { at: t.at, headline: t.analysis?.headline || "", startHere: t.analysis?.playbook?.startHere || "", trends: (t.analysis?.trends || []).map(x => ({ title: x.title, status: x.status || "new" })),
+                niche: t.niche || "", audience: t.audience || "", sources: (t.analysis?.sources || []).map(x => ({ title: x.title || x.url, url: x.url, publisher: x.publisher || "", date: x.date || "", ok: !!(t.verify || {})[x.url] })), searched: (t.searched || []).length }; })(), productName: dTopic.product ? kwTitleOf(dTopic.product) : "", productId: dTopic.productId || "",
             runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "", thin: !!autoState.thin, floor: autoState.floor || null, guidance: autoState.guidance || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
