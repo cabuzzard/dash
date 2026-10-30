@@ -17097,7 +17097,26 @@ async function hub2PoolLoad(slug, force) {
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
   hub2PoolPaint(slug);
 }
-function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) el.innerHTML = hub2PoolHtml(slug); if (_hubDigRow && _hubDigRow.slug === slug) hubDigestRowPaint(); }
+function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) hubKeepInputs(el, () => { el.innerHTML = hub2PoolHtml(slug); }); if (_hubDigRow && _hubDigRow.slug === slug) hubDigestRowPaint(); }
+// A re-render (the Digest section reloads itself every 10-60 s while a run or generation is going) must not wipe what the operator
+// is typing (operator 2026-10-29: "the digest modal keeps re loading … losing all of my work"): every input / textarea / select with
+// an id keeps its value, checkbox state, focus and cursor, and every <details> keeps its open state, across the repaint.
+function hubKeepInputs(root, paint) {
+  if (!root) return paint();
+  const keep = {}; root.querySelectorAll('input[id], textarea[id], select[id]').forEach(x => { keep[x.id] = { v: x.value, c: x.checked, dirty: x.dataset.dirty === '1' || x === document.activeElement || (x.type !== 'checkbox' && x.defaultValue !== x.value) }; });
+  const act = document.activeElement && root.contains(document.activeElement) ? { id: document.activeElement.id, s: document.activeElement.selectionStart, e: document.activeElement.selectionEnd } : null;
+  const opened = [...root.querySelectorAll('details')].map(d => d.open);
+  const scroll = root.scrollTop;
+  paint();
+  const inRoot = id => { try { return root.querySelector('#' + CSS.escape(id)); } catch (e) { return null; } };
+  Object.entries(keep).forEach(([id, k]) => { const x = inRoot(id); if (!x || !k.dirty) return;
+    if (x.type === 'checkbox' || x.type === 'radio') x.checked = k.c; else x.value = k.v; x.dataset.dirty = '1'; });
+  root.querySelectorAll('details').forEach((d, i) => { if (opened[i] !== undefined) d.open = opened[i]; });
+  if (act && act.id) { const x = inRoot(act.id); if (x) { x.focus(); try { if (act.s != null) x.setSelectionRange(act.s, act.e); } catch (e) {} } }
+  root.scrollTop = scroll;
+}
+// typing marks a field as the operator's own, so a repaint keeps it even after it loses focus
+document.addEventListener('input', e => { const t = e.target; if (t && t.id && t.closest && t.closest('[id^="hub2Pool-"], #hubDigRowModal')) t.dataset.dirty = '1'; }, true);
 // 📰 digest on a Keywords title row (operator 2026-10-29): that title's Digest Parent in a modal — the same panel as the hub's Digest
 // section (records, Retire, model, guided regenerate, Disseminate). Every control there re-paints the section, which re-paints this.
 let _hubDigRow = null;
@@ -17116,8 +17135,11 @@ function hubDigestRowPaint() {
   const body = !P || P.loading ? '<div style="font-size:12px;color:var(--text3);">Loading the digest…</div>'
     : P.error ? `<div style="font-size:12px;color:#f87171;">${esc(P.error)}</div>`
     : d ? hub2DigHtml(R.slug, d) : '<div style="font-size:12px;color:var(--text3);">This Digest Parent isn’t in the hub’s digest list yet — it appears after its first run (▶ Run now in the hub’s Digest section).</div>';
-  m.innerHTML = `<div class="modal" style="max-width:900px;max-height:90vh;overflow:auto;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><h3 style="margin:0;">📰 Digest — ${esc(h.name || R.slug)}</h3><button onclick="hub2PoolLoad('${esc(R.slug)}',true)" style="margin-left:auto;font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>${body}
+  const box = m.querySelector('.modal');
+  const html = `<div class="modal" style="max-width:900px;max-height:90vh;overflow:auto;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><h3 style="margin:0;">📰 Digest — ${esc(h.name || R.slug)}</h3><button onclick="hub2PoolLoad('${esc(R.slug)}',true)" style="margin-left:auto;font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Reload</button></div>${body}
     <div style="margin-top:10px;"><button class="modal-btn" onclick="hubDigestRowClose()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
+  if (!box) { m.innerHTML = html; return; }
+  const st = box.scrollTop; hubKeepInputs(m, () => { m.innerHTML = html; }); const nb = m.querySelector('.modal'); if (nb) nb.scrollTop = st;   // a reload never wipes the operator's typing or scroll
 }
 function hub2PoolHtml(slug) {
   const P = _hub2Pool[slug];
