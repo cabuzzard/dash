@@ -16306,14 +16306,8 @@ async function autoDigestRun(env, invoke) {
   let manual = (await env.TRADES.get("digest:manual", "json")) || [];   // hand runs (digestRunNow / ticking 📰 Digest parent)
   try {
     const cids = [...new Set(HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(c => c.length === 32))];
-    await weeklyResearchPrepare(env,cids);
+    await weeklyResearchPrepare(env,cids).catch(e => console.error("autoDigest: weeklyResearchPrepare failed (runs continue): " + (e.message || e)));
     const weeklyEnabled=(await env.TRADES.get("digest:weekly:activation","json"))?.enabled===true;
-    for (const cid of cids.slice()) {   // the permanent Weekly Digest title, set up any time (cheap, no Claude)
-      if (Date.now() - t0 > 60000) break;
-      if ((await env.TRADES.get("digest:title:" + cid)) && (await env.TRADES.get("digest:asset:" + cid))) continue;
-      const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
-      try { const tid = await adEnsureTitle(env, cid, nm, invoke); await adEnsureBlank(env, cid, tid, nm, invoke); out.push({ cid, title: "ready" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
-    }
     const work = [];
     for (const cid of cids) {
       const rows = await digestParentsForHub(env, cid); await digestMigrateCronFlags(env, cid, rows);
@@ -16327,9 +16321,13 @@ async function autoDigestRun(env, invoke) {
           digestName: (row.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest" });
       }
     }
-    work.sort((a, b) => a.cid.localeCompare(b.cid) || a.assetId.localeCompare(b.assetId));
+    // hand runs (Run now / Regenerate) first, and each gets at least one step even late in the tick (operator 2026-10-29: a
+    // regenerate sat queued for many ticks with no sign of life — the hub setup ate the tick's budget before it was reached)
+    const isHand = x => manual.some(m => m && typeof m === "object" ? m.assetId === x.assetId : m === x.cid);
+    work.sort((a, b) => (isHand(b) - isHand(a)) || a.cid.localeCompare(b.cid) || a.assetId.localeCompare(b.assetId));
+    console.log("autoDigest: " + work.length + " to check (" + work.filter(isHand).length + " hand-queued) after " + (Date.now() - t0) + " ms");
     for (let wi = 0; wi < work.length; wi++) {
-      if (Date.now() - t0 > 120000) break;
+      if (Date.now() - t0 > 120000 && !isHand(work[wi])) break;
       const item = work[wi], { cid, assetId } = item, key = "digest:auto:state:" + assetId;
       let S = await env.TRADES.get(key, "json");
       // Resume a legacy in-flight state under its new asset-keyed state record.
@@ -16362,7 +16360,8 @@ async function autoDigestRun(env, invoke) {
       try {
         const context = await newsletterContext(env, cid), pick = await digestDepthPick(env, assetId);   // per-digest model pick beats the hub's Research Depth
         S.newsletter = { productId: context.productId, recordId: context.recordId, fields: pick ? { ...context.fields, "Research Depth": pick } : context.fields }; S.depthPick = pick; S.depthSource = pick ? "digest" : "hub";
-        while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
+        let firstStep = true;
+        while (!["done", "skip", "error"].includes(S.step) && (Date.now() - t0 < 120000 || (firstStep && S.manual))) { firstStep = false;
           const before = S.step, progress = (S.marketPlan?.cursor || 0) + (S.marketPlan?.apiCursor || 0);
           try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
           await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
@@ -16372,6 +16371,12 @@ async function autoDigestRun(env, invoke) {
         if (["done", "skip", "error"].includes(S.step)) { if (!S.manual) { done[assetId] = per.key; if (item.legacyWeekly) done[cid] = per.key; } S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
         out.push({ cid, assetId, titleId: item.titleId, step: S.step });
       } finally { await digestHubLeaseRelease(env, lease); }
+    }
+    for (const cid of cids.slice()) {   // the permanent Weekly Digest title, set up any time (cheap, no Claude) — after the runs
+      if (Date.now() - t0 > 150000) break;
+      if ((await env.TRADES.get("digest:title:" + cid)) && (await env.TRADES.get("digest:asset:" + cid))) continue;
+      const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
+      try { const tid = await adEnsureTitle(env, cid, nm, invoke); await adEnsureBlank(env, cid, tid, nm, invoke); out.push({ cid, title: "ready" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
     }
     await env.TRADES.put("digest:auto:done", JSON.stringify(done));
   } finally { await env.TRADES.delete("digest:auto:lock"); }
