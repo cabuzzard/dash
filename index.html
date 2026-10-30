@@ -12860,13 +12860,24 @@ function dev2JobLine(it, st, txt, col) {
 function dev2JobBatchStatus(batch) {
   const el = document.querySelector(`#dev2Jb${batch.b} .bs`); if (!el) return;
   const done = batch.ok + batch.bad + (batch.skipped || 0);
-  el.textContent = (batch.skipped ? batch.skipped + ' skipped - ' : '') + (done < batch.total ? `${done} / ${batch.total} done${batch.bad ? ` · ${batch.bad} failed` : ''}` : `✓ finished — ${batch.ok} ok${batch.bad ? ` · ${batch.bad} failed` : ''}${/^(status|hubSection|del|product)$/.test(batch.act) ? ' · ↻ reload the table to see it' : ''}`);
+  el.textContent = (batch.skipped ? batch.skipped + ' skipped - ' : '') + (done < batch.total ? `${done} / ${batch.total} done${batch.bad ? ` · ${batch.bad} failed` : ''}` : `✓ finished — ${batch.ok} ok${batch.bad ? ` · ${batch.bad} failed` : ''}${/^(status|hubSection|product)$/.test(batch.act) ? ' · ↻ reload the table to see it' : ''}`);
+}
+// an archived asset / title leaves the table at once (operator 2026-10-30: archived rows stayed visible until a reload and were
+// archived a second time) — an asset takes its own row; a title takes its row and its assets' rows
+let _dev2DropT = null;
+function dev2DropDeleted(it) {
+  const nid = x => String(x || '').replace(/-/g, ''), id = nid(it.id);
+  DEV2_ROWS = (DEV2_ROWS || []).filter(r => it.batch.t === 'a' ? !(r.kind === 'asset' && nid(r.assetId) === id) : it.batch.t === 't' ? nid(r.titleId) !== id : true);
+  _devTblLast = null;   // the next load re-reads Notion
+  clearTimeout(_dev2DropT); _dev2DropT = setTimeout(() => { renderDev2(); try { renderHubChecklist(); productsRender(); } catch (e) {} }, 400);
 }
 function dev2JobsTidy() { const j = document.getElementById('dev2BkJobs'); if (j && !j.children.length) j.style.display = 'none'; }
 function dev2JobsPump() {
   while (DEV2_JOBS.running < DEV2_BULK_CONC && DEV2_JOBS.q.length) {
     const it = DEV2_JOBS.q.shift(); DEV2_JOBS.running++;
-    dev2JobRun(it).then(res => { it.batch.ok++; dev2JobLine(it, '✓ done', res, '#4ade80'); }, e => { if (/not in the hub.s Keywords hierarchy/.test(e.message)) {it.batch.skipped=(it.batch.skipped||0)+1;dev2JobLine(it,'skipped',e.message,'var(--text3)');return;} it.batch.bad++; dev2JobLine(it, '✗ failed', e.message, 'var(--danger)'); })
+    dev2JobRun(it).then(res => { it.batch.ok++; dev2JobLine(it, '✓ done', res, '#4ade80'); if (it.batch.act === 'del') dev2DropDeleted(it); }, e => {
+      if (it.batch.act === 'del' && /archived/i.test(e.message || '')) { it.batch.ok++; dev2JobLine(it, '✓ done', 'already archived', '#4ade80'); dev2DropDeleted(it); return; }   // archived earlier — nothing failed
+      if (/not in the hub.s Keywords hierarchy/.test(e.message)) {it.batch.skipped=(it.batch.skipped||0)+1;dev2JobLine(it,'skipped',e.message,'var(--text3)');return;} it.batch.bad++; dev2JobLine(it, '✗ failed', e.message, 'var(--danger)'); })
       .finally(() => { DEV2_JOBS.running--; dev2JobBatchStatus(it.batch); dev2JobsPump(); });
   }
 }
