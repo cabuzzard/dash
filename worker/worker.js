@@ -2243,9 +2243,10 @@ async function writingMethod(env,page) {
   const rows=writingRows(await writingMethodsTable(env)),p=page.properties||{},type=p['Asset Type']?.select?.name||'';
   const methodId=ivRid(p,'Method')||await resolveMethodIdByName(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()]||type);
   const method=methodId?await ivPage(methodId):null,name=method?hubRichText(method.properties?.Name?.title):type;
-  const named=rows.find(r=>ivNorm(r.name)===ivNorm(name)),typed=rows.find(r=>r.aliases.includes(ivNorm(type)));
-  const row=/^newsletter (paid|free)$/i.test(type)&&/^digest(?: parent)?$/.test(ivNorm(name))?typed||named:named||rows.find(r=>r.aliases.includes(ivNorm(name)));
-  const missing=writingMissing(row);if(!method)missing.unshift('no method record');if(row && row.mapped.toLowerCase()!=='yes')missing.push('mapped is not yes');
+  const on=r=>/^yes$/i.test(r.mapped||''),pick=list=>list.find(on)||list[0];   // a switched-on row wins when several match (2026-10-30)
+  const named=pick(rows.filter(r=>ivNorm(r.name)===ivNorm(name))),typed=pick(rows.filter(r=>r.aliases.includes(ivNorm(type))));
+  const row=/^newsletter (paid|free)$/i.test(type)&&/^digest(?: parent)?$/.test(ivNorm(name))?typed||named:named||pick(rows.filter(r=>r.aliases.includes(ivNorm(name))));
+  const missing=writingMissing(row);if(!method&&!(row&&/^yes$/i.test(row.mapped||'')))missing.unshift('no method record');if(row && row.mapped.toLowerCase()!=='yes')missing.push('mapped is not yes');   // a switched-on rules row found by Asset Type writes without a Method record — the row is the spec (2026-10-30)
   return {methodId,method,name,row,contract:row?parseWritingContract(row.contractText):[],reason:missing.length?`${name||type||'Asset'}: ${missing.join('; ')}`:''};
 }
 function writingFieldValues(properties) {
@@ -2316,7 +2317,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   // property; currentFields is just this contract's fields.
   const wantsDesign=/\b(design|image spec|visual)\b/i.test(row.inputs||'');
   const [recipe,pillar,research,voice,audience,product,design,interview]=await Promise.all([
-    extractBlocksTextRecursive(ivHdr(),ivDash(methodId)),titleId?extractPillarContent(ivHdr(),ivDash(titleId)):'',titleId?titleResearchBlock(env,titleId):'',
+    methodId?extractBlocksTextRecursive(ivHdr(),ivDash(methodId)):'',titleId?extractPillarContent(ivHdr(),ivDash(titleId)):'',titleId?titleResearchBlock(env,titleId):'',
     cid?voiceBlock(env,cid):'',cid?hubAudienceBlock(env,cid):'',pid?ivProdResearch(pid):'',
     cid&&wantsDesign?assembleImageBrief(env,{campaignId:cid,assetId:page.id,codexDesign:true}):null,
     titleId?ivBlock(env,titleId,p['Asset Type']?.select?.name||'',hubAssetId(page.id)):null
@@ -2333,7 +2334,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   const subject={description:String(cur.Description||'').slice(0,600),note:pageNote,...(keywordSeed?{keywordSeed}:{})};
   let hubPosts=[];if(/topical/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
     if(hub)hubPosts=(await hubBlogManifest(env,hub)).filter(x=>x&&x.slug&&hubAssetId(x.assetId||'')!==hubAssetId(page.id)).slice(0,25).map(x=>({title:x.title,url:'../'+x.slug+'/'}));}catch(e){}}
-  const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method.properties?.Notes?.rich_text),page:recipe},
+  const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method?.properties?.Notes?.rich_text),page:recipe},
     contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
     product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
     platform:cur['Platform Name']||cur.Platform||'',subject,...(hubPosts.length?{hubPosts}:{}),currentFields};
@@ -2350,7 +2351,9 @@ async function writeContractAsset(env,assetId,opts={}) {
   const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
-    rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A'};
+    rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A',
+    styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
+    process:{model:'claude-sonnet-4-6',maxTokens:8000,tool:'write_contract_fields (one string per contract field, all required)',correction:'one corrective pass when a contract rule fails, a keyword is not placed or the kept % is outside the band ±15 — kept only if it scores better',trim:'a field over its ≤ N characters rule (and under 600 chars) is trimmed at a sentence, else word, boundary',protected:['Status','Asset Status','Hub Section','Content Hub','Publishing Date','Deployment Status','Site URL','Content URL','Method'],saves:'only the contract fields + Method (+ Interview Kept %, and Interview Sync = In Sync when interview answers were used); never status or publishing',enforcement:'advisory — violations reported, fields still saved; written = no violations',log:'writeasset:log (last 200 runs)'}};
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   const band=WRITE_KEEP[style.keep].band,mainOf=f=>f.Body||f['Offer Page']||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
@@ -54753,8 +54756,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const dry = await writeContractAsset(env, body.assetId, { dryRun: true }).catch(e => ({ error: e.message }));
         const parentId = ivRid(p, "Parent Asset"), parent = parentId ? await ivPage(parentId).catch(() => null) : null;
         return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
-            platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "" },
-          dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })) });
+            platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "",
+            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
+            keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
+          dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
+          specRow: await (async () => {   // 📋 Spec tab (operator 2026-10-30): the asset type's whole Current Methods row, literally, + how it was matched
+            try { const t = await writingMethodsTable(env), m = await writingMethod(env, w.page), type = p['Asset Type']?.select?.name || '';
+              const all = writingRows(t), on = r => /^yes$/i.test(r.mapped || ''), cand = all.filter(r => ivNorm(r.name) === ivNorm(m.name) || r.aliases.includes(ivNorm(m.name)) || r.aliases.includes(ivNorm(type)));
+              const raw = m.row ? t.rows.find(r => r.id === m.row.id) : null;
+              return { type, method: m.method ? { id: m.methodId, name: m.name } : null, matchedBy: !m.row ? '' : ivNorm(m.row.name) === ivNorm(m.name) ? 'row name = ' + (m.method ? 'method name' : 'asset type') : 'row aliases include "' + m.name + '"',
+                reason: m.reason || '', row: raw ? { id: raw.id, cells: t.columns.map(c => ({ column: c.name, id: c.id, value: raw.cells?.[c.id] == null ? '' : (typeof raw.cells[c.id] === 'string' ? raw.cells[c.id] : JSON.stringify(raw.cells[c.id])) })) } : null,
+                candidates: cand.map(r => ({ id: r.id, name: r.name, mapped: r.mapped, chosen: !!(m.row && r.id === m.row.id) })) };
+            } catch (e) { return { error: e.message }; } })() });
       }
       // assetSpec {assetId, op: state | draft | commit | discard, section?, guidance?, text?, mapped?} — the Asset modal's four spec sections
       if (body.action === "assetSpec") {

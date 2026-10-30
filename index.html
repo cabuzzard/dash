@@ -4859,7 +4859,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const statusSel = a.status === 'Published' ? chip('Published', 'Published — publishing controls come in Phase 3', '#4ade80')
     : `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow']];
+  const tabs = [['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}
@@ -4869,8 +4869,8 @@ function amDraw() {
       <button style="${B()}align-self:flex-start;" onclick="amClose()" title="Close (Esc)">✕</button></div>
     <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
-  const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields';
-  P.innerHTML = hd + `<div class="amf-bd">${AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
+  const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields', schema = AM.tab === 'schema';
+  P.innerHTML = hd + `<div class="amf-bd">${!schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
 }
 // ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
 // text → ✓ Commit (writes the asset's Current Methods row) or ✕ Discard. Worker assetSpec. rules = contract · flow = inputs ·
@@ -4942,6 +4942,49 @@ async function amDraftAll(btn) {
   await Promise.all([run(), run(), run()]);
   btn.disabled = false; btn.textContent = '✨ Draft all asset types';
   showToast(`Staged ${done} drafts${skip ? ' · ' + skip + ' already staged' : ''}${fail ? ' · ' + fail + ' failed' : ''} — open an asset's ✎ to review and commit`, fail ? 'error' : 'success');
+}
+// ── 🧬 Schema tab (operator 2026-10-30): literally everything that affects or guides this asset's writing, in the order the writer
+// meets it — route → which spec row and why → the whole row → method → style (keep / purpose, with their rules) → rule guidance →
+// the fixed instruction → the style text actually sent → the packet sources (sizes) → the process (model, correction, trim, saves).
+function amSchemaHtml() {
+  const a = AM.data.asset, d = AM.data.dry || {}, S = AM.data.specRow || {}, P = d.packet || {};
+  const box = (title, body, open) => `<details ${open ? 'open' : ''} style="border:1px solid var(--border2);border-radius:8px;margin-bottom:8px;"><summary style="cursor:pointer;padding:8px 10px;font-size:12.5px;font-weight:700;">${title}</summary><div style="padding:4px 12px 10px;font-size:12px;line-height:1.55;">${body}</div></details>`;
+  const kv = rows => `<table style="border-collapse:collapse;width:100%;">${rows.map(([k, v]) => `<tr><td style="padding:4px 8px 4px 0;color:var(--text3);vertical-align:top;width:190px;white-space:nowrap;">${esc(k)}</td><td style="padding:4px 0;vertical-align:top;white-space:pre-wrap;">${v == null || v === '' ? '' : esc(String(v))}</td></tr>`).join('')}</table>`;
+  const pre = t => t ? `<pre style="white-space:pre-wrap;font-size:11.5px;margin:4px 0 0;background:var(--surface2);padding:8px 10px;border-radius:6px;max-height:50vh;overflow:auto;">${esc(t)}</pre>` : '';
+  const len = v => { const t = typeof v === 'string' ? v : v ? JSON.stringify(v) : ''; return t.trim() ? t.length.toLocaleString() + ' chars' : 'empty'; };
+  // 1. route
+  const route = /^newsletter (paid|free)$/i.test(a.type || '') ? 'Refused here — newsletter issues are written only by Disseminate on their Digest parent.'
+    : /digest parent/i.test(a.parentType || '') ? 'A Digest child — a Disseminate-built issue / article is written by the digest writer from its findings (digestChildWrite) before this contract writer is tried.'
+    : d.qa ? 'Q&A route — Keep my words = Q&A: the answered interview questions are printed as headings with the answers under them, grammar only (writeQaAsset); the contract writer below is not called.'
+    : d.error ? 'Writer refuses: ' + (d.reason || d.error) : 'Contract writer (writeAsset → writeContractAsset): one model call + at most one corrective pass.';
+  let html = `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Everything that affects or guides how this asset is written, in the order the writer uses it. Read live (no model call).</div>`;
+  html += box('1 · Route', esc(route), true);
+  // 2. match
+  html += box('2 · Which spec row, and why', S.error ? esc(S.error) : kv([['Asset Type', S.type], ['Method', S.method ? S.method.name + ' (' + S.method.id + ')' : 'none — matched by Asset Type'], ['Matched row', S.row ? (d.rules ? d.rules.row : '') + ' · ' + S.row.id : 'none'], ['Matched by', S.matchedBy], ['Writer blocked because', S.reason]])
+    + (S.candidates && S.candidates.length > 1 ? '<div style="margin-top:6px;color:var(--text3);">Other rows that also match (a switched-on row wins):</div>' + kv(S.candidates.map(c => [(c.chosen ? '✓ ' : '') + c.name, 'mapped: ' + (c.mapped || '—') + ' · ' + c.id])) : ''), true);
+  // 3. the whole row
+  html += box('3 · The spec row — every column (Current Methods)', S.row ? kv(S.row.cells.map(c => [c.column, c.value])) : 'No row — nothing governs this asset type yet.', true);
+  // 4. method
+  html += box('4 · Method — notes + recipe page (Notion)', d.method ? kv([['Method', d.method.name || ''], ['Notes', (P.method || {}).notes || '']]) + pre((P.method || {}).page || '') : 'No method record.', false);
+  // 5. style
+  html += box('5 · Keep my words / Purpose', d.style ? kv([['Keep my words', d.style.keep + ' — keeps ' + d.style.band.join('–') + '% of the interview wording'], ['  set by', (d.styleSource || {}).keep], ['Purpose', d.style.purpose], ['  set by', (d.styleSource || {}).purpose],
+      ['Row defaults', 'keep: ' + ((d.styleSource || {}).rowKeep || '—') + ' · purpose: ' + ((d.styleSource || {}).rowPurpose || '—')], ['This asset', 'Interview Keep: ' + (a.interviewKeep || '—') + ' · Write Purpose: ' + (a.writePurpose || '—')],
+      ['Keep rule (sent)', d.keepRule], ['Purpose rule (sent)', d.purposeRule], ['SEO keywords to place', (d.seoKeywords || []).join('; ')]]) : '—', false);
+  // 6. rule guidance
+  html += box('6 · Your rule guidance (KV writeguide)', d.rules ? (d.rules.guidance ? pre(d.rules.guidance) : 'none') : '—', false);
+  // 7. instruction + style text actually sent
+  html += box('7 · What the writer is told — instruction + style text (sent before the packet)', pre((d.instruction || '') + '\n\n' + ((d.style && d.style.text) || '')), false);
+  // 8. contract as validated
+  html += box('8 · Contract — the fields it must return and the rules checked', d.rules ? kv(d.rules.contract.map(f => [f.name, f.rule])) : '—', true);
+  // 9. packet
+  const src = [['method', P.method], ['contract', P.contract], ['inputs (descriptive — the packet below is fixed)', P.inputs], ['title', P.title && P.title.properties], ['pillar', P.title && P.title.pillar], ['research', P.research], ['voice', P.voice],
+    ['hub.audience', P.hub && P.hub.audience], ['hub.design', P.hub && P.hub.design], ['product.properties', P.product && P.product.properties], ['product.research', P.product && P.product.research], ['interview', P.interview], ['platform', P.platform],
+    ['subject (Description · page note · Keyword Seed)', P.subject], ['hubPosts', P.hubPosts], ['currentFields', P.currentFields]];
+  html += box('9 · The packet — every source sent (full text in 🧭 Information flow)', kv(src.map(([k, v]) => [k, len(v)])) + kv([['Outline (fixes the structure)', a.outline ? len(a.outline) : 'none'], ['Keyword Seed', a.keywordSeed || 'none']]), false);
+  // 10. process
+  const pr = d.process || {};
+  html += box('10 · Process — model, correction, trimming, what it saves', kv([['Model', pr.model], ['Max output tokens', pr.maxTokens], ['Structured return', pr.tool], ['Correction', pr.correction], ['Trimming', pr.trim], ['Protected (never written)', (pr.protected || []).join(', ')], ['Saves', pr.saves], ['Enforcement', pr.enforcement], ['Run log', pr.log]]), false);
+  return html;
 }
 function amFieldsHtml() {
   const d = AM.data.dry || {}, C = amContract(), dirtyN = Object.keys(AM.dirty).length;
