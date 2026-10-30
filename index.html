@@ -4603,7 +4603,7 @@ async function ao2Load() {
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
       .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
-    return [{ id, title: t.title || '', type: 'Title', topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
+    return [{ id, src: t, title: t.title || '', type: 'Title', topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
   ao2Render();
 }
@@ -4668,7 +4668,8 @@ function ao2Render() {
     return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder" style="${th}">${esc(c.label)}${arrow}</th>`; }).join('');
   const cell = (x, c) => c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
-    : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>`
+    : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
+    : c.key === 'title' && x.type === 'Title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
   const rowHtml = x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
@@ -4713,6 +4714,29 @@ async function ao2SetParent(id, inp) {
   showToast(hit ? 'Parent set ✓' : 'Parent cleared ✓', 'success'); ao2Render();
 }
 function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
+// Title cell buttons (operator 2026-10-30): ✎ = Content Hubs 2's Edit title modal · 🔬 = its Title research modal — the same functions
+function ao2TitleBtns(tid, campId) {
+  const b = 'font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;';
+  return `<button style="${b}" title="Edit title — title, product, keyword topic, notes, status, rewrite pillar" onclick="ao2TitleEdit('${esc(tid)}','${esc(campId)}')">✎</button><button style="${b}" title="Title research — built from its keyword topic" onclick="ao2TitleRes('${esc(tid)}','${esc(campId)}')">🔬</button>`;
+}
+function ao2HubOf(campId) { const h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(campId)); if (!h) showToast('This title\u2019s campaign isn\u2019t a content hub', 'error'); return h; }
+async function ao2TitleEdit(tid, campId) {
+  const h = ao2HubOf(campId); if (!h) return;
+  hcModal('<h3 style="margin:0 0 10px;">Edit title</h3><div style="font-size:12px;color:var(--text3);">Loading…</div>');
+  await hubTitlesLoad(h.slug);
+  if (!((_hubTitles[h.slug] || {}).rows || []).some(r => kwNid(r.titleId) === kwNid(tid))) {   // not in that hub's list — open it from this table's own row
+    const s = ((AO2_ROWS || []).find(y => y.type === 'Title' && y.id === kwNid(tid)) || {}).src || {};
+    _hubTitleIdx[tid] = { id: tid, title: s.title || '', notes: s.notes || '', status: s.titleStatus || 'Planning', productId: s.productId || '', product: s.product || '' };
+    hcTitleEdit(h.slug, '', tid);
+  } else hubKwTitleEdit(h.slug, ((_hubTitles[h.slug].rows || []).find(r => kwNid(r.titleId) === kwNid(tid)) || {}).titleId || tid);
+  ao2RefreshOnClose();
+}
+function ao2TitleRes(tid, campId) { const h = ao2HubOf(campId); if (!h) return; hubTitleResOpen(h.slug, tid); }
+function ao2RefreshOnClose() {   // when the Edit title modal closes after a save, re-read the table so its columns show the change
+  const m = document.getElementById('hcModal'); if (!m) return;
+  const ob = new MutationObserver(() => { if (!m.classList.contains('open')) { ob.disconnect(); _devTblLast = null; ao2Load(); } });
+  ob.observe(m, { attributes: true, attributeFilter: ['class'] });
+}
 // ── All Output 2 → Topic modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords topic row does —
 // rename · seed keywords → re-run keywords · keyword list · 🔒 Isolate · move to another cluster in the hub · delete topic.
 // Same worker actions as that row: kwHubApply (rename / keywords / delete), kwSeedResearch, saveTopicClusters, setTopicIsolated.
