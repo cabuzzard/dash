@@ -762,8 +762,12 @@
     <div class="oc-sec" data-ock="initiatives"><div class="oc-hd" onclick="ocToggle(event,this);initvLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Initiatives</h2>
       <span style="font-size:11.5px;color:var(--text2);">Questions and notes per initiative. Edit the Question column; add rows below.</span><span id="initvMsg" style="font-size:11px;color:var(--text3);"></span></div>
-    <div class="oc-bd"><div id="initvBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div>
-      <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button>
+    <div class="oc-bd">
+      <!-- the Initiatives table itself collapses on its own (operator 2026-10-30), separate from the Digests / Series below it -->
+      <div class="oc-sec" data-ock="initvtable"><div class="oc-hd" onclick="ocToggle(event,this);initvLoad()" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
+        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Initiatives table</h3></div>
+      <div class="oc-bd"><div id="initvBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div>
+      <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div></div>
       <div style="margin-top:14px;">
 <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
       .allrow-tbl > tbody > tr.allrow-h:hover > td { background:var(--border2) !important; }   /* row highlight on the Digest / Series headings */</style>
