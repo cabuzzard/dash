@@ -44241,8 +44241,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           let up = par, hops = 0;   // no loops: walking up from the parent must never reach this asset
           while (up && hops++ < 12) { const nx = nd((up.properties?.["Parent Asset"]?.relation || [])[0]?.id); if (!nx) break; if (nx === assetId) return json({ error: "That would make a loop — this asset is already above it" }, 400); up = await ivPage(nx).catch(() => null); }
         }
-        const r = await hubNotionFetch("https://api.notion.com/v1/pages/" + dash(assetId), { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Parent Asset": { relation: parentId ? [{ id: dash(parentId) }] : [] } } }) });
+        const r = await hubNotionFetch("https://api.notion.com/v1/pages/" + ivDash(assetId), { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Parent Asset": { relation: parentId ? [{ id: ivDash(parentId) }] : [] } } }) });
         if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: e.message || "Not saved" }, r.status); }
         return json({ success: true, assetId, parentAssetId: parentId || null });
       }
