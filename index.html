@@ -4602,8 +4602,8 @@ async function ao2Load() {
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
-    return [{ id, title: t.title || '', type: 'Title', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
+      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+    return [{ id, title: t.title || '', type: 'Title', topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
   ao2Render();
 }
@@ -4667,6 +4667,7 @@ function ao2Render() {
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder" style="${th}">${esc(c.label)}${arrow}</th>`; }).join('');
   const cell = (x, c) => c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
+    : c.key === 'topic' && x.topic && x.topicId ? `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
   const rowHtml = x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${cell(x, c)}</td>`).join('')}</tr>`;
@@ -4712,6 +4713,90 @@ async function ao2SetParent(id, inp) {
   showToast(hit ? 'Parent set ✓' : 'Parent cleared ✓', 'success'); ao2Render();
 }
 function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
+// ── All Output 2 → Topic modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords topic row does —
+// rename · seed keywords → re-run keywords · keyword list · 🔒 Isolate · move to another cluster in the hub · delete topic.
+// Same worker actions as that row: kwHubApply (rename / keywords / delete), kwSeedResearch, saveTopicClusters, setTopicIsolated.
+let _ao2Topic = null;
+async function ao2TopicModal(rowId) {
+  const x = (AO2_ROWS || []).find(y => y.id === rowId); if (!x || !x.topicId) return;
+  const h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(x.campId));
+  if (!h) return showToast('This topic’s campaign isn’t a content hub', 'error');
+  hcModal(`<h3 style="margin:0 0 4px;">🏷 Topic — ${esc(x.topic)}</h3><div style="font-size:12px;color:var(--text3);">Loading the ${esc(h.slug)} keywords…</div>`);
+  if (!_hubKw[h.slug] || _hubKw[h.slug].error) { delete _hubKw[h.slug]; await hubKwLoad(h.slug); }
+  const K = _hubKw[h.slug];
+  if (!K || K.error) { hcModal(`<h3 style="margin:0 0 4px;">🏷 Topic</h3><div style="font-size:12px;color:#f87171;">Keywords didn’t load: ${esc((K && K.error) || 'no response')}</div>${HC_CANCEL}`); return; }
+  const tid = x.topicId === '__main' ? '__main' : ([...K.staged, ...K.committed].find(t => kwNid(t.id) === kwNid(x.topicId)) || {}).id;
+  const t = tid && hubKwTopicOrMain(K, tid);
+  if (!t) { hcModal(`<h3 style="margin:0 0 4px;">🏷 Topic — ${esc(x.topic)}</h3><div style="font-size:12px;color:#f87171;">This topic isn’t in the ${esc(h.slug)} keywords any more — it may have been renamed or removed. Reload All Output 2.</div>${HC_CANCEL}`); return; }
+  const isMain = tid === '__main', kws = hubKwKwSplit(t.keywords), cl = (K.tc && K.tc.clusters) || [], cur = (K.tc && K.tc.assign && K.tc.assign[tid]) || '';
+  const iso = (K.iso || []).includes(kwNid(tid));
+  _ao2Topic = { slug: h.slug, tid, name: t.name, kws, cluster: cur, iso };
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = 'font-size:11px;color:var(--text3);';
+  hcModal(`<h3 style="margin:0 0 4px;">🏷 Topic — ${esc(t.name)}</h3><div style="${L}margin-bottom:10px;">${esc(h.slug)} · ${isMain ? 'Main Keywords' : K.committed.includes(t) ? 'committed' : 'staged'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'} — its products and titles stay attached through every change here.</div>
+    ${isMain ? '' : `<label style="${L}">Topic name</label><input id="ao2TpName" style="${IN}" value="${esc(t.name)}">`}
+    <label style="${L}">Seed keywords (comma or one per line)</label><input id="hkwKmSeed" style="${IN}" value="${esc(isMain ? kws.slice(0, 5).join(', ') : t.name)}">
+    <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 8px;"><button class="kw-btn" onclick="hubKwKwResearch('${h.slug}','${esc(tid)}')">🔬 Re-run keywords from seeds</button><span style="font-size:10.5px;color:var(--text3);">real Google ideas are added to the list below — click a chip to drop / re-add it</span></div>
+    <div id="hkwKmOut" style="font-size:11.5px;color:var(--text3);margin-bottom:10px;max-height:20vh;overflow:auto;"></div>
+    <label style="${L}">Keywords (one per line)</label><textarea id="hkwKmList" rows="8" style="${IN}">${esc(kws.join('\n'))}</textarea>
+    ${isMain ? '' : `<label style="display:flex;align-items:flex-start;gap:6px;font-size:12px;margin:0 0 10px;cursor:pointer;"><input type="checkbox" id="ao2TpIso" ${iso ? 'checked' : ''} style="margin-top:2px;"><span><b>🔒 Isolate</b> — its products and digests take no direction from the hub (Main keywords, campaign research, Research Focus, research pool).</span></label>
+    <label style="${L}">Cluster in this hub</label><select id="ao2TpCluster" style="${IN}"><option value="" ${cur ? '' : 'selected'}>(no cluster)</option>${cl.map(c => `<option value="${esc(c)}" ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="modal-btn" onclick="hcModalRun(this, ao2TopicSave)">💾 Save</button>${HC_CANCEL}
+      ${isMain ? '' : `<button class="modal-btn" style="margin-left:auto;background:transparent;border-color:#f87171;color:#f87171;" onclick="hcModalRun(this, ao2TopicDelete)">🗑 Delete topic</button>`}</div>`);
+}
+async function ao2TopicSave() {
+  const T = _ao2Topic, h = T && HUB_SITES.find(s => s.slug === T.slug), K = T && _hubKw[T.slug]; if (!T || !h || !K) return 'Hub not loaded';
+  const isMain = T.tid === '__main', id = isMain ? '__main' : (K.staged.some(x => x.id === T.tid) ? String(T.tid) : kwNid(T.tid));   // hub model: committed ids dashless, staged as stored
+  const name = isMain ? T.name : document.getElementById('ao2TpName').value.trim();
+  const next = [...new Set(hubKwKmList())], add = next.filter(k => !T.kws.includes(k)), del = T.kws.filter(k => !next.includes(k));
+  if (!name) return 'The topic needs a name';
+  if (!next.length && !isMain) return 'A topic needs at least one keyword — use 🗑 Delete topic to remove it';
+  const ops = isMain ? [add.length && { op: 'main', keywords: add, add: true }, del.length && { op: 'main', keywords: del, add: false }].filter(Boolean)
+    : [name !== T.name && { op: 'rename', id, name }, add.length && { op: 'assign', keywords: add, to: id, move: false }, del.length && { op: 'unassign', keywords: del, from: id }].filter(Boolean);
+  const done = [];
+  if (ops.length) {
+    const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name || T.slug, ops }).catch(e => ({ error: e.message }));
+    if (!r || r.error) return (r && r.error) || 'Not saved';
+    if (r.errors && r.errors.length) return r.errors.join(' · ');
+    if (name !== T.name) done.push('renamed'); if (add.length || del.length) done.push([add.length && '+' + add.length, del.length && '−' + del.length].filter(Boolean).join(' ') + ' keywords');
+  }
+  if (!isMain) {
+    const iso = document.getElementById('ao2TpIso').checked, cluster = document.getElementById('ao2TpCluster').value;
+    if (iso !== T.iso) {
+      const r = await call('setTopicIsolated', { campaignId: h.campaignId, topicId: T.tid, isolated: iso }).catch(e => ({ error: e.message }));
+      if (!r || r.error) return 'Isolate not changed: ' + ((r && r.error) || 'no response') + (done.length ? ' (' + done.join(', ') + ' saved)' : '');
+      done.push(iso ? '🔒 isolated' : 'un-isolated');
+    }
+    if (cluster !== T.cluster) {
+      if (ops.length) { delete _hubKw[T.slug]; await hubKwLoad(T.slug); }   // fresh cluster map after a rename/keyword apply
+      const K2 = _hubKw[T.slug]; if (!K2 || K2.error) return 'Cluster not moved — keywords didn’t reload' + (done.length ? ' (' + done.join(', ') + ' saved)' : '');
+      const assign = { ...(K2.tc.assign || {}) }; if (cluster) assign[T.tid] = cluster; else delete assign[T.tid];
+      const r = await call('saveTopicClusters', { campaignId: h.campaignId, clusters: [...(K2.tc.clusters || [])], assign, mainCluster: K2.tc.mainCluster || '' }).catch(e => ({ error: e.message }));
+      if (!r || r.error) return 'Cluster not moved: ' + ((r && r.error) || 'no response') + (done.length ? ' (' + done.join(', ') + ' saved)' : '');
+      done.push(cluster ? 'moved to "' + cluster + '"' : 'moved out of its cluster');
+    }
+  }
+  if (!done.length) return true;
+  await ao2TopicReload(T.slug, h);
+  showToast('✓ ' + name + ': ' + done.join(', '), 'success');
+  return true;
+}
+async function ao2TopicDelete() {
+  const T = _ao2Topic, h = T && HUB_SITES.find(s => s.slug === T.slug), K = T && _hubKw[T.slug]; if (!T || !h || !K || T.tid === '__main') return 'Hub not loaded';
+  const nP = (K.products || []).filter(p => kwNid(p.topicId) === kwNid(T.tid)).length;
+  if (!confirm('Delete topic "' + T.name + '"?\n\nAll ' + T.kws.length + ' of its keywords come off it and the empty topic is removed.' + (nP ? '\n' + nP + ' product' + (nP === 1 ? '' : 's') + ' on it will have no topic until you place ' + (nP === 1 ? 'it' : 'them') + ' again.' : '') + '\nNo product, title or asset is deleted. (↶ undo in the Keywords tab)')) return 'Not deleted';
+  const id = K.staged.some(x => x.id === T.tid) ? String(T.tid) : kwNid(T.tid);
+  const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name || T.slug, ops: [{ op: 'unassign', keywords: T.kws, from: id }] }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return (r && r.error) || 'Not deleted';
+  if (r.errors && r.errors.length) return r.errors.join(' · ');
+  await ao2TopicReload(T.slug, h);
+  showToast('✓ Topic "' + T.name + '" deleted', 'success');
+  return true;
+}
+async function ao2TopicReload(slug, h) {   // the hub's keyword model, then this table (its topic / cluster columns come from the same data)
+  delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+  _devTblLast = null; await ao2Load();
+}
 function ocApply() {
   document.querySelectorAll('.oc-sec').forEach(sec => { const c = !OC_OPEN[sec.dataset.ock];
     sec.querySelector('.oc-bd').style.display = c ? 'none' : ''; sec.querySelector('.oc-chev').textContent = c ? '▶' : '▼'; });

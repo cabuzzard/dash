@@ -20580,7 +20580,7 @@ Return: {
             const hit = Object.entries(topics).find(([, name]) => String(name).trim().toLowerCase() === String(prod.stack).trim().toLowerCase());
             if (hit) { topicId = hit[0]; topicName = hit[1]; }
           }
-          r.keywordTopic = topicName;
+          r.keywordTopic = topicName; r.keywordTopicId = topicName ? (topicId === "__main" ? "__main" : dropDash(topicId)) : "";   // All Output 2's topic modal opens this topic
           r.keywordCluster = topicName === "★ Main Keywords" ? "★ Main" : (topicId ? (assign[dropDash(topicId)] || "") : "");
           r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
           r.hubSectionHeading = r.hubSectionKey ? ((sectionHeadings[r.campId] || {})[r.hubSectionKey] || "") : "";
