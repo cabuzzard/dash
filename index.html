@@ -4580,7 +4580,7 @@ function ocToggle(ev, hd) {
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
-const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }];
+const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
@@ -4597,7 +4597,9 @@ async function ao2Load() {
     const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return null;
     const t = mine.find(x => x.kind === 'title') || mine[0];
     const hubs = [...new Set(mine.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))];
-    return { id, title: t.title || '', type: 'Title', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs.join(', ') };
+    const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
+    const n = s => String(Object.values(st).filter(v => v === s).length);
+    return { id, title: t.title || '', type: 'Title', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs.join(', '), dev: n('Development'), pub: n('Published') };
   }).filter(Boolean);
   ao2Render();
 }
