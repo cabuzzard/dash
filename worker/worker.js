@@ -44225,6 +44225,27 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
 
       // â"€â"€ updateLoginFull  -  update login fields â"€â"€
       // -- updateAssetStatus --
+      // All Output 2 (operator 2026-10-30): set or clear an asset's Parent Asset — the parent must be another asset on the SAME title
+      if (body.action === "setAssetParent") {
+        const nd = x => String(x || "").replace(/-/g, ""), assetId = nd(body.assetId), parentId = nd(body.parentAssetId);
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        if (parentId === assetId) return json({ error: "An asset can't be its own parent" }, 400);
+        const titlesOf = pg => (pg?.properties?.["Content Strategy"]?.relation || []).map(r => nd(r.id));
+        const me = await ivPage(assetId);
+        if (!me || me.object === "error") return json({ error: "Asset not found" }, 404);
+        if (parentId) {
+          const par = await ivPage(parentId);
+          if (!par || par.object === "error") return json({ error: "Parent asset not found" }, 404);
+          const mine = new Set(titlesOf(me));
+          if (!titlesOf(par).some(t => mine.has(t))) return json({ error: "The parent must be an asset on the same title" }, 400);
+          let up = par, hops = 0;   // no loops: walking up from the parent must never reach this asset
+          while (up && hops++ < 12) { const nx = nd((up.properties?.["Parent Asset"]?.relation || [])[0]?.id); if (!nx) break; if (nx === assetId) return json({ error: "That would make a loop — this asset is already above it" }, 400); up = await ivPage(nx).catch(() => null); }
+        }
+        const r = await hubNotionFetch("https://api.notion.com/v1/pages/" + dash(assetId), { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Parent Asset": { relation: parentId ? [{ id: dash(parentId) }] : [] } } }) });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: e.message || "Not saved" }, r.status); }
+        return json({ success: true, assetId, parentAssetId: parentId || null });
+      }
       if (body.action === "updateAssetStatus") {
         const { assetId, status } = body;
         if (!assetId || !status) return json({ error: "assetId and status required" }, 400);

@@ -4602,7 +4602,7 @@ async function ao2Load() {
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
     return [{ id, title: t.title || '', type: 'Title', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
   ao2Render();
@@ -4612,7 +4612,28 @@ function ao2Render() {
   const cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k));
   const th = 'cursor:grab;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   el.innerHTML = `<table style="border-collapse:collapse;font-size:12px;"><thead><tr>${cols.map(c => `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" title="Drag to reorder" style="${th}">${esc(c.label)}</th>`).join('')}</tr></thead>`
-    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
+    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x) : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
+}
+// Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
+function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }
+function ao2Label(y, sibs) { return sibs.filter(z => z.title === y.title).length > 1 ? y.title + ' · ' + y.id.slice(-4) : y.title; }
+function ao2ParentCell(x) {
+  const sibs = ao2Siblings(x), cur = sibs.find(y => y.id === x.parentId);
+  return `<input list="ao2dl-${x.id}" value="${esc(cur ? ao2Label(cur, sibs) : x.parent)}" placeholder="" onchange="ao2SetParent('${x.id}', this)" style="font-size:12px;width:240px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;">`
+    + `<datalist id="ao2dl-${x.id}">${sibs.map(y => `<option value="${esc(ao2Label(y, sibs))}"></option>`).join('')}</datalist>`;
+}
+async function ao2SetParent(id, inp) {
+  const x = AO2_ROWS.find(y => y.id === id && y.type === 'Asset'); if (!x) return;
+  const sibs = ao2Siblings(x), v = inp.value.trim(), hit = v ? sibs.find(y => ao2Label(y, sibs) === v) : null;
+  if (v && !hit) { showToast('Pick one of this title’s assets from the list', 'error'); inp.value = x.parent; return; }
+  const parentAssetId = hit ? hit.id : '';
+  if (parentAssetId === x.parentId) return;
+  inp.disabled = true;
+  const r = await call('setAssetParent', { assetId: id, parentAssetId }).catch(e => ({ error: e.message }));
+  inp.disabled = false;
+  if (!r || r.error) { showToast('Parent not saved: ' + ((r && r.error) || 'no response'), 'error'); inp.value = x.parent; return; }
+  x.parentId = parentAssetId; x.parent = hit ? hit.title : ''; if (x.src) x.src.parentAssetId = parentAssetId || null;   // keep the shared table data in step
+  showToast(hit ? 'Parent set ✓' : 'Parent cleared ✓', 'success'); ao2Render();
 }
 function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
 function ocApply() {
