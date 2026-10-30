@@ -6872,7 +6872,7 @@ async function researchSnapshot(env,{titleId,productId,campaignId,methodId,asset
   const campaign=campaignId?await safe(()=>researchNotion(env,'pages/'+kwDashId(campaignId))):null;
   const rows=(campaignId?await safe(()=>notionQuery(RESEARCH_DB,{filter:{property:'Campaign',relation:{contains:kwDashId(campaignId)}}})):[])||[];
   const research=rows.slice().sort((a,b)=>hubRichText(b.properties?.Keywords?.rich_text).length-hubRichText(a.properties?.Keywords?.rich_text).length)[0];
-  const rp=research?.properties||{},isolated=!!product?.properties?.['Keywords Isolated']?.checkbox;
+  const rp=research?.properties||{},isolated=await productIsolated(env,product,campaignId);
   const version=isolated?0:research?(rp['Keywords Version']?.number||0):null;
   const worksheet=kind==='product'?{cadence:'Weekly'}:(await safe(()=>researchWorksheet(env,{titlePage:title,methodId,assetType})))||{inputs:'',cadence:'Weekly',missing:'worksheet unreadable'};
   const cadence=writingFieldValues(campaign?.properties||{})['Research Cadence']||writingFieldValues(rp)['Research Cadence']||worksheet.cadence||'Weekly';
@@ -15890,8 +15890,7 @@ ${await digestMemoryBrief(env,job.campaignId)}
 MECHANICALLY DEDUPED NEW / CHANGED FINDINGS (the issue's factual base; known findings only if needed as labelled historical context):
 ${JSON.stringify([...fresh.new,...fresh.changed])}
 ${productNotesBrief(job.marketPlan)}
-NEWSLETTER FRAMING (from its Product Research):
-${newsletterSteering(job.newsletter?.fields)}
+${job.isolated ? "🔒 ISOLATED DIGEST — its own subject only (from its product and title research):\n" + (job.isoFraming || "") : "NEWSLETTER FRAMING (from its Product Research):\n" + newsletterSteering(job.newsletter?.fields)}
 ${job.guidance ? "RUN FOCUS (what this digest is about and how wide to look):\n" + job.guidance + "\n" : ""}THIS DIGEST PERIOD: ${job.periodStart||digestPeriod().periodStart} through ${today}. Mark older context as historical.
 
 === GEMINI DEEP RESEARCH ===
@@ -16144,12 +16143,29 @@ async function hubListSubscribers(env, cid) {
   await env.TRADES.put(ck, JSON.stringify({ n, at: Date.now() }), { expirationTtl: 86400 }).catch(() => {});
   return n;
 }
+// 🔒 Isolated topics (operator 2026-10-29: "I need to be able to isolate from the topic level"). KV topic:isolated:<cid> = [topicId].
+// A product in an isolated topic counts as 🔒 isolated (no hub Main / campaign research upstream), and a digest whose title sits in
+// an isolated topic researches from its own product + title research only — no hub research pool, no newsletter Research Focus,
+// no hub framing, creators or associations.
+async function isoTopics(env, cid) { const v = await env.TRADES.get("topic:isolated:" + hubAssetId(cid), "json").catch(() => null); return Array.isArray(v) ? v.map(hubAssetId) : []; }
+async function productIsolated(env, product, cid) {
+  const p = product?.properties || {}; if (p["Keywords Isolated"]?.checkbox) return true;
+  const t = hubAssetId(hubRichText(p["Topic ID"]?.rich_text)), c = hubAssetId(cid || ivRid(p, "Campaigns"));
+  return !!(t && t !== "__main" && c && (await isoTopics(env, c)).includes(t));
+}
+// the topic a digest title sits in: its product's Topic ID, else the title's own
+async function digestTopicOf(env, titleId) {
+  const t = titleId ? await ivPage(hubAssetId(titleId)).catch(() => null) : null; if (!t) return { topicId: "", productId: "" };
+  const productId = hubAssetId(ivRid(t.properties || {}, "product") || ivRid(t.properties || {}, "Product"));
+  const prod = productId ? await ivPage(productId).catch(() => null) : null;
+  return { topicId: hubAssetId(hubRichText(prod?.properties?.["Topic ID"]?.rich_text) || hubRichText(t.properties?.["Topic ID"]?.rich_text)), productId, title: t, product: prod };
+}
 // Scope (operator 2026-10-28): the title's keywords say WHAT the digest is about; the newsletter's Research Focus (plus a
 // guided regenerate's guidance) says HOW WIDE to look. Mechanical token sets — no model call.
 function digestScope(S) {
   const f = S.newsletter?.fields || {};
   return { anchor: scopeTokens([S.titleName, S.productName, ...(S.keywords || S.freeKeywords || [])].join(" ")),
-    focus: scopeTokens([f["Research Focus"] || "", f.Customer || "", S.guidance || ""].join(" ")) };
+    focus: scopeTokens((S.isolated ? [S.isoScope || "", S.guidance || ""] : [f["Research Focus"] || "", f.Customer || "", S.guidance || ""]).join(" ")) };
 }
 // unused records already on this parent that carry into this run and still fit the scope — they count toward the target
 // first, so new research only covers the gap
@@ -16175,9 +16191,19 @@ async function adStep(env, cid, S, invoke) {
     const product = productId ? await newsletterNotion(env, "pages/" + kwDashId(productId)).catch(() => null) : null;
     S.titleName = kwTitleOf(title); S.productId = productId; S.productName = product ? kwTitleOf(product) : ""; S.topicId = flow.topicId;
     S.names = [S.productName || S.titleName];
-    const kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
+    S.isolated = flow.topicId !== "__main" && (await isoTopics(env, cid)).includes(hubAssetId(flow.topicId));
+    let kws = hcUniq(String(flow.keywords).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)).slice(0, 30);
+    if (S.isolated) {   // 🔒 its own research only: product + title research become the framing; product keywords join the topic's
+      const tp = title.properties || {}, rt = k => hubRichText(tp[k]?.rich_text);
+      kws = hcUniq([...kws, ...hubRichText(product?.properties?.Keywords?.rich_text).split(/[\n,;]/).map(x => x.trim()).filter(Boolean)]).slice(0, 30);
+      const rec = productId ? await findBestProductResearchRecord(hdr, productId).catch(() => null) : null, rp = rec?.properties || {};
+      const prodLines = STRATEGY_FIELDS.map(k => [k, hubRichText(rp[k]?.rich_text)]).filter(x => x[1]).map(([k, v]) => k + ": " + v.slice(0, 700));
+      const titleLines = ["Title Intent", "Title Audience", "Title Angle", "Title Questions"].map(k => [k, rt(k)]).filter(x => x[1]).map(([k, v]) => k + ": " + v.slice(0, 900));
+      S.isoFraming = (`THIS DIGEST'S SUBJECT: ${S.titleName}${S.productName ? " (product: " + S.productName + ")" : ""}\n` + (prodLines.length ? "PRODUCT RESEARCH:\n" + prodLines.join("\n") + "\n" : "") + (titleLines.length ? "TITLE RESEARCH:\n" + titleLines.join("\n") : "")).slice(0, 7000);
+      S.isoScope = [rp.Customer, rp.Niche].map(v => hubRichText(v?.rich_text)).join(" ") + " " + rt("Title Audience");
+    }
     S.keywords = kws; S.freeKeywords = kws;
-    S.focusQueries = focusQueries([S.newsletter.fields["Research Focus"] || "", S.guidance || ""], coreQueries(kws, 40), 8);
+    S.focusQueries = focusQueries(S.isolated ? [S.guidance || ""] : [S.newsletter.fields["Research Focus"] || "", S.guidance || ""], coreQueries(kws, 40), 8);
     S.step = "free-core"; return;
   }
   if (S.step === "free-core") {   // every run, every Research Depth: free news on each of the title's own keywords first
@@ -16198,8 +16224,8 @@ async function adStep(env, cid, S, invoke) {
     if(S.marketPlan.cursor<S.marketPlan.gaps.length){const topic=S.marketPlan.gaps[S.marketPlan.cursor],scan=await productNotesScanTopic(topic);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.cursor++;return;}
     S.marketPlan.apiCursor=S.marketPlan.apiCursor||0;
     if(S.marketPlan.apiCursor<S.marketPlan.gaps.length){const scan=await productNotesEtsy(env,S.marketPlan.gaps[S.marketPlan.apiCursor]);S.marketPlan.evidence.push(...scan.evidence);S.marketPlan.errors.push(...scan.errors);S.marketPlan.apiCursor++;return;}
-    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords:S.keywords,marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,...(S.depthPick?{depth:S.depthPick}:{}),
-      guidance: `Digest for title “${S.titleName}”, under product “${S.productName}”. The title's topic keywords define WHAT this digest is about; the NEWSLETTER FRAMING's Research Focus defines HOW WIDE to look — rules, money, providers, studies and other developments affecting this customer belong in it even when they do not use the topic keywords. Topic ID: ${S.topicId}.${S.guidance ? `\nOPERATOR GUIDANCE FOR THIS RUN (guided regenerate — follow it): ${S.guidance}` : ""}` }), "research start");
+    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.isolated ? "" : S.name, keywords:S.keywords, ...(S.isolated ? { isolated: true, framing: S.isoFraming || "" } : {}),marketPlan:S.marketPlan,runKind:S.manual?'manual':'weekly',periodKey:S.period,...(S.depthPick?{depth:S.depthPick}:{}),
+      guidance: S.isolated ? `Digest for title “${S.titleName}”, under product “${S.productName}”. 🔒 ISOLATED TOPIC: stay strictly on these keywords and this digest's own product and title research — do not widen to the hub's broader subject or audience. Topic ID: ${S.topicId}.${S.guidance ? "\nOPERATOR GUIDANCE (this run): " + S.guidance : ""}` : `Digest for title “${S.titleName}”, under product “${S.productName}”. The title's topic keywords define WHAT this digest is about; the NEWSLETTER FRAMING's Research Focus defines HOW WIDE to look — rules, money, providers, studies and other developments affecting this customer belong in it even when they do not use the topic keywords. Topic ID: ${S.topicId}.${S.guidance ? `\nOPERATOR GUIDANCE FOR THIS RUN (guided regenerate — follow it): ${S.guidance}` : ""}` }), "research start");
     S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
     S.step = "perplexity"; return;
   }
@@ -21974,7 +22000,8 @@ ${JSON.stringify(products)}`;
           const id = r.id.replace(/-/g, ""), d = (await env.TRADES.get("digest:items:" + id, "json")) || { items: [], checks: {}, children: { premium: [], free: [], news: [] } };
           { const used = usedIds(d.children || {}); d.items = refreshPeriodFlags(d.items || [], digestPeriod()).map(x => ({ ...x, state: recordState(x, used) })); }   // flags recomputed for today's period
           const titleIdForSources = ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "");
-          const [pool, research] = await Promise.all([env.TRADES.get("digest:pool:" + cid, "json").catch(() => []), titleIdForSources ? env.TRADES.get("digest:sources:" + titleIdForSources, "json").catch(() => null) : null]);
+          const dTopic = await digestTopicOf(env, titleIdForSources), isoList = await isoTopics(env, cid), dIsolated = !!dTopic.topicId && isoList.includes(dTopic.topicId);
+          const [pool, research] = await Promise.all([dIsolated ? [] : env.TRADES.get("digest:pool:" + cid, "json").catch(() => []), titleIdForSources ? env.TRADES.get("digest:sources:" + titleIdForSources, "json").catch(() => null) : null]);
           const sourceRows = [...(d.items || []).map(x => ({ ...x, sourceKind: "finding" })), ...(Array.isArray(pool) ? pool : []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || "")), sourceKind: "pool" })), ...((research?.sources || []).map(x => ({ ...x, id: x.id || dpId((x.url || "") + "|" + (x.claim || x.title || "")), claim: x.claim || x.title || "", sourceKind: "research" })))];
           const sourceSeen = new Set(); d.sources = sourceRows.filter(x => { const key = String(x.url || "").split("?")[0].toLowerCase() || String(x.claim || "").toLowerCase(); if (!key || sourceSeen.has(key)) return false; sourceSeen.add(key); return true; });
           const interviewMaps = Array.isArray(d.interviewAssets) ? d.interviewAssets : [], interviewTitles = [...new Set(interviewMaps.map(x => x.titleId).filter(Boolean))];
@@ -21995,6 +22022,7 @@ ${JSON.stringify(products)}`;
           const rescan = await env.TRADES.get("digest:rescan:last:" + id, "json"), rescanId = await env.TRADES.get("digest:rescan:active:" + id), rescanJob = rescanId ? await env.TRADES.get("titlejob:state:" + rescanId, "json") : null;
           digests.push({ assetId: id, title: (r.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "Digest", status: r.properties?.["Asset Status"]?.select?.name || "",
             readiness: r.properties?.["Pillar Readiness"]?.select?.name || "", created: r.created_time, titleId: ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, ""),
+            topicId: dTopic.topicId || "", isolated: dIsolated,
             runsWeekly: cronFlag ? cronFlag.runsWeekly === true : legacyWeekly, weeklyRun: autoState ? { step: autoState.step, period: autoState.period, startedAt: autoState.startedAt || 0, finishedAt: autoState.finishedAt || 0, note: autoState.note || autoState.lastError || autoState.error || "", error: autoState.error || "", thin: !!autoState.thin, floor: autoState.floor || null, guidance: autoState.guidance || "" } : null,
             generationJob: generationJob ? { id: generationJob.id || generationId, status: generationJob.status || (generationJob.done ? "done" : "queued"), i: generationJob.i || 0,
               total: (generationJob.steps || []).length, running: generationJob.running || "", error: generationJob.error || "", failedStep: generationJob.failedStep || null,
@@ -22008,6 +22036,13 @@ ${JSON.stringify(products)}`;
         return json({ ok: true, hubDepth, digests, run: activeRun ? { step: activeRun.step, startedAt: activeRun.startedAt, assetId: activeRun.assetId || "" } : queued ? { step: "queued" } : null,
           last: lastRun ? { step: lastRun.step, note: lastRun.note || lastRun.error || "", at: lastRun.finishedAt || 0 } : null,
           republicationHeld: await hubRepublicationHeld(env, cid) });
+      }
+      // setTopicIsolated {campaignId, topicId, isolated} — 🔒 a keyword topic (see isoTopics)
+      if (body.action === "setTopicIsolated") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const cid = hubAssetId(body.campaignId), tid = hubAssetId(body.topicId); if (cid.length !== 32 || !tid || tid === "__main") return json({ error: "campaignId and a topic required (★ Main can't be isolated)" }, 400);
+        const list = (await isoTopics(env, cid)).filter(x => x !== tid); if (body.isolated) list.push(tid);
+        await env.TRADES.put("topic:isolated:" + cid, JSON.stringify(list)); return json({ ok: true, isolatedTopics: list });
       }
       if (body.action === "digestSetDepth") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
@@ -29778,7 +29813,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         ]);
         const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
         const jobBoardListings = (productPage.properties?.["Job Board Listings"]?.rich_text || []).map(t => t.plain_text).join("");
-        const isolated = !!productPage.properties?.["Keywords Isolated"]?.checkbox;   // 🔒 takes no direction from the hub's Main / campaign research
+        const isolated = await productIsolated(env, productPage);   // 🔒 takes no direction from the hub's Main / campaign research (itself or its topic)
         if (!record) return json({ strategy: null, keywords, jobBoardListings, isolated });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -29964,7 +29999,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
           // has one but its stamped Keywords Version is behind the campaign's
           // current one (main keywords moved since this was last generated
           // or edited) -> 'off-main'; caught up -> 'updated'.
-          const isolated = !!p.properties?.["Keywords Isolated"]?.checkbox;   // 🔒 Main isn't its upstream
+          const isolated = !!p.properties?.["Keywords Isolated"]?.checkbox || isoTopicList.includes(hubAssetId(hubRichText(p.properties?.["Topic ID"]?.rich_text)));   // 🔒 Main isn't its upstream (itself or its topic)
           const researchState = !sr ? 'empty' : (!isolated && (sr.properties?.["Keywords Version"]?.number || 0) < campaignKwVersion ? 'off-main' : 'updated');
           return {
             productId, productName,
@@ -30217,7 +30252,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
         const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
-        const campaignKwVersion = await getCampaignKeywordsVersion(hdr, campaignId);
+        const campaignKwVersion = await getCampaignKeywordsVersion(hdr, campaignId), isoTopicList = await isoTopics(env, campaignId);
         await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
 
         const existing = await findBestProductResearchRecord(hdr, productId);
@@ -40115,7 +40150,7 @@ Call submit_keyword_cluster with your result.`;
       }
       if (body.action === "getKeywordClusters") {
         const structure=await env.TRADES.get('hub:structure:'+hierarchyId(body.campaignId),'json');
-        if(structure){const view=hubStructureView(structure);return json({success:true,staged:view.staged,committed:view.committed,topicClusters:view.topicClusters,archived:view.archived,sync:await hubStructureRuntime(env).action({action:'getHubStructureSync',campaignId:body.campaignId})});}
+        if(structure){const view=hubStructureView(structure);return json({success:true,staged:view.staged,committed:view.committed,topicClusters:view.topicClusters,archived:view.archived,isolatedTopics:await isoTopics(env,body.campaignId),sync:await hubStructureRuntime(env).action({action:'getHubStructureSync',campaignId:body.campaignId})});}
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
@@ -40131,7 +40166,7 @@ Call submit_keyword_cluster with your result.`;
         // Cluster layer over topics (a "topic" = what this code calls a cluster).
         let topicClusters = { clusters: [], assign: {} };
         try { topicClusters = (await env.TRADES.get(`seotopicclusters:${norm(campaignId)}`, "json")) || topicClusters; } catch (e) {}
-        return json({ success: true, staged, committed, topicClusters });
+        return json({ success: true, staged, committed, topicClusters, isolatedTopics: await isoTopics(env, campaignId) });
       }
 
       // ── Topic clusters: a layer ABOVE the SEO "clusters" (now called TOPICS
@@ -56969,13 +57004,12 @@ async function drStandingSources(env, campaignId) {
 
 function drBrief(job) {
   const kw = job.keywords.join(", ");
-  const cr = job.standing.creators.map(c => `- ${c.name}${c.handles ? ` (${c.handles})` : ""}${c.url ? ` ${c.url}` : ""}${c.subject ? ` — ${c.subject}` : ""}`).join("\n");
-  const as = job.standing.associations.map(a => `- ${a.name}${a.publication ? ` — ${a.publication}` : ""}${a.url ? ` ${a.url}` : ""}`).join("\n");
+  const cr = job.isolated ? "" : job.standing.creators.map(c => `- ${c.name}${c.handles ? ` (${c.handles})` : ""}${c.url ? ` ${c.url}` : ""}${c.subject ? ` — ${c.subject}` : ""}`).join("\n");
+  const as = job.isolated ? "" : job.standing.associations.map(a => `- ${a.name}${a.publication ? ` — ${a.publication}` : ""}${a.url ? ` ${a.url}` : ""}`).join("\n");
   const urls = (job.urls || []).map(u => `- ${u}`).join("\n");
   return `Research the latest, most useful information for a weekly industry digest.
 
-NEWSLETTER FRAMING (authoritative Product Research):
-${newsletterSteering(job.newsletter?.fields)}
+${job.isolated ? "🔒 ISOLATED DIGEST — research ONLY this subject, from its own research below. Ignore any broader hub subject.\n" + (job.isoFraming || "") : "NEWSLETTER FRAMING (authoritative Product Research):\n" + newsletterSteering(job.newsletter?.fields)}
 PERIOD: ${job.periodStart||digestPeriod().periodStart} through ${new Date().toISOString().slice(0,10)}. Distinguish older background from this period's developments.
 TOPIC KEYWORDS: ${kw}
 ${job.memoryBrief||""}
@@ -57117,7 +57151,8 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     if (!keywords.length) return { error: "Enter at least one keyword" };
     const job = { id: "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), campaignId: cid, hubName: body.hubName || "",
       keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
-      marketPlan:body.marketPlan||null,notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40) };
+      marketPlan:body.marketPlan||null,notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString(),runKind:body.runKind==='weekly'?'weekly':'manual',periodKey:String(body.periodKey||'').slice(0,40),
+      ...(body.isolated ? { isolated: true, isoFraming: String(body.framing || "").slice(0, 7000) } : {}) };
     const newsletter=await newsletterContext(env,cid);
     job.depthOverride=DIGEST_DEPTHS.includes(body.depth)&&body.depth!=='Free'?body.depth:'';   // per-digest model pick (digestSetDepth); Free never reaches this research job
     if(job.depthOverride)newsletter.fields={...newsletter.fields,'Research Depth':job.depthOverride};
