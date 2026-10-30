@@ -4580,7 +4580,7 @@ function ocToggle(ev, hd) {
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
-const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
@@ -4602,7 +4602,7 @@ async function ao2Load() {
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+      .map(x => ({ id: nid(x.assetId), title: x.assetName || '', ofTitle: t.title || '', platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.rawAssetType || '', status: x.assetStatus || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
     return [{ id, title: t.title || '', type: 'Title', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
   ao2Render();
@@ -4612,7 +4612,7 @@ function ao2Render() {
   const cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k));
   const th = 'cursor:grab;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   el.innerHTML = `<table style="border-collapse:collapse;font-size:12px;"><thead><tr>${cols.map(c => `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" title="Drag to reorder" style="${th}">${esc(c.label)}</th>`).join('')}</tr></thead>`
-    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x) : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
+    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x) : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>` : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '')}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
 }
 // Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
 function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }
