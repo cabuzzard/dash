@@ -766,6 +766,7 @@
       <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div>
     </div>
 
+    <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }</style>
     <!-- ALL HUBS DIGESTS (operator 2026-10-29) — every hub's Digest Parents, each the hub Digest section's own panel, collapsed until opened -->
     <div class="oc-sec" data-ock="alldigests"><div class="oc-hd" onclick="ocToggle(event,this);allDigLoad()" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs Digests</h2>
@@ -17111,20 +17112,67 @@ let _allDigLoaded = false;
 async function allDigLoad(force) {
   if (_allDigLoaded && !force) return; _allDigLoaded = true;
   const el = document.getElementById('allDigBody'); if (!el) return;
-  // one collapsible row per digest, "Hub — Digest title", sorted by hub (operator 2026-10-29); a hub with no digests adds no row
-  const hubs = HUB_SITES.filter(h => h.campaignId).sort((x, y) => String(x.name || x.slug).localeCompare(String(y.name || y.slug)));
-  el.innerHTML = `<div id="allDigMsg" style="font-size:11px;color:var(--text3);margin-bottom:4px;">Loading every hub's digests…</div>` + hubs.map(h => `<div id="allDigests-${esc(h.slug)}"></div>`).join('');
+  el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading every hub&#39;s digests…</div>';
+  const hubs = HUB_SITES.filter(h => h.campaignId);
   await Promise.all(hubs.map(h => hub2PoolLoad(h.slug, !!force).catch(() => {})));
-  hubs.forEach(h => allDigPaint(h.slug));
-  const n = hubs.reduce((a, h) => a + (((_hub2Pool[h.slug] || {}).digests) || []).length, 0), m = document.getElementById('allDigMsg');
-  if (m) m.textContent = n + ' digest' + (n === 1 ? '' : 's') + ' across ' + hubs.length + ' hubs';
+  allDigRender();
 }
-function allDigPaint(slug) {
-  const el = document.getElementById('allDigests-' + slug); if (!el) return;
-  const P = _hub2Pool[slug], h = HUB_SITES.find(x => x.slug === slug) || {}, hubName = h.name || slug;
-  hubKeepInputs(el, () => { el.innerHTML = !P || P.loading ? ''
-    : P.error ? `<div style="font-size:11px;color:#f87171;margin:4px 0;">${esc(hubName)} — ${esc(P.error)}</div>`
-    : (P.digests || []).map(d => hub2DigHtml(slug, { ...d, title: hubName + ' — ' + (d.title || 'Digest') })).join(''); });
+// All Hubs Digests as a table (operator 2026-10-29): one row per digest — Hub · Digest title · Research level · Cron — sorted by
+// hub; ☐ rows + the bulk bar set research depth / the weekly cron for their NEXT run; clicking a row opens its full digest panel
+// underneath (the same panel as the hub's Digest section). Repaints with any hub's Digest section.
+const _allDigSel = new Set(), _allDigExp = new Set();
+function allDigPaint() { if (document.getElementById('allDigBody') && _allDigLoaded) allDigRender(); }
+function allDigRows() {
+  const out = [];
+  HUB_SITES.filter(h => h.campaignId).forEach(h => { const P = _hub2Pool[h.slug]; ((P && P.digests) || []).forEach(d => out.push({ slug: h.slug, hub: h.name || h.slug, d, hubDepth: (P && P.hubDepth) || '' })); });
+  return out.sort((x, y) => x.hub.localeCompare(y.hub) || String(x.d.title).localeCompare(String(y.d.title)));
+}
+function allDigRender() {
+  const el = document.getElementById('allDigBody'); if (!el) return;
+  const rows = allDigRows(), loading = HUB_SITES.filter(h => h.campaignId).some(h => !_hub2Pool[h.slug] || _hub2Pool[h.slug].loading);
+  const errs = HUB_SITES.filter(h => _hub2Pool[h.slug] && _hub2Pool[h.slug].error).map(h => (h.name || h.slug) + ': ' + _hub2Pool[h.slug].error);
+  const TH = 'text-align:left;font-size:11px;color:var(--text3);padding:5px 8px;border-bottom:1px solid var(--border2);white-space:nowrap;background:var(--surface2);';
+  const TD = 'padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;';
+  const key = r => r.slug + '|' + r.d.assetId, when = t => t ? new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+  const depthCell = r => { const own = r.d.depthPick || ''; return own ? `<b>${esc(own)}</b>` : `<span style="color:var(--text3);">hub default${r.hubDepth ? ' · ' + esc(r.hubDepth) : ''}</span>`; };
+  const cronCell = r => { const d = r.d, w = d.weeklyRun || {}, live = w.step && !['done', 'skip', 'error'].includes(w.step);
+    return `<span style="color:${d.runsWeekly ? '#f6ad55' : 'var(--text3)'};">${d.runsWeekly ? 'Weekly · Sun night' : 'Off'}</span>`
+      + (live ? ` <span style="color:#60a5fa;">· running (${esc(w.step)})</span>` : w.finishedAt ? ` <span style="color:var(--text3);">· last ${esc(w.step || '')} ${when(w.finishedAt)}</span>` : ''); };
+  const allOn = rows.length && rows.every(r => _allDigSel.has(key(r)));
+  const btn = 'font-size:11px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;';
+  const bar = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 8px;font-size:11.5px;">
+    <span style="color:var(--text3);">${rows.length} digest${rows.length === 1 ? '' : 's'}${loading ? ' · loading…' : ''} · <b style="color:var(--text);">${_allDigSel.size}</b> selected</span>
+    <select id="allDigDepth" class="kw-sel" style="font-size:11px;"><option value="__">Research depth…</option><option value="">Hub default</option>${HUB2_DIG_MODELS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>
+    <button onclick="allDigBulk('depth')" style="${btn}">Set depth</button>
+    <select id="allDigCron" class="kw-sel" style="font-size:11px;"><option value="__">Weekly cron…</option><option value="on">On (Sunday night)</option><option value="off">Off</option></select>
+    <button onclick="allDigBulk('cron')" style="${btn}">Set cron</button>
+    <span id="allDigMsg" style="color:var(--text3);"></span></div>`;
+  const body = rows.map(r => { const k = key(r), open = _allDigExp.has(k);
+    return `<tr style="cursor:pointer;${open ? 'background:var(--surface2);' : ''}" onclick="allDigToggle('${esc(k)}')">
+      <td style="${TD}width:26px;" onclick="event.stopPropagation()"><input type="checkbox" ${_allDigSel.has(k) ? 'checked' : ''} onchange="allDigPick('${esc(k)}',this.checked)"></td>
+      <td style="${TD}white-space:nowrap;font-weight:600;">${esc(r.hub)}</td>
+      <td style="${TD}"><span style="font-size:10px;color:var(--text3);margin-right:5px;">${open ? '▼' : '▶'}</span>${esc(r.d.title || 'Digest')}${r.d.isolated ? ' <span title="Its topic is isolated" style="color:#8ab4f8;">🔒</span>' : ''}</td>
+      <td style="${TD}white-space:nowrap;">${depthCell(r)}</td>
+      <td style="${TD}white-space:nowrap;">${cronCell(r)}</td>
+      <td style="${TD}white-space:nowrap;color:var(--text3);font-size:11px;">${esc(r.d.status || '')}</td></tr>`
+      + (open ? `<tr><td colspan="6" class="alldig-x" style="padding:6px 8px 12px;border-bottom:1px solid var(--border2);">${hub2DigHtml(r.slug, r.d)}</td></tr>` : ''); }).join('');
+  hubKeepInputs(el, () => { el.innerHTML = bar + (errs.length ? `<div style="font-size:11px;color:#f87171;margin-bottom:6px;">${esc(errs.join(' · '))}</div>` : '')
+    + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}width:26px;"><input type="checkbox" ${allOn ? 'checked' : ''} onchange="allDigPickAll(this.checked)" title="Select all"></th><th style="${TH}">Hub</th><th style="${TH}">Digest</th><th style="${TH}">Research level</th><th style="${TH}">Cron</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="6" style="${TD}color:var(--text3);">${loading ? 'Loading…' : 'No Digest Parents on any hub.'}</td></tr>`}</tbody></table></div>`; });
+}
+function allDigToggle(k) { const i = k.indexOf('|'), slug = k.slice(0, i), aid = k.slice(i + 1); if (_allDigExp.has(k)) _allDigExp.delete(k); else { _allDigExp.add(k); _hub2DigOpen[slug + '|' + aid] = true; } allDigRender(); }
+function allDigPick(k, on) { if (on) _allDigSel.add(k); else _allDigSel.delete(k); allDigRender(); }
+function allDigPickAll(on) { allDigRows().forEach(r => { const k = r.slug + '|' + r.d.assetId; if (on) _allDigSel.add(k); else _allDigSel.delete(k); }); allDigRender(); }
+async function allDigBulk(kind) {
+  const msg = t => { const m = document.getElementById('allDigMsg'); if (m) m.textContent = t; };
+  const picked = allDigRows().filter(r => _allDigSel.has(r.slug + '|' + r.d.assetId)); if (!picked.length) return msg('Tick the digests to change first');
+  const v = (document.getElementById(kind === 'depth' ? 'allDigDepth' : 'allDigCron') || {}).value; if (v === '__' || v === undefined) return msg(kind === 'depth' ? 'Pick a research depth' : 'Pick On or Off');
+  let ok = 0; const fail = [];
+  for (const r of picked) { msg('⏳ ' + (ok + fail.length + 1) + ' / ' + picked.length + ' — ' + r.hub);
+    const res = kind === 'depth' ? await call('digestSetDepth', { assetId: r.d.assetId, depth: v }).catch(e => ({ error: e.message }))
+      : await call('digestSetWeekly', { assetId: r.d.assetId, runsWeekly: v === 'on' }).catch(e => ({ error: e.message }));
+    if (!res || res.error || res.ok === false) fail.push(r.hub + ' — ' + (r.d.title || '') + ': ' + ((res && res.error) || 'no response')); else ok++; }
+  const slugs = [...new Set(picked.map(r => r.slug))]; await Promise.all(slugs.map(sl => hub2PoolLoad(sl, true).catch(() => {})));
+  allDigRender(); msg((ok ? '✓ ' + ok + ' updated — used from each digest’s next run' : '') + (fail.length ? (ok ? ' · ' : '') + '✗ ' + fail.join(' · ') : ''));
 }
 // A re-render (the Digest section reloads itself every 10-60 s while a run or generation is going) must not wipe what the operator
 // is typing (operator 2026-10-29: "the digest modal keeps re loading … losing all of my work"): every input / textarea / select with
@@ -17144,7 +17192,7 @@ function hubKeepInputs(root, paint) {
   root.scrollTop = scroll;
 }
 // typing marks a field as the operator's own, so a repaint keeps it even after it loses focus
-document.addEventListener('input', e => { const t = e.target; if (t && t.id && t.closest && t.closest('[id^="hub2Pool-"], #hubDigRowModal, [id^="allDigests-"]')) t.dataset.dirty = '1'; }, true);
+document.addEventListener('input', e => { const t = e.target; if (t && t.id && t.closest && t.closest('[id^="hub2Pool-"], #hubDigRowModal, #allDigBody')) t.dataset.dirty = '1'; }, true);
 // 📰 digest on a Keywords title row (operator 2026-10-29): that title's Digest Parent in a modal — the same panel as the hub's Digest
 // section (records, Retire, model, guided regenerate, Disseminate). Every control there re-paints the section, which re-paints this.
 let _hubDigRow = null;
@@ -17386,7 +17434,7 @@ async function hub2DigRetire(slug, assetId, itemId, retired, input) {
 // Guided regenerate = a new run of this digest (same queued pipeline) with the operator's guidance added to the research brief.
 // The digest panel can be on the page twice (the hub's Digest section and the Keywords 📰 digest modal) with the same element ids —
 // a control reads the field next to the button that was clicked, never the first copy in the document (operator 2026-10-29).
-function hubNear(el, id) { const root = el && el.closest && el.closest('#hubDigRowModal, [id^="hub2Pool-"], [id^="allDigests-"]'); let x = null; try { x = root ? root.querySelector('#' + CSS.escape(id)) : null; } catch (e) {} return x || document.getElementById(id); }
+function hubNear(el, id) { const root = el && el.closest && el.closest('#hubDigRowModal, [id^="hub2Pool-"], #allDigBody'); let x = null; try { x = root ? root.querySelector('#' + CSS.escape(id)) : null; } catch (e) {} return x || document.getElementById(id); }
 async function hub2DigestRegenerate(slug, assetId, button) {
   const hub = HUB_SITES.find(x => x.slug === slug), ta = hubNear(button, 'hub2RegenGuide-' + slug + '-' + assetId), guidance = (ta?.value || '').trim();
   if (!hub) return; if (!guidance) return showToast('Say what to change first — the guidance steers the new run.', 'error');
