@@ -586,6 +586,7 @@
 .hkw-ctl{display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;width:300px;flex-shrink:0;}
 .hkw-act{display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;width:200px;flex-shrink:0;}
 .hkw-act>:first-child{margin-right:auto;}   /* the dot sits at the left edge, the buttons at the right */
+  .ao2-tbl tbody tr:hover > td { background: rgba(138,180,248,.10); }
 </style>
 </head>
 <body>
@@ -4607,6 +4608,21 @@ async function ao2Load() {
   });
   ao2Render();
 }
+// Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
+const AO2_DEFAULT_W = { title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
+let AO2_RESIZING = false;
+function ao2Widths() { try { return JSON.parse(localStorage.getItem('ao2ColW') || '{}') || {}; } catch (e) { return {}; } }
+function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || 140); }
+function ao2ResizeStart(ev, k) {
+  ev.preventDefault(); ev.stopPropagation(); AO2_RESIZING = true;
+  const tbl = document.getElementById('ao2Tbl'), col = tbl && tbl.querySelector('col[data-k="' + k + '"]'); if (!col) { AO2_RESIZING = false; return; }
+  const W = ao2Widths(), x0 = ev.clientX, w0 = ao2W(W, k), t0 = tbl.offsetWidth;
+  const move = e => { const w = Math.max(40, w0 + e.clientX - x0); col.style.width = w + 'px'; tbl.style.width = (t0 + w - w0) + 'px'; };
+  const up = e => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.body.style.cursor = '';
+    W[k] = Math.max(40, w0 + e.clientX - x0); try { localStorage.setItem('ao2ColW', JSON.stringify(W)); } catch (x) {}
+    setTimeout(() => { AO2_RESIZING = false; }, 0); };   // after the click that follows mouseup
+  document.body.style.cursor = 'col-resize'; document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+}
 // Filter & sort (same model as All Output): 2 filter slots {col, val, neg}, up to 7 sort levels {col, asc}, Group by sort.
 // 💾 Save keeps the view in this browser (ao2View); ↺ Revert goes back to the saved one.
 const AO2_MAX = 7, AO2_BLANK = '__blank__', AO2_OPEN = {};
@@ -4623,7 +4639,8 @@ function ao2Rows() {
     const c = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }); if (c) return s.asc === false ? -c : c; } return 0; });
   return { rows, S };
 }
-function ao2SetSort(k, ev) {   // click: sort by this column · Ctrl/Shift-click: add a level (again flips, third time removes) · Alt-click: remove this level
+function ao2SetSort(k, ev) {
+  if (AO2_RESIZING) return;   // click: sort by this column · Ctrl/Shift-click: add a level (again flips, third time removes) · Alt-click: remove this level
   const V = ao2View(), i = V.S.findIndex(s => s.col === k);
   if (ev && ev.altKey) { if (i >= 0) V.S.splice(i, 1); }
   else if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) { if (i < 0) { if (V.S.length < AO2_MAX) V.S.push({ col: k, asc: true }); } else if (V.S[i].asc !== false) V.S[i].asc = false; else V.S.splice(i, 1); }
@@ -4665,13 +4682,14 @@ function ao2Render() {
     + `<div style="color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level with Header ticked is a collapsible header tier — unticked levels only order the rows inside them. Header clicks sort too (Ctrl- or Shift-click adds a level, again flips it, a third time removes it; Alt-click removes it). Drag a header to reorder the columns.</div></div>`;
   const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
-    return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder" style="${th}">${esc(c.label)}${arrow}</th>`; }).join('');
+    return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
   const cell = (x, c) => c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? `<a href="https://www.notion.so/${esc(x.titleId)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
     : c.key === 'title' && x.type === 'Title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
-  const rowHtml = x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${cell(x, c)}</td>`).join('')}</tr>`;
+  const tip = (x, c) => c.key === 'parent' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
+  const rowHtml = x => `<tr class="ao2-row">${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
   if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'Record not found in the table data.'}</td></tr>`;
   const G = S.filter(s => s.head !== false);   // only the levels ticked Header make header tiers
@@ -4690,14 +4708,15 @@ function ao2Render() {
       if (G.every((s, j) => AO2_OPEN[keyAt(x, j)])) body += rowHtml(x);
     });
   }
-  el.innerHTML = bar + panel + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const W = ao2Widths(), tw = cols.reduce((a, c) => a + ao2W(W, c.key), 0);
+  el.innerHTML = bar + panel + `<div style="overflow-x:auto;"><table id="ao2Tbl" class="ao2-tbl" style="border-collapse:collapse;font-size:12px;table-layout:fixed;width:${tw}px;"><colgroup>${cols.map(c => `<col data-k="${c.key}" style="width:${ao2W(W, c.key)}px;">`).join('')}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 // Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
 function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }
 function ao2Label(y, sibs) { return sibs.filter(z => z.title === y.title).length > 1 ? y.title + ' · ' + y.id.slice(-4) : y.title; }
 function ao2ParentCell(x) {
   const sibs = ao2Siblings(x), cur = sibs.find(y => y.id === x.parentId);
-  return `<input list="ao2dl-${x.id}" value="${esc(cur ? ao2Label(cur, sibs) : x.parent)}" placeholder="" onchange="ao2SetParent('${x.id}', this)" style="font-size:12px;width:240px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;">`
+  return `<input list="ao2dl-${x.id}" value="${esc(cur ? ao2Label(cur, sibs) : x.parent)}" placeholder="" onchange="ao2SetParent('${x.id}', this)" style="font-size:12px;width:100%;box-sizing:border-box;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;">`
     + `<datalist id="ao2dl-${x.id}">${sibs.map(y => `<option value="${esc(ao2Label(y, sibs))}"></option>`).join('')}</datalist>`;
 }
 async function ao2SetParent(id, inp) {
