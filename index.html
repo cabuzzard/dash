@@ -17105,13 +17105,15 @@ const _hub2Pool = {}, _hub2DigOpen = {};
 async function hub2PoolLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   if (_hub2Pool[slug] && !force && !_hub2Pool[slug].error) return hub2PoolPaint(slug);
-  _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug);
+  // a refresh keeps the current panels on screen until the new data lands — only a first load shows "Loading…"
+  const prior = _hub2Pool[slug]; if (prior && prior.timer) clearTimeout(prior.timer);
+  if (!prior || prior.error || prior.loading) { _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug); }
   try { const r = await call('getDigests', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     const pool = await call('getDigestPool', { campaignId: h.campaignId }).catch(e => ({ error: e.message }));
     _hub2Pool[slug] = { hubDepth: r.hubDepth || '', digests: r.digests || [], pool: pool && !pool.error ? (pool.items || []) : [], poolError: pool && pool.error || '', run: r.run || null, last: r.last || null, republicationHeld: r.republicationHeld || [] };
     clearTimeout(_hub2Pool[slug].timer); const genBusy = (_hub2Pool[slug].digests || []).some(d => (d.generationJob && ['queued','running'].includes(d.generationJob.status)) || (d.rescan && ['queued','running'].includes(d.rescan.status)));
     if (r.run || genBusy) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), genBusy ? 10000 : 60000); }
-  catch (e) { _hub2Pool[slug] = { error: e.message }; }
+  catch (e) { if (prior && !prior.error && !prior.loading) { _hub2Pool[slug] = prior; showToast('Digest refresh failed (showing the last data): ' + e.message, 'error'); } else _hub2Pool[slug] = { error: e.message }; }
   hub2PoolPaint(slug);
 }
 function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) hubKeepInputs(el, () => { el.innerHTML = hub2PoolHtml(slug); }); if (_hubDigRow && _hubDigRow.slug === slug) hubDigestRowPaint(); allDigPaint(slug); }
@@ -17443,9 +17445,11 @@ async function hub2DigestFlagInterview(slug, assetId, level, itemId, button) {
 // Retire = soft-remove a record from this digest's additive set (never rolled forward or generated; restorable).
 async function hub2DigRetire(slug, assetId, itemId, retired, input) {
   if (input) input.disabled = true;
+  // in place (operator 2026-10-29: Retire "causes a total reload of the modal"): the record moves group right away, no refetch
+  const P = _hub2Pool[slug], d = P && (P.digests || []).find(x => x.assetId === assetId), mark = list => (list || []).forEach(x => { if (x.id === itemId) { x.retired = retired; if (!retired) x.expired = false; } });
+  if (d) { mark(d.sources); mark(d.items); if (retired && d.checks && d.checks[itemId]) d.checks[itemId] = {}; hub2PoolPaint(slug); }
   const r = await call('digestRecordState', { assetId, itemId, state: retired ? 'retired' : 'unused' }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); if (input) { input.checked = !retired; input.disabled = false; } return; }
-  await hub2PoolLoad(slug, true);
+  if (!r || r.error) { showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); if (d) { mark(d.sources); (d.sources || []).concat(d.items || []).forEach(x => { if (x.id === itemId) x.retired = !retired; }); hub2PoolPaint(slug); } else if (input) { input.checked = !retired; input.disabled = false; } return; }
 }
 // Guided regenerate = a new run of this digest (same queued pipeline) with the operator's guidance added to the research brief.
 // The digest panel can be on the page twice (the hub's Digest section and the Keywords 📰 digest modal) with the same element ids —
