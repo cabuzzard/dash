@@ -856,6 +856,10 @@
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div></div>
+    <div class="oc-sec" data-ock="alloutput2"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output 2</h2>
+      <span style="font-size:11.5px;color:var(--text2);">New table, built around one record. Drag a header to reorder the columns.</span></div>
+    <div class="oc-bd"><div id="ao2Body"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
     <!-- HUB PRODUCTS AUDIT START -->
     <div class="oc-sec" data-ock="hubproducts" hidden title="Removed from All Output (2026-10-22); kept hidden as the clone source for hub-card Products views"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▶</span><h2 style="margin:0;font-size:16px;">Hub Products</h2><span style="font-size:11.5px;color:var(--text2);">12-hub audit · keyword snapshot October 19, 2026 · live product sync and asset counts</span></div>
@@ -4572,7 +4576,39 @@ function ocToggle(ev, hd) {
   const sec = hd.closest('.oc-sec'), bd = sec.querySelector('.oc-bd'), closed = bd.style.display !== 'none';
   bd.style.display = closed ? 'none' : ''; sec.querySelector('.oc-chev').textContent = closed ? '▶' : '▼';
   if (closed) delete OC_OPEN[sec.dataset.ock]; else { OC_OPEN[sec.dataset.ock] = 1; bd.querySelectorAll('.flow-tbl textarea').forEach(flowGrow); }
+  if (!closed && sec.dataset.ock === 'alloutput2') ao2Load();
 }
+// ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
+const AO2_TITLE_IDS = ['4011f7d3a4bb81df8ce6e769c9c53cac'];
+const AO2_COLS = [{ key: 'title', label: 'Title' }, { key: 'type', label: 'Record type' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }];
+let AO2_ROWS = null, AO2_DRAG = '';
+function ao2ColOrder() {
+  let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
+  const keys = AO2_COLS.map(c => c.key); o = (Array.isArray(o) ? o : []).filter(k => keys.includes(k));
+  keys.forEach(k => { if (!o.includes(k)) o.push(k); }); return o;
+}
+async function ao2Load() {
+  const el = document.getElementById('ao2Body'); if (!el) return;
+  if (!AO2_ROWS) el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  const r = await devAssetsTable().catch(e => ({ error: e.message }));
+  if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc((r && r.error) || 'no response')}</div>`; return; }
+  const nid = x => String(x || '').replace(/-/g, ''), all = r.rows || [];
+  AO2_ROWS = AO2_TITLE_IDS.map(id => {
+    const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return null;
+    const t = mine.find(x => x.kind === 'title') || mine[0];
+    const hubs = [...new Set(mine.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))];
+    return { id, title: t.title || '', type: 'Title', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs.join(', ') };
+  }).filter(Boolean);
+  ao2Render();
+}
+function ao2Render() {
+  const el = document.getElementById('ao2Body'); if (!el || !AO2_ROWS) return;
+  const cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k));
+  const th = 'cursor:grab;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
+  el.innerHTML = `<table style="border-collapse:collapse;font-size:12px;"><thead><tr>${cols.map(c => `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" title="Drag to reorder" style="${th}">${esc(c.label)}</th>`).join('')}</tr></thead>`
+    + `<tbody>${AO2_ROWS.length ? AO2_ROWS.map(x => `<tr>${cols.map(c => `<td style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;">${c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key]) || '<span style="color:var(--text3);">—</span>'}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">Record not found in the table data.</td></tr>`}</tbody></table>`;
+}
+function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
 function ocApply() {
   document.querySelectorAll('.oc-sec').forEach(sec => { const c = !OC_OPEN[sec.dataset.ock];
     sec.querySelector('.oc-bd').style.display = c ? 'none' : ''; sec.querySelector('.oc-chev').textContent = c ? '▶' : '▼'; });
