@@ -5000,7 +5000,7 @@ function amDraw() {
     + `<button style="font-size:12.5px;padding:6px 14px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" ${dirtyN ? '' : 'disabled'} onclick="amFootSave(this)">💾 Save</button>`
     + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & 📤 Publish to hub' : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
-  P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
+  P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
 }
 // ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
@@ -5137,6 +5137,30 @@ async function amSeriesMount() {
   hubSeriesOpen(h.slug, kwNid(a.titleId), a.id, false, 'amSeriesSlot');
 }
 function amIsSeries() { const a = AM && AM.data && AM.data.asset; return !!a && (/^series$/i.test(a.type || '') || /^series$/i.test(a.pillarType || '')); }
+// 🎬 Video (operator 2026-10-30): on video assets only — a single post story / HyperFrames reel with a Video Spec renders through the
+// approved process (worker hyperframesReel → HeyGen reel-kinetic). Shows the render state and the video once it is back.
+function amIsVideo() { const a = AM && AM.data && AM.data.asset; return !!a && (!!a.videoSpec || /^(single post story|hyperframes reel)$/i.test(a.type || '')); }
+function amVideoHtml() {
+  const a = AM.data.asset, B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  let spec = null; try { spec = a.videoSpec ? JSON.parse(a.videoSpec) : null; } catch (e) {}
+  return `<div style="border:1px solid #f472b6;border-radius:10px;padding:12px;margin-bottom:16px;background:rgba(244,114,182,.05);">
+    <div style="font-size:12.5px;margin-bottom:6px;"><b>🎬 Video</b> <span style="font-size:11px;color:var(--text3);">${spec ? esc((spec.template || 'reel') + ' v' + (spec.v || '') + ' · ' + (spec.format || '') + ' · ' + (spec.areas || []).length + ' areas') : 'no Video Spec yet — ✍ Write makes it'}</span></div>
+    ${a.videoUrl ? `<video src="${esc(a.videoUrl)}" controls playsinline style="width:100%;max-width:260px;border-radius:8px;display:block;margin:6px 0;"></video><a href="${esc(a.videoUrl)}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--accent);">Open the video ↗</a>` : ''}
+    ${a.videoRender ? `<div style="font-size:11px;color:var(--text2);margin:6px 0;">${esc(a.videoRender)}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      <button style="${B('#f472b6')}" ${spec && !AM.vBusy ? '' : 'disabled'} onclick="amVideo('render', this)">${AM.vBusy === 'render' ? '⏳ Sending…' : a.videoUrl ? '🎬 Re-render' : '🎬 Render'}</button>
+      <button style="${B('var(--text2)')}" ${spec && !AM.vBusy ? '' : 'disabled'} onclick="amVideo('check', this)">${AM.vBusy === 'check' ? '⏳ Checking…' : '↻ Check render'}</button>
+      <span style="font-size:11px;color:var(--text3);align-self:center;">HeyGen, about a minute; one render credit each</span></div></div>`;
+}
+async function amVideo(op, btn) {
+  if (!AM) return; if (op === 'render' && !confirm('Render this video on HeyGen now? It uses one render credit.')) return;
+  AM.vBusy = op; amDraw();
+  const r = await call('hyperframesReel', { assetId: AM.id, op }).catch(e => ({ error: e.message }));
+  if (!AM) return; AM.vBusy = '';
+  AM.log = !r || r.error ? '✗ ' + (op === 'render' ? 'Not sent: ' : 'Check failed: ') + ((r && r.error) || 'no response')
+    : op === 'render' ? '✓ Sent to HeyGen — ↻ Check render in a minute (the callback also finishes it)' : (r.videoUrl ? '✓ Video ready' : '⏳ ' + (r.status || 'still rendering'));
+  await amLoad();
+}
 function amPrewriteHtml() {
   const a = AM.data.asset, pw = AM.data.prewrite, run = amIsSeries(), busy = AM.pwBusy;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1.45;';
@@ -20540,7 +20564,7 @@ async function hubShortRunOpen() {
   const S = _series; if (!S || !S.seriesAssetId) return showToast('Open a Series first', 'error');
   const row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
   const prodName = String(row.product || ''), fiverr = /fiverr/i.test(prodName + ' ' + (row.title || ''));
-  _sfr = { opts: null, err: '', busy: '', count: 10, formats: null, angles: null, platform: 'Instagram', intent: fiverr ? 'Direct sales' : 'Topical engagement',
+  _sfr = { opts: null, err: '', busy: '', count: 10, formats: null, angles: null, output: 'reel', platform: 'Instagram', intent: fiverr ? 'Direct sales' : 'Topical engagement',
     cta: fiverr ? 'Order on Fiverr — starting at $150, link in bio' : 'Book the strategy call — link in bio', topicSrc: 'ideas', paste: '' };
   hubShortRunDraw();
   const r = await call('seriesShortRunOptions', { titleId: S.tid }).catch(e => ({ error: e.message }));
@@ -20576,6 +20600,7 @@ function hubShortRunDraw() {
       <label style="${L}">Post type — follows from the format × angle cell (highlighted = in this run · struck through = already used on this title)</label>${grid}
       <div style="font-size:11px;color:var(--text3);margin-top:4px;">${cellsN} cell${cellsN === 1 ? '' : 's'} picked · ${unusedN} unused · each post gets one cell at random, unused first.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+        <div><label style="${L}">Output</label><select style="${sel}" onchange="_sfr.output=this.value"><option value="reel" ${F.output === 'reel' ? 'selected' : ''}>Reel — single post story (9:16 video)</option><option value="image" ${F.output === 'image' ? 'selected' : ''}>Image — single post</option></select></div>
         <div><label style="${L}">How many posts</label><input type="number" min="1" max="20" value="${F.count}" style="${sel}width:80px;" oninput="_sfr.count=Math.max(1,Math.min(20,+this.value||1));hubShortRunDraw()"></div>
         <div><label style="${L}">Platform</label><select style="${sel}" onchange="_sfr.platform=this.value">${O.platforms.map(p => `<option ${p === F.platform ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
         <div><label style="${L}">Traffic intent</label><select style="${sel}" onchange="_sfr.intent=this.value">${O.intents.map(p => `<option ${p === F.intent ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
@@ -20585,7 +20610,7 @@ function hubShortRunDraw() {
         <option value="ideas" ${F.topicSrc === 'ideas' ? 'selected' : ''}>Unused ideas from this Series' sources</option><option value="paste" ${F.topicSrc === 'paste' ? 'selected' : ''}>Paste a list — one topic per line</option><option value="pillar" ${F.topicSrc === 'pillar' ? 'selected' : ''}>No separate topics — the title's pillar</option></select>
       ${F.topicSrc === 'paste' ? `<textarea rows="5" style="${sel}width:100%;box-sizing:border-box;margin-top:6px;" placeholder="one topic per line" oninput="_sfr.paste=this.value;document.getElementById('sfrTopicN').textContent=hubShortRunTopics().length+' topics'">${esc(F.paste)}</textarea>` : ''}
       <div id="sfrTopicN" style="font-size:11px;color:var(--text3);margin-top:4px;">${F.topicSrc === 'pillar' ? 'Every post is written from the title\'s pillar.' : topics.length + ' topic' + (topics.length === 1 ? '' : 's') + (topics.length < F.count ? ' — the rest use the title\'s pillar' : '')}</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;"><button class="modal-btn" ${F.busy || !cellsN ? 'disabled' : ''} onclick="hubShortRunGo(this)">${F.busy ? '⏳ ' + esc(F.busy) : '⚡ Generate ' + F.count + ' single post' + (F.count === 1 ? '' : 's')}</button>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;"><button class="modal-btn" ${F.busy || !cellsN ? 'disabled' : ''} onclick="hubShortRunGo(this)">${F.busy ? '⏳ ' + esc(F.busy) : '⚡ Generate ' + F.count + (F.output === 'reel' ? ' reel' : ' single post') + (F.count === 1 ? '' : 's')}</button>
         <button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text3);" onclick="document.getElementById('srShortModal').classList.remove('open')">Cancel</button>
         <span style="font-size:11px;color:var(--text3);">Creates empty Development children of this Series — each notes its format, angle, post type, platform, intent, CTA and topic. Writing comes next.</span></div>
       ${F.msg ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;color:${/^✗/.test(F.msg) ? '#f87171' : 'var(--text2)'};">${esc(F.msg)}</div>` : ''}`;
@@ -20600,7 +20625,7 @@ async function hubShortRunGo(btn) {
   if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
   F.busy = 'Creating ' + F.count + ' posts…'; F.msg = ''; hubShortRunDraw();
   const r = await call('seriesShortRun', { titleId: S.tid, titleName: row.title || (S.data && S.data.name), seriesAssetId: S.seriesAssetId, campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug,
-    assetType: hubSeriesType(S.slug, 'single'), count: F.count, formats: [...F.formats], angles: [...F.angles], platform: F.platform, intent: F.intent, cta: F.cta, topics: hubShortRunTopics() }).catch(e => ({ error: e.message }));
+    assetType: hubSeriesType(S.slug, 'single'), output: F.output, count: F.count, formats: [...F.formats], angles: [...F.angles], platform: F.platform, intent: F.intent, cta: F.cta, topics: hubShortRunTopics() }).catch(e => ({ error: e.message }));
   F.busy = '';
   if (!r || r.error) F.msg = '✗ ' + ((r && r.error) || 'no response');
   else {

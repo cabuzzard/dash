@@ -4144,6 +4144,50 @@ async function storyLog(env, entry) {
   await env.TRADES.put("story:log", JSON.stringify([{ ...entry, at: new Date().toISOString() }, ...log].slice(0, 100)));
 }
 // Write ONE story: an explicit slotId, or a random Open slot of strategyId (on titleId when given).
+// ── single post story from a SERIES run (operator 2026-10-30: link the approved video process to assets from Series runs). The same
+// write → check → Video Spec v2 → Publish → pool background steps as storyWrite, for a Series child made by ⚡ Generate short form run
+// (Output: Reel). Its pointers (format · angle · post type · CTA · topic) come from KV shortrun:asset:<id> instead of a slot. A failed write
+// leaves the operator's asset at Development (never archived). Render with hyperframesReel as usual.
+async function storySeriesWrite(env, assetId) {
+  const aid = hubAssetId(assetId), page = await ivPage(aid), p = page.properties || {};
+  if (!/^single post story$/i.test(p["Asset Type"]?.select?.name || "")) return { error: "Not a single post story asset" };
+  const ptr = await env.TRADES.get("shortrun:asset:" + aid, "json"); if (!ptr) return { error: "This asset has no short-form run pointers" };
+  const titleId = ivRid(p, "Content Strategy"); if (!titleId) return { error: "This asset has no title" };
+  const titlePage = await ivPage(titleId), titleName = hubRichText(titlePage.properties?.Title?.title) || "Untitled";
+  const pillar = await extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "");
+  if (!pillar.trim()) return { error: "no_pillar", reason: `"${titleName}" has no pillar yet — write the title's pillar first.` };
+  const m = await storyMethod(), pattern = m.formats[ptr.format];
+  if (!pattern) return { error: `The method lists no format "${ptr.format}"` };
+  if (!m.types.includes(ptr.postType)) return { error: `The method lists no post type "${ptr.postType}"` };
+  const cid = ivRid(p, "Campaign") || ivRid(titlePage.properties, "Campaign");
+  const booking = /\b(book|call|consult|strategy call)\b/i.test(ptr.cta || "") ? await storyBookingLink(cid) : "";
+  const blurb = hubRichText(p.Description?.rich_text), keep = String(ptr.blurb || blurb || "").replace(/^SERIES RUN — [\s\S]*$/, "");
+  if (keep && !ptr.blurb) { ptr.blurb = keep; await env.TRADES.put("shortrun:asset:" + aid, JSON.stringify(ptr)); }
+  const description = `SERIES RUN — write exactly this one post. Topic: ${ptr.topic || ptr.blurb || titleName}.${ptr.blurb ? " Subject: " + ptr.blurb : ""} Format: ${ptr.format} (areas in this order: ${pattern.map(g => g.kind + " ×" + (g.min === g.max ? g.min : g.min + "-" + g.max)).join(" · ")}). `
+    + `Angle: ${ptr.angle}. Post type: ${ptr.postType} — apply only that post type's section of the method's Post types. CTA for the CTA area and the caption (one action, one destination — use exactly this): ${ptr.cta}${booking ? ". Booking link: " + booking : ""}.`;
+  const setDescription = text => fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Description": { rich_text: ivRt(text) } } }) }).catch(() => {});
+  await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Description": { rich_text: ivRt(description) }, "Method": { relation: [{ id: ivDash(m.id) }] } } }) }).catch(() => {});
+  let areas = [], problems = [], fields = {};
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt === 2) await setDescription(description + ` THE PREVIOUS DRAFT MISSED — fix exactly these: ${problems.join("; ")}. Where the format allows more areas of that kind, split a long area in two instead of cutting meaning.`);
+    const w = await writeContractAsset(env, aid).catch(e => ({ error: e.message }));
+    if (attempt === 2) await setDescription(description);
+    if (w.error) { await storyLog(env, { assetId: aid, error: w.error, reason: w.reason || "", series: true }); return { error: w.error, reason: w.reason || "" }; }
+    fields = writingFieldValues((await ivPage(aid)).properties || {});
+    const parsed = storyParseAreas(fields["Story Areas"]);
+    areas = parsed.areas; problems = storyCheck(areas, parsed.stray, pattern, m.budgets, m.postWords);
+    if (!problems.length) break;
+  }
+  if (problems.length) { await storyLog(env, { assetId: aid, error: "areas_invalid", problems, series: true }); return { error: "areas_invalid", reason: "The written areas still miss the format: " + problems.join("; ") + " — left at Development." }; }
+  const spec = { template: "reel-kinetic", v: 2, format: ptr.format, areas, type: ptr.postType, angle: ptr.angle, seriesRun: true };
+  const up = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+    "Video Spec": { rich_text: ivRt(JSON.stringify(spec)) }, "Body": { rich_text: ivRt(areas.map(a => a.text).join("\n")) }, "Asset Status": { select: { name: "Publish" } } } }) });
+  if (!up.ok) return { error: "Written, but the Video Spec / status save failed: " + ((await up.json().catch(() => ({}))).message || up.status) };
+  const bg = await backgroundNext(env).catch(() => null);
+  if (bg) await assetBackgroundSet(env, { assetId: aid, backgroundId: bg.id }).catch(e => console.error("story background:", e.message));
+  await storyLog(env, { assetId: aid, title: titleName, format: ptr.format, angle: ptr.angle, type: ptr.postType, background: bg?.id || "", series: true });
+  return { ok: true, written: true, violations: [], areas: areas.length, status: "Publish", videoSpec: true };
+}
 async function storyWrite(env, { slotId, strategyId, titleId }) {
   if (!slotId) {
     if (!strategyId) return { error: "slotId or strategyId required" };
@@ -22168,6 +22212,7 @@ ${JSON.stringify(products)}`;
         if (!formats.length || !angles.length) return json({ error: "pick at least one format and one angle" }, 400);
         const count = Math.max(1, Math.min(20, parseInt(body.count, 10) || 10));
         const platform = SF_PLATFORMS.includes(body.platform) ? body.platform : "Instagram", intent = SF_INTENTS.includes(body.intent) ? body.intent : "Topical engagement";
+        const output = body.output === "image" ? "image" : "reel", childType = output === "reel" ? "single post story" : String(body.assetType || "single post");
         const cta = String(body.cta || "").trim().slice(0, 200); if (!cta) return json({ error: "set the run's CTA" }, 400);
         const usedKey = "shortrun:used:" + titleId, used = (await env.TRADES.get(usedKey, "json")) || [];
         const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -22184,10 +22229,10 @@ ${JSON.stringify(products)}`;
           const pointers = `Short form run · Format: ${c.format} · Angle: ${c.angle} · Post type: ${c.postType} · Platform: ${platform} · Intent: ${intent} · CTA: ${cta}`;
           const idea = (topic ? topic.t : "the title's pillar (no separate topic)") + "\n" + pointers;
           const r = await invoke({ action: "seriesUseIdea", titleId, titleName: body.titleName, seriesAssetId: body.seriesAssetId, ideaId: topic ? topic.id : "", idea, source: topic ? topic.src : "Short form run",
-            kind: "single", assetType: String(body.assetType || "single post"), campaignId: body.campaignId, productId: body.productId, slug: body.slug }).catch(e => ({ error: e.message }));
+            kind: "single", assetType: childType, campaignId: body.campaignId, productId: body.productId, slug: body.slug }).catch(e => ({ error: e.message }));
           if (!r || r.error || !r.assetId) { failed.push((topic ? topic.t.slice(0, 40) : c.key) + ": " + ((r && r.error) || "not created")); continue; }
           const aid = String(r.assetId).replace(/-/g, "");
-          await env.TRADES.put("shortrun:asset:" + aid, JSON.stringify({ format: c.format, angle: c.angle, postType: c.postType, platform, intent, cta, topic: topic ? topic.t : "", titleId, at: new Date().toISOString() }));
+          await env.TRADES.put("shortrun:asset:" + aid, JSON.stringify({ output, format: c.format, angle: c.angle, postType: c.postType, platform, intent, cta, topic: topic ? topic.t : "", titleId, at: new Date().toISOString() }));
           const plat = /instagram/i.test(platform) ? "Instagram" : /linkedin/i.test(platform) ? "LinkedIn" : /tiktok/i.test(platform) ? "TikTok" : /x \//i.test(platform) ? "X / Twitter" : "Other";
           await kwNotionPatch(env, aid, { "Platform Name": { select: { name: plat } } }).catch(() => {});
           if (!used.includes(c.key)) used.push(c.key);
@@ -54912,6 +54957,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
             platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "",
             loginId: (p.Login?.relation || [])[0] ? hubAssetId(p.Login.relation[0].id) : "",
+            videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
@@ -55045,6 +55091,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         { const selfW = this, invokeW = async b2 => { const token = await signToken(HMAC_SECRET, 900000); const res = await selfW.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b2, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
           const dc = await digestChildWrite(env, invokeW, body.assetId);   // a Disseminate-built issue / article: written from its digest findings
           if (dc) return json(dc.waiting ? { needsInterview: true, interviews: dc.interviews } : { ok: true, ...dc }); }
+        { const sp = await env.TRADES.get("shortrun:asset:" + hubAssetId(body.assetId), "json").catch(() => null);   // a Series reel child → the approved story write path
+          if (sp && sp.output === "reel") { const pg = await ivPage(body.assetId); if (/^single post story$/i.test(pg.properties?.["Asset Type"]?.select?.name || "")) return json(await storySeriesWrite(env, body.assetId)); } }
         const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
       }
       if (body.action === "getAssetFullText") {
