@@ -4700,8 +4700,8 @@ function ao2BulkBar() {
   const sel = (id, opts) => `<select id="${id}" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">—</option>${opts.map(o => `<option>${o}</option>`).join('')}</select>`;
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;border:1px solid #8ab4f8;border-radius:8px;background:rgba(138,180,248,.06);font-size:11.5px;">
     <b>${S.length} selected</b><span style="color:var(--text3);">${[nA && nA + ' asset' + (nA === 1 ? '' : 's'), nT && nT + ' title' + (nT === 1 ? '' : 's'), nP && nP + ' product' + (nP === 1 ? '' : 's')].filter(Boolean).join(' · ')}</span>
-    ${nA ? `<span>Asset status ${sel('ao2BulkAS', ['Idea', 'Development', 'Review', 'Publish'])}</span>` : ''}
-    ${nT ? `<span>Title status ${sel('ao2BulkTS', ['Planning', 'Development', 'Publish'])}</span>` : ''}
+    ${nA ? `<span>Asset status ${sel('ao2BulkAS', ['Idea', 'Development', 'Review', 'Publish', 'Published'])}</span>` : ''}
+    ${nT ? `<span>Title status ${sel('ao2BulkTS', ['Planning', 'Development', 'Publish', 'Published'])}</span>` : ''}
     ${nP ? `<span>Product stage ${sel('ao2BulkPS', ['Raw', 'Keyword Research', 'Development'])}</span>` : ''}
     ${nA || nT || nP ? `<button style="${btn}border-color:#4ade80;color:#4ade80;" onclick="ao2BulkApply(this)">Apply</button>` : ''}
     ${nT ? `<button style="${btn}" title="Take these titles (and their product + assets) out of All Output 2 — nothing in Notion changes" onclick="ao2BulkRemoveTitles(this)">Remove titles from AO2</button>` : ''}
@@ -4714,11 +4714,13 @@ async function ao2BulkApply(btn) {
   const S = ao2Selected(), v = id => (document.getElementById(id) || {}).value || '', as = v('ao2BulkAS'), ts = v('ao2BulkTS'), ps = v('ao2BulkPS');
   if (!as && !ts && !ps) return ao2BulkMsg('Pick a status / stage first');
   const jobs = [], skipped = [];
-  if (as) S.filter(x => x.type === 'Asset').forEach(x => /^published$/i.test(x.status) ? skipped.push(x.title + ' (Published — publish state changes from its own modal)') : jobs.push(() => call('updateAssetStatus', { assetId: x.id, status: as, statusOnly: true })));
+  // Published: a hub asset is published to its hub (live page); any other asset is marked Published + dated. Other statuses never touch a Published asset.
+  const isHub = x => { const s = x.src || {}; return !!(s.hubSection || s.contentHub || /^sub ?page$/i.test(x.assetType || s.rawAssetType || '')); };
+  if (as) S.filter(x => x.type === 'Asset').forEach(x => /^published$/i.test(x.status) ? skipped.push(x.title + ' (already Published)') : as === 'Published' ? jobs.push(() => isHub(x) ? call('publishHubAsset', { assetId: x.id }).then(r => r && r.skipped ? { error: r.skipped } : r) : call('updateAssetStatus', { assetId: x.id, status: 'Published' })) : jobs.push(() => call('updateAssetStatus', { assetId: x.id, status: as, statusOnly: true })));
   if (ts) S.filter(x => x.type === 'Title').forEach(x => jobs.push(() => call('updateTitleStage', { titleId: x.id, stage: ts })));
   if (ps) S.filter(x => x.type === 'Product').forEach(x => jobs.push(() => call('setProductStage', { productId: x.id, stage: ps })));
   if (!jobs.length) return ao2BulkMsg('Nothing to change' + (skipped.length ? ' — ' + skipped.length + ' Published asset' + (skipped.length === 1 ? '' : 's') + ' left as is' : ''));
-  if (!confirm('Apply to ' + jobs.length + ' record' + (jobs.length === 1 ? '' : 's') + '?' + (skipped.length ? '\n\nLeft as is:\n' + skipped.join('\n') : ''))) return;
+  if (!confirm((as === 'Published' ? 'Publish ' : 'Apply to ') + jobs.length + ' record' + (jobs.length === 1 ? '' : 's') + '?' + (as === 'Published' ? '\n\nHub assets are published to their hub (live page); other assets are marked Published.' : '') + (skipped.length ? '\n\nLeft as is:\n' + skipped.join('\n') : ''))) return;
   btn.disabled = true; let ok = 0; const fail = [];
   for (const j of jobs) { const r = await j().catch(e => ({ error: e.message })); if (r && !r.error) ok++; else fail.push((r && r.error) || 'no response'); ao2BulkMsg('⏳ ' + (ok + fail.length) + ' / ' + jobs.length); }
   showToast('✓ ' + ok + ' updated' + (fail.length ? ' · ✗ ' + fail.length + ': ' + fail[0] : '') + (skipped.length ? ' · ' + skipped.length + ' Published left as is' : ''), fail.length ? 'error' : 'success');
