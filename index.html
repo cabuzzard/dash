@@ -4813,12 +4813,13 @@ function ao2Render() {
   const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button>` : '')
     : c.key === 'product' && x.product && x.productId ? ao2Dot(x.sProd) + `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
     : c.key === 'title' && x.type === 'Product' ? ao2Dot(x.sProd) + `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
+    : c.key === 'cluster' ? esc(x.cluster || '') + (x.campId ? `<button style="font-size:10.5px;padding:0 5px;margin-left:6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="New topic in this cluster — with an optional new product and title, each with seed keywords (placeholders; research runs separately)" onclick="ao2NewTopicOpen('${esc(x.campId)}',${esc(JSON.stringify(x.cluster || ''))})">＋ topic</button>` : '')
     : c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? ao2Dot(x.sTopic) + `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.titleId)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
     : c.key === 'title' && x.type === 'Title' ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.id)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
-  const tip = (x, c) => c.key === 'parent' || c.key === 'asset' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
+  const tip = (x, c) => c.key === 'parent' || c.key === 'asset' || c.key === 'cluster' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
   const rowHtml = x => `<tr class="ao2-row"><td style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border);"><input type="checkbox" ${AO2_SEL.has(ao2Key(x)) ? 'checked' : ''} onchange="ao2SelToggle('${esc(ao2Key(x))}',this.checked)"></td>${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
   if (!rows.length) body = `<tr><td colspan="${cols.length + 1}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'No titles yet — tick → AO2 on a title in All Output.'}</td></tr>`;
@@ -5206,6 +5207,58 @@ function amFlowHtml() {
     + sec('Hub voice', P.voice) + sec('Hub audience', P.hub && P.hub.audience) + (P.hub && P.hub.design ? sec('Hub design', P.hub.design, 'the method asks for design') : '')
     + sec('Interview', P.interview, 'answered questions') + sec('Platform', P.platform) + sec('This asset — subject', P.subject)
     + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Pre-write', P.prewrite, 'external LLM draft — the writer starts from it') + sec('Current fields', P.currentFields, 'what is on the asset now');
+}
+// ── ＋ topic (operator 2026-10-30, on the Cluster column): ONE modal that sets up a new topic in an existing cluster plus — optionally — a
+// new product and a new title on it, each with its seed keywords. Placeholders only: no research, keywords run or pillar here (those
+// run separately). topic → kwHubApply newTopics (seeds = its keywords) · product → createProduct (Planning, on the topic, seed = its
+// Keywords) · title → createDevTitle (Development, seed → "seed idea") + setTitleTopic, and onto the AO2 list.
+async function ao2NewTopicOpen(campId, cluster) {
+  const h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(campId)); if (!h) return showToast('This row\u2019s campaign isn\u2019t a content hub', 'error');
+  hcModal('<h3 style="margin:0 0 4px;">＋ New topic</h3><div style="font-size:12px;color:var(--text3);">Loading the ' + esc(h.slug) + ' keywords…</div>');
+  if (!_hubKw[h.slug] || _hubKw[h.slug].error) { delete _hubKw[h.slug]; await hubKwLoad(h.slug); }
+  const K = _hubKw[h.slug]; if (!K || K.error) { hcModal('<h3 style="margin:0 0 4px;">＋ New topic</h3><div style="font-size:12px;color:#f87171;">Keywords didn\u2019t load</div>' + HC_CANCEL); return; }
+  const cl = (K.tc && K.tc.clusters) || [], IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);', box = 'border:1px solid var(--border2);border-radius:8px;padding:10px 12px;margin-bottom:10px;';
+  hcModal(`<h3 style="margin:0 0 2px;">＋ New topic — ${esc(h.slug)}</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">Placeholders only — nothing is researched here. Run keywords / research / pillar on each one separately afterwards.</div>
+    <div style="${box}"><label style="${L}">Cluster</label><select id="ao2NtCl" style="${IN}">${cl.map(c => `<option ${c === cluster ? 'selected' : ''}>${esc(c)}</option>`).join('')}${cl.length ? '' : '<option value="">(no clusters — unclustered)</option>'}</select>
+      <label style="${L}">Topic name</label><input id="ao2NtName" style="${IN}" placeholder="e.g. Content calendars">
+      <label style="${L}">Topic seed keywords (comma or one per line — become its keywords)</label><textarea id="ao2NtKw" rows="2" style="${IN}" placeholder="content calendar, content calendar template"></textarea></div>
+    <div style="${box}"><label style="${L}">New product (optional)</label><input id="ao2NpName" style="${IN}" placeholder="product name — leave blank for none">
+      <label style="${L}">Product seed keyword</label><input id="ao2NpKw" style="${IN}" placeholder="the keyword it sells on"></div>
+    <div style="${box}"><label style="${L}">New title (optional)</label><input id="ao2NtTitle" style="${IN}" placeholder="title — leave blank for none">
+      <label style="${L}">Title seed keywords</label><input id="ao2NtTitleKw" style="${IN}" placeholder="what the title's research starts from">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" id="ao2NtAo2" checked> put the new title in All Output 2</label></div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => ao2NewTopicGo('${h.slug}'))">Create</button>${HC_CANCEL}</div>`);
+}
+async function ao2NewTopicGo(slug) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return 'Hub not loaded';
+  const v = id => ((document.getElementById(id) || {}).value || '').trim(), split = s => [...new Set(s.split(/[,\n]/).map(x => x.trim().toLowerCase()).filter(Boolean))];
+  const name = v('ao2NtName'), cluster = v('ao2NtCl'), prod = v('ao2NpName'), prodKw = v('ao2NpKw'), title = v('ao2NtTitle'), titleKw = v('ao2NtTitleKw'), toAo2 = !!(document.getElementById('ao2NtAo2') || {}).checked;
+  if (!name) return 'Type a topic name';
+  if ([...K.staged, ...K.committed].some(t => String(t.name || '').trim().toLowerCase() === name.toLowerCase())) return 'There is already a topic called "' + name + '"';
+  let kws = split(v('ao2NtKw')); if (!kws.length) kws = [name.toLowerCase()];
+  const id = kwHubNewId(0), done = [];
+  const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name, ops: [{ op: 'newTopics', mode: 'one', keywords: kws, ids: [id], name, cluster, move: false }] }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return 'Topic not created: ' + ((r && r.error) || 'no response');
+  if (r.errors && r.errors.length) return 'Topic not created: ' + r.errors.join(' · ');
+  done.push('topic "' + name + '"' + (cluster ? ' in ' + cluster : ''));
+  let pid = '';
+  if (prod) {
+    const p = await call('createProduct', { title: prod, campaignId: h.campaignId, stack: name, topicId: id, status: 'Planning', keywords: prodKw || kws.join(', ') }).catch(e => ({ error: e.message }));
+    if (!p || p.error || !p.id) return done.join(' · ') + ' — but the product was not created: ' + ((p && p.error) || 'no response');
+    pid = String(p.id).replace(/-/g, ''); done.push('product "' + prod + '"');
+  }
+  if (title) {
+    const t = await call('createDevTitle', { title, campaignId: h.campaignId, productId: pid || undefined, status: 'Development', skipPillar: true, seedKeywords: titleKw || undefined }).catch(e => ({ error: e.message }));
+    if (!t || t.error || !t.id) return done.join(' · ') + ' — but the title was not created: ' + ((t && t.error) || 'no response');
+    const tid = String(t.id).replace(/-/g, '');
+    const s = await call('setTitleTopic', { titleId: tid, topicId: id }).catch(e => ({ error: e.message }));
+    done.push('title "' + title + '"' + (s && !s.error ? '' : ' (not placed in the topic: ' + ((s && s.error) || 'no response') + ')'));
+    if (toAo2) await ao2SetToggle(tid, title, true);
+  }
+  delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+  showToast('✓ Created ' + done.join(' · ') + ' — no research run yet', 'success');
+  _devTblLast = null; ao2Load(); return true;
 }
 // ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
 // stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research
