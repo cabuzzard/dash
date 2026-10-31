@@ -5431,6 +5431,22 @@ function wrSet(k, v) {
   WR.S[k] = v; if (k === 'platform') { const P = WR.ctx.lists.platforms.find(x => x.name === v); if (P && P.scripting) WR.S.scripting = P.scripting; }
   wrDraw();
 }
+const WR_DIMS = ['platform', 'purpose', 'layout', 'scripting'];
+function wrTypeOf(st) { return ((WR && WR.ctx && WR.ctx.types) || []).find(t => WR_DIMS.every(k => t[k] === st[k])) || null; }
+function wrPickType(name) {
+  if (!WR) return; if (name === '__new') { WR.add = 'type'; return wrDraw(); }
+  const t = (WR.ctx.types || []).find(x => x.name === name); if (!t) return;
+  WR_DIMS.forEach(k => { WR.S[k] = t[k]; }); if (t.guidance && !String(WR.S.guidance || '').trim()) WR.S.guidance = t.guidance; wrDraw();
+}
+async function wrTypeSave(name, settings) {
+  const r = await call('writerTypeSave', { name, settings }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { WR.log = '✗ Type not saved: ' + ((r && r.error) || 'no response'); wrDraw(); return null; }
+  WR.ctx.types = r.types; return r.types.find(t => t.name.toLowerCase() === name.trim().toLowerCase()) || null;
+}
+async function wrTypeSaveNew() {
+  const name = ((document.getElementById('wrTypeName') || {}).value || '').trim(); if (!name) { WR.log = '✗ Name the asset type'; return wrDraw(); }
+  const t = await wrTypeSave(name, WR.S); if (!t) return; WR.add = ''; WR.log = '✓ Saved asset type "' + t.name + '"'; wrDraw();
+}
 async function wrAddSave() {   // ＋ add new — purpose · platform · layout · scripting, each with its guidance
   const k = WR.add, g = id => (document.getElementById(id) || {}).value || '';
   const body = { kind: k, name: g('wrAddName').trim(), rule: g('wrAddRule').trim(), fields: g('wrAddFields') };
@@ -5455,9 +5471,16 @@ function wrDraw() {
     return `<label style="${lab}">${label}</label><select style="${IN}" onchange="wrSet('${k}',this.value)">${list.map(o => `<option ${o.name === S[k] ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}<option value="__new">＋ add new…</option></select>${cur.rule ? `<div style="font-size:11px;color:var(--text3);margin-top:3px;">${esc(cur.rule)}</div>` : ''}`; };
   const ta = (k, label, rows) => `<label style="${lab}">${label}</label><textarea rows="${rows || 2}" style="${IN}resize:vertical;" oninput="WR.U['${k}']=this.value">${esc(U[k] || '')}</textarea>`;
   const plat = L.platforms.find(x => x.name === S.platform) || L.platforms[0];
+  const wrTypeSel = () => { const cur = wrTypeOf(S);
+    if (WR.add === 'type') return `<label style="${lab}">Asset type — ＋ save this setup as a new type</label><div style="border:1px dashed var(--border2);border-radius:6px;padding:8px;">
+      <input id="wrTypeName" style="${IN}" placeholder="Name this asset type (e.g. Fiverr Sales Gig)">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Saves ${esc(S.platform)} · ${esc(S.purpose)} · ${esc(S.layout)} · ${esc(S.scripting)}${String(S.guidance || '').trim() ? ' + your guidance' : ''}. Every asset of this type gets this setup.</div>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button style="${btn('#4ade80')}padding:4px 10px;" onclick="wrTypeSaveNew()">Save type</button><button style="${btn('var(--text2)')}padding:4px 10px;" onclick="WR.add='';wrDraw()">Cancel</button></div></div>`;
+    return `<label style="${lab}">Asset type</label><select style="${IN}" onchange="wrPickType(this.value)">${cur ? '' : '<option selected>— custom setup (not a saved type) —</option>'}${(C.types || []).map(t => `<option ${cur && cur.name === t.name ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}<option value="__new">＋ save this setup as a new type…</option></select>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${cur ? 'Sets the four choices below. Changing one makes it a custom setup.' : 'Pick a type, or set the choices below and save them as a named type.'}</div>`; };
   const left = `<div class="wr-left">
     <div style="font-size:12.5px;font-weight:700;">The asset's dimensions</div>
-    ${sel('purpose', 'Purpose', L.purposes)}${sel('platform', 'Platform', L.platforms)}${sel('layout', 'Layout', L.layouts)}${sel('scripting', 'Scripting', L.scripting)}
+    ${wrTypeSel()}${sel('purpose', 'Purpose', L.purposes)}${sel('platform', 'Platform', L.platforms)}${sel('layout', 'Layout', L.layouts)}${sel('scripting', 'Scripting', L.scripting)}
     <label style="${lab}">Guidance</label><textarea id="wrGuide" rows="3" style="${IN}resize:vertical;" placeholder="Anything you want this asset to do, say or avoid…" oninput="WR.S.guidance=this.value">${esc(S.guidance || '')}</textarea>
     <div style="font-size:12.5px;font-weight:700;margin-top:16px;">Upstream — who it's for <span style="font-weight:400;font-size:11px;color:var(--text3);">(from the research, edit freely)</span></div>
     ${ta('niche', 'Niche', 1)}${ta('intent', 'Reader intent', 2)}${ta('persona', 'Audience persona', 3)}${ta('frustrations', 'Frustration points', 3)}${ta('pains', 'Pain points', 3)}
@@ -5478,7 +5501,7 @@ function wrDraw() {
       + view
       + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;position:sticky;bottom:0;background:var(--surface);padding:10px 0;border-top:1px solid var(--border);">
           <button style="${btn('var(--text2)')}" onclick="WR.edit=!WR.edit;wrDraw()">${WR.edit ? '👁 Preview' : '✎ Edit text'}</button>
-          <div style="flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><label style="font-size:11.5px;color:var(--text3);">Asset type</label><input id="wrAType" list="wrATypes" value="${esc(WR.aType != null ? WR.aType : (D.assetType || S.platform))}" oninput="WR.aType=this.value" placeholder="pick or type a new asset type" style="${IN}width:auto;flex:1;min-width:200px;"><datalist id="wrATypes">${(C.assetTypes || []).map(o => `<option value="${esc(o)}">`).join('')}</datalist><span style="font-size:11px;color:var(--text3);">pick one, or type a new name</span></div>
+          <div style="flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">${wrTypeOf(D.settings || {}) ? `<span style="color:var(--text3);">Asset type:</span> <b>${esc(wrTypeOf(D.settings).name)}</b>` : `<label style="font-size:11.5px;color:var(--text3);">Name this asset type</label><input id="wrAType" value="${esc(WR.aType || '')}" oninput="WR.aType=this.value" placeholder="e.g. Fiverr Sales Gig" style="${IN}width:auto;flex:1;min-width:200px;"><span style="font-size:11px;color:var(--text3);">saved with the setup this draft was written with</span>`}</div>
           <button style="${btn('#4ade80')}" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(false)">${D.savedAs ? '✓ Create another asset from this draft' : '✓ Approve — create the asset'}</button>
           ${D.savedAs ? `<button style="${btn('var(--accent)')}" onclick="amOpen('${esc(D.savedAs)}')">Open the created asset ↗</button>` : `<button style="${btn('#4ade80')}font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(true)">✓ Approve & publish</button>`}</div>`;
   }
@@ -5493,10 +5516,11 @@ async function wrWrite() {
   wrDraw();
 }
 async function wrApprove(publish) {
-  if (!WR || !WR.draft) return; const C = WR.ctx, type = String(WR.aType != null ? WR.aType : (WR.draft.assetType || C.settings.platform)).trim(), hub = /^sub ?page$/i.test(type);
-  if (!type) { WR.log = '✗ Pick or type an asset type'; return wrDraw(); }
+  if (!WR || !WR.draft) return; const C = WR.ctx, D = WR.draft, known = wrTypeOf(D.settings || {}), type = known ? known.name : String(WR.aType || '').trim(), hub = false;
+  if (!type) { WR.log = '✗ Name the asset type first'; return wrDraw(); }
   if (!confirm(publish ? (hub ? 'Create this ' + type + ' asset and publish it to its hub (live page)?' : 'Create this ' + type + ' asset and mark it Published?') : 'Create this ' + type + ' asset under the title, at Development?')) return;
   WR.busy = 'save'; wrDraw();
+  if (!known && !(await wrTypeSave(type, { ...D.settings, guidance: D.guidance || '' }))) { WR.busy = ''; return wrDraw(); }
   const r = await call('writerSave', { titleId: WR.id, fields: WR.draft.fields, assetType: type }).catch(e => ({ error: e.message }));
   if (!r || r.error) { WR.busy = ''; WR.log = '✗ Not created: ' + ((r && r.error) || 'no response'); return wrDraw(); }
   WR.changed = true; WR.draft.savedAs = r.assetId;

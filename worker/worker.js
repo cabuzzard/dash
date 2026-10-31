@@ -2647,6 +2647,18 @@ async function wrAssetTypes(env) {   // the Assets DB "Asset Type" options, for 
   if (list.length) await env.TRADES.put("writer:assettypes", JSON.stringify({ at: Date.now(), list }));
   return list;
 }
+async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
+async function wrTypeSave(env, body) {
+  const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
+  if (!name) throw new Error("Name the asset type");
+  const ok = (list, v) => list.some(x => x.name === v);
+  if (!ok(L.platforms, S.platform) || !ok(L.purposes, S.purpose) || !ok(L.layouts, S.layout) || !ok(L.scripting, S.scripting)) throw new Error("The setup has an unknown choice");
+  const types = await wrTypes(env), mine = types.find(t => ivNorm(t.name) === ivNorm(name));
+  if (!mine && (await wrAssetTypes(env).catch(() => [])).some(n => ivNorm(n) === ivNorm(name))) throw new Error(`"${name}" is already an asset type with its own setup — pick another name`);
+  const t = { name: mine ? mine.name : name, platform: S.platform, purpose: S.purpose, layout: S.layout, scripting: S.scripting, guidance: String(S.guidance || "").slice(0, 4000), at: new Date().toISOString() };
+  await env.TRADES.put("writer:types", JSON.stringify([...types.filter(x => x !== mine), t]));
+  return wrTypes(env);
+}
 async function writerContext(env, titleId) {
   const G = await wrGather(env, titleId), L = await wrLists(env), saved = await env.TRADES.get("writer:settings:t:" + G.tid, "json").catch(() => null);
   const has = (list, v) => list.some(x => x.name === v);
@@ -2661,7 +2673,7 @@ async function writerContext(env, titleId) {
   return { ok: true, title: { id: G.tid, name: G.tv.Title || "", status: G.tp.Status?.select?.name || G.tp.Status?.status?.name || "", product: G.prodName, campaignId: G.cid || "", productId: G.pid || "" },
     lists: L, settings: { purpose: has(L.purposes, saved?.purpose) ? saved.purpose : "Inform", platform, layout: has(L.layouts, saved?.layout) ? saved.layout : "Writer decides",
       scripting: has(L.scripting, saved?.scripting) ? saved.scripting : (P.scripting || "None"), guidance: saved?.guidance || "" },
-    upstream, draft, assetTypes: await wrAssetTypes(env).catch(() => []) };
+    upstream, draft, types: await wrTypes(env) };
 }
 async function writerDraft(env, body) {
   const ctx = await writerContext(env, body.titleId), G = await wrGather(env, body.titleId), L = ctx.lists;
@@ -2717,7 +2729,8 @@ First fill "brief" (your understanding: subject, the keyword / intent you are se
 }
 async function writerSave(env, body) {   // approve: CREATE the asset under the title at Development, with the draft's fields (protected fields never written)
   const G = await wrGather(env, body.titleId), draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json"); if (!draft) throw new Error("No draft to save — write one first");
-  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, type = String(body.assetType || "").trim().slice(0, 90) || draft.assetType;   // approve-time pick / new name wins
+  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, T = (await wrTypes(env)).find(t => ivNorm(t.name) === ivNorm(body.assetType || "")), type = T && T.name;
+  if (!T) throw new Error("Pick or name the asset type (a Writer type) before approving");
   const PROT = new Set(["status", "asset status", "asset type", "asset title", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
   const assetTitle = String(vals["Platform Title"] || "").trim().slice(0, 180) || ((G.tv.Title || "Untitled") + " — " + type);
@@ -55139,8 +55152,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // assetPrewrite {assetId, op: prompt | get | save | clear, text?} — the Asset modal's Pre-write block (every asset type)
       // Writer modal (operator 2026-10-30): writerContext {assetId} · writerDraft {assetId, settings, upstream, guidance, fields?} → preview only ·
       // writerSave {assetId, fields?} → saves the approved draft's fields · writerPurpose {name, rule} adds a purpose
-      if (body.action === "writerContext" || body.action === "writerDraft" || body.action === "writerSave" || body.action === "writerPurpose" || body.action === "writerListAdd") {
+      if (body.action === "writerContext" || body.action === "writerDraft" || body.action === "writerSave" || body.action === "writerPurpose" || body.action === "writerListAdd" || body.action === "writerTypeSave") {
         try {
+          if (body.action === "writerTypeSave") return json({ ok: true, types: await wrTypeSave(env, body) });
           if (body.action === "writerListAdd") return json({ ok: true, lists: await wrListAdd(env, String(body.kind || ""), body) });
           if (body.action === "writerPurpose") { const name = String(body.name || "").trim().slice(0, 40), rule = String(body.rule || "").trim().slice(0, 600); if (!name || !rule) return json({ error: "name and rule required" }, 400);
             const cur = (await env.TRADES.get("writer:purposes", "json").catch(() => null)) || []; const next = [...cur.filter(x => x.name !== name), { name, rule }]; await env.TRADES.put("writer:purposes", JSON.stringify(next)); return json({ ok: true, purposes: (await wrLists(env)).purposes }); }
