@@ -2640,6 +2640,13 @@ async function wrGather(env, titleId) {
   const pr = pid ? await findBestProductResearchRecord(ivHdr(), ivDash(pid)).catch(() => null) : null, prv = k => pr ? lfReadRich(pr.properties?.[k]) || "" : "";
   return { tid, title, tp, tv: writingFieldValues(tp), cid, pid, pr, prv, prodName: pid ? hubRichText((await ivPage(pid).catch(() => ({}))).properties?.Name?.title) : "" };
 }
+async function wrAssetTypes(env) {   // the Assets DB "Asset Type" options, for the approve-time picker (1 h cache)
+  const c = await env.TRADES.get("writer:assettypes", "json").catch(() => null); if (c && Date.now() - c.at < 3600000) return c.list;
+  const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }), d = await r.json().catch(() => ({}));
+  const list = (d.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean).sort((x, y) => x.localeCompare(y));
+  if (list.length) await env.TRADES.put("writer:assettypes", JSON.stringify({ at: Date.now(), list }));
+  return list;
+}
 async function writerContext(env, titleId) {
   const G = await wrGather(env, titleId), L = await wrLists(env), saved = await env.TRADES.get("writer:settings:t:" + G.tid, "json").catch(() => null);
   const has = (list, v) => list.some(x => x.name === v);
@@ -2654,7 +2661,7 @@ async function writerContext(env, titleId) {
   return { ok: true, title: { id: G.tid, name: G.tv.Title || "", status: G.tp.Status?.select?.name || G.tp.Status?.status?.name || "", product: G.prodName, campaignId: G.cid || "", productId: G.pid || "" },
     lists: L, settings: { purpose: has(L.purposes, saved?.purpose) ? saved.purpose : "Inform", platform, layout: has(L.layouts, saved?.layout) ? saved.layout : "Writer decides",
       scripting: has(L.scripting, saved?.scripting) ? saved.scripting : (P.scripting || "None"), guidance: saved?.guidance || "" },
-    upstream, draft };
+    upstream, draft, assetTypes: await wrAssetTypes(env).catch(() => []) };
 }
 async function writerDraft(env, body) {
   const ctx = await writerContext(env, body.titleId), G = await wrGather(env, body.titleId), L = ctx.lists;
@@ -2710,7 +2717,7 @@ First fill "brief" (your understanding: subject, the keyword / intent you are se
 }
 async function writerSave(env, body) {   // approve: CREATE the asset under the title at Development, with the draft's fields (protected fields never written)
   const G = await wrGather(env, body.titleId), draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json"); if (!draft) throw new Error("No draft to save — write one first");
-  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, type = draft.assetType;
+  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, type = String(body.assetType || "").trim().slice(0, 90) || draft.assetType;   // approve-time pick / new name wins
   const PROT = new Set(["status", "asset status", "asset type", "asset title", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
   const assetTitle = String(vals["Platform Title"] || "").trim().slice(0, 180) || ((G.tv.Title || "Untitled") + " — " + type);
@@ -2720,6 +2727,7 @@ async function writerSave(env, body) {   // approve: CREATE the asset under the 
   const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }) }), cd = await cr.json().catch(() => ({}));
   if (!cr.ok) throw new Error("Asset not created: " + (cd.message || cr.status));
   const aid = hubAssetId(cd.id), page = await ivPage(aid), props = {}, skipped = [];
+  await env.TRADES.delete("writer:assettypes").catch(() => {});
   for (const [k, v] of Object.entries(vals)) {
     if (PROT.has(ivNorm(k))) { skipped.push(k); continue; }
     let t = page.properties?.[k]?.type; if (!t) { await ensureDbRichTextProperty(hdr, ASSETS_DB, k).catch(() => {}); t = "rich_text"; }
