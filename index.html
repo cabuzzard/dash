@@ -4674,6 +4674,70 @@ function ao2ResizeStart(ev, k) {
     setTimeout(() => { AO2_RESIZING = false; }, 0); };   // after the click that follows mouseup
   document.body.style.cursor = 'col-resize'; document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
 }
+// ── Bulk edit / delete (operator 2026-10-30): tick rows (header box = every visible row) → the bulk bar: asset status · title status ·
+// product stage · remove titles from AO2 · 🗑 delete. Delete NEVER touches anything Published: a Published asset, a title with a Published
+// asset, or a product with a Published asset on it / its titles is refused and listed (deleteTitle / archiveProduct trash every asset under them).
+const AO2_SEL = new Set();
+const ao2Key = x => x.type[0] + ':' + x.id;
+function ao2SelToggle(k, on) { if (on) AO2_SEL.add(k); else AO2_SEL.delete(k); ao2Render(); }
+function ao2SelAll(on) { const { rows } = ao2Rows(); rows.forEach(x => on ? AO2_SEL.add(ao2Key(x)) : AO2_SEL.delete(ao2Key(x))); ao2Render(); }
+function ao2Selected() { return (AO2_ROWS || []).filter(x => AO2_SEL.has(ao2Key(x))); }
+function ao2BulkBar() {
+  const S = ao2Selected(); if (!S.length) return '';
+  const n = t => S.filter(x => x.type === t).length, nA = n('Asset'), nT = n('Title'), nP = n('Product');
+  const btn = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const sel = (id, opts) => `<select id="${id}" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">—</option>${opts.map(o => `<option>${o}</option>`).join('')}</select>`;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;border:1px solid #8ab4f8;border-radius:8px;background:rgba(138,180,248,.06);font-size:11.5px;">
+    <b>${S.length} selected</b><span style="color:var(--text3);">${[nA && nA + ' asset' + (nA === 1 ? '' : 's'), nT && nT + ' title' + (nT === 1 ? '' : 's'), nP && nP + ' product' + (nP === 1 ? '' : 's')].filter(Boolean).join(' · ')}</span>
+    ${nA ? `<span>Asset status ${sel('ao2BulkAS', ['Idea', 'Development', 'Review', 'Publish'])}</span>` : ''}
+    ${nT ? `<span>Title status ${sel('ao2BulkTS', ['Planning', 'Development', 'Publish'])}</span>` : ''}
+    ${nP ? `<span>Product stage ${sel('ao2BulkPS', ['Raw', 'Keyword Research', 'Development'])}</span>` : ''}
+    ${nA || nT || nP ? `<button style="${btn}border-color:#4ade80;color:#4ade80;" onclick="ao2BulkApply(this)">Apply</button>` : ''}
+    ${nT ? `<button style="${btn}" title="Take these titles (and their product + assets) out of All Output 2 — nothing in Notion changes" onclick="ao2BulkRemoveTitles(this)">Remove titles from AO2</button>` : ''}
+    <button style="${btn}border-color:#f87171;color:#f87171;" onclick="ao2BulkDelete(this)">🗑 Delete</button>
+    <button style="${btn}color:var(--text3);" onclick="AO2_SEL.clear();ao2Render()">Clear</button>
+    <span id="ao2BulkMsg" style="color:var(--text2);"></span></div>`;
+}
+function ao2BulkMsg(t) { const m = document.getElementById('ao2BulkMsg'); if (m) m.textContent = t; }
+async function ao2BulkApply(btn) {
+  const S = ao2Selected(), v = id => (document.getElementById(id) || {}).value || '', as = v('ao2BulkAS'), ts = v('ao2BulkTS'), ps = v('ao2BulkPS');
+  if (!as && !ts && !ps) return ao2BulkMsg('Pick a status / stage first');
+  const jobs = [], skipped = [];
+  if (as) S.filter(x => x.type === 'Asset').forEach(x => /^published$/i.test(x.status) ? skipped.push(x.title + ' (Published — publish state changes from its own modal)') : jobs.push(() => call('updateAssetStatus', { assetId: x.id, status: as, statusOnly: true })));
+  if (ts) S.filter(x => x.type === 'Title').forEach(x => jobs.push(() => call('updateTitleStage', { titleId: x.id, stage: ts })));
+  if (ps) S.filter(x => x.type === 'Product').forEach(x => jobs.push(() => call('setProductStage', { productId: x.id, stage: ps })));
+  if (!jobs.length) return ao2BulkMsg('Nothing to change' + (skipped.length ? ' — ' + skipped.length + ' Published asset' + (skipped.length === 1 ? '' : 's') + ' left as is' : ''));
+  if (!confirm('Apply to ' + jobs.length + ' record' + (jobs.length === 1 ? '' : 's') + '?' + (skipped.length ? '\n\nLeft as is:\n' + skipped.join('\n') : ''))) return;
+  btn.disabled = true; let ok = 0; const fail = [];
+  for (const j of jobs) { const r = await j().catch(e => ({ error: e.message })); if (r && !r.error) ok++; else fail.push((r && r.error) || 'no response'); ao2BulkMsg('⏳ ' + (ok + fail.length) + ' / ' + jobs.length); }
+  showToast('✓ ' + ok + ' updated' + (fail.length ? ' · ✗ ' + fail.length + ': ' + fail[0] : '') + (skipped.length ? ' · ' + skipped.length + ' Published left as is' : ''), fail.length ? 'error' : 'success');
+  AO2_SEL.clear(); _devTblLast = null; await ao2Load();
+}
+async function ao2BulkRemoveTitles(btn) {
+  const T = ao2Selected().filter(x => x.type === 'Title'); if (!T.length) return;
+  if (!confirm('Take ' + T.length + ' title' + (T.length === 1 ? '' : 's') + ' out of All Output 2? (Nothing in Notion changes.)')) return;
+  btn.disabled = true; for (const x of T) await ao2SetToggle(x.id, x.title, false);
+  AO2_SEL.clear(); ao2Render();
+}
+async function ao2BulkDelete(btn) {
+  const S = ao2Selected(), d = await devAssetsTable().catch(e => ({ error: e.message })); if (!d || d.error) return ao2BulkMsg('✗ Could not check Published assets — nothing deleted');
+  const all = d.rows || [], pubAsset = r => r.kind === 'asset' && /^published$/i.test(r.assetStatus || '');
+  const titlePub = tid => all.filter(r => pubAsset(r) && kwNid(r.titleId) === kwNid(tid));
+  const prodTitles = pid => new Set(all.filter(r => r.titleId && kwNid(r.productId) === kwNid(pid)).map(r => kwNid(r.titleId)));
+  const prodPub = pid => { const ts = prodTitles(pid); return all.filter(r => pubAsset(r) && (kwNid(r.assetProductId) === kwNid(pid) || ts.has(kwNid(r.titleId)))); };
+  const go = [], refused = [];
+  S.forEach(x => {
+    if (x.type === 'Asset') /^published$/i.test(x.status) ? refused.push('asset "' + x.title + '" is Published') : go.push({ x, run: () => call('deleteAsset', { assetId: x.id }) });
+    if (x.type === 'Title') { const p = titlePub(x.id); p.length ? refused.push('title "' + x.title + '" has ' + p.length + ' Published asset' + (p.length === 1 ? '' : 's')) : go.push({ x, run: () => call('deleteTitle', { titleId: x.id }), note: 'and all its assets' }); }
+    if (x.type === 'Product') { const p = prodPub(x.id); p.length ? refused.push('product "' + x.title + '" has ' + p.length + ' Published asset' + (p.length === 1 ? '' : 's')) : go.push({ x, run: () => call('archiveProduct', { productId: x.id, campaignId: x.campId }), note: 'and its titles + assets' }); }
+  });
+  if (!go.length) return alert('Nothing deleted — published assets are never deleted:\n\n' + refused.join('\n'));
+  if (!confirm('Delete ' + go.length + ' record' + (go.length === 1 ? '' : 's') + ' (Notion trash — restorable for 30 days)?\n\n' + go.map(g => '· ' + g.x.type + ': ' + g.x.title + (g.note ? ' — ' + g.note : '')).join('\n') + (refused.length ? '\n\nRefused (Published):\n' + refused.join('\n') : ''))) return;
+  btn.disabled = true; let ok = 0; const fail = [];
+  for (const g of go) { const r = await g.run().catch(e => ({ error: e.message })); if (r && !r.error) { ok++; if (g.x.type === 'Title' && AO2_SET && AO2_SET.has(kwNid(g.x.id))) await ao2SetToggle(g.x.id, '', false); } else fail.push(g.x.title + ': ' + ((r && r.error) || 'no response')); ao2BulkMsg('⏳ ' + (ok + fail.length) + ' / ' + go.length); }
+  showToast('🗑 ' + ok + ' deleted' + (fail.length ? ' · ✗ ' + fail.length + ': ' + fail[0] : '') + (refused.length ? ' · ' + refused.length + ' refused (Published)' : ''), fail.length ? 'error' : 'success');
+  AO2_SEL.clear(); _devTblLast = null; await ao2Load();
+}
 // Filter & sort (same model as All Output): 2 filter slots {col, val, neg}, up to 7 sort levels {col, asc}, Group by sort.
 // 💾 Save keeps the view in this browser (ao2View); ↺ Revert goes back to the saved one.
 const AO2_MAX = 7, AO2_BLANK = '__blank__', AO2_OPEN = {};
@@ -4744,9 +4808,9 @@ function ao2Render() {
     : c.key === 'title' && x.type === 'Title' ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.id)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
   const tip = (x, c) => c.key === 'parent' || c.key === 'asset' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
-  const rowHtml = x => `<tr class="ao2-row">${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
+  const rowHtml = x => `<tr class="ao2-row"><td style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border);"><input type="checkbox" ${AO2_SEL.has(ao2Key(x)) ? 'checked' : ''} onchange="ao2SelToggle('${esc(ao2Key(x))}',this.checked)"></td>${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
-  if (!rows.length) body = `<tr><td colspan="${cols.length}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'No titles yet — tick → AO2 on a title in All Output.'}</td></tr>`;
+  if (!rows.length) body = `<tr><td colspan="${cols.length + 1}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'No titles yet — tick → AO2 on a title in All Output.'}</td></tr>`;
   const G = S.filter(s => s.head !== false);   // only the levels ticked Header make header tiers
   if (rows.length && (!V.group || !G.length)) body = rows.map(rowHtml).join('');
   else if (rows.length) {   // one collapsible header tier per Header level, collapsed until opened
@@ -4758,13 +4822,13 @@ function ao2Render() {
         prev = prev.slice(0, d); prev[d] = k;
         if (d && !G.slice(0, d).every((s, j) => AO2_OPEN[keyAt(x, j)])) continue;
         const n = rows.filter(y => keyAt(y, d) === k).length, v = ao2Val(x, G[d].col), gi = AO2_GKEYS.push(k) - 1;
-        body += `<tr onclick="ao2Toggle(${gi})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:5px 10px;padding-left:${10 + d * 16}px;font-size:11.5px;border-bottom:1px solid var(--border);">${AO2_OPEN[k] ? '▼' : '▶'} <span style="color:var(--text3);">${esc(ao2ColLabel(G[d].col))}:</span> <b>${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'}</b> <span style="color:var(--text3);">(${n})</span></td></tr>`;
+        body += `<tr onclick="ao2Toggle(${gi})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length + 1}" style="padding:5px 10px;padding-left:${10 + d * 16}px;font-size:11.5px;border-bottom:1px solid var(--border);">${AO2_OPEN[k] ? '▼' : '▶'} <span style="color:var(--text3);">${esc(ao2ColLabel(G[d].col))}:</span> <b>${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'}</b> <span style="color:var(--text3);">(${n})</span></td></tr>`;
       }
       if (G.every((s, j) => AO2_OPEN[keyAt(x, j)])) body += rowHtml(x);
     });
   }
-  const W = ao2Widths(), tw = cols.reduce((a, c) => a + ao2W(W, c.key), 0);
-  el.innerHTML = bar + panel + `<div style="overflow-x:auto;"><table id="ao2Tbl" class="ao2-tbl" style="border-collapse:collapse;font-size:12px;table-layout:fixed;width:${tw}px;"><colgroup>${cols.map(c => `<col data-k="${c.key}" style="width:${ao2W(W, c.key)}px;">`).join('')}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const W = ao2Widths(), tw = 32 + cols.reduce((a, c) => a + ao2W(W, c.key), 0), allOn = rows.length && rows.every(x => AO2_SEL.has(ao2Key(x)));
+  el.innerHTML = bar + panel + ao2BulkBar() + `<div style="overflow-x:auto;"><table id="ao2Tbl" class="ao2-tbl" style="border-collapse:collapse;font-size:12px;table-layout:fixed;width:${tw}px;"><colgroup><col style="width:32px;">${cols.map(c => `<col data-k="${c.key}" style="width:${ao2W(W, c.key)}px;">`).join('')}</colgroup><thead><tr><th style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" title="Select every visible row" ${allOn ? 'checked' : ''} onchange="ao2SelAll(this.checked)"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 // Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
 function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }
