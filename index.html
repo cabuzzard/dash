@@ -4851,7 +4851,7 @@ function ao2Render() {
   const head = cols.map(c => { if (c.group) return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault();this.style.outline='2px solid #c084fc'" ondragleave="this.style.outline=''" ondrop="ao2GroupDrop(event,'${c.group.id}')" onclick="ao2GroupToggle('${c.group.id}')" title="Column group — click to ${c.group.collapsed ? 'expand' : 'collapse'} · drag a column header onto it to add it · double-click the name to rename" style="${th}cursor:pointer;background:rgba(192,132,252,.14);color:#c084fc;position:relative;overflow:hidden;text-overflow:ellipsis;">${c.group.collapsed ? '▸' : '▾'} <span ondblclick="event.stopPropagation();ao2GroupRename('${c.group.id}')">${esc(c.label)}</span> (${c.n})<span onclick="event.stopPropagation();if(confirm('Remove this group? Its columns go back into the table.'))ao2GroupRemove('${c.group.id}')" title="Remove the group" style="margin-left:6px;opacity:.7;">×</span><span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`;
     const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
     return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder (onto a group header: into the group) · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;${c.member ? 'background:rgba(192,132,252,.07);' : ''}">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
-  const cell = (x, c) => c.key === 'writer' ? (x.type === 'Asset' ? `<button onclick="wrOpen('${esc(x.id)}')" title="Writer — pick purpose / platform / length / layout / imagery / scripting, check the upstream, write into a preview, approve" style="font-size:11px;padding:1px 8px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;">✍ Write</button>` : '')
+  const cell = (x, c) => c.key === 'writer' ? (x.type === 'Title' ? `<button onclick="wrOpen('${esc(x.id)}')" title="Writer — writes a NEW asset for this title: pick the asset type, purpose / platform / length / layout / imagery / scripting, check the upstream, write into a preview, approve" style="font-size:11px;padding:1px 8px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;">✍ Write</button>` : '')
     : c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button>` : '')
     : c.key === 'product' && x.product && x.productId ? ao2Dot(x.sProd) + `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
     : c.key === 'title' && x.type === 'Product' ? ao2Dot(x.sProd) + `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
@@ -5404,7 +5404,7 @@ async function ao2NewTopicGo(slug) {
   showToast('✓ Created ' + done.join(' · ') + ' — no research run yet', 'success');
   _devTblLast = null; ao2Load(); return true;
 }
-// ══ WRITER modal (operator 2026-10-30) — next to the Asset modal, its own column in All Output 2. Pick the dimensions (purpose · platform ·
+// ══ WRITER modal (operator 2026-10-30) — on TITLE rows: writes a NEW asset for the title (created only on approval), next to the Asset modal, its own column in All Output 2. Pick the dimensions (purpose · platform ·
 // length · layout · imagery · scripting) + guidance; the upstream (niche · reader intent · persona · frustration points · pain points)
 // arrives pre-filled and editable; ✍ Write drafts the asset into the PREVIEW (worker writerDraft — nothing saved); ✓ Approve saves it
 // (writerSave), ✓ Approve & publish also publishes (hub assets to their hub, others marked Published).
@@ -5417,16 +5417,23 @@ function wrEnsure() {
   document.body.appendChild(bg); return bg;
 }
 function wrClose() { const bg = document.getElementById('wrBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open'); const ch = WR && WR.changed; WR = null; if (ch && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); } }
-async function wrOpen(assetId) {
+async function wrOpen(titleId) {
   wrEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
-  WR = { id: kwNid(assetId), ctx: null, busy: 'Loading…', log: '', edit: false };
+  WR = { id: kwNid(titleId), ctx: null, busy: 'Loading…', log: '', edit: false };
   wrDraw();
-  const r = await call('writerContext', { assetId: WR.id }).catch(e => ({ error: e.message }));
+  const r = await call('writerContext', { titleId: WR.id }).catch(e => ({ error: e.message }));
   if (!WR) return; WR.busy = '';
   if (!r || r.error) { WR.log = '✗ ' + ((r && r.error) || 'no response'); return wrDraw(); }
   WR.ctx = r; WR.S = { ...r.settings }; WR.U = { ...r.upstream }; WR.draft = r.draft || null; wrDraw();
 }
 function wrSet(k, v) { if (!WR) return; WR.S[k] = v; if (k === 'platform') { const P = WR.ctx.lists.platforms.find(x => x.name === v); if (P) Object.assign(WR.S, { length: P.length, layout: P.layout, imagery: P.imagery, scripting: P.scripting }); wrDraw(); } }
+async function wrType(type) {
+  if (!WR) return; WR.busy = 'Loading…'; wrDraw();
+  const r = await call('writerContext', { titleId: WR.id, assetType: type }).catch(e => ({ error: e.message }));
+  if (!WR) return; WR.busy = '';
+  if (!r || r.error) { WR.log = '✗ ' + ((r && r.error) || 'no response'); return wrDraw(); }
+  const U = WR.U; WR.ctx = r; WR.S = { ...r.settings, guidance: WR.S.guidance || r.settings.guidance }; WR.U = U; WR.draft = r.draft || null; WR.log = ''; wrDraw();
+}
 async function wrPurposeAdd() {
   const name = (prompt('New purpose — a short name (e.g. Nurture, Recruit):') || '').trim(); if (!name) return wrDraw();
   const rule = (prompt('What should an asset with the purpose "' + name + '" do? (one or two sentences)') || '').trim(); if (!rule) return wrDraw();
@@ -5437,7 +5444,7 @@ async function wrPurposeAdd() {
 function wrDraw() {
   const P = document.getElementById('wrPanel'); if (!P || !WR) return;
   const btn = c => `font-size:12.5px;padding:6px 14px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
-  const head = `<div class="amf-hd"><div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;">✍ Writer${WR.ctx ? ' — ' + esc(WR.ctx.asset.title || '') : ''}</div>${WR.ctx ? `<div style="font-size:11.5px;color:var(--text3);margin-top:3px;">${esc(WR.ctx.asset.type || '')} · ${esc(WR.ctx.asset.status || '')}${WR.ctx.asset.product ? ' · ' + esc(WR.ctx.asset.product) : ''}${WR.ctx.asset.titleName ? ' · title: ' + esc(WR.ctx.asset.titleName) : ''}</div>` : ''}</div><button style="${btn('var(--border2)')}color:var(--text);" onclick="wrClose()">✕</button></div>`;
+  const head = `<div class="amf-hd"><div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;">✍ Writer${WR.ctx ? ' — ' + esc(WR.ctx.title.name || '') : ''}</div>${WR.ctx ? `<div style="font-size:11.5px;color:var(--text3);margin-top:3px;">writes a new asset for this title${WR.ctx.title.product ? ' · ' + esc(WR.ctx.title.product) : ''}${WR.ctx.title.status ? ' · title ' + esc(WR.ctx.title.status) : ''}</div>` : ''}</div><button style="${btn('var(--border2)')}color:var(--text);" onclick="wrClose()">✕</button></div>`;
   if (!WR.ctx) { P.innerHTML = head + `<div style="padding:18px;font-size:13px;color:${WR.log ? '#f87171' : 'var(--text3)'};">${esc(WR.busy || WR.log)}</div>`; return; }
   const C = WR.ctx, L = C.lists, S = WR.S, U = WR.U;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
@@ -5447,6 +5454,7 @@ function wrDraw() {
   const purposeRule = (L.purposes.find(x => x.name === S.purpose) || {}).rule || '';
   const left = `<div class="wr-left">
     <div style="font-size:12.5px;font-weight:700;">The asset's dimensions</div>
+    <label style="${lab}">Asset type</label><select style="${IN}" ${WR.busy ? 'disabled' : ''} onchange="wrType(this.value)">${C.assetType ? '' : '<option value="" selected>— pick the asset type —</option>'}${[...new Set([...(C.assetType ? [C.assetType] : []), ...(L.assetTypes || [])])].map(o => `<option ${o === C.assetType ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
     ${sel('purpose', 'Purpose', L.purposes.map(x => x.name))}<div style="font-size:11px;color:var(--text3);margin-top:3px;">${esc(purposeRule)}</div>
     ${sel('platform', 'Platform — sets the four below', L.platforms.map(x => x.name))}
     ${sel('length', 'Length', [...new Set([S.length, ...L.lengths])])}${sel('layout', 'Layout', [...new Set([S.layout, ...L.layouts])])}
@@ -5454,8 +5462,8 @@ function wrDraw() {
     <label style="${lab}">Guidance</label><textarea id="wrGuide" rows="3" style="${IN}resize:vertical;" placeholder="Anything you want this asset to do, say or avoid…" oninput="WR.S.guidance=this.value">${esc(S.guidance || '')}</textarea>
     <div style="font-size:12.5px;font-weight:700;margin-top:16px;">Upstream — who it's for <span style="font-weight:400;font-size:11px;color:var(--text3);">(from the research, edit freely)</span></div>
     ${ta('niche', 'Niche', 1)}${ta('intent', 'Reader intent', 2)}${ta('persona', 'Audience persona', 3)}${ta('frustrations', 'Frustration points', 3)}${ta('pains', 'Pain points', 3)}
-    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Writes: <b>${C.fields.map(esc).join(' · ')}</b> — from ${esc(C.fieldsFrom)}. Facts only from the research; nothing is saved until you approve.</div>
-    <button style="${btn('#8ab4f8')}margin-top:10px;width:100%;font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrWrite()">${WR.busy === 'write' ? '⏳ Writing… (1–3 min)' : WR.draft ? '↻ Rewrite' : '✍ Write'}</button></div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Writes: <b>${C.fields.map(esc).join(' · ')}</b> — from ${esc(C.fieldsFrom)}. Facts only from the research; the asset is created only when you approve.</div>
+    <button style="${btn('#8ab4f8')}margin-top:10px;width:100%;font-weight:600;" ${WR.busy || !C.assetType ? 'disabled' : ''} onclick="wrWrite()">${WR.busy === 'write' ? '⏳ Writing… (1–3 min)' : WR.draft ? '↻ Rewrite' : '✍ Write'}</button></div>`;
   const D = WR.draft;
   let right;
   if (!D) right = `<div style="font-size:13px;color:var(--text3);padding:30px 10px;text-align:center;">${WR.busy === 'write' ? '⏳ Writing the asset…' : 'Set the dimensions, check the upstream, then ✍ Write. The draft appears here.'}</div>`;
@@ -5471,30 +5479,30 @@ function wrDraw() {
       + view
       + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;position:sticky;bottom:0;background:var(--surface);padding:10px 0;border-top:1px solid var(--border);">
           <button style="${btn('var(--text2)')}" onclick="WR.edit=!WR.edit;wrDraw()">${WR.edit ? '👁 Preview' : '✎ Edit text'}</button>
-          <button style="${btn('#4ade80')}" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(false)">✓ Approve & save</button>
-          ${C.asset.status === 'Published' ? '' : `<button style="${btn('#4ade80')}font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(true)">✓ Approve & publish</button>`}</div>`;
+          <button style="${btn('#4ade80')}" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(false)">${D.savedAs ? '✓ Create another asset from this draft' : '✓ Approve — create the asset'}</button>
+          ${D.savedAs ? `<button style="${btn('var(--accent)')}" onclick="amOpen('${esc(D.savedAs)}')">Open the created asset ↗</button>` : `<button style="${btn('#4ade80')}font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(true)">✓ Approve & publish</button>`}</div>`;
   }
   P.innerHTML = head + (WR.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(WR.log) ? '#f87171' : 'var(--text2)'};">${esc(WR.log)}</div>` : '')
     + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${right}</div></div></div>`;
 }
 async function wrWrite() {
   if (!WR) return; WR.busy = 'write'; WR.log = ''; WR.edit = false; wrDraw();
-  const r = await call('writerDraft', { assetId: WR.id, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '' }).catch(e => ({ error: e.message }));
+  const r = await call('writerDraft', { titleId: WR.id, assetType: WR.ctx.assetType, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '' }).catch(e => ({ error: e.message }));
   if (!WR) return; WR.busy = '';
   if (!r || r.error) WR.log = '✗ Not written: ' + ((r && r.error) || 'no response'); else { WR.draft = r.draft; WR.log = '✓ Draft ready — review it, edit if you like, then approve'; }
   wrDraw();
 }
 async function wrApprove(publish) {
-  if (!WR || !WR.draft) return; const C = WR.ctx, hub = !!(C.asset.hubSection && !/^(unlisted|email)$/i.test(C.asset.hubSection)) || /^sub ?page$/i.test(C.asset.type || '');
-  if (!confirm(publish ? (hub ? 'Save this draft and publish the asset to its hub (live page)?' : 'Save this draft and mark the asset Published?') : 'Save this draft onto the asset?')) return;
+  if (!WR || !WR.draft) return; const C = WR.ctx, hub = /^sub ?page$/i.test(C.assetType || '');
+  if (!confirm(publish ? (hub ? 'Create this ' + C.assetType + ' asset and publish it to its hub (live page)?' : 'Create this ' + C.assetType + ' asset and mark it Published?') : 'Create this ' + C.assetType + ' asset under the title, at Development?')) return;
   WR.busy = 'save'; wrDraw();
-  const r = await call('writerSave', { assetId: WR.id, fields: WR.draft.fields }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { WR.busy = ''; WR.log = '✗ Not saved: ' + ((r && r.error) || 'no response'); return wrDraw(); }
-  WR.changed = true; let msg = '✓ Saved ' + (r.saved || []).length + ' field' + ((r.saved || []).length === 1 ? '' : 's') + ((r.skipped || []).length ? ' · skipped ' + r.skipped.join(', ') : '');
+  const r = await call('writerSave', { titleId: WR.id, fields: WR.draft.fields }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { WR.busy = ''; WR.log = '✗ Not created: ' + ((r && r.error) || 'no response'); return wrDraw(); }
+  WR.changed = true; WR.draft.savedAs = r.assetId;
+  let msg = '✓ Created "' + r.assetTitle + '" (' + r.assetType + ', Development) — ' + (r.saved || []).length + ' field' + ((r.saved || []).length === 1 ? '' : 's') + ((r.skipped || []).length ? ' · skipped ' + r.skipped.join(', ') : '');
   if (publish) {
-    const p = hub ? await call('publishHubAsset', { assetId: WR.id }).catch(e => ({ error: e.message })) : await call('updateAssetStatus', { assetId: WR.id, status: 'Published' }).catch(e => ({ error: e.message }));
+    const p = hub ? await call('publishHubAsset', { assetId: r.assetId }).catch(e => ({ error: e.message })) : await call('updateAssetStatus', { assetId: r.assetId, status: 'Published' }).catch(e => ({ error: e.message }));
     msg += !p || p.error || p.skipped ? ' · ✗ not published: ' + ((p && (p.error || p.skipped)) || 'no response') : hub ? ' · ✓ published to ' + (p.hub || 'the hub') + (p.liveUrl ? ' — ' + p.liveUrl : '') : ' · ✓ Published';
-    if (p && !p.error && !p.skipped) C.asset.status = 'Published';
   }
   WR.busy = ''; WR.log = msg; wrDraw();
 }

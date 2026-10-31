@@ -2605,47 +2605,67 @@ async function wrLists(env) {
   const extra = (await env.TRADES.get("writer:purposes", "json").catch(() => null)) || [];
   return { purposes: [...WR_PURPOSES, ...extra.filter(x => x && x.name && !WR_PURPOSES.some(p => p.name === x.name))], platforms: WR_PLATFORMS, lengths: WR_LENGTHS, layouts: WR_LAYOUTS, imagery: WR_IMAGERY, scripting: WR_SCRIPTING };
 }
-async function wrGather(env, aid) {
-  const page = await ivPage(aid); if (!page?.properties || page.archived) throw new Error("Asset unavailable");
-  const p = page.properties, type = p["Asset Type"]?.select?.name || "", titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};
-  const cid = ivRid(p, "Campaign") || ivRid(tp, "Campaign"), pid = ivRid(p, "Product") || ivRid(tp, "product") || ivRid(tp, "Product");
-  const pr = pid ? await findBestProductResearchRecord(ivHdr(), ivDash(pid)).catch(() => null) : null, prv = k => pr ? lfReadRich(pr.properties?.[k]) || "" : "";
-  const tv = writingFieldValues(tp), cur = writingFieldValues(p), m = await writingMethod(env, page).catch(() => ({}));
-  const ptr = await env.TRADES.get("shortrun:asset:" + aid, "json").catch(() => null);
-  return { page, p, type, titleId, tp, tv, cid, pid, pr, prv, cur, m, ptr, prodName: pid ? hubRichText((await ivPage(pid).catch(() => ({}))).properties?.Name?.title) : "" };
+// operator 2026-10-30: the Writer is for TITLES — it writes a NEW asset from the title (and its product / topic research), and the asset is
+// created only on approval. Settings + draft are kept per title (writer:settings:t:<titleId> / writer:draft:t:<titleId>).
+async function wrAssetTypes(env) {
+  const c = await env.TRADES.get("writer:assettypes", "json").catch(() => null); if (c && Date.now() - c.at < 3600000) return c.list;
+  const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }), d = await r.json().catch(() => ({}));
+  const list = (d.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(n => n && !/^(pillar|digest parent)$/i.test(n)).sort((x, y) => x.localeCompare(y));
+  if (list.length) await env.TRADES.put("writer:assettypes", JSON.stringify({ at: Date.now(), list }));
+  return list;
 }
-async function writerContext(env, assetId) {
-  const aid = hubAssetId(assetId), G = await wrGather(env, aid), L = await wrLists(env), saved = await env.TRADES.get("writer:settings:" + aid, "json").catch(() => null);
-  const platName = String(G.cur["Platform Name"] || ""), hubSec = G.p["Hub Section"]?.select?.name || "";
-  const platform = saved?.platform || (/^sub ?page$/i.test(G.type) || hubSec ? "Hub page / blog" : /story|reel/i.test(G.type) ? "Instagram Reel / Story (9:16)" : /instagram/i.test(platName) ? "Instagram post" : /linkedin/i.test(platName) ? "LinkedIn post" : /fiverr/i.test(platName) || /listing/i.test(G.type) ? "Fiverr gig" : /tiktok/i.test(platName) ? "TikTok" : /youtube/i.test(platName + G.type) ? "YouTube (long form)" : /newsletter|email/i.test(G.type + platName) ? "Email" : /etsy/i.test(platName) ? "Etsy listing" : "Hub page / blog");
-  const P = L.platforms.find(x => x.name === platform) || L.platforms[0], wp = G.p["Write Purpose"]?.select?.name || "";
-  const purpose = saved?.purpose || (/offer|listing|sales|gig/i.test(G.type) ? "Sell" : wp === "SEO" ? "SEO" : wp === "Engagement" ? "Engage" : wp === "Information" ? "Inform" : "Inform");
-  const contractFields = (G.m.contract || []).map(f => f.name).filter(Boolean);
+async function wrContractFor(env, type) {   // the switched-on writing-rules row for this Asset Type (name or alias), if any
+  if (!type) return { contract: [], row: null };
+  const rows = writingRows(await writingMethodsTable(env)), on = r => /^yes$/i.test(r.mapped || ""), t = ivNorm(type), alias = ivNorm(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()] || "");
+  const hits = rows.filter(r => ivNorm(r.name) === t || r.aliases.includes(t) || (alias && ivNorm(r.name) === alias)), row = hits.find(on) || null;
+  return { row, contract: row && !writingMissing(row).length ? parseWritingContract(row.contractText) : [] };
+}
+async function wrGather(env, titleId) {
+  const tid = hubAssetId(titleId), title = await ivPage(tid); if (!title?.properties || title.archived) throw new Error("Title unavailable");
+  const tp = title.properties, cid = ivRid(tp, "Campaign"), pid = ivRid(tp, "product") || ivRid(tp, "Product");
+  const pr = pid ? await findBestProductResearchRecord(ivHdr(), ivDash(pid)).catch(() => null) : null, prv = k => pr ? lfReadRich(pr.properties?.[k]) || "" : "";
+  return { tid, title, tp, tv: writingFieldValues(tp), cid, pid, pr, prv, prodName: pid ? hubRichText((await ivPage(pid).catch(() => ({}))).properties?.Name?.title) : "" };
+}
+function wrPlatformFor(type) {
+  return /^sub ?page$|blog|seo|article|news|offer/i.test(type) ? "Hub page / blog" : /story|reel/i.test(type) ? "Instagram Reel / Story (9:16)" : /single post|carousel|instagram/i.test(type) ? "Instagram post"
+    : /linkedin/i.test(type) ? "LinkedIn post" : /listing|gig|fiverr/i.test(type) ? "Fiverr gig" : /tiktok/i.test(type) ? "TikTok" : /youtube/i.test(type) ? "YouTube (long form)" : /newsletter|email/i.test(type) ? "Email" : /etsy/i.test(type) ? "Etsy listing" : "Hub page / blog";
+}
+async function writerContext(env, titleId, assetType) {
+  const G = await wrGather(env, titleId), L = await wrLists(env), saved = await env.TRADES.get("writer:settings:t:" + G.tid, "json").catch(() => null);
+  L.assetTypes = await wrAssetTypes(env).catch(() => []);
+  const type = String(assetType || saved?.assetType || "").trim(), C = await wrContractFor(env, type);
+  const keepPlat = saved && saved.assetType === type;
+  const platform = (keepPlat && saved.platform) || wrPlatformFor(type), P = L.platforms.find(x => x.name === platform) || L.platforms[0];
+  const purpose = (keepPlat && saved.purpose) || (/offer|listing|sales|gig|sub ?page/i.test(type) ? "Sell" : /seo|blog|article|news/i.test(type) ? "SEO" : /single post|story|reel|carousel|linkedin|tiktok/i.test(type) ? "Engage" : "Inform");
   const upstream = saved?.upstream || {
     niche: G.prv("Niche") || G.prodName || "",
     intent: G.tv["Title Intent"] || "",
     persona: G.tv["Title Audience"] || G.prv("Customer") || "",
     frustrations: [G.prv("Emotions"), G.prv("Objections")].filter(Boolean).join("\n"),
     pains: G.prv("Pain Points") || "" };
-  const draft = await env.TRADES.get("writer:draft:" + aid, "json").catch(() => null);
-  return { ok: true, asset: { id: aid, title: hubRichText(G.p["Asset Title"]?.title), type: G.type, status: G.p["Asset Status"]?.select?.name || "", hubSection: hubSec, platformName: platName, titleName: G.tv.Title || "", product: G.prodName },
-    lists: L, settings: { purpose, platform, length: saved?.length || P.length, layout: saved?.layout || P.layout, imagery: saved?.imagery || P.imagery, scripting: saved?.scripting || P.scripting, guidance: saved?.guidance || "" },
-    upstream, fields: contractFields.length ? contractFields : P.fields, fieldsFrom: contractFields.length ? "the " + (G.m.row?.name || G.type) + " writing rules" : "the " + P.name + " platform",
-    contract: (G.m.contract || []).map(f => ({ name: f.name, rule: f.rule })), draft };
+  const fields = C.contract.map(f => f.name).filter(Boolean);
+  const draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json").catch(() => null);
+  return { ok: true, title: { id: G.tid, name: G.tv.Title || "", status: G.tp.Status?.select?.name || G.tp.Status?.status?.name || "", product: G.prodName, campaignId: G.cid || "", productId: G.pid || "" },
+    assetType: type, lists: L, settings: { purpose, platform, length: (keepPlat && saved.length) || P.length, layout: (keepPlat && saved.layout) || P.layout, imagery: (keepPlat && saved.imagery) || P.imagery, scripting: (keepPlat && saved.scripting) || P.scripting, guidance: saved?.guidance || "" },
+    upstream, fields: fields.length ? fields : P.fields, fieldsFrom: fields.length ? "the " + (C.row?.name || type) + " writing rules" : "the " + P.name + " platform",
+    contract: C.contract.map(f => ({ name: f.name, rule: f.rule })), draft: draft && draft.assetType === type ? draft : null };
 }
 async function writerDraft(env, body) {
-  const aid = hubAssetId(body.assetId), ctx = await writerContext(env, aid), G = await wrGather(env, aid), S = { ...ctx.settings, ...(body.settings || {}) }, U = { ...ctx.upstream, ...(body.upstream || {}) };
-  const L = ctx.lists, purpose = L.purposes.find(x => x.name === S.purpose) || L.purposes[0], fields = (Array.isArray(body.fields) && body.fields.length ? body.fields : ctx.fields).slice(0, 12);
-  await env.TRADES.put("writer:settings:" + aid, JSON.stringify({ purpose: S.purpose, platform: S.platform, length: S.length, layout: S.layout, imagery: S.imagery, scripting: S.scripting, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
-  const [pillar, research, voice, audience, product, iv] = await Promise.all([G.titleId ? extractPillarContent(ivHdr(), ivDash(G.titleId)).catch(() => "") : "", G.titleId ? titleResearchBlock(env, G.titleId).catch(() => "") : "",
-    G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", G.titleId ? ivBlock(env, G.titleId, G.type, aid).catch(() => null) : null]);
-  const note = (await offerBlogBlocks(ivHdr(), G.page.id).catch(() => [])).map(b => hubRichText(b[b.type]?.rich_text).trim()).filter(Boolean).join("\n").slice(0, 2500);
+  const ctx = await writerContext(env, body.titleId, body.assetType), G = await wrGather(env, body.titleId), type = ctx.assetType;
+  if (!type) throw new Error("Pick an asset type first");
+  const S = { ...ctx.settings, ...(body.settings || {}) }, U = { ...ctx.upstream, ...(body.upstream || {}) };
+  const L = ctx.lists, purpose = L.purposes.find(x => x.name === S.purpose) || L.purposes[0];
+  const P = L.platforms.find(x => x.name === S.platform), fields = (ctx.contract.length ? ctx.fields : (P ? P.fields : ctx.fields)).slice(0, 12);
+  await env.TRADES.put("writer:settings:t:" + G.tid, JSON.stringify({ assetType: type, purpose: S.purpose, platform: S.platform, length: S.length, layout: S.layout, imagery: S.imagery, scripting: S.scripting, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
+  const [pillar, research, voice, audience, product, iv] = await Promise.all([extractPillarContent(ivHdr(), ivDash(G.tid)).catch(() => ""), titleResearchBlock(env, G.tid).catch(() => ""),
+    G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, "").catch(() => null)]);
   const prodFacts = G.pid ? Object.entries(writingFieldValues((await ivPage(G.pid).catch(() => ({}))).properties || {})).filter(([k, v]) => ["Name", "Description", "Price", "Offer Structure", "Transformation", "Unique Angle"].includes(k) && String(v).trim()).map(([k, v]) => k + ": " + v).join("\n") : "";
   const rules = (ctx.contract || []).filter(f => fields.includes(f.name)).map(f => "- " + f.name + ": " + f.rule).join("\n");
   const sec = (h, t, max) => String(t || "").trim() ? "\n## " + h + "\n" + String(t).trim().slice(0, max) + "\n" : "";
-  const prompt = `You are the writer. You have the research below and a clear brief from the operator. Write the best ${G.type || "asset"} you can for this reader — the way an expert writer who understood this reader and this subject would write it. You decide the angle, the structure and the words.
+  const prompt = `You are the writer. You have the research below and a clear brief from the operator. Write the best ${type} you can for this reader — the way an expert writer who understood this reader and this subject would write it. You decide the angle, the structure and the words.
 
 # THE OPERATOR'S SETTINGS (satisfy these)
+Asset type: ${type}
 Purpose: ${purpose.name} — ${purpose.rule}
 Platform: ${S.platform} — conform to it. Length: ${S.length}. Layout: ${S.layout}. Imagery: ${S.imagery} (describe any image you intend in "notes"; don't put image directions in the copy). Scripting: ${S.scripting}.
 ${String(body.guidance || "").trim() ? "Operator guidance (follow it): " + String(body.guidance).trim() : ""}
@@ -2657,8 +2677,8 @@ Audience persona: ${U.persona || "—"}
 Frustration points: ${U.frustrations || "—"}
 Pain points: ${U.pains || "—"}
 
-# WHAT THIS ASSET IS ABOUT
-Title: ${G.tv.Title || "—"} · Asset: ${hubRichText(G.p["Asset Title"]?.title)}${G.ptr ? `\nShort-form pointers: format ${G.ptr.format} · angle ${G.ptr.angle} · post type ${G.ptr.postType} · CTA ${G.ptr.cta}${G.ptr.topic ? " · topic: " + G.ptr.topic : ""}` : ""}${G.cur.Description ? "\nDescription: " + G.cur.Description : ""}${note ? "\nNotes on the asset: " + note : ""}
+# WHAT IT IS ABOUT
+Title: ${G.tv.Title || "—"}${G.tv["Title Keywords"] ? "\nKeywords: " + G.tv["Title Keywords"] : ""}
 ${sec("Pillar (the substance)", pillar, 7000)}${sec("Title research", research, 3000)}${sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4500)}${sec("Interview answers (the operator's own knowledge and voice)", iv && iv.text, 5000)}${sec("Hub audience", audience, 1800)}${sec("Voice", voice, 2200)}
 
 # HARD LIMITS (only these are rules)
@@ -2677,16 +2697,23 @@ First fill "brief" (your understanding: subject, the keyword / intent you are se
   try { out = await hcClaude(env, prompt, "write_asset", schema, 16000, null, { stream: true, model }); }
   catch (e) { if (!/model/i.test(e.message)) throw e; model = "claude-sonnet-4-6"; out = await hcClaude(env, prompt, "write_asset", schema, 16000, null, { stream: true, model }); }
   const vals = Object.fromEntries(fields.map((f, i) => [f, String((out.fields || {})["f" + i] || "")]));
-  const draft = { at: new Date().toISOString(), model, settings: S, upstream: U, guidance: String(body.guidance || ""), brief: out.brief || {}, fields: vals, notes: String(out.notes || ""),
+  const draft = { at: new Date().toISOString(), model, assetType: type, settings: S, upstream: U, guidance: String(body.guidance || ""), brief: out.brief || {}, fields: vals, notes: String(out.notes || ""),
     violations: ctx.contract && ctx.contract.length ? validateWritingContract(ctx.contract.filter(f => fields.includes(f.name)), vals) : [] };
-  await env.TRADES.put("writer:draft:" + aid, JSON.stringify(draft), { expirationTtl: 60 * 60 * 24 * 30 });
+  await env.TRADES.put("writer:draft:t:" + G.tid, JSON.stringify(draft), { expirationTtl: 60 * 60 * 24 * 30 });
   return { ok: true, draft };
 }
-async function writerSave(env, body) {   // approve: only the draft's own field names; protected fields never written
-  const aid = hubAssetId(body.assetId), draft = await env.TRADES.get("writer:draft:" + aid, "json"); if (!draft) throw new Error("No draft to save — write one first");
-  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) };
-  const PROT = new Set(["status", "asset status", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
-  const page = await ivPage(aid), hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, props = {}, skipped = [];
+async function writerSave(env, body) {   // approve: CREATE the asset under the title at Development, with the draft's fields (protected fields never written)
+  const G = await wrGather(env, body.titleId), draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json"); if (!draft) throw new Error("No draft to save — write one first");
+  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, type = draft.assetType;
+  const PROT = new Set(["status", "asset status", "asset type", "asset title", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const assetTitle = String(vals["Platform Title"] || "").trim().slice(0, 180) || ((G.tv.Title || "Untitled") + " — " + type);
+  const properties = { "Asset Title": { title: [{ text: { content: assetTitle } }] }, "Asset Status": { select: { name: "Development" } }, "Asset Type": { select: { name: type } },
+    "Content Strategy": { relation: [{ id: ivDash(G.tid) }] }, "Asset Class": { select: { name: "Publishable" } }, "Deployment Status": { select: { name: "Not Deployed" } },
+    ...(G.cid ? { "Campaign": { relation: [{ id: ivDash(G.cid) }] } } : {}), ...(G.pid ? { "Product": { relation: [{ id: ivDash(G.pid) }] } } : {}), ...(await assetMethodProp(null, type).catch(() => ({}))) };
+  const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }) }), cd = await cr.json().catch(() => ({}));
+  if (!cr.ok) throw new Error("Asset not created: " + (cd.message || cr.status));
+  const aid = hubAssetId(cd.id), page = await ivPage(aid), props = {}, skipped = [];
   for (const [k, v] of Object.entries(vals)) {
     if (PROT.has(ivNorm(k))) { skipped.push(k); continue; }
     let t = page.properties?.[k]?.type; if (!t) { await ensureDbRichTextProperty(hdr, ASSETS_DB, k).catch(() => {}); t = "rich_text"; }
@@ -2694,9 +2721,10 @@ async function writerSave(env, body) {   // approve: only the draft's own field 
     props[k] = t === "select" ? { select: v ? { name: String(v).slice(0, 90) } : null } : { [t]: ivRt(String(v).slice(0, 190000)) };
   }
   if (Object.keys(props).length) await kwNotionPatch(env, aid, props);
+  await env.TRADES.put("writer:draft:t:" + G.tid, JSON.stringify({ ...draft, savedAs: aid, savedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
   const log = (await env.TRADES.get("writeasset:log", "json").catch(() => null)) || [];
-  await env.TRADES.put("writeasset:log", JSON.stringify([{ assetId: aid, method: "Writer (" + (draft.settings?.purpose || "") + " · " + (draft.settings?.platform || "") + ")", violations: draft.violations || [], written: true, timestamp: new Date().toISOString(), writer: "writer-modal", model: draft.model }, ...log].slice(0, 200)));
-  return { ok: true, saved: Object.keys(props), skipped };
+  await env.TRADES.put("writeasset:log", JSON.stringify([{ assetId: aid, method: "Writer (" + type + " · " + (draft.settings?.purpose || "") + " · " + (draft.settings?.platform || "") + ")", violations: draft.violations || [], written: true, timestamp: new Date().toISOString(), writer: "writer-modal", model: draft.model }, ...log].slice(0, 200)));
+  return { ok: true, assetId: aid, assetTitle, assetType: type, saved: Object.keys(props), skipped };
 }
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
@@ -55101,8 +55129,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         try {
           if (body.action === "writerPurpose") { const name = String(body.name || "").trim().slice(0, 40), rule = String(body.rule || "").trim().slice(0, 600); if (!name || !rule) return json({ error: "name and rule required" }, 400);
             const cur = (await env.TRADES.get("writer:purposes", "json").catch(() => null)) || []; const next = [...cur.filter(x => x.name !== name), { name, rule }]; await env.TRADES.put("writer:purposes", JSON.stringify(next)); return json({ ok: true, purposes: (await wrLists(env)).purposes }); }
-          if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
-          if (body.action === "writerContext") return json(await writerContext(env, body.assetId));
+          if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.titleId || ""))) return json({ error: "titleId required" }, 400);
+          if (body.action === "writerContext") return json(await writerContext(env, body.titleId, body.assetType));
           if (body.action === "writerDraft") return json(await writerDraft(env, body));
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
