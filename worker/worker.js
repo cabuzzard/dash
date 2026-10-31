@@ -54911,6 +54911,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const parentId = ivRid(p, "Parent Asset"), parent = parentId ? await ivPage(parentId).catch(() => null) : null;
         return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
             platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "",
+            loginId: (p.Login?.relation || [])[0] ? hubAssetId(p.Login.relation[0].id) : "",
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),

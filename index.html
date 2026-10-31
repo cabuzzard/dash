@@ -4986,7 +4986,7 @@ function amDraw() {
   const tabs = [['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}
           ${chip(d.rules ? '📏 ' + d.rules.row : unmapped ? '📏 no writing rules' : '', unmapped ? d.reason : 'Writing-rules row (Current Methods)', unmapped ? '#f59e0b' : '')}
           ${a.platformName ? chip(a.platformName, 'Platform Name') : ''}${a.parentTitle ? chip('↑ ' + a.parentTitle, 'Parent Asset') : ''}
           ${a.contentHub ? chip(a.contentHub, 'Content Hub') : ''}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Notion ↗</a></div></div>
@@ -5223,6 +5223,27 @@ async function amSaveAndPublish(btn) {
   const r = await call('updateAssetStatus', { assetId: AM.id, status: 'Published' }).catch(e => ({ error: e.message }));
   AM.log = !r || r.error ? '✗ Saved, but not published: ' + ((r && r.error) || 'no response') : '✓ Saved and Published';
   AM.changed = true; await amLoad();
+}
+// 🔑 Login — every login is available to every asset (operator 2026-10-30: "multiple logins per hub, or just all logins available to
+// assets"): this hub's logins first, then all the others. Saves the asset's Login relation (setAssetLogin).
+function amLoginSel() {
+  const a = AM.data.asset, L = (typeof _eaAllLogins !== 'undefined' && _eaAllLogins.length) ? _eaAllLogins : null;
+  if (!L) {
+    if (!AM.loginsLoading) { AM.loginsLoading = true; call('getLogins', {}).then(d => { _eaAllLogins = (d && d.logins) || []; amDraw(); }).catch(() => {}); }
+    return '<span style="font-size:11px;color:var(--text3);">🔑 …</span>';
+  }
+  const mine = L.filter(l => a.campaignId && (l.campaignIds || []).map(kwNid).includes(kwNid(a.campaignId))), rest = L.filter(l => !mine.includes(l));
+  const opt = l => '<option value="' + esc(l.id) + '"' + (kwNid(l.id) === kwNid(a.loginId) ? ' selected' : '') + '>' + esc(l.name) + '</option>';
+  return '<select title="Login this asset publishes with — any login, this hub\'s first" onchange="amSetLogin(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;">'
+    + '<option value=""' + (a.loginId ? '' : ' selected') + '>🔑 no login</option>'
+    + (mine.length ? '<optgroup label="This hub\'s logins">' + mine.map(opt).join('') + '</optgroup>' : '')
+    + '<optgroup label="All other logins">' + rest.map(opt).join('') + '</optgroup></select>';
+}
+async function amSetLogin(sel) {
+  const a = AM && AM.data && AM.data.asset; if (!a) return; sel.disabled = true;
+  const r = await call('setAssetLogin', { assetId: AM.id, loginId: sel.value || null }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Login not saved: ' + ((r && r.error) || 'no response'); return amDraw(); }
+  a.loginId = sel.value || ''; AM.changed = true; AM.log = '✓ Login set'; amDraw();
 }
 async function amSetStatus(sel) {
   const to = sel.value, a = AM && AM.data && AM.data.asset; if (!a || to === a.status) return;
@@ -6417,9 +6438,10 @@ async function eaFilterLogins() {
   }
   const q = document.getElementById('eaLoginInput').value.toLowerCase();
   const drop = document.getElementById('eaLoginDrop');
-  const scoped = _eaAllLogins.filter(l => !_eaAsset.campaignId || (l.campaignIds||[]).includes(_eaAsset.campaignId));
-  const pool = scoped.length ? scoped : _eaAllLogins;
-  const matches = pool.filter(l => l.name.toLowerCase().includes(q)).slice(0, 10);
+  // every login is available to every asset (operator 2026-10-30) — this hub's logins first, then all the others
+  const scoped = _eaAllLogins.filter(l => _eaAsset.campaignId && (l.campaignIds||[]).includes(_eaAsset.campaignId));
+  const pool = [...scoped, ..._eaAllLogins.filter(l => !scoped.includes(l))];
+  const matches = pool.filter(l => l.name.toLowerCase().includes(q)).slice(0, 25);
   drop.innerHTML = '';
   const exact = pool.find(l => l.name.toLowerCase() === q);
   if (q && !exact) {
@@ -29745,8 +29767,8 @@ function openPubLoginPicker(assetId, cellEl) {
     const scoped = asset && asset.campaignId
       ? _eaAllLogins.filter(l => (l.campaignIds || []).includes(asset.campaignId))
       : _eaAllLogins;
-    const pool = scoped.length ? scoped : _eaAllLogins;
-    const matches = pool.filter(l => l.name.toLowerCase().includes(query)).slice(0, 10);
+    const pool = asset && asset.campaignId ? [...scoped, ..._eaAllLogins.filter(l => !scoped.includes(l))] : _eaAllLogins;   // all logins, this hub's first (operator 2026-10-30)
+    const matches = pool.filter(l => l.name.toLowerCase().includes(query)).slice(0, 25);
     const exact = pool.find(l => l.name.toLowerCase() === query);
 
     drop.innerHTML = '';
