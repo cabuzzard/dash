@@ -4631,10 +4631,40 @@ async function ao2SetToggle(titleId, title, on, cb) {
 }
 const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
+// Collapsible column groups (operator 2026-10-30: "+ collapse column … a collapsible horizontal column section I can drag other columns
+// into"). A group is a column of its own ("g:<id>") in the order; its member columns render right after it when expanded and disappear
+// when collapsed. Kept in this browser (ao2ColGroups) like the order and widths.
+function ao2Groups() { let g = []; try { g = JSON.parse(localStorage.getItem('ao2ColGroups') || '[]'); } catch (e) {} return Array.isArray(g) ? g.filter(x => x && x.id) : []; }
+function ao2SaveGroups(g) { try { localStorage.setItem('ao2ColGroups', JSON.stringify(g)); } catch (e) {} }
+function ao2SaveOrder(o) { try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} }
 function ao2ColOrder() {
   let o = []; try { o = JSON.parse(localStorage.getItem('ao2ColOrder') || '[]'); } catch (e) {}
-  const keys = AO2_COLS.map(c => c.key); o = (Array.isArray(o) ? o : []).filter(k => keys.includes(k));
-  keys.forEach(k => { if (!o.includes(k)) o.push(k); }); return o;
+  const G = ao2Groups(), members = new Set(G.flatMap(g => g.cols || [])), keys = AO2_COLS.map(c => c.key).filter(k => !members.has(k)), gk = G.map(g => 'g:' + g.id);
+  o = (Array.isArray(o) ? o : []).filter(k => keys.includes(k) || gk.includes(k));
+  [...keys, ...gk].forEach(k => { if (!o.includes(k)) o.push(k); }); return o;
+}
+function ao2Layout() {   // the columns as drawn: a group header, then its members when expanded
+  const G = ao2Groups(), out = [];
+  ao2ColOrder().forEach(k => {
+    if (k.startsWith('g:')) { const g = G.find(x => 'g:' + x.id === k); if (!g) return;
+      const mem = (g.cols || []).map(m => AO2_COLS.find(c => c.key === m)).filter(Boolean);
+      out.push({ key: k, label: g.name, group: g, n: mem.length }); if (!g.collapsed) mem.forEach(c => out.push({ ...c, member: g.id })); }
+    else { const c = AO2_COLS.find(x => x.key === k); if (c) out.push(c); }
+  });
+  return out;
+}
+function ao2GroupAdd() { const G = ao2Groups(), id = Date.now().toString(36); G.push({ id, name: 'Group ' + (G.length + 1), collapsed: false, cols: [] }); ao2SaveGroups(G); ao2Render(); }
+function ao2GroupToggle(id) { const G = ao2Groups(), g = G.find(x => x.id === id); if (!g) return; g.collapsed = !g.collapsed; ao2SaveGroups(G); ao2Render(); }
+function ao2GroupRename(id) { const G = ao2Groups(), g = G.find(x => x.id === id); if (!g) return; const n = (prompt('Group name:', g.name) || '').trim(); if (!n) return; g.name = n; ao2SaveGroups(G); ao2Render(); }
+function ao2GroupRemove(id) {   // its columns go back into the table right where the group was
+  const G = ao2Groups(), g = G.find(x => x.id === id); if (!g) return; const o = ao2ColOrder(), at = o.indexOf('g:' + id);
+  ao2SaveGroups(G.filter(x => x.id !== id)); o.splice(at, 1, ...(g.cols || [])); ao2SaveOrder(o); ao2Render();
+}
+function ao2GroupDrop(ev, id) {   // a column dropped on a group header joins it (a group dropped on a group just moves)
+  ev.preventDefault(); ev.stopPropagation(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === 'g:' + id) return;
+  if (from.startsWith('g:')) return ao2ColDrop(ev, 'g:' + id, from);
+  const G = ao2Groups(); G.forEach(g => { g.cols = (g.cols || []).filter(k => k !== from); }); const g = G.find(x => x.id === id); if (!g) return;
+  g.cols.push(from); g.collapsed = false; ao2SaveGroups(G); ao2SaveOrder(ao2ColOrder().filter(k => k !== from)); ao2Render();
 }
 async function ao2Load() {
   const el = document.getElementById('ao2Body'); if (!el) return;
@@ -4674,7 +4704,7 @@ async function ao2Load() {
 const AO2_DEFAULT_W = { asset: 90, product: 220, title: 300, ofTitle: 260, platformTitle: 260, parent: 220, type: 100, status: 110, assetType: 140, topic: 170, cluster: 170, hub: 140, dev: 90, publish: 100, pub: 110 };
 let AO2_RESIZING = false;
 function ao2Widths() { try { return JSON.parse(localStorage.getItem('ao2ColW') || '{}') || {}; } catch (e) { return {}; } }
-function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || 140); }
+function ao2W(W, k) { return Math.max(40, +W[k] || AO2_DEFAULT_W[k] || (String(k).startsWith('g:') ? 150 : 140)); }
 function ao2ResizeStart(ev, k) {
   ev.preventDefault(); ev.stopPropagation(); AO2_RESIZING = true;
   const tbl = document.getElementById('ao2Tbl'), col = tbl && tbl.querySelector('col[data-k="' + k + '"]'); if (!col) { AO2_RESIZING = false; return; }
@@ -4784,7 +4814,7 @@ function ao2Toggle(i) { const k = (AO2_GKEYS || [])[i]; if (k === undefined) ret
 let AO2_GKEYS = [];
 function ao2Render() {
   const el = document.getElementById('ao2Body'); if (!el || !AO2_ROWS) return;
-  const V = ao2View(), cols = ao2ColOrder().map(k => AO2_COLS.find(c => c.key === k)), { rows, S } = ao2Rows();
+  const V = ao2View(), cols = ao2Layout(), { rows, S } = ao2Rows();
   const btn = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;';
   const colOpts = cur => `<option value="">—</option>` + AO2_COLS.map(c => `<option value="${c.key}" ${c.key === cur ? 'selected' : ''}>${esc(c.label)}</option>`).join('');
@@ -4794,6 +4824,7 @@ function ao2Render() {
   const bar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">`
     + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
     + `<button style="${btn}" title="Reload the table: re-reads the AO2 title list and every row from Notion" onclick="ao2Refresh(this)">↻ Refresh</button>`
+    + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
     + `<button style="${btn}" title="Group the rows under collapsible headers, one tier per sort level" onclick="ao2View().group=!ao2View().group;ao2Render()">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>`
@@ -4811,8 +4842,9 @@ function ao2Render() {
     + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${V.S.length < AO2_MAX ? `<button style="${btn}" onclick="ao2AddSort()">＋ sort level</button>` : ''}<button style="${btn}" onclick="ao2Clear()">Clear filters</button></div>`
     + `<div style="color:var(--text3);font-size:11px;">Up to 7 sort levels; with Group by sort on, each level with Header ticked is a collapsible header tier — unticked levels only order the rows inside them. Header clicks sort too (Ctrl- or Shift-click adds a level, again flips it, a third time removes it; Alt-click removes it). Drag a header to reorder the columns.</div></div>`;
   const th = 'cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
-  const head = cols.map(c => { const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
-    return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
+  const head = cols.map(c => { if (c.group) return `<th draggable="true" ondragstart="AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault();this.style.outline='2px solid #c084fc'" ondragleave="this.style.outline=''" ondrop="ao2GroupDrop(event,'${c.group.id}')" onclick="ao2GroupToggle('${c.group.id}')" title="Column group — click to ${c.group.collapsed ? 'expand' : 'collapse'} · drag a column header onto it to add it · double-click the name to rename" style="${th}cursor:pointer;background:rgba(192,132,252,.14);color:#c084fc;position:relative;overflow:hidden;text-overflow:ellipsis;">${c.group.collapsed ? '▸' : '▾'} <span ondblclick="event.stopPropagation();ao2GroupRename('${c.group.id}')">${esc(c.label)}</span> (${c.n})<span onclick="event.stopPropagation();if(confirm('Remove this group? Its columns go back into the table.'))ao2GroupRemove('${c.group.id}')" title="Remove the group" style="margin-left:6px;opacity:.7;">×</span><span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`;
+    const si = S.findIndex(s => s.col === c.key), arrow = si < 0 ? '' : ' ' + (S[si].asc === false ? '↓' : '↑') + (S.length > 1 ? si + 1 : '');
+    return `<th data-k="${c.key}" draggable="true" ondragstart="if(AO2_RESIZING){event.preventDefault();return;}AO2_DRAG='${c.key}';try{event.dataTransfer.setData('text/plain','${c.key}')}catch(e){}" ondragover="event.preventDefault()" ondrop="ao2ColDrop(event,'${c.key}')" onclick="ao2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level · drag: reorder (onto a group header: into the group) · drag the right edge: width" style="${th}position:relative;overflow:hidden;text-overflow:ellipsis;${c.member ? 'background:rgba(192,132,252,.07);' : ''}">${esc(c.label)}${arrow}<span onmousedown="ao2ResizeStart(event,'${c.key}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;"></span></th>`; }).join('');
   const cell = (x, c) => c.key === 'asset' ? (x.type === 'Asset' ? `<button onclick="amOpen('${esc(x.id)}')" title="Asset modal (native, in the dash) — fields, preview, writing rules, information flow, ✍ Write" style="font-size:11px;padding:1px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--surface2);color:var(--accent);cursor:pointer;">✎ Open</button>` : '')
     : c.key === 'product' && x.product && x.productId ? ao2Dot(x.sProd) + `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
     : c.key === 'title' && x.type === 'Product' ? ao2Dot(x.sProd) + `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
@@ -4824,7 +4856,7 @@ function ao2Render() {
     : c.key === 'title' && x.type === 'Title' ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.id)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
   const tip = (x, c) => c.key === 'parent' || c.key === 'asset' || c.key === 'cluster' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
-  const rowHtml = x => `<tr class="ao2-row"><td style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border);"><input type="checkbox" ${AO2_SEL.has(ao2Key(x)) ? 'checked' : ''} onchange="ao2SelToggle('${esc(ao2Key(x))}',this.checked)"></td>${cols.map(c => `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cell(x, c)}</td>`).join('')}</tr>`;
+  const rowHtml = x => `<tr class="ao2-row"><td style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border);"><input type="checkbox" ${AO2_SEL.has(ao2Key(x)) ? 'checked' : ''} onchange="ao2SelToggle('${esc(ao2Key(x))}',this.checked)"></td>${cols.map(c => c.group ? `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.05);"></td>` : `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${c.member ? 'background:rgba(192,132,252,.04);' : ''}">${cell(x, c)}</td>`).join('')}</tr>`;
   let body = ''; AO2_GKEYS = [];
   if (!rows.length) body = `<tr><td colspan="${cols.length + 1}" style="padding:6px 10px;color:var(--text3);">${AO2_ROWS.length ? 'No rows match the filters.' : 'No titles yet — tick → AO2 on a title in All Output.'}</td></tr>`;
   const G = S.filter(s => s.head !== false);   // only the levels ticked Header make header tiers
@@ -4872,7 +4904,15 @@ async function ao2Refresh(btn) {   // re-read the AO2 list (server) and the tabl
   if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
   AO2_SET = null; _devTblLast = null; await ao2Load();
 }
-function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
+function ao2ColDrop(ev, key, fromArg) {
+  ev.preventDefault(); const from = fromArg || AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return;
+  const G = ao2Groups(), toG = G.find(g => (g.cols || []).includes(key));
+  G.forEach(g => { g.cols = (g.cols || []).filter(k => k !== from); });                       // out of any group it was in
+  if (toG && !from.startsWith('g:')) { toG.cols.splice(toG.cols.indexOf(key), 0, from); ao2SaveGroups(G); ao2SaveOrder(ao2ColOrder().filter(k => k !== from)); return ao2Render(); }
+  ao2SaveGroups(G);
+  const o = ao2ColOrder().filter(k => k !== from), tk = toG ? 'g:' + toG.id : key, at = o.indexOf(tk);
+  o.splice(at < 0 ? o.length : at, 0, from); ao2SaveOrder(o); ao2Render();
+}
 // ══ ASSET MODAL (operator 2026-10-30) — the dash's asset-level editor / writer, built here (not care-gap). A right-hand flyout,
 // full width on a phone. Tabs: ✎ Fields (the asset's contract fields + ✍ Write) · 👁 Preview (the layout) · 📏 Writing rules
 // (the rules row, live ✓/✗, Keep / Purpose, the operator's guidance on the rules) · 🧭 Information flow (the exact packet the writer
