@@ -5426,20 +5426,18 @@ async function wrOpen(titleId) {
   if (!r || r.error) { WR.log = '✗ ' + ((r && r.error) || 'no response'); return wrDraw(); }
   WR.ctx = r; WR.S = { ...r.settings }; WR.U = { ...r.upstream }; WR.draft = r.draft || null; wrDraw();
 }
-function wrSet(k, v) { if (!WR) return; WR.S[k] = v; if (k === 'platform') { const P = WR.ctx.lists.platforms.find(x => x.name === v); if (P) Object.assign(WR.S, { length: P.length, layout: P.layout, imagery: P.imagery, scripting: P.scripting }); wrDraw(); } }
-async function wrType(type) {
-  if (!WR) return; WR.busy = 'Loading…'; wrDraw();
-  const r = await call('writerContext', { titleId: WR.id, assetType: type }).catch(e => ({ error: e.message }));
-  if (!WR) return; WR.busy = '';
-  if (!r || r.error) { WR.log = '✗ ' + ((r && r.error) || 'no response'); return wrDraw(); }
-  const U = WR.U; WR.ctx = r; WR.S = { ...r.settings, guidance: WR.S.guidance || r.settings.guidance }; WR.U = U; WR.draft = r.draft || null; WR.log = ''; wrDraw();
+function wrSet(k, v) {
+  if (!WR) return; if (v === '__new') { WR.add = k; return wrDraw(); }
+  WR.S[k] = v; if (k === 'platform') { const P = WR.ctx.lists.platforms.find(x => x.name === v); if (P && P.scripting) WR.S.scripting = P.scripting; }
+  wrDraw();
 }
-async function wrPurposeAdd() {
-  const name = (prompt('New purpose — a short name (e.g. Nurture, Recruit):') || '').trim(); if (!name) return wrDraw();
-  const rule = (prompt('What should an asset with the purpose "' + name + '" do? (one or two sentences)') || '').trim(); if (!rule) return wrDraw();
-  const r = await call('writerPurpose', { name, rule }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { WR.log = '✗ Purpose not added: ' + ((r && r.error) || 'no response'); return wrDraw(); }
-  WR.ctx.lists.purposes = r.purposes; WR.S.purpose = name; wrDraw();
+async function wrAddSave() {   // ＋ add new — purpose · platform · layout · scripting, each with its guidance
+  const k = WR.add, g = id => (document.getElementById(id) || {}).value || '';
+  const body = { kind: k, name: g('wrAddName').trim(), rule: g('wrAddRule').trim(), fields: g('wrAddFields') };
+  if (!body.name || !body.rule) { WR.log = '✗ A name and guidance are both needed'; return wrDraw(); }
+  const r = await call('writerListAdd', body).catch(e => ({ error: e.message }));
+  if (!r || r.error) { WR.log = '✗ Not added: ' + ((r && r.error) || 'no response'); return wrDraw(); }
+  WR.ctx.lists = r.lists; WR.S[k] = body.name; WR.add = ''; WR.log = '✓ Added ' + k + ' "' + body.name + '"'; wrDraw();
 }
 function wrDraw() {
   const P = document.getElementById('wrPanel'); if (!P || !WR) return;
@@ -5449,21 +5447,22 @@ function wrDraw() {
   const C = WR.ctx, L = C.lists, S = WR.S, U = WR.U;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
   const lab = 'display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:10px 0 3px;';
-  const sel = (k, label, opts) => `<label style="${lab}">${label}</label><select style="${IN}" onchange="${k === 'purpose' ? "if(this.value==='__new')wrPurposeAdd();else wrSet('purpose',this.value)" : `wrSet('${k}',this.value)`}">${opts.map(o => `<option ${o === S[k] ? 'selected' : ''}>${esc(o)}</option>`).join('')}${k === 'purpose' ? '<option value="__new">＋ new purpose…</option>' : ''}</select>`;
+  const sel = (k, label, list) => { const cur = list.find(x => x.name === S[k]) || {};
+    if (WR.add === k) return `<label style="${lab}">${label} — ＋ add new</label><div style="border:1px dashed var(--border2);border-radius:6px;padding:8px;">
+      <input id="wrAddName" style="${IN}" placeholder="Name">${k === 'platform' ? `<input id="wrAddFields" style="${IN}margin-top:6px;" placeholder="Fields it writes, comma-separated (e.g. Platform Title, Body, Hashtags)">` : ''}
+      <textarea id="wrAddRule" rows="3" style="${IN}margin-top:6px;resize:vertical;" placeholder="Guidance — what this ${k} means for the writing (norms, limits, structure, tone)"></textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button style="${btn('#4ade80')}padding:4px 10px;" onclick="wrAddSave()">Add</button><button style="${btn('var(--text2)')}padding:4px 10px;" onclick="WR.add='';wrDraw()">Cancel</button></div></div>`;
+    return `<label style="${lab}">${label}</label><select style="${IN}" onchange="wrSet('${k}',this.value)">${list.map(o => `<option ${o.name === S[k] ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}<option value="__new">＋ add new…</option></select>${cur.rule ? `<div style="font-size:11px;color:var(--text3);margin-top:3px;">${esc(cur.rule)}</div>` : ''}`; };
   const ta = (k, label, rows) => `<label style="${lab}">${label}</label><textarea rows="${rows || 2}" style="${IN}resize:vertical;" oninput="WR.U['${k}']=this.value">${esc(U[k] || '')}</textarea>`;
-  const purposeRule = (L.purposes.find(x => x.name === S.purpose) || {}).rule || '';
+  const plat = L.platforms.find(x => x.name === S.platform) || L.platforms[0];
   const left = `<div class="wr-left">
     <div style="font-size:12.5px;font-weight:700;">The asset's dimensions</div>
-    <label style="${lab}">Asset type</label><select style="${IN}" ${WR.busy ? 'disabled' : ''} onchange="wrType(this.value)">${C.assetType ? '' : '<option value="" selected>— pick the asset type —</option>'}${[...new Set([...(C.assetType ? [C.assetType] : []), ...(L.assetTypes || [])])].map(o => `<option ${o === C.assetType ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
-    ${sel('purpose', 'Purpose', L.purposes.map(x => x.name))}<div style="font-size:11px;color:var(--text3);margin-top:3px;">${esc(purposeRule)}</div>
-    ${sel('platform', 'Platform — sets the four below', L.platforms.map(x => x.name))}
-    ${sel('length', 'Length', [...new Set([S.length, ...L.lengths])])}${sel('layout', 'Layout', [...new Set([S.layout, ...L.layouts])])}
-    ${sel('imagery', 'Imagery', [...new Set([S.imagery, ...L.imagery])])}${sel('scripting', 'Scripting', [...new Set([S.scripting, ...L.scripting])])}
+    ${sel('purpose', 'Purpose', L.purposes)}${sel('platform', 'Platform', L.platforms)}${sel('layout', 'Layout', L.layouts)}${sel('scripting', 'Scripting', L.scripting)}
     <label style="${lab}">Guidance</label><textarea id="wrGuide" rows="3" style="${IN}resize:vertical;" placeholder="Anything you want this asset to do, say or avoid…" oninput="WR.S.guidance=this.value">${esc(S.guidance || '')}</textarea>
     <div style="font-size:12.5px;font-weight:700;margin-top:16px;">Upstream — who it's for <span style="font-weight:400;font-size:11px;color:var(--text3);">(from the research, edit freely)</span></div>
     ${ta('niche', 'Niche', 1)}${ta('intent', 'Reader intent', 2)}${ta('persona', 'Audience persona', 3)}${ta('frustrations', 'Frustration points', 3)}${ta('pains', 'Pain points', 3)}
-    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Writes: <b>${C.fields.map(esc).join(' · ')}</b> — from ${esc(C.fieldsFrom)}. Facts only from the research; the asset is created only when you approve.</div>
-    <button style="${btn('#8ab4f8')}margin-top:10px;width:100%;font-weight:600;" ${WR.busy || !C.assetType ? 'disabled' : ''} onclick="wrWrite()">${WR.busy === 'write' ? '⏳ Writing… (1–3 min)' : WR.draft ? '↻ Rewrite' : '✍ Write'}</button></div>`;
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Writes: <b>${plat.fields.map(esc).join(' · ')}</b> — the ${esc(plat.name)} fields; becomes asset type <b>${esc(plat.name)}</b>. Length is the writer's call for this platform; images are made in the Asset modal. Facts only from the research; the asset is created only when you approve.</div>
+    <button style="${btn('#8ab4f8')}margin-top:10px;width:100%;font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrWrite()">${WR.busy === 'write' ? '⏳ Writing… (1–3 min)' : WR.draft ? '↻ Rewrite' : '✍ Write'}</button></div>`;
   const D = WR.draft;
   let right;
   if (!D) right = `<div style="font-size:13px;color:var(--text3);padding:30px 10px;text-align:center;">${WR.busy === 'write' ? '⏳ Writing the asset…' : 'Set the dimensions, check the upstream, then ✍ Write. The draft appears here.'}</div>`;
@@ -5487,14 +5486,14 @@ function wrDraw() {
 }
 async function wrWrite() {
   if (!WR) return; WR.busy = 'write'; WR.log = ''; WR.edit = false; wrDraw();
-  const r = await call('writerDraft', { titleId: WR.id, assetType: WR.ctx.assetType, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '' }).catch(e => ({ error: e.message }));
+  const r = await call('writerDraft', { titleId: WR.id, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '' }).catch(e => ({ error: e.message }));
   if (!WR) return; WR.busy = '';
   if (!r || r.error) WR.log = '✗ Not written: ' + ((r && r.error) || 'no response'); else { WR.draft = r.draft; WR.log = '✓ Draft ready — review it, edit if you like, then approve'; }
   wrDraw();
 }
 async function wrApprove(publish) {
-  if (!WR || !WR.draft) return; const C = WR.ctx, hub = /^sub ?page$/i.test(C.assetType || '');
-  if (!confirm(publish ? (hub ? 'Create this ' + C.assetType + ' asset and publish it to its hub (live page)?' : 'Create this ' + C.assetType + ' asset and mark it Published?') : 'Create this ' + C.assetType + ' asset under the title, at Development?')) return;
+  if (!WR || !WR.draft) return; const C = WR.ctx, type = WR.draft.assetType || C.settings.platform, hub = /^sub ?page$/i.test(type);
+  if (!confirm(publish ? (hub ? 'Create this ' + type + ' asset and publish it to its hub (live page)?' : 'Create this ' + type + ' asset and mark it Published?') : 'Create this ' + type + ' asset under the title, at Development?')) return;
   WR.busy = 'save'; wrDraw();
   const r = await call('writerSave', { titleId: WR.id, fields: WR.draft.fields }).catch(e => ({ error: e.message }));
   if (!r || r.error) { WR.busy = ''; WR.log = '✗ Not created: ' + ((r && r.error) || 'no response'); return wrDraw(); }

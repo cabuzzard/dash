@@ -2580,6 +2580,10 @@ async function assetPrewritePrompt(env, assetId, opts = {}) {
 // · length · layout · imagery · scripting) and adds guidance; the upstream research arrives pre-filled and editable (niche · reader intent ·
 // audience persona · frustration points · pain points). One call on the newest model writes the asset — "just you doing what is best to
 // write the asset" — into a PREVIEW; nothing is saved until the operator approves. writerContext · writerDraft · writerSave.
+// operator 2026-10-30 (2): the dimensions are PURPOSE · PLATFORM · LAYOUT · SCRIPTING (+ guidance). Length is the writer's call from the
+// platform; layout may be left to the writer (platform + purpose + audience); imagery is the Asset modal's job (backgrounds / thumbnails).
+// The OUTPUT defines the asset type: the created asset's Asset Type is the platform's. Platform, layout and scripting each take "＋ add new"
+// with guidance (KV writer:list:<kind>), like purposes (writer:purposes).
 const WR_PURPOSES = [
   { name: "Sell", rule: "Make the reader want the offer and take the one action: name the offer, what they get, the proof, the price only if sourced, one clear CTA." },
   { name: "Engage", rule: "Stop the scroll and start a conversation: a sharp hook, one idea, the reader's own words, an ending that invites a reply or a save." },
@@ -2587,38 +2591,48 @@ const WR_PURPOSES = [
   { name: "SEO", rule: "Answer the search fully: the primary keyword in the title, an H2 and the first paragraph; headings that match what people search; the direct answer early." },
 ];
 const WR_PLATFORMS = [
-  { name: "Hub page / blog", length: "Long (750–1,400 words)", layout: "Headings + sections", imagery: "Featured image", scripting: "None", fields: ["Platform Title", "Description", "Body"] },
-  { name: "Instagram post", length: "Short (50–150 words)", layout: "Cards / text on image", imagery: "Card / text over image", scripting: "None", fields: ["Platform Title", "Body", "Post Caption", "Hashtags"] },
-  { name: "Instagram Reel / Story (9:16)", length: "Video 8–20 s", layout: "Script beats", imagery: "Video background", scripting: "Hook + beats + CTA", fields: ["Story Areas", "Post Caption", "Hashtags"] },
-  { name: "LinkedIn post", length: "Medium (150–300 words)", layout: "Short lines", imagery: "None", scripting: "None", fields: ["Body", "Hashtags"] },
-  { name: "Fiverr gig", length: "Medium (300–600 words)", layout: "Headings + sections", imagery: "Gallery images", scripting: "None", fields: ["Platform Title", "Body", "Pricing Tiers", "Search Tags", "FAQ"] },
-  { name: "TikTok", length: "Video 15–60 s", layout: "Script beats", imagery: "Video", scripting: "Hook + beats + CTA", fields: ["Platform Title", "Body", "Post Caption", "Hashtags"] },
-  { name: "YouTube (long form)", length: "Video 6–15 min", layout: "Script sections", imagery: "Video + thumbnail", scripting: "Full script with sections", fields: ["Platform Title", "Description", "Body"] },
-  { name: "Email", length: "Medium (300–500 words)", layout: "Single block", imagery: "None", scripting: "None", fields: ["Platform Title", "Preview Text", "Body"] },
-  { name: "Etsy listing", length: "Medium (300–600 words)", layout: "Headings + sections", imagery: "Listing photos", scripting: "None", fields: ["Platform Title", "Body", "Search Tags"] },
+  { name: "Hub page / blog", fields: ["Platform Title", "Description", "Body"], rule: "A web page on the hub: scannable, headed sections, a meta description under 160 characters." },
+  { name: "Instagram post", fields: ["Platform Title", "Body", "Post Caption", "Hashtags"], rule: "Text on an image: a few words per card; the caption carries the rest; 3–5 hashtags." },
+  { name: "Instagram Reel / Story (9:16)", fields: ["Story Areas", "Post Caption", "Hashtags"], rule: "8–20 seconds of on-screen text: hook in the first second, short beats, one CTA.", scripting: "Hook + beats + CTA" },
+  { name: "LinkedIn post", fields: ["Body", "Hashtags"], rule: "Short lines, a hook above the fold, a professional voice, 3 hashtags at most." },
+  { name: "Fiverr gig", fields: ["Platform Title", "Body", "Pricing Tiers", "Search Tags", "FAQ"], rule: "A Fiverr gig: title starts 'I will', the description sells the outcome, tiers, tags and FAQ in Fiverr's limits." },
+  { name: "TikTok", fields: ["Platform Title", "Body", "Post Caption", "Hashtags"], rule: "15–60 seconds spoken to camera: hook first, fast beats, one CTA.", scripting: "Hook + beats + CTA" },
+  { name: "YouTube (long form)", fields: ["Platform Title", "Description", "Body"], rule: "A 6–15 minute video: searchable title, a description with the key points, the full script in Body.", scripting: "Full script with sections" },
+  { name: "Email", fields: ["Platform Title", "Preview Text", "Body"], rule: "Subject line, preview text and one focused email." },
+  { name: "Etsy listing", fields: ["Platform Title", "Body", "Search Tags"], rule: "An Etsy listing: keyword-led title, benefits then details, 13 tags." },
 ];
-const WR_LENGTHS = ["Micro (≤ 50 words)", "Short (50–150 words)", "Medium (150–300 words)", "Medium (300–500 words)", "Medium (300–600 words)", "Long (750–1,400 words)", "Pillar (1,500+ words)", "Video 8–20 s", "Video 15–60 s", "Video 6–15 min"];
-const WR_LAYOUTS = ["Single block", "Short lines", "Headings + sections", "List / steps", "Q&A", "Cards / text on image", "Script beats", "Script sections"];
-const WR_IMAGERY = ["None", "Featured image", "Image per section", "Card / text over image", "Carousel slides", "Gallery images", "Listing photos", "Video background", "Video", "Video + thumbnail"];
-const WR_SCRIPTING = ["None", "Hook + beats + CTA", "Full script with sections", "Dialogue"];
+const WR_LAYOUTS = [
+  { name: "Writer decides", rule: "Choose the layout that best fits the platform, the purpose and this audience." },
+  { name: "Single block", rule: "One continuous piece, no headings." },
+  { name: "Short lines", rule: "One thought per line, white space between." },
+  { name: "Headings + sections", rule: "Clear headings, each section answering one thing." },
+  { name: "List / steps", rule: "Numbered steps or a list as the spine." },
+  { name: "Q&A", rule: "Question headings, direct answers." },
+  { name: "Cards / text on image", rule: "A few words per card, one idea per card." },
+];
+const WR_SCRIPTING = [
+  { name: "None", rule: "Written to be read, not spoken." },
+  { name: "Hook + beats + CTA", rule: "A spoken or on-screen hook, 3–5 short beats, one CTA." },
+  { name: "Full script with sections", rule: "A complete script to be spoken, with section markers." },
+  { name: "Dialogue", rule: "Two voices in conversation, labelled." },
+];
+const WR_KINDS = { purpose: ["writer:purposes", WR_PURPOSES], platform: ["writer:list:platform", WR_PLATFORMS], layout: ["writer:list:layout", WR_LAYOUTS], scripting: ["writer:list:scripting", WR_SCRIPTING] };
 async function wrLists(env) {
-  const extra = (await env.TRADES.get("writer:purposes", "json").catch(() => null)) || [];
-  return { purposes: [...WR_PURPOSES, ...extra.filter(x => x && x.name && !WR_PURPOSES.some(p => p.name === x.name))], platforms: WR_PLATFORMS, lengths: WR_LENGTHS, layouts: WR_LAYOUTS, imagery: WR_IMAGERY, scripting: WR_SCRIPTING };
+  const out = {};
+  for (const [k, [key, base]] of Object.entries(WR_KINDS)) {
+    const extra = (await env.TRADES.get(key, "json").catch(() => null)) || [];
+    out[k === "purpose" ? "purposes" : k === "platform" ? "platforms" : k === "layout" ? "layouts" : "scripting"] = [...base, ...extra.filter(x => x && x.name && !base.some(p => p.name === x.name))];
+  }
+  return out;
 }
-// operator 2026-10-30: the Writer is for TITLES — it writes a NEW asset from the title (and its product / topic research), and the asset is
-// created only on approval. Settings + draft are kept per title (writer:settings:t:<titleId> / writer:draft:t:<titleId>).
-async function wrAssetTypes(env) {
-  const c = await env.TRADES.get("writer:assettypes", "json").catch(() => null); if (c && Date.now() - c.at < 3600000) return c.list;
-  const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }), d = await r.json().catch(() => ({}));
-  const list = (d.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(n => n && !/^(pillar|digest parent)$/i.test(n)).sort((x, y) => x.localeCompare(y));
-  if (list.length) await env.TRADES.put("writer:assettypes", JSON.stringify({ at: Date.now(), list }));
-  return list;
-}
-async function wrContractFor(env, type) {   // the switched-on writing-rules row for this Asset Type (name or alias), if any
-  if (!type) return { contract: [], row: null };
-  const rows = writingRows(await writingMethodsTable(env)), on = r => /^yes$/i.test(r.mapped || ""), t = ivNorm(type), alias = ivNorm(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()] || "");
-  const hits = rows.filter(r => ivNorm(r.name) === t || r.aliases.includes(t) || (alias && ivNorm(r.name) === alias)), row = hits.find(on) || null;
-  return { row, contract: row && !writingMissing(row).length ? parseWritingContract(row.contractText) : [] };
+async function wrListAdd(env, kind, item) {
+  const K = WR_KINDS[kind]; if (!K) throw new Error("Unknown list");
+  const name = String(item.name || "").trim().slice(0, 60), rule = String(item.rule || "").trim().slice(0, 1500); if (!name || !rule) throw new Error("A name and guidance are both needed");
+  const add = { name, rule };
+  if (kind === "platform") { add.fields = String(item.fields || "").split(/[,;\n]/).map(x => x.trim()).filter(Boolean).slice(0, 12); if (!add.fields.length) add.fields = ["Platform Title", "Body"]; if (item.scripting) add.scripting = String(item.scripting).slice(0, 60); }
+  const cur = (await env.TRADES.get(K[0], "json").catch(() => null)) || [];
+  await env.TRADES.put(K[0], JSON.stringify([...cur.filter(x => x.name !== name), add]));
+  return wrLists(env);
 }
 async function wrGather(env, titleId) {
   const tid = hubAssetId(titleId), title = await ivPage(tid); if (!title?.properties || title.archived) throw new Error("Title unavailable");
@@ -2626,48 +2640,41 @@ async function wrGather(env, titleId) {
   const pr = pid ? await findBestProductResearchRecord(ivHdr(), ivDash(pid)).catch(() => null) : null, prv = k => pr ? lfReadRich(pr.properties?.[k]) || "" : "";
   return { tid, title, tp, tv: writingFieldValues(tp), cid, pid, pr, prv, prodName: pid ? hubRichText((await ivPage(pid).catch(() => ({}))).properties?.Name?.title) : "" };
 }
-function wrPlatformFor(type) {
-  return /^sub ?page$|blog|seo|article|news|offer/i.test(type) ? "Hub page / blog" : /story|reel/i.test(type) ? "Instagram Reel / Story (9:16)" : /single post|carousel|instagram/i.test(type) ? "Instagram post"
-    : /linkedin/i.test(type) ? "LinkedIn post" : /listing|gig|fiverr/i.test(type) ? "Fiverr gig" : /tiktok/i.test(type) ? "TikTok" : /youtube/i.test(type) ? "YouTube (long form)" : /newsletter|email/i.test(type) ? "Email" : /etsy/i.test(type) ? "Etsy listing" : "Hub page / blog";
-}
-async function writerContext(env, titleId, assetType) {
+async function writerContext(env, titleId) {
   const G = await wrGather(env, titleId), L = await wrLists(env), saved = await env.TRADES.get("writer:settings:t:" + G.tid, "json").catch(() => null);
-  L.assetTypes = await wrAssetTypes(env).catch(() => []);
-  const type = String(assetType || saved?.assetType || "").trim(), C = await wrContractFor(env, type);
-  const keepPlat = saved && saved.assetType === type;
-  const platform = (keepPlat && saved.platform) || wrPlatformFor(type), P = L.platforms.find(x => x.name === platform) || L.platforms[0];
-  const purpose = (keepPlat && saved.purpose) || (/offer|listing|sales|gig|sub ?page/i.test(type) ? "Sell" : /seo|blog|article|news/i.test(type) ? "SEO" : /single post|story|reel|carousel|linkedin|tiktok/i.test(type) ? "Engage" : "Inform");
+  const has = (list, v) => list.some(x => x.name === v);
+  const platform = has(L.platforms, saved?.platform) ? saved.platform : "Hub page / blog", P = L.platforms.find(x => x.name === platform);
   const upstream = saved?.upstream || {
     niche: G.prv("Niche") || G.prodName || "",
     intent: G.tv["Title Intent"] || "",
     persona: G.tv["Title Audience"] || G.prv("Customer") || "",
     frustrations: [G.prv("Emotions"), G.prv("Objections")].filter(Boolean).join("\n"),
     pains: G.prv("Pain Points") || "" };
-  const fields = C.contract.map(f => f.name).filter(Boolean);
   const draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json").catch(() => null);
   return { ok: true, title: { id: G.tid, name: G.tv.Title || "", status: G.tp.Status?.select?.name || G.tp.Status?.status?.name || "", product: G.prodName, campaignId: G.cid || "", productId: G.pid || "" },
-    assetType: type, lists: L, settings: { purpose, platform, length: (keepPlat && saved.length) || P.length, layout: (keepPlat && saved.layout) || P.layout, imagery: (keepPlat && saved.imagery) || P.imagery, scripting: (keepPlat && saved.scripting) || P.scripting, guidance: saved?.guidance || "" },
-    upstream, fields: fields.length ? fields : P.fields, fieldsFrom: fields.length ? "the " + (C.row?.name || type) + " writing rules" : "the " + P.name + " platform",
-    contract: C.contract.map(f => ({ name: f.name, rule: f.rule })), draft: draft && draft.assetType === type ? draft : null };
+    lists: L, settings: { purpose: has(L.purposes, saved?.purpose) ? saved.purpose : "Inform", platform, layout: has(L.layouts, saved?.layout) ? saved.layout : "Writer decides",
+      scripting: has(L.scripting, saved?.scripting) ? saved.scripting : (P.scripting || "None"), guidance: saved?.guidance || "" },
+    upstream, draft };
 }
 async function writerDraft(env, body) {
-  const ctx = await writerContext(env, body.titleId, body.assetType), G = await wrGather(env, body.titleId), type = ctx.assetType;
-  if (!type) throw new Error("Pick an asset type first");
+  const ctx = await writerContext(env, body.titleId), G = await wrGather(env, body.titleId), L = ctx.lists;
   const S = { ...ctx.settings, ...(body.settings || {}) }, U = { ...ctx.upstream, ...(body.upstream || {}) };
-  const L = ctx.lists, purpose = L.purposes.find(x => x.name === S.purpose) || L.purposes[0];
-  const P = L.platforms.find(x => x.name === S.platform), fields = (ctx.contract.length ? ctx.fields : (P ? P.fields : ctx.fields)).slice(0, 12);
-  await env.TRADES.put("writer:settings:t:" + G.tid, JSON.stringify({ assetType: type, purpose: S.purpose, platform: S.platform, length: S.length, layout: S.layout, imagery: S.imagery, scripting: S.scripting, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
+  const pick = (list, v) => list.find(x => x.name === v) || list[0];
+  const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
+  const fields = P.fields.slice(0, 12), type = P.name;
+  await env.TRADES.put("writer:settings:t:" + G.tid, JSON.stringify({ purpose: purpose.name, platform: P.name, layout: layout.name, scripting: script.name, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
   const [pillar, research, voice, audience, product, iv] = await Promise.all([extractPillarContent(ivHdr(), ivDash(G.tid)).catch(() => ""), titleResearchBlock(env, G.tid).catch(() => ""),
     G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, "").catch(() => null)]);
   const prodFacts = G.pid ? Object.entries(writingFieldValues((await ivPage(G.pid).catch(() => ({}))).properties || {})).filter(([k, v]) => ["Name", "Description", "Price", "Offer Structure", "Transformation", "Unique Angle"].includes(k) && String(v).trim()).map(([k, v]) => k + ": " + v).join("\n") : "";
-  const rules = (ctx.contract || []).filter(f => fields.includes(f.name)).map(f => "- " + f.name + ": " + f.rule).join("\n");
   const sec = (h, t, max) => String(t || "").trim() ? "\n## " + h + "\n" + String(t).trim().slice(0, max) + "\n" : "";
-  const prompt = `You are the writer. You have the research below and a clear brief from the operator. Write the best ${type} you can for this reader — the way an expert writer who understood this reader and this subject would write it. You decide the angle, the structure and the words.
+  const prompt = `You are the writer. You have the research below and a clear brief from the operator. Write the best piece you can for this reader on this platform — the way an expert writer who understood this reader and this subject would write it. You decide the angle, the structure, the length and the words.
 
 # THE OPERATOR'S SETTINGS (satisfy these)
-Asset type: ${type}
 Purpose: ${purpose.name} — ${purpose.rule}
-Platform: ${S.platform} — conform to it. Length: ${S.length}. Layout: ${S.layout}. Imagery: ${S.imagery} (describe any image you intend in "notes"; don't put image directions in the copy). Scripting: ${S.scripting}.
+Platform: ${P.name} — ${P.rule} Conform to this platform's norms and limits; choose the length that performs best there for this purpose.
+Layout: ${layout.name} — ${layout.rule}
+Scripting: ${script.name} — ${script.rule}
+Images are handled separately — don't write image directions into the copy (mention any image idea in "notes").
 ${String(body.guidance || "").trim() ? "Operator guidance (follow it): " + String(body.guidance).trim() : ""}
 
 # WHO YOU ARE WRITING FOR
@@ -2682,23 +2689,22 @@ Title: ${G.tv.Title || "—"}${G.tv["Title Keywords"] ? "\nKeywords: " + G.tv["T
 ${sec("Pillar (the substance)", pillar, 7000)}${sec("Title research", research, 3000)}${sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4500)}${sec("Interview answers (the operator's own knowledge and voice)", iv && iv.text, 5000)}${sec("Hub audience", audience, 1800)}${sec("Voice", voice, 2200)}
 
 # HARD LIMITS (only these are rules)
-- Write exactly these fields: ${fields.join(", ")}.${rules ? "\n- Field limits from this type's writing rules:\n" + rules : ""}
+- Write exactly these fields: ${fields.join(", ")}.
 - Facts, numbers, prices, names, credentials and results come ONLY from the sources above. Never invent them; if something is missing, write around it and say so in "notes".
 - One call to action, one destination, when the purpose calls for one.
-- The copy is the finished asset the reader sees — never a description of what the asset should contain, never meta commentary.
+- The copy is the finished piece the reader sees — never a description of what it should contain, never meta commentary.
 
-First fill "brief" (your understanding: subject, the keyword / intent you are serving, the reader, what they should walk away with, your angle). Then write the fields. Return via the tool.`;
+First fill "brief" (your understanding: subject, the keyword / intent you are serving, the reader, what they should walk away with, your angle, and the length and layout you chose). Then write the fields. Return via the tool.`;
   const props = Object.fromEntries(fields.map((f, i) => ["f" + i, { type: "string", description: f }]));
   const schema = { type: "object", additionalProperties: false, required: ["brief", "fields", "notes"], properties: {
-    brief: { type: "object", additionalProperties: false, required: ["subject", "intent", "reader", "outcome", "angle"], properties: { subject: { type: "string" }, intent: { type: "string" }, reader: { type: "string" }, outcome: { type: "string" }, angle: { type: "string" } } },
+    brief: { type: "object", additionalProperties: false, required: ["subject", "intent", "reader", "outcome", "angle"], properties: { subject: { type: "string" }, intent: { type: "string" }, reader: { type: "string" }, outcome: { type: "string" }, angle: { type: "string", description: "your angle, plus the length and layout you chose and why" } } },
     fields: { type: "object", additionalProperties: false, required: Object.keys(props), properties: props },
-    notes: { type: "string", description: "imagery intentions, anything unsupported by the sources, choices you made" } } };
+    notes: { type: "string", description: "image ideas, anything unsupported by the sources, choices you made" } } };
   let out, model = "claude-opus-5-5";
   try { out = await hcClaude(env, prompt, "write_asset", schema, 16000, null, { stream: true, model }); }
   catch (e) { if (!/model/i.test(e.message)) throw e; model = "claude-sonnet-4-6"; out = await hcClaude(env, prompt, "write_asset", schema, 16000, null, { stream: true, model }); }
   const vals = Object.fromEntries(fields.map((f, i) => [f, String((out.fields || {})["f" + i] || "")]));
-  const draft = { at: new Date().toISOString(), model, assetType: type, settings: S, upstream: U, guidance: String(body.guidance || ""), brief: out.brief || {}, fields: vals, notes: String(out.notes || ""),
-    violations: ctx.contract && ctx.contract.length ? validateWritingContract(ctx.contract.filter(f => fields.includes(f.name)), vals) : [] };
+  const draft = { at: new Date().toISOString(), model, assetType: type, settings: { purpose: purpose.name, platform: P.name, layout: layout.name, scripting: script.name }, upstream: U, guidance: String(body.guidance || ""), brief: out.brief || {}, fields: vals, notes: String(out.notes || ""), violations: [] };
   await env.TRADES.put("writer:draft:t:" + G.tid, JSON.stringify(draft), { expirationTtl: 60 * 60 * 24 * 30 });
   return { ok: true, draft };
 }
@@ -55125,12 +55131,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // assetPrewrite {assetId, op: prompt | get | save | clear, text?} — the Asset modal's Pre-write block (every asset type)
       // Writer modal (operator 2026-10-30): writerContext {assetId} · writerDraft {assetId, settings, upstream, guidance, fields?} → preview only ·
       // writerSave {assetId, fields?} → saves the approved draft's fields · writerPurpose {name, rule} adds a purpose
-      if (body.action === "writerContext" || body.action === "writerDraft" || body.action === "writerSave" || body.action === "writerPurpose") {
+      if (body.action === "writerContext" || body.action === "writerDraft" || body.action === "writerSave" || body.action === "writerPurpose" || body.action === "writerListAdd") {
         try {
+          if (body.action === "writerListAdd") return json({ ok: true, lists: await wrListAdd(env, String(body.kind || ""), body) });
           if (body.action === "writerPurpose") { const name = String(body.name || "").trim().slice(0, 40), rule = String(body.rule || "").trim().slice(0, 600); if (!name || !rule) return json({ error: "name and rule required" }, 400);
             const cur = (await env.TRADES.get("writer:purposes", "json").catch(() => null)) || []; const next = [...cur.filter(x => x.name !== name), { name, rule }]; await env.TRADES.put("writer:purposes", JSON.stringify(next)); return json({ ok: true, purposes: (await wrLists(env)).purposes }); }
           if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.titleId || ""))) return json({ error: "titleId required" }, 400);
-          if (body.action === "writerContext") return json(await writerContext(env, body.titleId, body.assetType));
+          if (body.action === "writerContext") return json(await writerContext(env, body.titleId));
           if (body.action === "writerDraft") return json(await writerDraft(env, body));
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
