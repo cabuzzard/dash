@@ -4635,7 +4635,7 @@ async function ao2SetToggle(titleId, title, on, cb) {
   showToast(on ? '→ All Output 2: "' + (title || 'title') + '" and its product + assets' : 'Removed from All Output 2', 'success');
   renderDev2(); if (AO2_ROWS) ao2Load();
 }
-const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'asset', label: 'Asset' }, { key: 'writer', label: 'Writer' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'parent', label: 'Parent' }, { key: 'writer', label: 'Writer' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 // Collapsible column groups (operator 2026-10-30: "+ collapse column … a collapsible horizontal column section I can drag other columns
 // into"). A group is a column of its own ("g:<id>") in the order; its member columns render right after it when expanded and disappear
@@ -4856,7 +4856,7 @@ function ao2Render() {
     : c.key === 'product' && x.product && x.productId ? ao2Dot(x.sProd) + `<a href="#" onclick="event.preventDefault();pmOpen('${esc(x.productId)}','${esc(x.campId)}')" title="Product modal — name, description, stage, ★ main, topic, research, ＋ title, delete" style="color:var(--accent);">📦 ${esc(x.product)}</a>`
     : c.key === 'title' && x.type === 'Product' ? ao2Dot(x.sProd) + `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a><button style="font-size:10.5px;padding:0 5px;margin-left:5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;line-height:16px;" title="Product modal" onclick="pmOpen('${esc(x.id)}','${esc(x.campId)}')">✎</button>`
     : c.key === 'cluster' ? (x.campId ? `<a href="#" onclick="event.preventDefault();ao2NewTopicOpen('${esc(x.campId)}',${esc(JSON.stringify(x.cluster || ''))})" title="New topic in this cluster — with an optional new product and title, each with seed keywords (placeholders; research runs separately)" style="color:var(--accent);">${x.cluster ? esc(x.cluster) : '＋ topic'}</a>` : esc(x.cluster || ''))
-    : c.key === 'status' && x.status ? `<span style="color:${/^published$/i.test(x.status) ? '#4ade80' : '#ff7a00'};font-weight:600;">${esc(x.status)}</span>`   // Published green, every other status orange (operator 2026-10-30)
+    : c.key === 'status' && x.status ? (x.type === 'Asset' ? `<a href="#" onclick="event.preventDefault();pubOpen('${esc(x.id)}')" title="Writer ② Publish — write the fields, images, video, Buffer, publish" style="color:${/^published$/i.test(x.status) ? '#4ade80' : '#ff7a00'};font-weight:600;text-decoration:underline dotted;">${esc(x.status)}</a>` : `<span style="color:${/^published$/i.test(x.status) ? '#4ade80' : '#ff7a00'};font-weight:600;">${esc(x.status)}</span>`)   // Published green, every other status orange (operator 2026-10-30)
     : c.key === 'parent' && x.type === 'Asset' ? ao2ParentCell(x)
     : c.key === 'topic' && x.topic && x.topicId ? ao2Dot(x.sTopic) + `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.titleId)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
@@ -5419,7 +5419,7 @@ function wrEnsure() {
 function wrClose() { const bg = document.getElementById('wrBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open'); const ch = WR && WR.changed; WR = null; if (ch && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); } }
 async function wrOpen(titleId) {
   wrEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
-  WR = { id: kwNid(titleId), ctx: null, busy: 'Loading…', log: '', edit: false };
+  PB = null; WR = { id: kwNid(titleId), ctx: null, busy: 'Loading…', log: '', edit: false };
   wrDraw();
   const r = await call('writerContext', { titleId: WR.id }).catch(e => ({ error: e.message }));
   if (!WR) return; WR.busy = '';
@@ -5503,7 +5503,7 @@ function wrDraw() {
           <button style="${btn('var(--text2)')}" onclick="WR.edit=!WR.edit;wrDraw()">${WR.edit ? '👁 Preview' : '✎ Edit text'}</button>
           <div style="flex-basis:100%;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">${wrTypeOf(D.settings || {}) ? `<span style="color:var(--text3);">Asset type:</span> <b>${esc(wrTypeOf(D.settings).name)}</b>` : `<label style="font-size:11.5px;color:var(--text3);">Name this asset type</label><input id="wrAType" value="${esc(WR.aType || '')}" oninput="WR.aType=this.value" placeholder="e.g. Fiverr Sales Gig" style="${IN}width:auto;flex:1;min-width:200px;"><span style="font-size:11px;color:var(--text3);">saved with the setup this draft was written with</span>`}</div>
           <button style="${btn('#4ade80')}" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(false)">${D.savedAs ? '✓ Create another asset from this draft' : '✓ Approve — create the asset'}</button>
-          ${D.savedAs ? `<button style="${btn('var(--accent)')}" onclick="amOpen('${esc(D.savedAs)}')">Open the created asset ↗</button>` : `<button style="${btn('#4ade80')}font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(true)">✓ Approve & publish</button>`}</div>`;
+          ${D.savedAs ? `<button style="${btn('var(--accent)')}font-weight:600;" onclick="pubOpen('${esc(D.savedAs)}')">② Publish →</button>` : `<button style="${btn('#4ade80')}font-weight:600;" ${WR.busy ? 'disabled' : ''} onclick="wrApprove(true)">✓ Approve & publish</button>`}</div>`;
   }
   P.innerHTML = head + (WR.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(WR.log) ? '#f87171' : 'var(--text2)'};">${esc(WR.log)}</div>` : '')
     + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${right}</div></div></div>`;
@@ -5530,6 +5530,176 @@ async function wrApprove(publish) {
     msg += !p || p.error || p.skipped ? ' · ✗ not published: ' + ((p && (p.error || p.skipped)) || 'no response') : hub ? ' · ✓ published to ' + (p.hub || 'the hub') + (p.liveUrl ? ' — ' + p.liveUrl : '') : ' · ✓ Published';
   }
   WR.busy = ''; WR.log = msg; wrDraw();
+}
+// ══ WRITER ② PUBLISH (operator 2026-10-31) — opened from an asset's Status in All Output 2. "In essence a writer": granular, field by field,
+// every field (copy and image direction) written from the flow that informed ① Write (setup · customer · product · brief · keywords · the
+// other fields; image direction also reads the hub design spec). ✍ Write → a proposal → ✓ Approve saves that one field. Then the
+// publish tools act on the approved fields: images (generate / upload / URL / pool), video render, Buffer, status / publish.
+let PB = null;
+const PB_STATUSES = ['Idea', 'Planning', 'Development', 'Review', 'Publish', 'Published'];
+async function pubOpen(assetId) {
+  wrEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
+  WR = null; PB = { id: kwNid(assetId), ctx: null, busy: {}, log: '', prop: {}, guide: {}, edits: {}, rg: {}, buf: null };
+  pubDraw(); await pubLoad(); pubBufferLoad();
+}
+async function pubLoad() {
+  if (!PB) return; const r = await call('pubContext', { assetId: PB.id }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.ctx = r; PB.edits = {}; pubDraw();
+}
+function pubClose() { const ch = PB && PB.changed; PB = null; const bg = document.getElementById('wrBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open'); if (ch && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); } }
+function pubBtn(c) { return `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`; }
+function pubFieldCard(f, i, opts) {
+  const C = PB.ctx, cur = PB.edits[f] != null ? PB.edits[f] : (C.values[f] || ''), pr = PB.prop[f], busy = PB.busy[f], o = opts || {};
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;resize:vertical;';
+  const rows = /^(Body|Story Areas|FAQ|Pricing Tiers)$/.test(f) ? 9 : /^(Post Caption|Image Direction|Description)$/.test(f) ? 4 : 2;
+  const dirty = PB.edits[f] != null && PB.edits[f] !== (C.values[f] || '');
+  return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:13px;">${esc(f)}</b><span style="font-size:11px;color:var(--text3);flex:1;min-width:200px;">${esc(C.rules[f] || '')}</span></div>
+    <textarea rows="${rows}" style="${IN}margin-top:6px;" oninput="PB.edits[${esc(JSON.stringify(f))}]=this.value;pubDirty(${i})" placeholder="— empty —">${esc(cur)}</textarea>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+      <input style="${IN}flex:1;min-width:180px;width:auto;padding:5px 8px;" placeholder="Guidance for this field (optional)" value="${esc(PB.guide[f] || '')}" oninput="PB.guide[${esc(JSON.stringify(f))}]=this.value">
+      <button style="${pubBtn('#8ab4f8')}" ${busy ? 'disabled' : ''} onclick="pubWrite(${esc(JSON.stringify(f))}${o.imageKind ? `,'${o.imageKind}'` : ''})">${busy === 'write' ? '⏳ Writing…' : cur.trim() ? '↻ Rewrite' : '✍ Write'}</button>
+      <button id="pubSave${i}" style="${pubBtn('#4ade80')}${dirty ? '' : 'display:none;'}" onclick="pubSaveField(${esc(JSON.stringify(f))}, PB.edits[${esc(JSON.stringify(f))}])">💾 Save edit</button></div>
+    ${pr ? `<div style="margin-top:8px;border:1px solid #8ab4f8;border-radius:8px;padding:8px;background:rgba(138,180,248,.06);">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Proposal — ${esc(pr.why || '')}${pr.designUsed ? ' · used the hub design spec' : ''}</div>
+      <textarea rows="${rows}" style="${IN}" oninput="PB.prop[${esc(JSON.stringify(f))}].value=this.value">${esc(pr.value)}</textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button style="${pubBtn('#4ade80')}font-weight:600;" onclick="pubSaveField(${esc(JSON.stringify(f))}, PB.prop[${esc(JSON.stringify(f))}].value, true)">✓ Approve</button><button style="${pubBtn('var(--text2)')}" onclick="delete PB.prop[${esc(JSON.stringify(f))}];pubDraw()">✕ Discard</button></div></div>` : ''}</div>`;
+}
+function pubDirty(i) { const b = document.getElementById('pubSave' + i); if (b) b.style.display = ''; }
+async function pubWrite(field, imageKind) {
+  if (!PB) return; PB.busy[field] = 'write'; pubDraw();
+  const r = await call('pubFieldWrite', { assetId: PB.id, field, guidance: PB.guide[field] || '', imageKind }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy[field];
+  if (!r || r.error) PB.log = '✗ ' + field + ' not written: ' + ((r && r.error) || 'no response'); else { PB.prop[field] = r; PB.log = ''; }
+  pubDraw();
+}
+async function pubSaveField(field, value, fromProp) {
+  if (!PB) return; PB.busy[field] = 'save'; pubDraw();
+  const r = await call('pubFieldSave', { assetId: PB.id, field, value }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy[field];
+  if (!r || r.error) { PB.log = '✗ ' + field + ' not saved: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.ctx.values[field] = value; delete PB.edits[field]; if (fromProp) delete PB.prop[field]; PB.changed = true;
+  PB.log = '✓ Saved ' + field + (r.videoSpec ? ' · video spec: ' + r.videoSpec : '');
+  if (r.videoSpec) await pubLoad(); else pubDraw();
+}
+// ── images: the existing generators (render from the committed hub spec + the asset's saved Image Direction; run guidance is one-off)
+const PB_IMG = { 'post-image': { label: 'Background / post image', prop: 'postImage' }, 'ig-background': { label: 'Instagram background (offer)', prop: 'igBackground' }, 'blog-thumbnail': { label: 'Thumbnail', prop: 'thumbnail' } };
+async function pubImgGen(kind) {
+  if (!PB) return; const A = PB.ctx.asset; if (!confirm('Generate the ' + PB_IMG[kind].label.toLowerCase() + ' now? One Grok render.')) return;
+  PB.busy['img:' + kind] = 'gen'; pubDraw();
+  const rg = PB.rg[kind] || '', fmt = kind === 'post-image' && PB.ctx.video ? 'story' : undefined;
+  const r = kind === 'post-image' ? await call('generateSocialBackgroundForAsset', { assetId: PB.id, runGuidance: rg, format: fmt, save: true }).catch(e => ({ error: e.message }))
+    : kind === 'ig-background' ? await call('generateOfferImage', { assetId: PB.id, kind, runGuidance: rg, save: true }).catch(e => ({ error: e.message }))
+    : await call(A.offer ? 'generateOfferImage' : A.youtube ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', { assetId: PB.id, kind, runGuidance: rg, save: true }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy['img:' + kind];
+  if (!r || r.error || !r.saved) PB.log = '✗ Image not made: ' + ((r && (r.error || r.saveError)) || 'no response'); else { A[PB_IMG[kind].prop] = r.url; PB.changed = true; PB.log = '✓ ' + PB_IMG[kind].label + ' saved'; if (r.prompt) PB.lastPrompt = r.prompt; }
+  pubDraw();
+}
+async function pubImgSet(kind, payload) {
+  if (!PB) return; PB.busy['img:' + kind] = 'save'; pubDraw();
+  const r = await call('saveOfferImage', { assetId: PB.id, kind, background: true, ...payload }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy['img:' + kind];
+  if (!r || r.error || !r.url) PB.log = '✗ Not saved: ' + ((r && r.error) || 'no response'); else { PB.ctx.asset[PB_IMG[kind].prop] = r.url; PB.changed = true; PB.log = '✓ ' + PB_IMG[kind].label + ' saved'; }
+  pubDraw();
+}
+function pubImgUpload(kind, inp) {
+  const f = inp.files && inp.files[0]; if (!f) return; if (f.size > 8 * 1024 * 1024) { PB.log = '✗ Image too large (max 8 MB)'; return pubDraw(); }
+  const rd = new FileReader(); rd.onload = e => pubImgSet(kind, { fileData: String(e.target.result).split(',')[1], fileName: f.name, contentType: f.type || 'image/png' }); rd.readAsDataURL(f);
+}
+function pubImgUrl(kind) { const u = (prompt('Paste the image URL (https):') || '').trim(); if (/^https:\/\//.test(u)) pubImgSet(kind, { imageUrl: u }); }
+async function pubPool() {
+  if (!PB) return; PB.busy.pool = 1; pubDraw();
+  const r = await call('assetBackgroundNext', { assetId: PB.id }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.pool;
+  PB.log = !r || r.error ? '✗ ' + ((r && r.error) || 'no response') : '✓ Pool background set for the render'; if (r && r.background) PB.pool = r.background; pubDraw();
+}
+// ── video (approved reel-kinetic render)
+async function pubVideo(op) {
+  if (!PB) return; if (op === 'render' && !confirm('Render this reel on HeyGen now? One render credit.')) return;
+  if (op === 'spec') { PB.busy.video = 'spec'; pubDraw(); const r = await call('assetReelSpec', { assetId: PB.id }).catch(e => ({ error: e.message })); if (!PB) return; delete PB.busy.video; PB.log = !r || r.error ? '✗ ' + ((r && r.error) || 'no response') : '✓ Video spec built — ' + r.areas + ' areas'; return pubLoad(); }
+  PB.busy.video = op; pubDraw();
+  const r = await call('hyperframesReel', { assetId: PB.id, op }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.video;
+  PB.log = !r || r.error ? '✗ ' + ((r && r.error) || 'no response') : op === 'render' ? '✓ Sent to HeyGen — ↻ Check in a minute' : r.videoUrl ? '✓ Video ready' : '⏳ ' + (r.status || 'still rendering');
+  await pubLoad();
+}
+// ── Buffer (always a draft) + status / publish
+async function pubBufferLoad() {
+  if (!PB) return; const id = PB.id, d = await call('bufferChannelsForAsset', { assetId: id }).catch(e => ({ error: e.message }));
+  if (!PB || PB.id !== id) return; PB.buf = d || { error: 'no response' }; pubDraw();
+}
+async function pubBufferSend() {
+  if (!PB) return; const ch = document.getElementById('pubBufCh'), ty = document.getElementById('pubBufType'), V = PB.ctx.values;
+  if (!confirm('Send this to Buffer as a DRAFT? Nothing posts until you schedule it in Buffer.')) return;
+  PB.busy.buf = 1; pubDraw();
+  const r = await call('sendAssetToBuffer', { assetId: PB.id, postCaption: V['Post Caption'] || '', hashtags: V.Hashtags || '', channelId: ch && ch.value || undefined, postType: ty && ty.value || undefined }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.buf;
+  PB.log = !r || r.error ? '✗ Buffer: ' + ((r && r.error) || 'no response') : '✓ In Buffer drafts → ' + (r.channelName || r.service || '') + (r.statusSet ? ' · status Published' : '');
+  if (r && r.statusSet) PB.ctx.asset.status = 'Published'; if (r && !r.error) PB.changed = true; pubDraw();
+}
+async function pubStatus(sel) {
+  if (!PB) return; const st = sel.value, A = PB.ctx.asset;
+  if (st === 'Published' && A.hub) { sel.value = A.status; return pubPublish(); }
+  if (st === 'Published' && !confirm('Mark this asset Published?')) { sel.value = A.status; return; }
+  const r = await call('updateAssetStatus', { assetId: PB.id, status: st }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Status not changed: ' + ((r && r.error) || 'no response'); sel.value = A.status; } else { A.status = st; PB.changed = true; PB.log = '✓ Status → ' + st; }
+  pubDraw();
+}
+async function pubPublish() {
+  if (!PB) return; const A = PB.ctx.asset;
+  if (!confirm(A.hub ? 'Publish this asset to its hub now? It goes live and becomes Published.' : 'Mark this asset Published?')) return;
+  PB.busy.pub = 1; pubDraw();
+  const r = A.hub ? await call('publishHubAsset', { assetId: PB.id }).catch(e => ({ error: e.message })) : await call('updateAssetStatus', { assetId: PB.id, status: 'Published' }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.pub;
+  if (!r || r.error || r.skipped) PB.log = '✗ Not published: ' + ((r && (r.error || r.skipped)) || 'no response'); else { A.status = 'Published'; PB.changed = true; PB.log = A.hub ? '✓ Published to ' + (r.hub || 'the hub') + (r.liveUrl ? ' — ' + r.liveUrl : '') : '✓ Published'; }
+  pubDraw();
+}
+function pubDraw() {
+  const P = document.getElementById('wrPanel'); if (!P || !PB) return;
+  const C = PB.ctx, sec = (t, body) => `<div style="margin:18px 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);">${t}</div>${body}`;
+  const head = `<div class="amf-hd"><div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;">✍ Writer ② Publish${C ? ' — ' + esc(C.asset.title) : ''}</div>${C ? `<div style="font-size:11.5px;color:var(--text3);margin-top:3px;">${esc(C.asset.type)}${C.platform ? ' · ' + esc(C.platform) : ''}${C.asset.titleName ? ' · title: ' + esc(C.asset.titleName) : ''}</div>` : ''}</div>
+    ${C && C.asset.titleId ? `<button style="${pubBtn('var(--text2)')}" onclick="wrOpen('${esc(C.asset.titleId)}')" title="Back to ① Write for this title">① Write</button>` : ''}<button style="${pubBtn('var(--border2)')}color:var(--text);" onclick="pubClose()">✕</button></div>`;
+  if (!C) { P.innerHTML = head + `<div style="padding:18px;font-size:13px;color:${PB.log ? '#f87171' : 'var(--text3)'};">${esc(PB.log || 'Loading…')}</div>`; return; }
+  const A = C.asset, I = C.informed, S = I.settings || {}, U = I.upstream || {}, B = I.brief || {};
+  const kv = (k, v) => v ? `<div style="margin-top:4px;"><span style="color:var(--text3);">${k}:</span> ${esc(v)}</div>` : '';
+  const left = `<div class="wr-left" style="font-size:12px;line-height:1.5;">
+    <div style="font-size:12.5px;font-weight:700;">What informed this</div>
+    <div style="font-size:11px;color:${C.fromWriter ? '#4ade80' : '#f59e0b'};margin:3px 0 6px;">${C.fromWriter ? 'Written by the Writer — its setup, upstream and brief' : 'Not written by the Writer — upstream rebuilt from the title and product'}</div>
+    ${kv('Asset type', A.type)}${kv('Purpose', S.purpose)}${kv('Platform', C.platform || S.platform)}${kv('Layout', S.layout)}${kv('Scripting', S.scripting)}${kv('Guidance', I.guidance)}
+    <div style="font-weight:700;margin-top:12px;">Who it's for</div>${kv('Niche', U.niche)}${kv('Reader intent', U.intent || I.titleIntent)}${kv('Persona', U.persona || I.titleAudience)}${kv('Frustrations', U.frustrations)}${kv('Pains', U.pains)}
+    <div style="font-weight:700;margin-top:12px;">What it's about</div>${kv('Title', A.titleName)}${kv('Keywords', I.keywords)}${kv('Subject', B.subject)}${kv('Intent', B.intent)}${kv('Reader', B.reader)}${kv('Outcome', B.outcome)}${kv('Angle', B.angle)}
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Every field below is written from all of this, plus the title, product and interview research and the other fields as they stand.</div></div>`;
+  const copy = C.fields.map((f, i) => pubFieldCard(f, i)).join('');
+  const imgKinds = ['post-image', ...(A.offer ? ['ig-background'] : []), 'blog-thumbnail'];
+  const imgSlot = k => { const url = A[PB_IMG[k].prop], b = PB.busy['img:' + k];
+    return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px;flex:1;min-width:230px;">
+      <b style="font-size:12.5px;">${PB_IMG[k].label}</b>${k === 'post-image' && C.video ? ' <span style="font-size:11px;color:var(--text3);">9:16, behind the reel</span>' : ''}
+      ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" style="display:block;width:100%;max-height:260px;object-fit:contain;border-radius:6px;margin:6px 0;background:#0003;"></a>` : '<div style="font-size:11.5px;color:var(--text3);margin:8px 0;">none yet</div>'}
+      <input style="width:100%;box-sizing:border-box;font-size:11.5px;padding:5px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);" placeholder="This render only (not saved)" value="${esc(PB.rg[k] || '')}" oninput="PB.rg['${k}']=this.value">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;"><button style="${pubBtn('#c084fc')}" ${b ? 'disabled' : ''} onclick="pubImgGen('${k}')">${b === 'gen' ? '⏳ Rendering…' : url ? '✨ Regenerate' : '✨ Generate'}</button>
+        <label style="${pubBtn('var(--text2)')}">⬆ Upload<input type="file" accept="image/*" style="display:none;" onchange="pubImgUpload('${k}',this)"></label><button style="${pubBtn('var(--text2)')}" onclick="pubImgUrl('${k}')">🔗 URL</button></div></div>`; };
+  const images = pubFieldCard('Image Direction', 99, { imageKind: C.video ? 'post-image' : 'post-image' })
+    + `<div style="display:flex;gap:10px;flex-wrap:wrap;">${imgKinds.map(imgSlot).join('')}</div>`
+    + (PB.lastPrompt ? `<details style="margin-top:6px;font-size:11.5px;"><summary style="cursor:pointer;color:var(--text3);">Last render prompt</summary><div style="white-space:pre-wrap;margin-top:4px;">${esc(PB.lastPrompt)}</div></details>` : '');
+  let spec = null; try { spec = A.videoSpec ? JSON.parse(A.videoSpec) : null; } catch (e) {}
+  const video = !C.video ? '' : sec('🎬 Video', `<div style="border:1px solid #f472b6;border-radius:10px;padding:10px;">
+    <div style="font-size:12px;">${spec ? 'Video spec: ' + (spec.areas || []).length + ' areas from the script' : '<span style="color:#f59e0b;">No video spec yet</span> — save the Story Areas field, or build it here'}</div>
+    ${A.videoUrl ? `<video src="${esc(A.videoUrl)}" controls playsinline style="width:100%;max-width:240px;border-radius:8px;display:block;margin:8px 0;"></video>` : ''}${A.videoRender ? `<div style="font-size:11px;color:var(--text2);margin:4px 0;">${esc(A.videoRender)}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button style="${pubBtn('var(--text2)')}" ${PB.busy.video ? 'disabled' : ''} onclick="pubVideo('spec')">🧩 ${spec ? 'Rebuild' : 'Build'} spec from script</button>
+      <button style="${pubBtn('var(--text2)')}" ${PB.busy.pool ? 'disabled' : ''} onclick="pubPool()" title="Use the next background from the shared pool instead of the post image">🎲 Pool background${PB.pool ? ' ✓' : ''}</button>
+      <button style="${pubBtn('#f472b6')}" ${spec && !PB.busy.video ? '' : 'disabled'} onclick="pubVideo('render')">${PB.busy.video === 'render' ? '⏳ Sending…' : A.videoUrl ? '🎬 Re-render' : '🎬 Render'}</button>
+      <button style="${pubBtn('var(--text2)')}" ${spec && !PB.busy.video ? '' : 'disabled'} onclick="pubVideo('check')">↻ Check render</button></div></div>`);
+  const bf = PB.buf, chans = bf && bf.channels || [];
+  const buffer = sec('📤 Buffer', !bf ? '<div style="font-size:12px;color:var(--text3);">Loading channels…</div>' : bf.error ? `<div style="font-size:12px;color:#f87171;">${esc(bf.error)}</div>` : bf.noKey ? '<div style="font-size:12px;color:var(--text3);">No Buffer key for this campaign — Platforms tab → buffer cell.</div>'
+    : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><select id="pubBufCh" style="font-size:12px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${bf.suggestedId ? '' : '<option value="">— pick channel —</option>'}${chans.map(c => `<option value="${esc(c.id)}" ${c.id === bf.suggestedId ? 'selected' : ''}>${esc(c.service + ' · ' + c.name)}</option>`).join('')}</select>
+      <select id="pubBufType" style="font-size:12px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><option value="">type: default</option><option value="post">Post</option><option value="reel" ${C.video ? 'selected' : ''}>Reel</option><option value="story">Story</option></select>
+      <button style="${pubBtn('#8ab4f8')}" ${PB.busy.buf ? 'disabled' : ''} onclick="pubBufferSend()">${PB.busy.buf ? '⏳ Sending…' : '📤 Send to Buffer (draft)'}</button></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Posts the saved Post Caption + Hashtags with ${C.video ? 'the rendered video (Video URL)' : 'the post image'}.</div>`);
+  const publish = sec('Status & publish', `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select onchange="pubStatus(this)" style="font-size:12.5px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:${/^published$/i.test(A.status) ? '#4ade80' : '#ff7a00'};font-weight:600;">${[...new Set([A.status, ...PB_STATUSES])].filter(Boolean).map(s => `<option ${s === A.status ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
+    ${/^published$/i.test(A.status) ? '' : `<button style="${pubBtn('#4ade80')}font-weight:600;" ${PB.busy.pub ? 'disabled' : ''} onclick="pubPublish()">${A.hub ? '📤 Publish to hub' : '✓ Mark Published'}</button>`}</div>`);
+  P.innerHTML = head + (PB.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(PB.log) ? '#f87171' : 'var(--text2)'};">${esc(PB.log)}</div>` : '')
+    + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${sec('✍ Copy — field by field', copy)}${sec('🖼 Images', images)}${video}${buffer}${publish}</div></div></div>`;
 }
 // ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
 // stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research

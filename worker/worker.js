@@ -2647,6 +2647,143 @@ async function wrAssetTypes(env) {   // the Assets DB "Asset Type" options, for 
   if (list.length) await env.TRADES.put("writer:assettypes", JSON.stringify({ at: Date.now(), list }));
   return list;
 }
+// ── Writer reels → the approved render (operator 2026-10-31: the Asset modal must give everything to publish a social reel). A Writer
+// script ("SCREEN n" blocks, or "kind: text" lines) becomes a reel-kinetic v2 Video Spec: the hook screen → title, a numbered screen →
+// subhead (its first line) + body (the rest), the CTA screen → CTA. The template takes any number of areas (default "replace" play).
+const WR_PLATFORM_NAME = [[/instagram/i, "Instagram"], [/linkedin/i, "LinkedIn"], [/tiktok/i, "TikTok"], [/youtube/i, "YouTube"], [/fiverr/i, "Fiverr"], [/email/i, "Email"], [/etsy/i, "etsy"], [/hub page|blog/i, "Blog"]];
+function wrPlatformName(platform) { const m = WR_PLATFORM_NAME.find(([re]) => re.test(platform || "")); return m ? m[1] : ""; }
+function wrScriptAreas(text) {
+  const clean = x => String(x || "").replace(/\\+\$/g, "$").replace(/\s+/g, " ").trim();
+  const t = String(text || "").replace(/<br\s*\/?>/gi, "\n");
+  const kv = storyParseAreas(t); if (kv.areas.length >= 2 && !kv.stray.length) return kv.areas;
+  const blocks = t.split(/\n(?=\s*(?:SCREEN|SLIDE|BEAT|SCENE)\s*\d+)/i).map(b => b.split(/\r?\n/).map(x => x.trim()).filter(Boolean)).filter(b => b.length);
+  const areas = [];
+  blocks.forEach((b, i) => {
+    let head = b[0], lines = b.slice(1); const m = /^(?:SCREEN|SLIDE|BEAT|SCENE)\s*\d+\s*(?:[—–:-]\s*(.*))?$/i.exec(head);
+    const label = m ? String(m[1] || "") : ""; if (!m) lines = b;
+    if (!lines.length) return;
+    if (/\bcta\b|call to action/i.test(label) || (i === blocks.length - 1 && blocks.length > 2 && /link in bio|book|dm |follow|comment|save this|visit|call/i.test(lines.join(" ")))) { areas.push({ kind: "CTA", text: clean(lines.join(" ")) }); return; }
+    if (/hook/i.test(label) || (i === 0 && !areas.length)) { areas.push({ kind: "title", text: clean(lines.join(" ")) }); return; }
+    areas.push({ kind: "subhead", text: clean(lines[0]) });
+    if (lines.length > 1) areas.push({ kind: "body", text: clean(lines.slice(1).join(" ")) });
+  });
+  return areas.filter(a => a.text);
+}
+async function assetReelSpec(env, assetId) {
+  const aid = hubAssetId(assetId), page = await ivPage(aid), p = page.properties || {};
+  const script = hubRichText(p["Story Areas"]?.rich_text) || hubRichText(p.Body?.rich_text);
+  if (!script.trim()) return { error: "No script on this asset — write Story Areas first" };
+  const areas = wrScriptAreas(script); if (areas.length < 2) return { error: "Couldn't read the script into screens — use SCREEN n blocks or kind: text lines" };
+  const spec = { template: "reel-kinetic", v: 2, format: "", areas, writer: true };
+  const props = { "Video Spec": { rich_text: ivRt(JSON.stringify(spec)) } };
+  if (!p["Platform Name"]?.select?.name) { const t = (await wrTypes(env)).find(x => ivNorm(x.name) === ivNorm(p["Asset Type"]?.select?.name || "")), pn = wrPlatformName(t ? t.platform : p["Asset Type"]?.select?.name); if (pn) props["Platform Name"] = { select: { name: pn } }; }
+  await kwNotionPatch(env, aid, props);
+  return { ok: true, areas: areas.length, spec };
+}
+// ══ WRITER ② PUBLISH (operator 2026-10-31) — "in essence a writer", granular, field by field, downstream of product and title. Opened
+// from an asset's Status in All Output 2. Every field (copy AND imagery) is written from the same flow that informed ① Write: the Writer
+// setup + upstream (customer, product) + brief + the title's keywords / research + the other fields as they stand; image direction also
+// reads the hub's committed design spec for its format. A field is written into a PROPOSAL; only ✓ Approve saves it. Images render from
+// the committed spec + the saved Image Direction (existing generators); run-only guidance is never saved.
+const PUB_TEXT_FIELDS = ["Platform Title", "Description", "Body", "Story Areas", "Post Caption", "Hashtags", "Alt Text", "Thumbnail Text", "Call to Action", "FAQ", "Search Tags", "Pricing Tiers", "Preview Text"];
+const PUB_FIELD_RULES = {
+  "Platform Title": "The title as it appears on the platform: native to the platform, specific, the reader's own words; no clickbait.",
+  "Description": "A 1–2 sentence summary / meta description, under 160 characters.",
+  "Post Caption": "The caption posted with it: a first line that stops the scroll, the point in plain words, one CTA. Platform-native length. No hashtags here.",
+  "Hashtags": "Space-separated #hashtags only, specific to this niche and place — Instagram / TikTok 3–5, LinkedIn up to 3, others up to 5. No generic tags.",
+  "Alt Text": "Plain description of what the image shows for a screen reader, under 125 characters, no 'image of'.",
+  "Story Areas": "The reel's on-screen script as SCREEN blocks: 'SCREEN 1 — HOOK' then its text, numbered screens for each beat (first line = the short headline, then at most one short supporting line), and 'SCREEN n — CTA' last. Each screen readable in about 2 seconds (≤ 14 words).",
+  "Thumbnail Text": "At most 5 words that go over the thumbnail.",
+  "Image Direction": "Direction for the WORDLESS background image of this asset: the scene, the subject and people (who, doing what), the moment and emotion, the visual metaphor for the message, light and composition — leaving a clear zone where the text sits. Stay inside the hub design spec's look; never ask for words, letters or logos in the image. 3–6 sentences.",
+};
+async function wrSources(env, G, type) {   // the same research ① Write reads, as prompt sections
+  const [pillar, research, voice, audience, product, iv] = await Promise.all([extractPillarContent(ivHdr(), ivDash(G.tid)).catch(() => ""), titleResearchBlock(env, G.tid).catch(() => ""),
+    G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, "").catch(() => null)]);
+  const prodFacts = G.pid ? Object.entries(writingFieldValues((await ivPage(G.pid).catch(() => ({}))).properties || {})).filter(([k, v]) => ["Name", "Description", "Price", "Offer Structure", "Transformation", "Unique Angle"].includes(k) && String(v).trim()).map(([k, v]) => k + ": " + v).join("\n") : "";
+  const sec = (h, t, max) => String(t || "").trim() ? "\n## " + h + "\n" + String(t).trim().slice(0, max) + "\n" : "";
+  return sec("Pillar (the substance)", pillar, 5000) + sec("Title research", research, 3000) + sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4000)
+    + sec("Interview answers (the operator's own knowledge and voice)", iv && iv.text, 4000) + sec("Hub audience", audience, 1500) + sec("Voice", voice, 2000);
+}
+function pubImageFormat(type, platform, kind) {
+  if (kind === "thumbnail") return /youtube/i.test(type + platform) ? "youtube_thumb" : "blog_thumb";
+  if (kind === "ig-background") return "offer_bg";
+  return /reel|story|tiktok|9:16|video|short/i.test(type + " " + platform) ? "story" : /carousel/i.test(type) ? "carousel_slide" : "social_square";
+}
+async function pubContext(env, assetId) {
+  const aid = hubAssetId(assetId), page = await ivPage(aid); if (!page?.properties || page.archived) throw new Error("Asset unavailable");
+  const p = page.properties, v = writingFieldValues(p), type = p["Asset Type"]?.select?.name || "", titleId = ivRid(p, "Content Strategy");
+  let link = await env.TRADES.get("writer:asset:" + aid, "json").catch(() => null), fromWriter = !!link;
+  if (!link && titleId) { const c = await writerContext(env, titleId).catch(() => null); if (c) link = { titleId, assetType: type, settings: c.settings, upstream: c.upstream, guidance: "", brief: {} }; }
+  const wt = (await wrTypes(env)).find(t => ivNorm(t.name) === ivNorm(type)), L = await wrLists(env);
+  const platform = (wt && wt.platform) || link?.settings?.platform || "", P = L.platforms.find(x => x.name === platform);
+  const tp = titleId ? (await ivPage(titleId).catch(() => null))?.properties || {} : {}, tv = writingFieldValues(tp);
+  const keywords = tv["Title Keywords"] || tv["Keywords"] || tv["SEO Keywords"] || tv["Keyword"] || "";
+  const video = !!(v["Story Areas"] || v["Video Spec"]) || /reel|story|tiktok|video|short/i.test(type + " " + platform);
+  const want = new Set([...(P ? P.fields : []), "Platform Title", "Post Caption", "Hashtags", "Alt Text", ...(video ? ["Story Areas"] : [])]);
+  const fields = PUB_TEXT_FIELDS.filter(f => want.has(f) || String(v[f] || "").trim());
+  const hubSection = p["Hub Section"]?.select?.name || "";
+  return { ok: true, asset: { id: aid, title: hubRichText(p["Asset Title"]?.title), type, status: p["Asset Status"]?.select?.name || "", platformName: p["Platform Name"]?.select?.name || "",
+      hubSection, hub: (!!hubSection && !/^(unlisted|email)$/i.test(hubSection)) || /^sub ?page$/i.test(type), campaignId: ivRid(p, "Campaign"), titleId, titleName: tv.Title || "",
+      postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
+      videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
+    fields, values: Object.fromEntries([...PUB_TEXT_FIELDS, "Image Direction"].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
+    informed: { settings: link?.settings || null, upstream: link?.upstream || null, guidance: link?.guidance || "", brief: link?.brief || {}, keywords, titleIntent: tv["Title Intent"] || "", titleAudience: tv["Title Audience"] || "" },
+    rules: PUB_FIELD_RULES };
+}
+async function pubFieldWrite(env, body) {
+  const ctx = await pubContext(env, body.assetId), A = ctx.asset, field = String(body.field || "");
+  if (!A.titleId) throw new Error("This asset has no title — the field writer needs the title's flow");
+  if (field !== "Image Direction" && !PUB_TEXT_FIELDS.includes(field)) throw new Error("Not a writable field: " + field);
+  const G = await wrGather(env, A.titleId), I = ctx.informed, S = I.settings || {}, U = I.upstream || {}, B = I.brief || {};
+  const L = await wrLists(env), pick = (list, n) => list.find(x => x.name === n);
+  const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, ctx.platform || S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
+  const kind = String(body.imageKind || "post-image"), img = field === "Image Direction";
+  let design = "";
+  if (img) { const brief = await assembleImageBrief(env, { assetId: A.id, format: pubImageFormat(A.type, ctx.platform, kind) }).catch(() => null);
+    design = brief ? [brief.storedSpec || brief.legacySpec || "", ...(brief.facts || [])].filter(Boolean).join("\n").slice(0, 7000) : ""; }
+  const others = ctx.fields.filter(f => f !== field && String(ctx.values[f] || "").trim()).map(f => "### " + f + "\n" + String(ctx.values[f]).slice(0, 2500)).join("\n\n");
+  const prompt = `You are the writer of this asset, writing ONE field of it: "${field}". Write the best possible value for that field for this reader on this platform — the way an expert who understood this reader, this product and this subject would.
+
+# THE FIELD
+${field}: ${PUB_FIELD_RULES[field] || "Write this field so it does its job on the platform; platform-native length."}
+Current value (improve it, or replace it if it's weak): ${String(ctx.values[field] || "").slice(0, 3000) || "— empty —"}
+${String(body.guidance || "").trim() ? "Operator guidance for this field (follow it): " + String(body.guidance).trim() : ""}
+
+# THE ASSET'S SETUP
+Asset type: ${A.type}${ctx.writerType ? " (a Writer type)" : ""} · Platform: ${P ? P.name + " — " + P.rule : (A.platformName || "—")}
+${purpose ? "Purpose: " + purpose.name + " — " + purpose.rule : ""}${layout ? "\nLayout: " + layout.name + " — " + layout.rule : ""}${script ? "\nScripting: " + script.name + " — " + script.rule : ""}${I.guidance ? "\nThe operator's guidance when it was written: " + I.guidance : ""}
+
+# WHO IT'S FOR
+Niche: ${U.niche || "—"}
+Reader intent: ${U.intent || I.titleIntent || "—"}
+Audience persona: ${U.persona || I.titleAudience || "—"}
+Frustration points: ${U.frustrations || "—"}
+Pain points: ${U.pains || "—"}
+
+# WHAT IT'S ABOUT
+Title: ${A.titleName || "—"}${I.keywords ? "\nKeywords: " + I.keywords : ""}${B.subject ? `\nThe writer's brief — subject: ${B.subject} · intent: ${B.intent || ""} · reader: ${B.reader || ""} · outcome: ${B.outcome || ""} · angle: ${B.angle || ""}` : ""}
+${others ? "\n# THE OTHER FIELDS AS THEY STAND (stay consistent with them)\n" + others + "\n" : ""}${design ? "\n# THE HUB DESIGN SPEC FOR THIS IMAGE FORMAT (the look — stay inside it)\n" + design + "\n" : ""}${await wrSources(env, G, A.type)}
+
+# RULES
+- Facts, numbers, prices, names, credentials and results come ONLY from the sources above — never invent them.
+- Write the finished field value the reader sees (or, for Image Direction, the art direction) — never meta commentary about it.
+Return via the tool: "value" (the field) and "why" (one line: what you aimed for).`;
+  const schema = { type: "object", additionalProperties: false, required: ["value", "why"], properties: { value: { type: "string" }, why: { type: "string" } } };
+  let out, model = "claude-opus-5-5";
+  try { out = await hcClaude(env, prompt, "write_field", schema, 6000, null, { model }); }
+  catch (e) { if (!/model/i.test(e.message)) throw e; model = "claude-sonnet-4-6"; out = await hcClaude(env, prompt, "write_field", schema, 6000, null, { model }); }
+  return { ok: true, field, value: String(out.value || "").trim(), why: String(out.why || ""), model, designUsed: !!design };
+}
+async function pubFieldSave(env, body) {
+  const aid = hubAssetId(body.assetId), field = String(body.field || ""), value = String(body.value ?? "");
+  if (field !== "Image Direction" && !PUB_TEXT_FIELDS.includes(field)) throw new Error("Not a writable field: " + field);
+  const page = await ivPage(aid), hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  let t = page.properties?.[field]?.type; if (!t) { await ensureDbRichTextProperty(hdr, ASSETS_DB, field); t = "rich_text"; }
+  if (!["rich_text", "title"].includes(t)) throw new Error(field + " is not a text field");
+  await kwNotionPatch(env, aid, { [field]: { [t]: ivRt((field === "Image Direction" ? value.slice(0, 1990) : value).slice(0, 190000)) } });
+  const reel = field === "Story Areas" && value.trim() ? await assetReelSpec(env, aid).catch(e => ({ error: e.message })) : null;
+  return { ok: true, field, videoSpec: reel ? (reel.ok ? reel.areas + " areas" : reel.error) : undefined };
+}
 async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
 async function wrTypeSave(env, body) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
@@ -2747,11 +2884,14 @@ async function writerSave(env, body) {   // approve: CREATE the asset under the 
     if (!["rich_text", "title", "select"].includes(t)) { skipped.push(k); continue; }
     props[k] = t === "select" ? { select: v ? { name: String(v).slice(0, 90) } : null } : { [t]: ivRt(String(v).slice(0, 190000)) };
   }
+  { const pn = wrPlatformName(draft.settings?.platform); if (pn) props["Platform Name"] = { select: { name: pn } }; }
   if (Object.keys(props).length) await kwNotionPatch(env, aid, props);
+  const reel = String(vals["Story Areas"] || "").trim() ? await assetReelSpec(env, aid).catch(e => ({ error: e.message })) : null;
   await env.TRADES.put("writer:draft:t:" + G.tid, JSON.stringify({ ...draft, savedAs: aid, savedAt: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 30 });
+  await env.TRADES.put("writer:asset:" + aid, JSON.stringify({ titleId: G.tid, assetType: type, settings: draft.settings, upstream: draft.upstream, guidance: draft.guidance || "", brief: draft.brief || {}, at: new Date().toISOString() }));
   const log = (await env.TRADES.get("writeasset:log", "json").catch(() => null)) || [];
   await env.TRADES.put("writeasset:log", JSON.stringify([{ assetId: aid, method: "Writer (" + type + " · " + (draft.settings?.purpose || "") + " · " + (draft.settings?.platform || "") + ")", violations: draft.violations || [], written: true, timestamp: new Date().toISOString(), writer: "writer-modal", model: draft.model }, ...log].slice(0, 200)));
-  return { ok: true, assetId: aid, assetTitle, assetType: type, saved: Object.keys(props), skipped };
+  return { ok: true, assetId: aid, assetTitle, assetType: type, saved: Object.keys(props), skipped, videoSpec: reel ? !!reel.ok : undefined };
 }
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
@@ -39921,7 +40061,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const subject = await assetImageSubjectContext(hdr, assetId, ap);
         const exclusions = await hubImageExclusions(env, campaignId);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:(/carousel/i.test(ap['Asset Type']?.select?.name||'')?'carousel_slide':'social_square') });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign , runGuidance: body.runGuidance || body.guidance || '' , format:(['story','social_square','carousel_slide','offer_bg'].includes(body.format)?body.format:/carousel/i.test(ap['Asset Type']?.select?.name||'')?'carousel_slide':'social_square') });
         const designHold=await holdImageWithoutSpec(env,brief,body); if(designHold)return json(designHold);
         let spec = "";
         spec = brief.storedSpec;
@@ -52285,7 +52425,7 @@ ${assemblyManifest}`;
           if (missing.length) return json({ error: `Slide${missing.length > 1 ? "s" : ""} ${missing.join(", ")} ${missing.length > 1 ? "have" : "has"} no finished Post Image yet — make every slide's image first` }, 400);
           assets = slides.map(x => ({ image: { url: x.postImage } }));
           kind = `carousel (${slides.length} slides)`;
-        } else if (/video|reel|short|explainer|avatar|single post story/i.test(assetType)) {
+        } else if (/video|reel|short|explainer|avatar|single post story/i.test(assetType) || ((P["Video Spec"]?.rich_text || []).length && P["Video URL"]?.url)) {
           const v = String(body.videoUrl || P["Video URL"]?.url || "").trim();
           if (!https(v)) return json({ error: "No public Video URL on this asset yet — paste a permanent https link to the MP4 (or upload it once video hosting is enabled)" }, 400);
           assets = [{ video: { url: v, metadata: { thumbnailOffset: 1000 } } }];
@@ -55126,6 +55266,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "pubContext" || body.action === "pubFieldWrite" || body.action === "pubFieldSave") {
+        if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
+        try { return json(body.action === "pubContext" ? await pubContext(env, body.assetId) : body.action === "pubFieldWrite" ? await pubFieldWrite(env, body) : await pubFieldSave(env, body)); }
+        catch (e) { return json({ error: e.message }, 500); }
+      }
+      if (body.action === "assetReelSpec") { try { return json(await assetReelSpec(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
+      if (body.action === "assetBackgroundNext") {   // the next background from the shared pool, set on this asset (render uses it)
+        const bg = await backgroundNext(env).catch(() => null); if (!bg) return json({ error: "The background pool is empty" }, 400);
+        const r = await assetBackgroundSet(env, { assetId: hubAssetId(body.assetId || ""), backgroundId: bg.id }); return json(r.error ? r : { ok: true, background: { id: bg.id, url: bg.url } });
+      }
       if (body.action === "assetModal") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
         const w = await getWritableAsset(env, body.assetId), p = w.page.properties || {};
@@ -55135,6 +55285,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
             platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "",
             loginId: (p.Login?.relation || [])[0] ? hubAssetId(p.Login.relation[0].id) : "",
             videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
+            storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
+            poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
