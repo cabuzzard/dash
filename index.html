@@ -4835,7 +4835,7 @@ function amClose() {
 }
 async function amOpen(assetId, tab) {
   amEnsure().classList.add('open'); document.body.style.overflow = 'hidden';
-  AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false };
+  AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false, pwText: null, pwPrompt: '', pwInfo: '', pwBusy: '' };
   amDraw(); await amLoad();
 }
 async function amLoad() {
@@ -4870,7 +4870,7 @@ function amDraw() {
     <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
   const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields', schema = AM.tab === 'schema';
-  P.innerHTML = hd + `<div class="amf-bd">${!schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
+  P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>`;
 }
 // ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
 // text → ✓ Commit (writes the asset's Current Methods row) or ✕ Discard. Worker assetSpec. rules = contract · flow = inputs ·
@@ -4979,12 +4979,59 @@ function amSchemaHtml() {
   // 9. packet
   const src = [['method', P.method], ['contract', P.contract], ['inputs (descriptive — the packet below is fixed)', P.inputs], ['title', P.title && P.title.properties], ['pillar', P.title && P.title.pillar], ['research', P.research], ['voice', P.voice],
     ['hub.audience', P.hub && P.hub.audience], ['hub.design', P.hub && P.hub.design], ['product.properties', P.product && P.product.properties], ['product.research', P.product && P.product.research], ['interview', P.interview], ['platform', P.platform],
-    ['subject (Description · page note · Keyword Seed)', P.subject], ['hubPosts', P.hubPosts], ['currentFields', P.currentFields]];
+    ['subject (Description · page note · Keyword Seed)', P.subject], ['hubPosts', P.hubPosts], ['prewrite (external LLM draft — the writer starts from it)', P.prewrite], ['currentFields', P.currentFields]];
   html += box('9 · The packet — every source sent (full text in 🧭 Information flow)', kv(src.map(([k, v]) => [k, len(v)])) + kv([['Outline (fixes the structure)', a.outline ? len(a.outline) : 'none'], ['Keyword Seed', a.keywordSeed || 'none']]), false);
   // 10. process
   const pr = d.process || {};
   html += box('10 · Process — model, correction, trimming, what it saves', kv([['Model', pr.model], ['Max output tokens', pr.maxTokens], ['Structured return', pr.tool], ['Correction', pr.correction], ['Trimming', pr.trim], ['Protected (never written)', (pr.protected || []).join(', ')], ['Saves', pr.saves], ['Enforcement', pr.enforcement], ['Run log', pr.log]]), false);
   return html;
+}
+// ── ✏ PRE-WRITE (operator 2026-10-30) — a base block on every Asset modal: 📋 Copy prompt sends this type's FULL spec (🧭 Writing Specs,
+// shaped by type) + this asset's sources + the JSON to return → any LLM → paste the JSON back → 💾 it is this asset's pre-write, which
+// ✍ Write reads as its starting draft. On a Series the block works on the run: one prompt for its unwritten children, one JSON array back,
+// saved into each child's own pre-write. Worker assetPrewrite.
+function amIsSeries() { const a = AM && AM.data && AM.data.asset; return !!a && (/^series$/i.test(a.type || '') || /^series$/i.test(a.pillarType || '')); }
+function amPrewriteHtml() {
+  const a = AM.data.asset, pw = AM.data.prewrite, run = amIsSeries(), busy = AM.pwBusy;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1.45;';
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const val = AM.pwText != null ? AM.pwText : run ? '' : ((pw && pw.text) || '');
+  return `<div style="border:1px solid #c084fc;border-radius:10px;padding:12px;margin-bottom:16px;background:rgba(192,132,252,.05);">
+    <div style="font-size:12.5px;margin-bottom:6px;"><b>✏ Pre-write${run ? ' — this Series\' run' : ''}</b> <span style="font-size:11px;color:var(--text3);">${run
+      ? 'one prompt for the Series\' unwritten children (spec + shared sources once, each child\'s own section) → paste the JSON array back → saved into each child\'s own pre-write'
+      : 'copy the prompt (this type\'s full spec + this asset\'s sources + the JSON to return) → run it in any LLM → paste the JSON back. ✍ Write starts from it; it is a draft, never the post.'}</span></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <button style="${B('#c084fc')}" ${busy ? 'disabled' : ''} onclick="amPrewriteCopy(${run ? 'true' : 'false'})">${busy === 'prompt' ? '⏳ Building the prompt…' : run ? '📋 Copy run prompt' : '📋 Copy prompt'}</button>
+      ${AM.pwInfo ? `<span style="font-size:11px;color:var(--text2);">${esc(AM.pwInfo)}</span>` : ''}
+      ${!run && pw ? `<span style="font-size:11px;color:var(--text3);">saved ${esc(new Date(pw.at).toLocaleString())}${pw.json ? ' · valid JSON' : ' · not JSON (kept as text)'}${pw.fromRun ? ' · from the Series run' : ''}</span>` : ''}</div>
+    ${AM.pwPrompt ? `<details style="margin-bottom:8px;"><summary style="cursor:pointer;font-size:11.5px;color:var(--text2);">The prompt (${AM.pwPrompt.length.toLocaleString()} chars) — copied to the clipboard</summary><textarea readonly rows="10" style="${IN}margin-top:6px;" onclick="this.select()">${esc(AM.pwPrompt)}</textarea></details>` : ''}
+    <textarea id="amPwText" rows="${val ? Math.min(18, Math.max(5, val.split('\n').length + 1)) : 5}" style="${IN}" placeholder="${run ? 'Paste the LLM\'s JSON — {"posts": [ { "assetId": …, "fields": {…}, … } ]}' : 'Paste the LLM\'s JSON here — { "fields": {…}, "notes": … }'}" oninput="AM.pwText=this.value">${esc(val)}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+      <button style="${B('#4ade80')}" ${busy ? 'disabled' : ''} onclick="amPrewriteSave(${run ? 'true' : 'false'})">${busy === 'save' ? 'Saving…' : run ? '💾 Save to the children' : '💾 Save pre-write'}</button>
+      ${!run && pw ? `<button style="${B('var(--text3)')}" onclick="amPrewriteClear()">Clear</button>` : ''}</div></div>`;
+}
+async function amPrewriteCopy(run) {
+  if (!AM) return; AM.pwBusy = 'prompt'; AM.pwInfo = ''; amDraw();
+  const r = await call('assetPrewrite', { assetId: AM.id, op: run ? 'runPrompt' : 'prompt' }).catch(e => ({ error: e.message }));
+  if (!AM) return; AM.pwBusy = '';
+  if (!r || r.error) { AM.pwInfo = '✗ ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.pwPrompt = r.prompt; let copied = false; try { await navigator.clipboard.writeText(r.prompt); copied = true; } catch (e) {}
+  AM.pwInfo = (copied ? '✓ Copied' : 'Copy it from the box below') + ' — ' + (run ? (r.children || []).length + ' children' : (r.spec ? 'spec: ' + r.type + ' (Writing Specs)' : 'spec: the registry contract (type not in Writing Specs yet)') + ' · ' + (r.fields || []).length + ' fields' + (r.pointers ? ' · ' + r.pointers.format + ' × ' + r.pointers.angle + ' → ' + r.pointers.postType : '')) + ' · ' + r.prompt.length.toLocaleString() + ' chars';
+  amDraw();
+}
+async function amPrewriteSave(run) {
+  if (!AM) return; const text = (document.getElementById('amPwText') || {}).value || ''; if (!text.trim()) { AM.pwInfo = '✗ Paste the JSON first'; return amDraw(); }
+  AM.pwBusy = 'save'; amDraw();
+  const r = await call('assetPrewrite', { assetId: AM.id, op: run ? 'runSave' : 'save', text }).catch(e => ({ error: e.message }));
+  if (!AM) return; AM.pwBusy = '';
+  if (!r || r.error) { AM.pwInfo = '✗ Not saved: ' + ((r && r.error) || 'no response'); return amDraw(); }
+  if (run) { AM.pwInfo = '✓ Saved to ' + (r.saved || []).length + ' child' + ((r.saved || []).length === 1 ? '' : 'ren') + ((r.skipped || []).length ? ' · skipped ' + r.skipped.length : '') + ' — open each child and ✍ Write'; AM.pwText = ''; }
+  else { AM.data.prewrite = { text: r.text, json: r.json, at: r.at }; AM.pwText = null; AM.pwInfo = '✓ Pre-write saved — ✍ Write will start from it'; await amLoad(); return; }
+  amDraw();
+}
+async function amPrewriteClear() {
+  if (!AM || !confirm('Clear this asset\'s pre-write?')) return;
+  await call('assetPrewrite', { assetId: AM.id, op: 'clear' }).catch(() => {}); AM.data.prewrite = null; AM.pwText = null; AM.pwInfo = 'Cleared'; amDraw();
 }
 function amFieldsHtml() {
   const d = AM.data.dry || {}, C = amContract(), dirtyN = Object.keys(AM.dirty).length;
@@ -5079,7 +5126,7 @@ function amFlowHtml() {
     + sec('Title research', P.research) + sec('Product facts', P.product && P.product.properties) + sec('Product research', P.product && P.product.research)
     + sec('Hub voice', P.voice) + sec('Hub audience', P.hub && P.hub.audience) + (P.hub && P.hub.design ? sec('Hub design', P.hub.design, 'the method asks for design') : '')
     + sec('Interview', P.interview, 'answered questions') + sec('Platform', P.platform) + sec('This asset — subject', P.subject)
-    + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Current fields', P.currentFields, 'what is on the asset now');
+    + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Pre-write', P.prewrite, 'external LLM draft — the writer starts from it') + sec('Current fields', P.currentFields, 'what is on the asset now');
 }
 // ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
 // stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research

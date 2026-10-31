@@ -2348,8 +2348,11 @@ async function writeContractAsset(env,assetId,opts={}) {
   // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
   const seoKws=style.purpose==='SEO'?[...new Set([...(keywordSeed?keywordSeed.split(/\s*;\s*/).filter(Boolean).slice(0,3):[]),...kwSplit(String(packet.product?.properties?.Keywords||''))])]:[],seoList=seoCoverage(seoKws,'','').missing;
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
+  const pre=await env.TRADES.get('prewrite:'+hubAssetId(page.id),'json').catch(()=>null);   // the asset's PRE-WRITE (external LLM draft, pasted in the Asset modal)
+  if(pre&&String(pre.text||'').trim())packet.prewrite=String(pre.text).slice(0,14000);
   const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
-    +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'');
+    +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
+    +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
     rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A',
     styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
@@ -2482,6 +2485,96 @@ async function specCommit(env, assetId, section, opts = {}) {
   const log = (await env.TRADES.get('spec:commits', 'json').catch(() => null)) || [];
   await env.TRADES.put('spec:commits', JSON.stringify([{ at: new Date().toISOString(), row: row.id, rowName: row.cells.cname01 || '', section, assetId: hubAssetId(assetId), before: ctx.cell(section).slice(0, 4000), after: text.slice(0, 4000) }, ...log].slice(0, 200)));
   return { ok: true, row: row.id, section, text };
+}
+// ── 🧭 WRITING SPECS (Notion) → the PRE-WRITE prompt (operator 2026-10-30). Every Asset modal has a Pre-write block: 📋 Copy prompt
+// sends the asset type's FULL committed spec (Writing Specs rows: Base + the type's rules, fields, dimensions — only this asset's picked
+// values when it carries short-form pointers —, preview), this asset's sources and the exact JSON to return; the pasted JSON is saved as
+// KV prewrite:<assetId> and the writer reads it as its starting draft. Types not yet in Writing Specs fall back to the registry contract.
+const WRITING_SPECS_DB = "6b6b782c83aa40fcb006d7970143a053";
+async function writingSpecsRows(env) {
+  const cached = await env.TRADES.get("writingspecs:cache", "json").catch(() => null);
+  if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.rows;
+  const t = x => hubRichText(x?.rich_text || x?.title), rel = x => (x?.relation || []).map(r => hubAssetId(r.id));
+  const rows = (await notionQuery(WRITING_SPECS_DB, {})).map(p => { const P = p.properties || {};
+    return { id: hubAssetId(p.id), name: t(P.Name), kind: P.Kind?.select?.name || "", scope: P.Scope?.select?.name || "", status: P.Status?.select?.name || "", order: P.Order?.number ?? 99,
+      rule: t(P.Rule), limits: t(P.Limits), input: t(P.Input), required: !!P.Required?.checkbox, filledBy: P["Filled By"]?.select?.name || "", property: t(P.Property), aliases: t(P.Aliases),
+      group: P.Group?.select?.name || "", platform: t(P.Platform), purpose: P.Purpose?.select?.name || "", keep: P["Keep My Words"]?.select?.name || "", notes: t(P.Notes), belongsTo: rel(P["Belongs To"]) }; });
+  await env.TRADES.put("writingspecs:cache", JSON.stringify({ at: Date.now(), rows }), { expirationTtl: 3600 }).catch(() => {});
+  return rows;
+}
+async function writingSpecForType(env, type, methodName) {
+  const rows = (await writingSpecsRows(env)).filter(r => r.status !== "Superseded"), n = ivNorm;
+  const T = rows.find(r => r.kind === "Type" && (n(r.name) === n(type) || r.aliases.split(";").map(n).includes(n(type)) || (methodName && r.aliases.split(";").map(n).includes(n(methodName)))));
+  const base = rows.filter(r => r.scope === "Base" && !r.belongsTo.length && r.kind !== "Type");
+  if (!T) return { type: null, base };
+  const kids = rows.filter(r => r.belongsTo.includes(T.id)), dims = kids.filter(r => r.kind === "Dimension");
+  const values = rows.filter(r => r.kind === "Value" && r.belongsTo.some(d => dims.some(x => x.id === d)));
+  return { type: T, base, kids: kids.sort((a, b) => a.order - b.order), dims, values };
+}
+// A Series run's pre-write (operator 2026-10-30: "with series it would have to ask which run item — you decide"): ONE prompt for the
+// Series' unwritten children — the spec + shared sources once, then each child's own section (its pointers / topic) — returning one JSON
+// array keyed by assetId; saving splits it into each child's own pre-write. Each child can still be prompted alone from its own modal.
+async function seriesRunPrewritePrompt(env, seriesId) {
+  const kids = (await notionQuery(ASSETS_DB, { filter: { property: "Parent Asset", relation: { contains: ivDash(seriesId) } } }))
+    .filter(k => !k.archived && !/^(published|delete)$/i.test(k.properties?.["Asset Status"]?.select?.name || "")).slice(0, 20);
+  if (!kids.length) throw new Error("This Series has no unwritten children — generate a run first");
+  const parts = []; for (const k of kids) parts.push({ id: hubAssetId(k.id), ...(await assetPrewritePrompt(env, k.id, { parts: true })) });
+  const first = parts[0], L = [...first.head];
+  L[0] = "# PRE-WRITE — a run of " + parts.length + " " + (first.type || "posts") + " (one Series)";
+  L.push("", "## THE ASSETS IN THIS RUN — write each one separately; never repeat a hook or a point across them");
+  parts.forEach((x, i) => L.push("", "### " + (i + 1) + ". assetId " + x.id + " — " + x.title, ...x.asset.slice(2)));
+  const ri = first.sources.findIndex(l => /^## RETURN/.test(l)); L.push(...(ri >= 0 ? first.sources.slice(0, ri) : first.sources));
+  L.push("", "## RETURN — JSON only", "```json", JSON.stringify({ posts: [{ assetId: "the assetId above", ...first.shape }] }, null, 2), "```");
+  return { prompt: L.join("\n"), children: parts.map(x => ({ assetId: x.id, title: x.title })), chars: L.join("\n").length };
+}
+async function assetPrewritePrompt(env, assetId, opts = {}) {
+  const page = await ivPage(assetId); if (!page?.properties || page.archived) throw new Error("Asset unavailable");
+  const p = page.properties, type = p["Asset Type"]?.select?.name || "", m = await writingMethod(env, page).catch(() => ({}));
+  const titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};
+  const cid = ivRid(p, "Campaign") || ivRid(tp, "Campaign"), pid = ivRid(p, "Product") || ivRid(tp, "product") || ivRid(tp, "Product");
+  const ptr = await env.TRADES.get("shortrun:asset:" + hubAssetId(page.id), "json").catch(() => null);
+  let spec = null, specErr = ""; try { spec = await writingSpecForType(env, type, m.name); } catch (e) { specErr = e.message; }
+  const [pillar, research, voice, audience, product, iv] = await Promise.all([titleId ? extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "") : "", titleId ? titleResearchBlock(env, titleId).catch(() => "") : "",
+    cid ? voiceBlock(env, cid).catch(() => "") : "", cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid).catch(() => "") : "", titleId ? ivBlock(env, titleId, type, hubAssetId(page.id)).catch(() => null) : null]);
+  const cur = writingFieldValues(p), note = (await offerBlogBlocks(ivHdr(), page.id).catch(() => [])).map(b => hubRichText(b[b.type]?.rich_text).trim()).filter(t => /^(series idea:|run\s*·|category:)/i.test(t)).join("\n").slice(0, 3000);
+  const prodFacts = pid ? Object.fromEntries(Object.entries(writingFieldValues((await ivPage(pid).catch(() => ({}))).properties || {})).filter(([k, v]) => ["Name", "Description", "Price", "Offer Structure", "Transformation", "Unique Angle", "Keywords"].includes(k) && String(v).trim())) : {};
+  const T = spec && spec.type, kids = (spec && spec.kids) || [];
+  // the fields the JSON returns: the spec's writer fields, else the registry contract
+  const specFields = kids.filter(r => r.kind === "Field" && r.filledBy === "Writer");
+  const fields = specFields.length ? specFields.map(r => ({ key: r.name, property: r.property, rule: r.rule, limits: r.limits, required: r.required, input: r.input }))
+    : (m.contract || []).map(f => ({ key: f.name, property: f.name, rule: f.rule, limits: "", required: !/\b(optional|may be omitted|omit)\b/i.test(f.rule), input: "" }));
+  const picked = ptr ? { Format: ptr.format, Angle: ptr.angle, "Post type": ptr.postType } : {};
+  const valuesFor = d => spec.values.filter(v => v.belongsTo.includes(d.id)).filter(v => !picked[d.name] || n2(v.name) === n2(picked[d.name]));
+  const n2 = x => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const areas = ptr && spec && spec.values ? (spec.values.find(v => n2(v.name) === n2(ptr.format)) || {}).input || "" : "";
+  const L = [], mark = {};
+  L.push(`# PRE-WRITE — ${type || "asset"}: "${hubRichText(p["Asset Title"]?.title)}"`, "",
+    "You are drafting ONE asset to the specification below. Return ONLY the JSON object described at the end — no commentary. Use only the SOURCES given here; never invent facts, numbers, names, prices or results. Where the sources don't support a field, leave it \"\" and say why in \"notes\". Your draft is a PRE-WRITE: the operator's writer will check it against the spec and finish it.", "");
+  if (T) {
+    L.push(`## THE SPEC — ${T.name} (v${T.notes ? "" : ""}from 🧭 Writing Specs)`);
+    if (T.platform || T.purpose || T.keep) L.push(`Platform: ${T.platform || "—"} · Purpose: ${T.purpose || "—"} · Keep my words: ${T.keep || "—"}`);
+    const rules = kids.filter(r => r.kind === "Rule"); if (rules.length) { L.push("", "### Rules"); rules.forEach(r => L.push(`- **${r.name}**${r.group ? " (" + r.group + ")" : ""}: ${r.rule}${r.limits ? " — limits: " + r.limits : ""}`)); }
+    const sideDb = kids.filter(r => r.kind === "Side Database" && r.rule); if (sideDb.length) { L.push("", "### Reference"); sideDb.forEach(r => L.push(`- **${r.name}**: ${r.rule}`)); }
+    if (spec.dims.length) { L.push("", "### Dimensions" + (ptr ? " — THIS asset's picks only" : " — pick one value per dimension and say which in \"notes\"")); spec.dims.forEach(d => { L.push(`**${d.name}** — ${d.rule}${picked[d.name] ? " → **" + picked[d.name] + "**" : ""}`); valuesFor(d).forEach(v => L.push(`  - ${v.name}${v.input ? " [" + v.input + "]" : ""}: ${v.rule}`)); }); }
+    const prev = kids.filter(r => r.kind === "Preview"); if (prev.length) { L.push("", "### How it is shown"); prev.forEach(r => L.push("- " + r.rule)); }
+  } else L.push("## THE SPEC — the registry contract" + (specErr ? " (Writing Specs not readable: " + specErr + ")" : " (this type is not in 🧭 Writing Specs yet)"));
+  if (spec && spec.base && spec.base.length) { L.push("", "### Rules for every asset"); spec.base.filter(r => r.kind === "Rule").forEach(r => L.push(`- **${r.name}**: ${r.rule}`)); }
+  L.push("", "### Fields to write"); fields.forEach((f, i) => L.push(`${i + 1}. **${f.key}**${f.required ? "" : " (optional)"}${f.input ? " · " + f.input : ""}${f.limits ? " · " + f.limits : ""} — ${f.rule}`));
+  if (m.row && m.row.inputs) L.push("", "### What the sources are for", m.row.inputs);
+  mark.asset = L.length; L.push("", "## THIS ASSET");
+  if (ptr) L.push(`Format: ${ptr.format} · Angle: ${ptr.angle} · Post type: ${ptr.postType} · Platform: ${ptr.platform} · Traffic intent: ${ptr.intent} · CTA (use exactly this action): ${ptr.cta}${ptr.topic ? "\nTopic: " + ptr.topic : ""}`);
+  if (note) L.push(note); if (cur.Description) L.push("Description: " + cur.Description); if (cur["Keyword Seed"]) L.push("Keyword seed: " + cur["Keyword Seed"]); if (cur["Platform Name"] && !ptr) L.push("Platform: " + cur["Platform Name"]);
+  const S = (h, v, max) => { const t = (typeof v === "string" ? v : JSON.stringify(v || "")).trim(); if (t && t !== "{}" && t !== "\"\"") L.push("", "### " + h, t.slice(0, max)); };
+  mark.sources = L.length; L.push("", "## SOURCES");
+  S("Title", { Title: hubRichText(tp.Title?.title), Notes: hubRichText(tp.Notes?.rich_text) }, 1500); S("Pillar", pillar, 6000); S("Title research", research, 3000);
+  S("Product facts", prodFacts, 2500); S("Product research", product, 4000); S("Hub audience", audience, 2000); S("Voice", voice, 2500); S("Interview answers", iv && iv.text, 5000);
+  const cf = Object.fromEntries(fields.map(f => [f.key, cur[f.property] || cur[f.key] || ""]).filter(([, v]) => String(v).trim())); S("What is on the asset now (improve, don't copy blindly)", cf, 4000);
+  const shape = { fields: Object.fromEntries(fields.map(f => [f.key, "string"])) };
+  if (areas) shape.areas = [{ kind: "title | subhead | blurb | body | CTA (the format's areas, in reading order: " + areas + ")", text: "string" }];
+  shape.notes = "string — which dimension values you used, anything unsupported or uncertain";
+  if (opts.parts) return { head: L.slice(0, mark.asset), asset: L.slice(mark.asset, mark.sources), sources: L.slice(mark.sources), shape, title: hubRichText(p["Asset Title"]?.title), type: T ? T.name : type };
+  L.push("", "## RETURN — JSON only", "```json", JSON.stringify(shape, null, 2), "```");
+  return { prompt: L.join("\n"), type: T ? T.name : "", fields: fields.map(f => f.key), spec: !!T, pointers: ptr || null, chars: L.join("\n").length };
 }
 async function getWritableAsset(env,assetId) {
   const page=await ivPage(assetId);if(!page.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
@@ -54821,6 +54914,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
+          prewrite: await env.TRADES.get("prewrite:" + hubAssetId(body.assetId), "json").catch(() => null),
           specRow: await (async () => {   // 📋 Spec tab (operator 2026-10-30): the asset type's whole Current Methods row, literally, + how it was matched
             try { const t = await writingMethodsTable(env), m = await writingMethod(env, w.page), type = p['Asset Type']?.select?.name || '';
               const all = writingRows(t), on = r => /^yes$/i.test(r.mapped || ''), cand = all.filter(r => ivNorm(r.name) === ivNorm(m.name) || r.aliases.includes(ivNorm(m.name)) || r.aliases.includes(ivNorm(type)));
@@ -54831,6 +54925,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
             } catch (e) { return { error: e.message }; } })() });
       }
       // assetSpec {assetId, op: state | draft | commit | discard, section?, guidance?, text?, mapped?} — the Asset modal's four spec sections
+      // assetPrewrite {assetId, op: prompt | get | save | clear, text?} — the Asset modal's Pre-write block (every asset type)
+      if (body.action === "assetPrewrite") {
+        const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
+        try {
+          if (body.op === "prompt") return json({ ok: true, ...(await assetPrewritePrompt(env, aid)) });
+          if (body.op === "save") { const text = String(body.text || "").trim().slice(0, 40000); if (!text) return json({ error: "nothing to save" }, 400);
+            let parsed = null; try { parsed = JSON.parse(text.replace(/^\`\`\`(?:json)?\s*|\s*\`\`\`$/g, "")); } catch (e) {}
+            const rec = { text, json: !!parsed, at: new Date().toISOString() }; await env.TRADES.put("prewrite:" + aid, JSON.stringify(rec)); return json({ ok: true, ...rec }); }
+          if (body.op === "clear") { await env.TRADES.delete("prewrite:" + aid); return json({ ok: true }); }
+          if (body.op === "runPrompt") return json({ ok: true, ...(await seriesRunPrewritePrompt(env, aid)) });
+          if (body.op === "runSave") {   // the pasted array → each child's own pre-write
+            let parsed; try { parsed = JSON.parse(String(body.text || "").trim().replace(/^\`\`\`(?:json)?\s*|\s*\`\`\`$/g, "")); } catch (e) { return json({ error: "Not valid JSON: " + e.message }, 400); }
+            const posts = Array.isArray(parsed) ? parsed : Array.isArray(parsed && parsed.posts) ? parsed.posts : null;
+            if (!posts) return json({ error: 'Expected {"posts": [ … ]}' }, 400);
+            const saved = [], skipped = [];
+            for (const x of posts) { const id = hubAssetId(String((x && x.assetId) || "")); if (!/^[a-f0-9]{32}$/i.test(id)) { skipped.push("an item with no assetId"); continue; }
+              await env.TRADES.put("prewrite:" + id, JSON.stringify({ text: JSON.stringify(x, null, 2), json: true, at: new Date().toISOString(), fromRun: aid })); saved.push(id); }
+            return json({ ok: true, saved, skipped });
+          }
+          return json({ ok: true, prewrite: await env.TRADES.get("prewrite:" + aid, "json") });
+        } catch (e) { return json({ error: e.message }, 400); }
+      }
       if (body.action === "assetSpec") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
         try {
