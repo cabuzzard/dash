@@ -4790,6 +4790,7 @@ function ao2Render() {
   const filtered = V.F.some(f => f.col && f.val);
   const bar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">`
     + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
+    + `<button style="${btn}" title="Reload the table: re-reads the AO2 title list and every row from Notion" onclick="ao2Refresh(this)">↻ Refresh</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
     + `<button style="${btn}" title="Group the rows under collapsible headers, one tier per sort level" onclick="ao2View().group=!ao2View().group;ao2Render()">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>`
@@ -4861,6 +4862,10 @@ async function ao2SetParent(id, inp) {
   if (!r || r.error) { showToast('Parent not saved: ' + ((r && r.error) || 'no response'), 'error'); inp.value = x.parent; return; }
   x.parentId = parentAssetId; x.parent = hit ? hit.title : ''; if (x.src) x.src.parentAssetId = parentAssetId || null;   // keep the shared table data in step
   showToast(hit ? 'Parent set ✓' : 'Parent cleared ✓', 'success'); ao2Render();
+}
+async function ao2Refresh(btn) {   // re-read the AO2 list (server) and the table rows (Notion), keeping filters / sort / selection
+  if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+  AO2_SET = null; _devTblLast = null; await ao2Load();
 }
 function ao2ColDrop(ev, key) { ev.preventDefault(); const from = AO2_DRAG; AO2_DRAG = ''; if (!from || from === key) return; const o = ao2ColOrder(); o.splice(o.indexOf(from), 1); o.splice(o.indexOf(key), 0, from); try { localStorage.setItem('ao2ColOrder', JSON.stringify(o)); } catch (e) {} ao2Render(); }
 // ══ ASSET MODAL (operator 2026-10-30) — the dash's asset-level editor / writer, built here (not care-gap). A right-hand flyout,
