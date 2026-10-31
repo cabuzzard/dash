@@ -590,6 +590,7 @@
   .ao2-tres > .modal { max-width: none !important; max-height: none !important; overflow: visible !important; box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; background: transparent !important; width: auto !important; }
   .amf-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9000; display: none; }
   .amf-bg.open { display: block; }
+  body.amf-open .modal-bg, body.amf-open .modal-overlay { z-index: 9500; }   /* pop-ups opened from the Asset flyout (Series run picker, title / product modals) sit above it */
   .amf { position: absolute; top: 0; right: 0; bottom: 0; width: min(1180px, 94vw); background: var(--surface); border-left: 1px solid var(--border2); box-shadow: -12px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; }
   .amf-hd { display: flex; gap: 12px; align-items: center; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
   .amf-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
@@ -4745,7 +4746,7 @@ async function ao2BulkApply(btn) {
   if (!as && !ts && !ps) return ao2BulkMsg('Pick a status / stage first');
   const jobs = [], skipped = [];
   // Published: a hub asset is published to its hub (live page); any other asset is marked Published + dated. Other statuses never touch a Published asset.
-  const isHub = x => { const s = x.src || {}; return !!(s.hubSection || s.contentHub || /^sub ?page$/i.test(x.assetType || s.rawAssetType || '')); };
+  const isHub = x => { const s = x.src || {}, sec = s.hubSectionKey || s.hubSection || ''; return !!((sec && !/^(unlisted|email)$/i.test(sec)) || /^sub ?page$/i.test(s.rawAssetType || '')); };
   if (as) S.filter(x => x.type === 'Asset').forEach(x => /^published$/i.test(x.status) ? skipped.push(x.title + ' (already Published)') : as === 'Published' ? jobs.push(() => isHub(x) ? call('publishHubAsset', { assetId: x.id }).then(r => r && r.skipped ? { error: r.skipped } : r) : call('updateAssetStatus', { assetId: x.id, status: 'Published' })) : jobs.push(() => call('updateAssetStatus', { assetId: x.id, status: as, statusOnly: true })));
   if (ts) S.filter(x => x.type === 'Title').forEach(x => jobs.push(() => call('updateTitleStage', { titleId: x.id, stage: ts })));
   if (ps) S.filter(x => x.type === 'Product').forEach(x => jobs.push(() => call('setProductStage', { productId: x.id, stage: ps })));
@@ -4953,12 +4954,12 @@ function amEnsure() {
 }
 function amClose() {
   if (AM && AM.dirty && Object.keys(AM.dirty).length && !confirm('Close without saving your field edits?')) return;
-  const bg = document.getElementById('amBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = '';
+  const bg = document.getElementById('amBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open');
   const changed = AM && AM.changed; AM = null;
   if (changed && typeof ao2Load === 'function' && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); }
 }
 async function amOpen(assetId, tab) {
-  amEnsure().classList.add('open'); document.body.style.overflow = 'hidden';
+  amEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
   AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false, pwText: null, pwPrompt: '', pwInfo: '', pwBusy: '' };
   amDraw(); await amLoad();
 }
@@ -4966,7 +4967,7 @@ async function amLoad() {
   const id = AM && AM.id; if (!id) return;
   const r = await call('assetModal', { assetId: id }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return;
-  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else AM.data = r;
+  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } }
   amDraw();
 }
 function amTab(t) { if (!AM) return; AM.tab = t; amDraw(); }
@@ -4981,9 +4982,9 @@ function amDraw() {
   if (!AM.data) { P.innerHTML = `<div class="amf-hd"><b>Asset</b><button style="${B()}margin-left:auto;" onclick="amClose()">✕</button></div><div style="padding:18px;font-size:13px;color:${AM.log ? '#f87171' : 'var(--text3)'};">${esc(AM.busy || AM.log)}</div>`; return; }
   const a = AM.data.asset, d = AM.data.dry || {}, unmapped = !!d.error;
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
-  const pubBtn = a.status === 'Published' ? '' : `<button onclick="amPublishHub(this)" title="Publish to the hub — writes the live page (a Sub Page also joins the hub top nav) and sets the status to Published. Needs: its writing rules pass, a hub section, placement in the hub Keywords hierarchy." style="font-size:11.5px;padding:2px 9px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;">📤 Publish to hub</button>`;
+  const pubBtn = a.status === 'Published' || !amIsHubAsset() ? '' : `<button onclick="amPublishHub(this)" title="Publish to the hub — writes the live page (a Sub Page also joins the hub top nav) and sets the status to Published. Needs: its writing rules pass, a hub section, placement in the hub Keywords hierarchy." style="font-size:11.5px;padding:2px 9px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;">📤 Publish to hub</button>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}
@@ -4993,12 +4994,14 @@ function amDraw() {
       <button style="${B()}align-self:flex-start;" onclick="amClose()" title="Close (Esc)">✕</button></div>
     <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
-  const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields', schema = AM.tab === 'schema';
+  const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields', schema = AM.tab === 'schema', seriesTab = AM.tab === 'series' && amIsSeries();
   const hubA = amIsHubAsset(), dirtyN = Object.keys(AM.dirty).length;
   const foot = `<div class="amf-ft"><span style="font-size:11px;color:var(--text3);flex:1;min-width:160px;">${a.status === 'Published' ? 'Published' + (hubA ? ' — live on the hub; rewrites republish automatically' : '') : hubA ? 'Hub asset — publishing writes its live page on the hub' : 'Not a hub asset — publishing marks it Published (post it on its platform yourself)'}${dirtyN ? ' · ' + dirtyN + ' unsaved field' + (dirtyN === 1 ? '' : 's') : ''}</span>`
     + `<button style="font-size:12.5px;padding:6px 14px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" ${dirtyN ? '' : 'disabled'} onclick="amFootSave(this)">💾 Save</button>`
     + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & 📤 Publish to hub' : '💾 Save & Publish'}</button>`) + `</div>`;
-  P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
+  AM._seriesMount = seriesTab;
+  P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
+  if (AM._seriesMount) amSeriesMount();
 }
 // ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
 // text → ✓ Commit (writes the asset's Current Methods row) or ✕ Discard. Worker assetSpec. rules = contract · flow = inputs ·
@@ -5118,6 +5121,21 @@ function amSchemaHtml() {
 // shaped by type) + this asset's sources + the JSON to return → any LLM → paste the JSON back → 💾 it is this asset's pre-write, which
 // ✍ Write reads as its starting draft. On a Series the block works on the run: one prompt for its unwritten children, one JSON array back,
 // saved into each child's own pre-write. Worker assetPrewrite.
+// ✨ Series tab (operator 2026-10-30: "pull all of the existing series functionality into the new asset modal for series"): the same
+// Series panel as Content Hubs 2 — ideas · sources · ＋ Run (incl. paste lists) · ✍ Ask Claude · categories · ⚡ Generate short form run —
+// drawn inline here (hubSeriesOpen's target mode). Its children are made at Development under this Series.
+function amSeriesHtml() { return '<div id="amSeriesSlot" style="min-height:120px;"><div style="font-size:12px;color:var(--text3);">Loading the Series…</div></div>'; }
+async function amSeriesMount() {
+  const a = AM && AM.data && AM.data.asset; if (!a || !document.getElementById('amSeriesSlot')) return;
+  const h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(a.campaignId));
+  if (!h) { document.getElementById('amSeriesSlot').innerHTML = '<div style="font-size:12px;color:#f87171;">This Series\u2019 campaign isn\u2019t a content hub — the Series tools need its hub.</div>'; return; }
+  if (!a.titleId) { document.getElementById('amSeriesSlot').innerHTML = '<div style="font-size:12px;color:#f87171;">This Series has no title linked.</div>'; return; }
+  if (!_hubTitles[h.slug] || !_hubTitles[h.slug].rows) { try { await hubTitlesLoad(h.slug); } catch (e) {} }
+  if (!(_hub2Checklist[h.slug] && _hub2Checklist[h.slug].methods)) { try { await hub2ChecklistLoad(h.slug); } catch (e) {} }
+  const keep = typeof _series !== 'undefined' && _series && _series.tid === kwNid(a.titleId) && _series.target === 'amSeriesSlot';
+  if (keep) return hubSeriesDraw();
+  hubSeriesOpen(h.slug, kwNid(a.titleId), a.id, false, 'amSeriesSlot');
+}
 function amIsSeries() { const a = AM && AM.data && AM.data.asset; return !!a && (/^series$/i.test(a.type || '') || /^series$/i.test(a.pillarType || '')); }
 function amPrewriteHtml() {
   const a = AM.data.asset, pw = AM.data.prewrite, run = amIsSeries(), busy = AM.pwBusy;
@@ -5210,7 +5228,7 @@ async function amPublishHub(btn, confirmed) {   // the same path as All Output's
   await amLoad();
 }
 // a hub asset publishes by writing its live page; anything else is Published by status (operator 2026-10-30: "a save and publish button … for all non hub assets")
-function amIsHubAsset() { const a = AM && AM.data && AM.data.asset; return !!a && (!!a.hubSection || !!a.contentHub || /^sub ?page$/i.test(a.type || '')); }
+function amIsHubAsset() { const a = AM && AM.data && AM.data.asset; return !!a && ((!!a.hubSection && !/^(unlisted|email)$/i.test(a.hubSection)) || /^sub ?page$/i.test(a.type || '')); }   // a hub SECTION (or a Sub Page) makes it a hub asset — many assets only need Published (operator 2026-10-30)
 async function amFootSave(btn) { if (!AM || !Object.keys(AM.dirty).length) return; await amSaveFields(btn); }
 async function amSaveAndPublish(btn) {
   if (!AM) return; const hubA = amIsHubAsset();
