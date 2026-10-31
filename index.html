@@ -5128,7 +5128,7 @@ function amFieldsHtml() {
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
       <button id="amSaveBtn" style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
       <button style="${B('#8ab4f8')}" onclick="amWrite(this)" title="Run the writer for this asset — it reads the Information flow tab's packet and follows the Writing rules tab (one model call, plus one corrective pass when a rule fails)">✍ Write${String(amFieldVal('Body') || '').trim() ? ' (rewrite)' : ''}</button>
-      <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${(AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;
+      <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${C.every(f => !String(amFieldVal(f.name) || '').trim()) ? 'not written yet — ✍ Write fills them' + (AM.data.prewrite ? ' (it starts from your pre-write)' : '') : (AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;
 }
 function amEdit(name, v) { if (!AM) return; AM.dirty[name] = v; const b = document.getElementById('amSaveBtn'); if (b) { const n = Object.keys(AM.dirty).length; b.disabled = !n; b.textContent = '💾 Save ' + n + ' field' + (n === 1 ? '' : 's'); } }
 async function amSaveFields(btn) {
