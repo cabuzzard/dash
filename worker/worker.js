@@ -15166,6 +15166,24 @@ async function seriesKeywordSeed(env, assetIds, seed) {
   for (const id of assetIds) await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(id).replace(/-/g, "")), { method: "PATCH", headers: hdrT,
     body: JSON.stringify({ properties: { "Keyword Seed": { rich_text: [{ type: "text", text: { content: String(seed).slice(0, 1990) } }] } } }) }).catch(e => console.error("Keyword Seed save:", e.message));
 }
+// ── SHORT FORM RUN (operator 2026-10-30): a Series run of single posts picked on two axes — FORMAT (8) × ANGLE (7) — with the POST
+// TYPE (12) DERIVED from the approved grid cell (56-Slot Loop, 2026-10-28; rows = format, columns = angle). Platform, traffic intent and
+// the CTA are set per run in the picker, not constants. Writing rules for all three live in 🧭 Writing Specs → Single Post.
+const SF_FORMATS = ["Talking Back & Forth", "Talking Form", "Reaction / Stitch", "Shot/Angle Changes", "Visuals", "Green Screen / Split Screen", "Interview", "Clone"];
+const SF_ANGLES = ["Tutorial", "Comparison", "Myth Bust / Common Mistake", "Do's vs. Don'ts / Right vs. Wrong", "Educational – Tip/Hack", "The Transformation Angle", "The Challenge Angle"];
+const SF_GRID = {
+  "Talking Back & Forth":        ["Role play", "Role play", "Objection-based", "Role play", "Objection-based", "Role play", "Objection-based"],
+  "Talking Form":                ["Signature series", "Hot take", "Mistake-based", "Value-driven", "Value-driven", "Mistake-based", "Prediction"],
+  "Reaction / Stitch":           ["Reaction", "Reaction", "Reaction", "Reaction", "Reaction", "Reaction", "Reaction"],
+  "Shot/Angle Changes":          ["Signature series", "Hot take", "Objection-based", "Mistake-based", "Q&A", "Objection-based", "Signature series"],
+  "Visuals":                     ["Method breakdown", "Hot take", "Mistake-based", "Value-driven", "Demo", "Method breakdown", "Prediction"],
+  "Green Screen / Split Screen": ["Method breakdown", "Method breakdown", "Demo", "Method breakdown", "Demo", "Transformation", "Demo"],
+  "Interview":                   ["Q&A", "Q&A", "Q&A", "Q&A", "Q&A", "Q&A", "Q&A"],
+  "Clone":                       ["Role play", "Role play", "Objection-based", "Role play", "Objection-based", "Transformation", "Objection-based"],
+};
+const SF_PLATFORMS = ["Instagram", "Instagram Story (9:16)", "LinkedIn", "TikTok", "Facebook", "X / Twitter"];
+const SF_INTENTS = ["SEO", "Topical engagement", "Direct sales", "Brand (off the pillar)"];
+const sfPostType = (format, angle) => (SF_GRID[format] || [])[SF_ANGLES.indexOf(angle)] || "";
 const RUN_TYPES = [
   { id: "faq", group: "Educational", name: "FAQ run", shape: "single", posts: 6, cadence: "over a week", sources: ["Search questions", "YouTube autocomplete", "Google autocomplete", "Title research"], formula: "The question as the hook → a 2-3 line answer → 'full answer on the blog'" },
   { id: "myth", group: "Educational", name: "Myth vs fact", shape: "single", posts: 5, cadence: "over a week", sources: ["Reddit", "Pain points", "Search questions"], formula: "'Myth: …' / 'Truth: …' + one proof point" },
@@ -22042,6 +22060,49 @@ ${JSON.stringify(products)}`;
       }
       // seriesUseIdea {titleId, seriesAssetId, ideaId, idea, kind: single|carousel|youtube, assetType, campaignId, productId, slug}
       // → an EMPTY Development child (linked to the Series parent, the idea noted on it); the idea is marked used
+      // seriesShortRunOptions {titleId} → the picker's vocabulary + the grid + which cells this title has already used
+      // seriesShortRun {titleId, titleName, seriesAssetId, campaignId, productId, slug, assetType, count, formats[], angles[], platform, intent, cta,
+      //   topics:[{id,t,src}]} → N EMPTY single-post children under the Series (Development), each pointing to ONE format × angle cell (post type
+      //   from the grid), the run's platform / intent / CTA and one topic. Cells are drawn at random from the picked formats × angles, unused first.
+      if (body.action === "seriesShortRunOptions") {
+        const titleId = String(body.titleId || "").replace(/-/g, "");
+        const used = titleId ? ((await env.TRADES.get("shortrun:used:" + titleId, "json")) || []) : [];
+        return json({ ok: true, formats: SF_FORMATS, angles: SF_ANGLES, grid: SF_GRID, platforms: SF_PLATFORMS, intents: SF_INTENTS, usedCells: used });
+      }
+      if (body.action === "seriesShortRun") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""); if (!titleId) return json({ error: "titleId required" }, 400);
+        const formats = (Array.isArray(body.formats) ? body.formats : []).filter(f => SF_FORMATS.includes(f)), angles = (Array.isArray(body.angles) ? body.angles : []).filter(a => SF_ANGLES.includes(a));
+        if (!formats.length || !angles.length) return json({ error: "pick at least one format and one angle" }, 400);
+        const count = Math.max(1, Math.min(20, parseInt(body.count, 10) || 10));
+        const platform = SF_PLATFORMS.includes(body.platform) ? body.platform : "Instagram", intent = SF_INTENTS.includes(body.intent) ? body.intent : "Topical engagement";
+        const cta = String(body.cta || "").trim().slice(0, 200); if (!cta) return json({ error: "set the run's CTA" }, 400);
+        const usedKey = "shortrun:used:" + titleId, used = (await env.TRADES.get(usedKey, "json")) || [];
+        const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+        const cells = shuffle(formats.flatMap(f => angles.map(a => ({ format: f, angle: a, postType: sfPostType(f, a), key: f + " × " + a }))));
+        const ordered = [...cells.filter(c => !used.includes(c.key)), ...cells.filter(c => used.includes(c.key))];   // unused cells first, then repeats
+        const picks = Array.from({ length: count }, (_, i) => ordered[i % ordered.length]);
+        const topics = (Array.isArray(body.topics) ? body.topics : []).map(x => ({ id: String(x.id || ""), t: String(x.t || "").trim().slice(0, 500), src: String(x.src || "") })).filter(x => x.t);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const made = [], failed = [];
+        for (let i = 0; i < picks.length; i++) {
+          const c = picks[i], topic = topics[i] || null;
+          const pointers = `Short form run · Format: ${c.format} · Angle: ${c.angle} · Post type: ${c.postType} · Platform: ${platform} · Intent: ${intent} · CTA: ${cta}`;
+          const idea = (topic ? topic.t : "the title's pillar (no separate topic)") + "\n" + pointers;
+          const r = await invoke({ action: "seriesUseIdea", titleId, titleName: body.titleName, seriesAssetId: body.seriesAssetId, ideaId: topic ? topic.id : "", idea, source: topic ? topic.src : "Short form run",
+            kind: "single", assetType: String(body.assetType || "single post"), campaignId: body.campaignId, productId: body.productId, slug: body.slug }).catch(e => ({ error: e.message }));
+          if (!r || r.error || !r.assetId) { failed.push((topic ? topic.t.slice(0, 40) : c.key) + ": " + ((r && r.error) || "not created")); continue; }
+          const aid = String(r.assetId).replace(/-/g, "");
+          await env.TRADES.put("shortrun:asset:" + aid, JSON.stringify({ format: c.format, angle: c.angle, postType: c.postType, platform, intent, cta, topic: topic ? topic.t : "", titleId, at: new Date().toISOString() }));
+          const plat = /instagram/i.test(platform) ? "Instagram" : /linkedin/i.test(platform) ? "LinkedIn" : /tiktok/i.test(platform) ? "TikTok" : /x \//i.test(platform) ? "X / Twitter" : "Other";
+          await kwNotionPatch(env, aid, { "Platform Name": { select: { name: plat } } }).catch(() => {});
+          if (!used.includes(c.key)) used.push(c.key);
+          made.push({ assetId: aid, title: r.title || "", format: c.format, angle: c.angle, postType: c.postType, topic: topic ? topic.t : "" });
+        }
+        await env.TRADES.put(usedKey, JSON.stringify(used.slice(-200)));
+        return json({ ok: made.length > 0, made, failed, usedCells: used });
+      }
       if (body.action === "seriesUseIdea") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (!titleId || !body.assetType) return json({ error: "titleId and assetType required" }, 400);
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);

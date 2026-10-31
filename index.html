@@ -19967,6 +19967,7 @@ function hubSeriesDraw() {
   m.innerHTML = `<div ${S.target ? 'style="padding:2px 0;"' : 'class="modal" style="max-width:780px;max-height:88vh;overflow:auto;"'}>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;${S.target ? 'font-size:13px;' : ''}">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>${titleEd}
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — Topical - SEO Post / Topical - YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
+    ${D && S.seriesAssetId ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #8ab4f8;border-radius:6px;margin-bottom:8px;"><button class="kw-btn" style="border-color:#8ab4f8;color:#8ab4f8;" onclick="hubShortRunOpen()">⚡ Generate short form run</button><span style="font-size:11px;color:var(--text3);">single posts · pick formats × angles (post type from the grid), platform, intent, CTA, count and topics — then generate</span></div>` : ''}
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunPickType(this.value)">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}"${S.runType === r.id ? ' selected' : ''}>${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}<optgroup label="Your list"><option value="__paste"${S.runType === '__paste' ? ' selected' : ''}>Paste list · one asset per line</option></optgroup></select>
       ${S.runType === '__paste' ? `<select id="srPasteTo" class="kw-sel" title="A new run, or add these lines to the end of a run you already pasted" onchange="_series.pasteTo=this.value;_series.paste=document.getElementById('srPaste').value;hubSeriesDraw()"><option value="">＋ new run</option>${(D.lists || []).map(l => `<option value="${esc(l.id)}"${S.pasteTo === l.id ? ' selected' : ''}>add to run: ${esc(l.name)} (${l.items.length})</option>`).join('')}</select>` : ''}
@@ -20236,6 +20237,85 @@ async function hubSeriesPasteMake(items, kind, listName) {
   S.msg = (made.length ? '✓ ' + made.length + ' ' + label + (made.length === 1 ? '' : 's') + ' created from ' + listName + (kind !== 'single' ? ' (interviews flagged)' : '') : '') + (failed.length ? (made.length ? ' · ' : '') + '✗ ' + failed.length + ' not created (still unused — Create all again to retry): ' + failed.join(' · ') : '');
   if (made.length) hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug));
   hubSeriesDraw();
+}
+// ── ⚡ Generate short form run (operator 2026-10-30): the Series modal's picker for a run of single posts. Pick the formats × angles
+// (post type follows from the grid cell — shown live), platform, traffic intent, the run's CTA, how many, and where topics come from;
+// nothing is created until ⚡ Generate. Worker seriesShortRunOptions / seriesShortRun. Rules: 🧭 Writing Specs → Single Post.
+let _sfr = null;
+async function hubShortRunOpen() {
+  const S = _series; if (!S || !S.seriesAssetId) return showToast('Open a Series first', 'error');
+  const row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
+  const prodName = String(row.product || ''), fiverr = /fiverr/i.test(prodName + ' ' + (row.title || ''));
+  _sfr = { opts: null, err: '', busy: '', count: 10, formats: null, angles: null, platform: 'Instagram', intent: fiverr ? 'Direct sales' : 'Topical engagement',
+    cta: fiverr ? 'Order on Fiverr — starting at $150, link in bio' : 'Book the strategy call — link in bio', topicSrc: 'ideas', paste: '' };
+  hubShortRunDraw();
+  const r = await call('seriesShortRunOptions', { titleId: S.tid }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { _sfr.err = (r && r.error) || 'no response'; return hubShortRunDraw(); }
+  _sfr.opts = r; _sfr.formats = new Set(r.formats); _sfr.angles = new Set(r.angles); hubShortRunDraw();
+}
+function hubShortRunTopics() {
+  const S = _series, D = S && S.data, F = _sfr; if (!F) return [];
+  if (F.topicSrc === 'paste') return F.paste.split('\n').map(x => x.trim()).filter(Boolean).map((t, i) => ({ id: '', t, src: 'Paste list' }));
+  if (F.topicSrc === 'pillar' || !D || !D.sources) return [];
+  const lists = Object.entries(D.sources).map(([src, xs]) => (xs || []).filter(x => !(S.used && S.used.has(x.id))).map(x => ({ id: x.id, t: x.t, src })));
+  const out = []; for (let i = 0; out.length < F.count && lists.some(l => l.length > i); i++) lists.forEach(l => { if (l[i] && out.length < F.count) out.push(l[i]); });
+  return out;   // round-robin across sources, unused only
+}
+function hubShortRunDraw() {
+  const F = _sfr; if (!F) return; let m = document.getElementById('srShortModal');
+  if (!m) { m = document.createElement('div'); m.id = 'srShortModal'; m.className = 'modal-bg'; m.onclick = e => { if (e.target === m) m.classList.remove('open'); }; document.body.appendChild(m); }
+  m.classList.add('open');
+  const O = F.opts, L = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);display:block;margin:10px 0 4px;';
+  const sel = 'font-size:12px;padding:4px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;';
+  const chip = (on, label, fn) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:3px 8px;margin:0 4px 4px 0;border:1px solid ${on ? '#8ab4f8' : 'var(--border2)'};border-radius:12px;cursor:pointer;color:${on ? 'var(--text)' : 'var(--text3)'};"><input type="checkbox" ${on ? 'checked' : ''} onchange="${fn}" style="margin:0;">${esc(label)}</label>`;
+  let body = '';
+  if (F.err) body = `<div style="color:#f87171;font-size:12px;">✗ ${esc(F.err)}</div>`;
+  else if (!O) body = `<div style="font-size:12px;color:var(--text3);">Loading the options…</div>`;
+  else {
+    const used = new Set(O.usedCells || []), fs = O.formats.filter(f => F.formats.has(f)), as = O.angles.filter(a => F.angles.has(a)), cellsN = fs.length * as.length;
+    const unusedN = fs.reduce((n, f) => n + as.filter(a => !used.has(f + ' × ' + a)).length, 0), topics = hubShortRunTopics();
+    const grid = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:10.5px;"><tr><th style="padding:3px 6px;text-align:left;color:var(--text3);">Format \\ Angle</th>${O.angles.map(a => `<th style="padding:3px 6px;text-align:left;color:${F.angles.has(a) ? 'var(--text2)' : 'var(--text3)'};white-space:nowrap;">${esc(a.replace(/ \/.*| –.*|^The /g, ''))}</th>`).join('')}</tr>`
+      + O.formats.map(f => `<tr><td style="padding:3px 6px;white-space:nowrap;color:${F.formats.has(f) ? 'var(--text2)' : 'var(--text3)'};">${esc(f)}</td>${O.angles.map((a, ai) => { const on = F.formats.has(f) && F.angles.has(a), u = used.has(f + ' × ' + a);
+        return `<td title="${esc(f + ' × ' + a)}${u ? ' — already used on this title' : ''}" style="padding:3px 6px;border:1px solid var(--border);white-space:nowrap;${on ? (u ? 'color:var(--text3);text-decoration:line-through;' : 'color:var(--text);background:rgba(138,180,248,.10);') : 'color:var(--text3);opacity:.45;'}">${esc(O.grid[f][ai])}</td>`; }).join('')}</tr>`).join('') + `</table></div>`;
+    body = `<label style="${L}">Formats — the shape on screen (1 of 8 per post)</label><div>${O.formats.map(f => chip(F.formats.has(f), f, `hubShortRunToggle('formats',${esc(JSON.stringify(f))},this.checked)`)).join('')}</div>
+      <label style="${L}">Angles — the strategy (1 of 7 per post)</label><div>${O.angles.map(a => chip(F.angles.has(a), a, `hubShortRunToggle('angles',${esc(JSON.stringify(a))},this.checked)`)).join('')}</div>
+      <label style="${L}">Post type — follows from the format × angle cell (highlighted = in this run · struck through = already used on this title)</label>${grid}
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">${cellsN} cell${cellsN === 1 ? '' : 's'} picked · ${unusedN} unused · each post gets one cell at random, unused first.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
+        <div><label style="${L}">How many posts</label><input type="number" min="1" max="20" value="${F.count}" style="${sel}width:80px;" oninput="_sfr.count=Math.max(1,Math.min(20,+this.value||1));hubShortRunDraw()"></div>
+        <div><label style="${L}">Platform</label><select style="${sel}" onchange="_sfr.platform=this.value">${O.platforms.map(p => `<option ${p === F.platform ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
+        <div><label style="${L}">Traffic intent</label><select style="${sel}" onchange="_sfr.intent=this.value">${O.intents.map(p => `<option ${p === F.intent ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
+      </div>
+      <label style="${L}">CTA for this run — one action, one destination</label><input value="${esc(F.cta)}" style="${sel}width:100%;box-sizing:border-box;" oninput="_sfr.cta=this.value">
+      <label style="${L}">Topics</label><select style="${sel}" onchange="_sfr.topicSrc=this.value;hubShortRunDraw()">
+        <option value="ideas" ${F.topicSrc === 'ideas' ? 'selected' : ''}>Unused ideas from this Series' sources</option><option value="paste" ${F.topicSrc === 'paste' ? 'selected' : ''}>Paste a list — one topic per line</option><option value="pillar" ${F.topicSrc === 'pillar' ? 'selected' : ''}>No separate topics — the title's pillar</option></select>
+      ${F.topicSrc === 'paste' ? `<textarea rows="5" style="${sel}width:100%;box-sizing:border-box;margin-top:6px;" placeholder="one topic per line" oninput="_sfr.paste=this.value;document.getElementById('sfrTopicN').textContent=hubShortRunTopics().length+' topics'">${esc(F.paste)}</textarea>` : ''}
+      <div id="sfrTopicN" style="font-size:11px;color:var(--text3);margin-top:4px;">${F.topicSrc === 'pillar' ? 'Every post is written from the title\'s pillar.' : topics.length + ' topic' + (topics.length === 1 ? '' : 's') + (topics.length < F.count ? ' — the rest use the title\'s pillar' : '')}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;"><button class="modal-btn" ${F.busy || !cellsN ? 'disabled' : ''} onclick="hubShortRunGo(this)">${F.busy ? '⏳ ' + esc(F.busy) : '⚡ Generate ' + F.count + ' single post' + (F.count === 1 ? '' : 's')}</button>
+        <button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text3);" onclick="document.getElementById('srShortModal').classList.remove('open')">Cancel</button>
+        <span style="font-size:11px;color:var(--text3);">Creates empty Development children of this Series — each notes its format, angle, post type, platform, intent, CTA and topic. Writing comes next.</span></div>
+      ${F.msg ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;color:${/^✗/.test(F.msg) ? '#f87171' : 'var(--text2)'};">${esc(F.msg)}</div>` : ''}`;
+  }
+  m.innerHTML = `<div class="modal" style="max-width:820px;max-height:90vh;overflow:auto;"><h3 style="margin:0 0 2px;">⚡ Generate short form run</h3><div style="font-size:11.5px;color:var(--text3);">${esc((_series && _series.data && _series.data.name) || '')} — a run of single posts. Pick everything first; nothing is made until you generate.</div>${body}</div>`;
+}
+function hubShortRunToggle(set, v, on) { const F = _sfr; if (!F || !F[set]) return; if (on) F[set].add(v); else F[set].delete(v); hubShortRunDraw(); }
+async function hubShortRunGo(btn) {
+  const S = _series, F = _sfr; if (!S || !F || !F.opts) return;
+  if (!String(F.cta || '').trim()) { F.msg = '✗ Set the CTA for this run'; return hubShortRunDraw(); }
+  const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
+  if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
+  F.busy = 'Creating ' + F.count + ' posts…'; F.msg = ''; hubShortRunDraw();
+  const r = await call('seriesShortRun', { titleId: S.tid, titleName: row.title || (S.data && S.data.name), seriesAssetId: S.seriesAssetId, campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug,
+    assetType: hubSeriesType(S.slug, 'single'), count: F.count, formats: [...F.formats], angles: [...F.angles], platform: F.platform, intent: F.intent, cta: F.cta, topics: hubShortRunTopics() }).catch(e => ({ error: e.message }));
+  F.busy = '';
+  if (!r || r.error) F.msg = '✗ ' + ((r && r.error) || 'no response');
+  else {
+    F.opts.usedCells = r.usedCells || F.opts.usedCells;
+    (r.made || []).forEach(x => { const t = (hubShortRunTopics().find(y => y.t === x.topic) || {}); if (t.id && S.used) S.used.add(t.id); });
+    F.msg = '✓ ' + (r.made || []).length + ' single post' + ((r.made || []).length === 1 ? '' : 's') + ' created:\n' + (r.made || []).map(x => '· ' + x.format + ' × ' + x.angle + ' → ' + x.postType + (x.topic ? ' — ' + x.topic.slice(0, 70) : '')).join('\n') + ((r.failed || []).length ? '\n✗ ' + r.failed.join('\n✗ ') : '');
+    hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)).catch(() => {}); if (typeof hubSeriesDraw === 'function') hubSeriesDraw();
+  }
+  hubShortRunDraw();
 }
 async function hubSeriesRun() {
   const S = _series, D = S && S.data; if (!D) return;
