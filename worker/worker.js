@@ -2503,7 +2503,7 @@ async function writingSpecsRows(env) {
   return rows;
 }
 async function writingSpecForType(env, type, methodName) {
-  const rows = (await writingSpecsRows(env)).filter(r => r.status !== "Superseded"), n = ivNorm;
+  const rows = (await writingSpecsRows(env)).filter(r => r.status === "Committed"), n = ivNorm;   // committed only — Staged / Draft / Superseded rows never reach a prompt (operator 2026-10-30)
   const T = rows.find(r => r.kind === "Type" && (n(r.name) === n(type) || r.aliases.split(";").map(n).includes(n(type)) || (methodName && r.aliases.split(";").map(n).includes(n(methodName)))));
   const base = rows.filter(r => r.scope === "Base" && !r.belongsTo.length && r.kind !== "Type");
   if (!T) return { type: null, base };
