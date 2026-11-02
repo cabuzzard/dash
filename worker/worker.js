@@ -2791,7 +2791,13 @@ async function pubFieldSave(env, body) {
 // dry run is skipped); every change is logged with its OLD status (planningsweep:log) and op "undo" restores them in batches.
 const PSWEEP_TITLE_FROM = new Set(["Development", "Writing", "Review", ""]), PSWEEP_PRODUCT_FROM = new Set(["Development", "In Development"]);
 async function planningSweep(env, body) {
-  const op = String(body.op || "dry"), BATCH = 30, sel = p => p?.select?.name || "";
+  const op = String(body.op || "dry"), BATCH = 15, sel = p => p?.select?.name || "";
+  if (op === "run" || op === "undo") {   // one run at a time (2026-11-01: two concurrent loops took the same batch and one log overwrote the other)
+    if (await env.TRADES.get("planningsweep:lock")) return { busy: true, error: "The sweep is already running (another click or tab) — wait for it, or run again in two minutes" };
+    await env.TRADES.put("planningsweep:lock", "1", { expirationTtl: 120 });
+    try { return await planningSweepStep(env, op, BATCH, sel); } finally { await env.TRADES.delete("planningsweep:lock").catch(() => {}); }
+  }
+  if (op === "rewind") { const plan = await env.TRADES.get("planningsweep:plan", "json"); if (plan) { plan.done = 0; await env.TRADES.put("planningsweep:plan", JSON.stringify(plan)); } return { ok: true }; }
   if (op === "dry") {
     const titles = await notionQuery(CONTENT_STRATEGY_DB, {});
     const withProduct = new Set(); titles.forEach(t => (t.properties?.product?.relation || []).forEach(r => withProduct.add(hubAssetId(r.id))));
@@ -2804,17 +2810,27 @@ async function planningSweep(env, body) {
     await env.TRADES.put("planningsweep:plan", JSON.stringify(plan));
     return { ok: true, at: plan.at, titles: T.length, products: P.length, items: plan.items };
   }
+  return planningSweepStep(env, op, BATCH, sel);
+}
+async function planningSweepStep(env, op, BATCH, sel) {
+  const t0 = Date.now();
   if (op === "run") {
     const plan = await env.TRADES.get("planningsweep:plan", "json"); if (!plan) return { error: "No dry run yet — run the dry run first" };
     const log = (await env.TRADES.get("planningsweep:log", "json")) || [], slice = plan.items.slice(plan.done, plan.done + BATCH), out = { changed: 0, skipped: [] };
+    const logged = new Set(log.map(x => x.id)); let n = 0;
     for (const it of slice) {
+      if (Date.now() - t0 > 25000) break;   // stay well inside one request; the rest goes to the next call
+      n++;
       const page = await ivPage(it.id).catch(() => null), cur = sel(page?.properties?.Status);
+      if (page && !page.archived && cur === "Planning" && it.from !== "Planning") {   // already moved (e.g. by a concurrent run) — keep it undoable
+        if (!logged.has(it.id)) { log.push({ id: it.id, kind: it.kind, name: it.name, from: it.from, at: new Date().toISOString(), recovered: true }); logged.add(it.id); out.changed++; }
+        continue; }
       if (!page || page.archived || cur !== it.from) { out.skipped.push(it.name + " (now " + (cur || "blank") + ")"); continue; }
       const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(it.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Planning" } } } }) });
       if (!r.ok) { out.skipped.push(it.name + " (" + ((await r.json().catch(() => ({}))).message || r.status) + ")"); continue; }
-      log.push({ id: it.id, kind: it.kind, name: it.name, from: it.from, at: new Date().toISOString() }); out.changed++;
+      log.push({ id: it.id, kind: it.kind, name: it.name, from: it.from, at: new Date().toISOString() }); logged.add(it.id); out.changed++;
     }
-    plan.done += slice.length;
+    plan.done += n;
     await env.TRADES.put("planningsweep:log", JSON.stringify(log)); await env.TRADES.put("planningsweep:plan", JSON.stringify(plan));
     return { ok: true, ...out, done: plan.done, total: plan.items.length, finished: plan.done >= plan.items.length };
   }

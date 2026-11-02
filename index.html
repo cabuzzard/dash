@@ -5883,6 +5883,7 @@ function psDraw() {
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button style="${B('#8ab4f8')}" ${PS.busy ? 'disabled' : ''} onclick="psDry()">${PS.busy === 'dry' ? '⏳ Finding…' : '1 · Dry run'}</button>
       <button style="${B('#4ade80')}font-weight:600;" ${PS.busy || !D || !D.items.length ? 'disabled' : ''} onclick="psRun()">${PS.busy === 'run' ? '⏳ Applying…' : '2 · Set ' + (D ? D.items.length : '') + ' to Planning'}</button>
+      ${!D && st.plan && st.plan.done < st.plan.total ? `<button style="${B('#4ade80')}font-weight:600;" ${PS.busy ? 'disabled' : ''} onclick="psRun(true)">${PS.busy === 'run' ? '⏳ Applying…' : '▶ Continue (' + st.plan.done + ' / ' + st.plan.total + ')'}</button>` : ''}
       <button style="${B('#f87171')}" ${PS.busy || !st.logged ? 'disabled' : ''} onclick="psUndo()">${PS.busy === 'undo' ? '⏳ Restoring…' : '↶ Undo the sweep'}</button></div>
     ${PS.log ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;color:${/^✗/.test(PS.log) ? '#f87171' : 'var(--text2)'};">${esc(PS.log)}</div>` : ''}
     ${D ? `<div style="margin-top:12px;font-size:12.5px;"><b>${D.titles}</b> titles · <b>${D.products}</b> products would move to Planning</div>
@@ -5895,9 +5896,10 @@ async function psDry() {
   if (!PS) return; PS.busy = ''; if (!r || r.error) PS.log = '✗ ' + ((r && r.error) || 'no response'); else { PS.dry = r; PS.status = { ...(PS.status || {}), plan: { at: r.at, done: 0, total: r.items.length } }; }
   psDraw();
 }
-async function psRun() {
-  if (!confirm('Set ' + PS.dry.titles + ' titles and ' + PS.dry.products + ' products to Planning in Notion? Every old status is logged — ↶ Undo restores them.')) return;
-  PS.busy = 'run'; let changed = 0, skipped = [];
+async function psRun(resume) {
+  if (PS.busy) return;
+  if (!resume && !confirm('Set ' + PS.dry.titles + ' titles and ' + PS.dry.products + ' products to Planning in Notion? Every old status is logged — ↶ Undo restores them.')) return;
+  PS.busy = 'run'; psDraw(); let changed = 0, skipped = [];
   for (;;) {
     const r = await call('planningSweep', { op: 'run' }).catch(e => ({ error: e.message }));
     if (!PS) return; if (!r || r.error) { PS.log = '✗ Stopped: ' + ((r && r.error) || 'no response') + ' — ' + changed + ' changed so far; run again to continue'; break; }
