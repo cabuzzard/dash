@@ -4842,7 +4842,7 @@ function ao2Render() {
     + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
     + `<button style="${btn}" title="Reload the table: re-reads the AO2 title list and every row from Notion" onclick="ao2Refresh(this)">↻ Refresh</button>`
     + `<button style="${btn}" title="Titles with no assets and products with no titles → Planning (dry run first; undoable)" onclick="psOpen()">🧹 Planning sweep</button>`
-    + `<button style="${btn}" title="Every Flagged interview with no answers → Superseded (partly answered and Finished are kept; dry run first; undoable)" onclick="icOpen()">🎤 Clear interview flags</button>`
+    + `<button style="${btn}" title="Remove every interview flag that has no answers (partly answered and Finished are kept; dry run first; undoable)" onclick="icOpen()">🎤 Remove interview flags</button>`
     + `<button style="${btn}" title="Add a regular cluster called Trending with a Trending topic in it, in every hub (skips hubs that already have one)" onclick="ao2TrendingAll(this)">＋ Trending (all hubs)</button>`
     + `<select style="${btn}" title="Which titles AO2 shows" onchange="ao2SetScope(this.value)"><option value="list" ${ao2Scope() === 'list' ? 'selected' : ''}>Scope: my list</option><option value="dev" ${ao2Scope() === 'dev' ? 'selected' : ''}>Scope: my list + every title at Development or later</option></select>`
     + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
@@ -5857,17 +5857,17 @@ function icDraw() {
   const P = document.getElementById('icPanel'); if (!P || !IC) return;
   const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`, D = IC.dry, st = IC.status || {};
   const list = L => L.map(x => `<div style="font-size:11.5px;padding:2px 0;border-bottom:1px dashed var(--border);">${esc(x.name)} <span style="color:var(--text3);">${esc(x.scope || '')}</span></div>`).join('');
-  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">🎤 Clear interview flags</b><button style="${B('var(--border2)')}color:var(--text);" onclick="icClose()">✕</button></div>
-    <div style="font-size:12px;color:var(--text3);margin:6px 0 10px;">Every <b>Flagged</b> interview with <b>no answers</b> → <b>Superseded</b> (hidden, ignored by writers). Partly answered stay Flagged; Finished, Idea and Superseded are not touched. Every change is logged — ↶ Undo puts them back to Flagged.</div>
+  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">🎤 Remove interview flags</b><button style="${B('var(--border2)')}color:var(--text);" onclick="icClose()">✕</button></div>
+    <div style="font-size:12px;color:var(--text3);margin:6px 0 10px;">Removes every interview flag that has <b>no answers</b> — they disappear from the interview lists and the writers. Partly answered flags stay; Finished interviews are not touched. Logged, so ↶ Undo brings them back.</div>
     ${st.plan ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">Last dry run ${esc(new Date(st.plan.at).toLocaleString())} · applied ${st.plan.done} / ${st.plan.total}${st.logged ? ' · ' + st.logged + ' logged (undoable)' : ''}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button style="${B('#8ab4f8')}" ${IC.busy ? 'disabled' : ''} onclick="icDry()">${IC.busy === 'dry' ? '⏳ Finding…' : '1 · Dry run'}</button>
-      <button style="${B('#4ade80')}font-weight:600;" ${IC.busy || !D || !D.items.length ? 'disabled' : ''} onclick="icRun()">${IC.busy === 'run' ? '⏳ Clearing…' : '2 · Clear ' + (D ? D.items.length : '') + ' flags'}</button>
+      <button style="${B('#4ade80')}font-weight:600;" ${IC.busy || !D || !D.items.length ? 'disabled' : ''} onclick="icRun()">${IC.busy === 'run' ? '⏳ Removing…' : '2 · Remove ' + (D ? D.items.length : '') + ' flags'}</button>
       ${!D && st.plan && st.plan.done < st.plan.total ? `<button style="${B('#4ade80')}" ${IC.busy ? 'disabled' : ''} onclick="icRun(true)">▶ Continue (${st.plan.done} / ${st.plan.total})</button>` : ''}
       <button style="${B('#f87171')}" ${IC.busy || !st.logged ? 'disabled' : ''} onclick="icUndo()">${IC.busy === 'undo' ? '⏳ Restoring…' : '↶ Undo'}</button></div>
     ${IC.log ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;color:${/^✗/.test(IC.log) ? '#f87171' : 'var(--text2)'};">${esc(IC.log)}</div>` : ''}
-    ${D ? `<div style="margin-top:12px;font-size:12.5px;"><b>${D.clear}</b> unanswered flags would be cleared · <b>${D.keptAnswered}</b> partly answered stay Flagged</div>
-      <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12px;">To clear (${D.clear})</summary>${list(D.items)}</details>
+    ${D ? `<div style="margin-top:12px;font-size:12.5px;"><b>${D.clear}</b> unanswered flags would be removed · <b>${D.keptAnswered}</b> partly answered stay Flagged</div>
+      <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12px;">To remove (${D.clear})</summary>${list(D.items)}</details>
       <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12px;">Kept — partly answered (${D.keptAnswered})</summary>${list(D.kept)}</details>` : ''}`;
 }
 async function icDry() {
@@ -5878,18 +5878,18 @@ async function icDry() {
 }
 async function icRun(resume) {
   if (IC.busy) return;
-  if (!resume && !confirm('Clear ' + IC.dry.clear + ' unanswered interview flags (→ Superseded)? Partly answered and Finished interviews are kept. ↶ Undo restores them.')) return;
+  if (!resume && !confirm('Remove ' + IC.dry.clear + ' unanswered interview flags? Partly answered and Finished interviews are kept. ↶ Undo brings them back.')) return;
   IC.busy = 'run'; icDraw(); let changed = 0, skipped = [];
   for (;;) {
     const r = await call('interviewClear', { op: 'run' }).catch(e => ({ error: e.message }));
-    if (!IC) return; if (!r || r.error) { IC.log = '✗ Stopped: ' + ((r && r.error) || 'no response') + ' — ' + changed + ' cleared so far; ▶ Continue to resume'; break; }
-    changed += r.changed; skipped.push(...r.skipped); IC.log = '⏳ ' + r.done + ' / ' + r.total + ' · ' + changed + ' cleared'; icDraw();
-    if (r.finished) { IC.log = '✓ Done — ' + changed + ' interview flags cleared' + (skipped.length ? '\nSkipped ' + skipped.length + ': ' + skipped.slice(0, 20).join('; ') : ''); break; }
+    if (!IC) return; if (!r || r.error) { IC.log = '✗ Stopped: ' + ((r && r.error) || 'no response') + ' — ' + changed + ' removed so far; ▶ Continue to resume'; break; }
+    changed += r.changed; skipped.push(...r.skipped); IC.log = '⏳ ' + r.done + ' / ' + r.total + ' · ' + changed + ' removed'; icDraw();
+    if (r.finished) { IC.log = '✓ Done — ' + changed + ' interview flags removed' + (skipped.length ? '\nSkipped ' + skipped.length + ': ' + skipped.slice(0, 20).join('; ') : ''); break; }
   }
   IC.busy = ''; const s = await call('interviewClear', { op: 'status' }).catch(() => null); if (IC && s && !s.error) IC.status = s; icDraw();
 }
 async function icUndo() {
-  if (!confirm('Undo — put every cleared interview back to Flagged (only those still Superseded)?')) return;
+  if (!confirm('Undo — bring back every removed interview flag?')) return;
   IC.busy = 'undo'; let n = 0;
   for (;;) {
     const r = await call('interviewClear', { op: 'undo' }).catch(e => ({ error: e.message }));
