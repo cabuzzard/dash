@@ -4699,7 +4699,9 @@ async function ao2Load() {
     return [T.p[1] + T.t[1] ? 'out' : 'in', `products ${T.p[0]} in sync · ${T.p[1]} out — titles ${T.t[0]} in sync · ${T.t[1]} out`]; };
   const prodSync = pid => prodById[nid(pid)] ? pSync(prodById[nid(pid)]) : ['', ''];   // Parent Asset id → that asset's name
   try { await ao2SetLoad(); } catch (e) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc(e.message)}</div>`; return; }
-  AO2_ROWS = [...AO2_SET].flatMap(id => {
+  const AO2_DEV = /^(development|review|publish|published)$/i, ids = new Set(AO2_SET);
+  if (ao2Scope() === 'dev') all.forEach(x => { if (x.kind === 'title' && x.titleId && AO2_DEV.test(String(x.titleStatus || x.status || '').trim())) ids.add(nid(x.titleId)); });
+  AO2_ROWS = [...ids].flatMap(id => {
     const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return [];
     const t = mine.find(x => x.kind === 'title') || mine[0];
     const slugs = rows => [...new Set(rows.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))].join(', ');
@@ -4839,6 +4841,8 @@ function ao2Render() {
   const bar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">`
     + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
     + `<button style="${btn}" title="Reload the table: re-reads the AO2 title list and every row from Notion" onclick="ao2Refresh(this)">↻ Refresh</button>`
+    + `<button style="${btn}" title="Titles with no assets and products with no titles → Planning (dry run first; undoable)" onclick="psOpen()">🧹 Planning sweep</button>`
+    + `<select style="${btn}" title="Which titles AO2 shows" onchange="ao2SetScope(this.value)"><option value="list" ${ao2Scope() === 'list' ? 'selected' : ''}>Scope: my list</option><option value="dev" ${ao2Scope() === 'dev' ? 'selected' : ''}>Scope: my list + every title at Development or later</option></select>`
     + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
@@ -5835,6 +5839,60 @@ function hdRender() {
     return `<div style="border:1px solid var(--accent);border-radius:10px;margin-bottom:10px;">${head}<div style="padding:0 12px 10px;">${groups || '<div style="font-size:12px;color:var(--text3);">No content yet</div>'}</div></div>`;
   }).join('');
   el.innerHTML = bar + cards;
+}
+// ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
+// changes; Run applies in batches (worker planningSweep, every old status logged); Undo restores. Published / Idea / Archived never touched.
+let PS = null;
+function ao2Scope() { try { return localStorage.getItem('ao2Scope') === 'dev' ? 'dev' : 'list'; } catch (e) { return 'list'; } }
+function ao2SetScope(v) { try { localStorage.setItem('ao2Scope', v === 'dev' ? 'dev' : 'list'); } catch (e) {} _devTblLast = null; if (document.getElementById('ao2Body')) ao2Load(); }
+function psOpen() {
+  let bg = document.getElementById('psBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'psBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="psPanel" style="max-width:760px;width:94vw;max-height:88vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
+  bg.classList.add('open'); PS = { busy: '', log: '', dry: null }; psDraw();
+  call('planningSweep', { op: 'status' }).then(r => { if (PS && r && !r.error) { PS.status = r; psDraw(); } }).catch(() => {});
+}
+function psClose() { const bg = document.getElementById('psBg'); if (bg) bg.classList.remove('open'); const ch = PS && PS.changed; PS = null; if (ch && document.getElementById('ao2Body')) { _devTblLast = null; ao2Load(); } }
+function psDraw() {
+  const P = document.getElementById('psPanel'); if (!P || !PS) return;
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`, D = PS.dry, st = PS.status || {};
+  const list = k => D.items.filter(x => x.kind === k).map(x => `<div style="font-size:11.5px;padding:2px 0;border-bottom:1px dashed var(--border);">${esc(x.name)} <span style="color:var(--text3);">${esc(x.from || 'blank')}${x.pillar === 'Written' ? ' · pillar written' : ''}</span></div>`).join('');
+  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">🧹 Planning sweep</b><button style="${B('var(--border2)')}color:var(--text);" onclick="psClose()">✕</button></div>
+    <div style="font-size:12px;color:var(--text3);margin:6px 0 10px;">Titles with <b>no assets</b> (at Development / Writing / Review / blank) and products with <b>no titles</b> (at Development / In Development) → <b>Planning</b>. Nothing else is touched. Every old status is logged, so it can be undone.</div>
+    ${st.plan ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">Last dry run ${esc(new Date(st.plan.at).toLocaleString())} · applied ${st.plan.done} / ${st.plan.total}${st.logged ? ' · ' + st.logged + ' changes logged (undoable)' : ''}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button style="${B('#8ab4f8')}" ${PS.busy ? 'disabled' : ''} onclick="psDry()">${PS.busy === 'dry' ? '⏳ Finding…' : '1 · Dry run'}</button>
+      <button style="${B('#4ade80')}font-weight:600;" ${PS.busy || !D || !D.items.length ? 'disabled' : ''} onclick="psRun()">${PS.busy === 'run' ? '⏳ Applying…' : '2 · Set ' + (D ? D.items.length : '') + ' to Planning'}</button>
+      <button style="${B('#f87171')}" ${PS.busy || !st.logged ? 'disabled' : ''} onclick="psUndo()">${PS.busy === 'undo' ? '⏳ Restoring…' : '↶ Undo the sweep'}</button></div>
+    ${PS.log ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;color:${/^✗/.test(PS.log) ? '#f87171' : 'var(--text2)'};">${esc(PS.log)}</div>` : ''}
+    ${D ? `<div style="margin-top:12px;font-size:12.5px;"><b>${D.titles}</b> titles · <b>${D.products}</b> products would move to Planning</div>
+      <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12px;">Titles (${D.titles})</summary>${list('title')}</details>
+      <details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12px;">Products (${D.products})</summary>${list('product')}</details>` : ''}`;
+}
+async function psDry() {
+  PS.busy = 'dry'; PS.log = ''; psDraw();
+  const r = await call('planningSweep', { op: 'dry' }).catch(e => ({ error: e.message }));
+  if (!PS) return; PS.busy = ''; if (!r || r.error) PS.log = '✗ ' + ((r && r.error) || 'no response'); else { PS.dry = r; PS.status = { ...(PS.status || {}), plan: { at: r.at, done: 0, total: r.items.length } }; }
+  psDraw();
+}
+async function psRun() {
+  if (!confirm('Set ' + PS.dry.titles + ' titles and ' + PS.dry.products + ' products to Planning in Notion? Every old status is logged — ↶ Undo restores them.')) return;
+  PS.busy = 'run'; let changed = 0, skipped = [];
+  for (;;) {
+    const r = await call('planningSweep', { op: 'run' }).catch(e => ({ error: e.message }));
+    if (!PS) return; if (!r || r.error) { PS.log = '✗ Stopped: ' + ((r && r.error) || 'no response') + ' — ' + changed + ' changed so far; run again to continue'; break; }
+    changed += r.changed; skipped.push(...r.skipped); PS.changed = true; PS.log = '⏳ ' + r.done + ' / ' + r.total + ' · ' + changed + ' set to Planning'; psDraw();
+    if (r.finished) { ao2SetScope('dev'); PS.log = '✓ Done — ' + changed + ' set to Planning · AO2 now shows your list + every title at Development or later' + (skipped.length ? '\nSkipped ' + skipped.length + ' (changed since the dry run): ' + skipped.slice(0, 20).join('; ') + (skipped.length > 20 ? '…' : '') : ''); break; }
+  }
+  PS.busy = ''; const s = await call('planningSweep', { op: 'status' }).catch(() => null); if (PS && s && !s.error) PS.status = s; psDraw();
+}
+async function psUndo() {
+  if (!confirm('Undo the sweep — put every logged record back to its old status (only those still at Planning)?')) return;
+  PS.busy = 'undo'; let n = 0;
+  for (;;) {
+    const r = await call('planningSweep', { op: 'undo' }).catch(e => ({ error: e.message }));
+    if (!PS) return; if (!r || r.error) { PS.log = '✗ Stopped: ' + ((r && r.error) || 'no response'); break; }
+    n += r.restored; PS.changed = true; PS.log = '⏳ restored ' + n + ' · ' + r.left + ' left'; psDraw(); if (r.finished) { PS.log = '✓ Restored ' + n; break; }
+  }
+  PS.busy = ''; const s = await call('planningSweep', { op: 'status' }).catch(() => null); if (PS && s && !s.error) PS.status = s; psDraw();
 }
 // ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
 // stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research

@@ -2784,6 +2784,56 @@ async function pubFieldSave(env, body) {
   const reel = field === "Story Areas" && value.trim() ? await assetReelSpec(env, aid).catch(e => ({ error: e.message })) : null;
   return { ok: true, field, videoSpec: reel ? (reel.ok ? reel.areas + " areas" : reel.error) : undefined };
 }
+// ── PLANNING SWEEP (operator 2026-11-01: "no products without titles or titles without assets … set all of them to planning").
+// Titles with NO assets at Development / Writing / Review / blank → Planning; products with NO titles at Development / In Development →
+// Planning. Idea, Planning, Published, Done, Archived, Paused, Research … are never touched. op "dry" builds + stores the plan (KV
+// planningsweep:plan); op "run" applies the next batch (re-checks each record's current status first, so a record changed since the
+// dry run is skipped); every change is logged with its OLD status (planningsweep:log) and op "undo" restores them in batches.
+const PSWEEP_TITLE_FROM = new Set(["Development", "Writing", "Review", ""]), PSWEEP_PRODUCT_FROM = new Set(["Development", "In Development"]);
+async function planningSweep(env, body) {
+  const op = String(body.op || "dry"), BATCH = 30, sel = p => p?.select?.name || "";
+  if (op === "dry") {
+    const titles = await notionQuery(CONTENT_STRATEGY_DB, {});
+    const withProduct = new Set(); titles.forEach(t => (t.properties?.product?.relation || []).forEach(r => withProduct.add(hubAssetId(r.id))));
+    const T = titles.filter(t => !t.archived && !(t.properties?.Assets?.relation || []).length && PSWEEP_TITLE_FROM.has(sel(t.properties?.Status)))
+      .map(t => ({ id: hubAssetId(t.id), kind: "title", name: hubRichText(t.properties?.Title?.title) || "(untitled)", from: sel(t.properties?.Status), pillar: sel(t.properties?.["Pillar Status"]) }));
+    const products = await notionQuery(PRODUCTS_DB, { filter: { or: [...PSWEEP_PRODUCT_FROM].map(n => ({ property: "Status", select: { equals: n } })) } });
+    const P = products.filter(p => !p.archived && !withProduct.has(hubAssetId(p.id)))
+      .map(p => ({ id: hubAssetId(p.id), kind: "product", name: hubRichText(p.properties?.Name?.title) || "(unnamed)", from: sel(p.properties?.Status) }));
+    const plan = { at: new Date().toISOString(), items: [...T, ...P], done: 0 };
+    await env.TRADES.put("planningsweep:plan", JSON.stringify(plan));
+    return { ok: true, at: plan.at, titles: T.length, products: P.length, items: plan.items };
+  }
+  if (op === "run") {
+    const plan = await env.TRADES.get("planningsweep:plan", "json"); if (!plan) return { error: "No dry run yet — run the dry run first" };
+    const log = (await env.TRADES.get("planningsweep:log", "json")) || [], slice = plan.items.slice(plan.done, plan.done + BATCH), out = { changed: 0, skipped: [] };
+    for (const it of slice) {
+      const page = await ivPage(it.id).catch(() => null), cur = sel(page?.properties?.Status);
+      if (!page || page.archived || cur !== it.from) { out.skipped.push(it.name + " (now " + (cur || "blank") + ")"); continue; }
+      const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(it.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Planning" } } } }) });
+      if (!r.ok) { out.skipped.push(it.name + " (" + ((await r.json().catch(() => ({}))).message || r.status) + ")"); continue; }
+      log.push({ id: it.id, kind: it.kind, name: it.name, from: it.from, at: new Date().toISOString() }); out.changed++;
+    }
+    plan.done += slice.length;
+    await env.TRADES.put("planningsweep:log", JSON.stringify(log)); await env.TRADES.put("planningsweep:plan", JSON.stringify(plan));
+    return { ok: true, ...out, done: plan.done, total: plan.items.length, finished: plan.done >= plan.items.length };
+  }
+  if (op === "undo") {
+    const log = (await env.TRADES.get("planningsweep:log", "json")) || []; if (!log.length) return { ok: true, finished: true, restored: 0, left: 0 };
+    const slice = log.slice(-BATCH), out = { restored: 0, skipped: [] };
+    for (const it of slice) {
+      const page = await ivPage(it.id).catch(() => null), cur = sel(page?.properties?.Status);
+      if (page && !page.archived && cur === "Planning") {
+        const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(it.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: it.from ? { name: it.from } : null } } }) });
+        if (r.ok) out.restored++; else out.skipped.push(it.name);
+      } else out.skipped.push(it.name + " (now " + (cur || "blank") + " — left as is)");
+    }
+    const left = log.slice(0, log.length - slice.length); await env.TRADES.put("planningsweep:log", JSON.stringify(left));
+    return { ok: true, ...out, left: left.length, finished: !left.length };
+  }
+  if (op === "status") { const plan = await env.TRADES.get("planningsweep:plan", "json"), log = (await env.TRADES.get("planningsweep:log", "json")) || []; return { ok: true, plan: plan ? { at: plan.at, done: plan.done, total: plan.items.length } : null, logged: log.length }; }
+  return { error: "Unknown op" };
+}
 async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
 async function wrTypeSave(env, body) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
@@ -55266,6 +55316,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "planningSweep") { try { return json(await planningSweep(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "pubContext" || body.action === "pubFieldWrite" || body.action === "pubFieldSave") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
         try { return json(body.action === "pubContext" ? await pubContext(env, body.assetId) : body.action === "pubFieldWrite" ? await pubFieldWrite(env, body) : await pubFieldSave(env, body)); }
