@@ -2931,11 +2931,11 @@ async function mxLog(env, section, entry) {
   const L = (await env.TRADES.get("matrixall:log", "json")) || { note: "Matrix all-hubs add (resubmission rules). Development only.", created: [], skipped: [], stopped: [], linkFeatures: [], topics: {}, events: [] };
   (L[section] = L[section] || []).push({ ...entry, at: new Date().toISOString() }); await env.TRADES.put("matrixall:log", JSON.stringify(L)); return L;
 }
-async function mxHubTopics(env, H) {   // committed (Active) topics of this hub + the staged Trending key; then each item → best topic
+async function mxHubTopics(env, H, model) {   // committed (Active) topics the hierarchy accepts + the staged Trending key; then each item → best topic
   const rows = await mxQuery(SEO_KEYWORD_CLUSTERS_DB, { and: [{ property: "Campaign", relation: { contains: ivDash(H.cid) } }, { property: "Status", select: { equals: "Active" } }] });
-  const topics = rows.map(p => ({ key: hubRichText(p.properties?.["Topic Key"]?.rich_text) || hubAssetId(p.id), name: hubRichText(p.properties?.Name?.title), cluster: hubRichText(p.properties?.["Hub Cluster"]?.rich_text) })).filter(t => t.key && t.name);
+  const topics = rows.map(p => ({ key: hubRichText(p.properties?.["Topic Key"]?.rich_text) || hubAssetId(p.id), name: hubRichText(p.properties?.Name?.title), cluster: hubRichText(p.properties?.["Hub Cluster"]?.rich_text) })).filter(t => t.key && t.name && model.topic(t.key));
   const staged = (await env.TRADES.get("seoclusters:staged:" + H.cid, "json").catch(() => null)) || [];
-  const trending = (Array.isArray(staged) ? staged : []).find(t => /^trending$/i.test(String(t.name || "").trim()));
+  const trending = (Array.isArray(staged) ? staged : []).find(t => /^trending$/i.test(String(t.name || "").trim()) && model.topic(t.id));
   const map = {};
   if (H.overrides) { for (const it of H.items) { const k = H.overrides[it.name]; map[it.name] = k && topics.some(t => t.key === k) ? k : "TRENDING"; } }
   else if (topics.length) {
@@ -2973,9 +2973,28 @@ async function matrixAllTick(env) {
             it.pid = hubAssetId(m[0].id); it.link = MX_LINK_NAMES.has(it.name.toLowerCase()) || /\(affiliate\)/i.test(it.name) || /amazon\.|amzn\./i.test(links);
           }
         }
-        const T = await mxHubTopics(env, H); H.topicMap = T.map; H.topics = T.topics; H.trendingStaged = T.trendingStaged; H.prepared = true; H.ii = 0;
-        await mxLog(env, "events", { hub: H.hub, event: "hub prepared", products: H.items.length, committedTopics: T.topics.map(t => t.name), trendingStaged: !!T.trendingStaged });
-        await save(); continue;
+        const model = await hierarchyForHub(env, H.cid);
+        const T = await mxHubTopics(env, H, model); H.topicMap = T.map; H.topics = T.topics; H.trendingStaged = T.trendingStaged; H.ii = 0;
+        // STALE TOPIC IDs (operator 2026-11-01: "if you can fix it then fix it"): a product the Keywords hierarchy doesn't place gets its
+        // Topic ID → its best placed topic (or the hub's Trending), Product Stack → that topic's name ("Master" = a main, left alone);
+        // the old values are logged under "repointed" so every change can be reversed. Placed products are not touched.
+        for (const it of H.items) {
+          if (it.matches !== 1 || it.link) continue;
+          const pg = (byName[it.name] || [])[0], p = pg.properties || {}, oldTopic = hubRichText(p["Topic ID"]?.rich_text), oldStack = hubRichText(p["Product Stack"]?.rich_text), st = p.Status?.select?.name || "";
+          if (st === "Archived" || p.Archived?.checkbox) { it.archived = true; continue; }
+          if (model.productIds.has(it.pid)) { it.topicKey = oldTopic; continue; }   // already placed — keep its topic
+          const key = H.topicMap[it.name], tp = H.topics.find(t => t.key === key), newKey = tp ? tp.key : T.trendingStaged;
+          if (!newKey) { it.unplaceable = true; continue; }
+          const newStack = /^master$/i.test(oldStack) ? oldStack : (tp ? tp.name : "Trending");
+          await mxFetch("https://api.notion.com/v1/pages/" + ivDash(it.pid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+            "Topic ID": { rich_text: [{ text: { content: newKey } }] }, ...(newStack !== oldStack ? { "Product Stack": { rich_text: [{ text: { content: newStack } }] } } : {}) } }) });
+          it.topicKey = newKey;
+          await mxLog(env, "repointed", { hub: H.hub, product: "https://app.notion.com/" + it.pid, name: it.name, oldTopicId: oldTopic, newTopicId: newKey, newTopic: tp ? tp.name : "Trending",
+            oldStack, newStack, stackNote: newStack === oldStack ? (/^master$/i.test(oldStack) ? "left: Master = main-offering label" : "unchanged") : "set to the topic name (the dash's attach-to-topic convention)" });
+        }
+        H.prepared = true;
+        await mxLog(env, "events", { hub: H.hub, event: "hub prepared", products: H.items.length, placedTopics: T.topics.map(t => t.name), trendingStaged: !!T.trendingStaged });
+        await save(); break;   // creates start next tick, after Notion has settled the re-points
       }
       if (H.ii >= H.items.length) { await mxLog(env, "events", { hub: H.hub, event: "hub done" }); plan.hi++; await save(); continue; }
       // one batch of ≤5 products, then read back by URL
@@ -2983,8 +3002,10 @@ async function matrixAllTick(env) {
       for (const it of batch) {
         const base = { hub: H.hub, product: it.pid ? "https://app.notion.com/" + it.pid : "", registryCluster: it.cluster, registryTopic: it.topic };
         if (it.matches !== 1) { await mxLog(env, "stopped", { ...base, type: "product", name: it.name, reason: it.matches ? it.matches + " products with this exact name in the campaign — not guessed" : "no product with this exact name in the campaign — not guessed, nothing created" }); continue; }
+        if (it.archived) { await mxLog(env, "stopped", { ...base, type: "product", name: it.name, reason: "the only exact-name product is Archived — not revived" }); continue; }
+        if (it.unplaceable) { await mxLog(env, "stopped", { ...base, type: "product", name: it.name, reason: "no placed topic and no placed Trending topic in this hub — cannot enter the Keywords hierarchy" }); continue; }
         if (it.link) { await mxLog(env, "linkFeatures", { ...base, name: it.name, reason: "link-feature, skipped as product (third-party / affiliate / Amazon-linked — the writer features it as a link inside content)" }); continue; }
-        const key = H.topicMap[it.name] || "TRENDING", tp = H.topics.find(t => t.key === key), topicLog = tp ? { cluster: tp.cluster, topic: tp.name, topicId: tp.key } : { cluster: "Trending", topic: "Trending", topicId: "" };
+        const tp = H.topics.find(t => t.key === it.topicKey), topicLog = tp ? { cluster: tp.cluster, topic: tp.name, topicId: tp.key } : { cluster: it.topicKey === H.trendingStaged ? "Trending" : "(product's own placed topic)", topic: it.topicKey === H.trendingStaged ? "Trending" : it.topicKey || "", topicId: "" };
         const titles = await mxQuery(CONTENT_STRATEGY_DB, { and: [{ property: "product", relation: { contains: ivDash(it.pid) } }, { property: "Title", title: { equals: it.name } }] });
         let titleId;
         if (titles.length) { titleId = hubAssetId(titles[0].id); await mxLog(env, "skipped", { ...base, type: "title", name: it.name, url: "https://app.notion.com/" + titleId, reason: "exact-name title already linked to the product" + (titles.length > 1 ? " (" + titles.length + " found — none added)" : "") }); }
