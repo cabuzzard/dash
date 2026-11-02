@@ -1034,8 +1034,8 @@
   <div class="tab-panel" id="tabHubdashboard">
     <div style="max-width:1200px;margin:0 auto;min-width:0;">
       <h2 style="font-size:18px;margin:0 0 6px;">Hub Dashboard</h2>
-      <p style="font-size:12px;color:var(--text3);margin:0 0 4px;">Pre-approval view. Hub-related, not hub membership. Membership is still the Keywords section of the Content Hubs 2 card. Nothing here is published, placed, or built just by appearing here.</p>
-      <p style="font-size:11.5px;color:var(--text3);margin:0 0 12px;">Day schedule is proposed, not booked. Approve / Reject only records your decision (hub approvals list) — execution happens outside the dash.</p>
+      <p style="font-size:12px;color:var(--text3);margin:0 0 4px;">Pre-approval view. Hub-related, not hub membership. Membership is still the Keywords section of the Content Hubs 2 card. Development is pre-approval — this tab simply filters by current status.</p>
+      <p style="font-size:11.5px;color:var(--text3);margin:0 0 12px;">Read-only: this tab makes no changes. Change a record's status with the existing status controls. The day schedule is a plan, not a booking.</p>
       <div id="hdBody"></div>
     </div>
   </div>
@@ -5711,12 +5711,12 @@ function pubDraw() {
     + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${sec('✍ Copy — field by field', copy)}${sec('🖼 Images', images)}${video}${buffer}${publish}</div></div></div>`;
 }
 // ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only view: everything hub-related per hub (incl. Buzz's additions), one
-// collapsible card per hub. It never changes hub membership (that is the Keywords section of the Content Hubs 2 card), never writes Notion,
-// never places or publishes. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's hubCids. The only write is
-// Approve / Reject on a pending row → KV infoflow:table:hubapprovals (getInfoFlowTable / saveInfoFlowTable) — execution happens outside.
+// collapsible card per hub. READ-ONLY (operator 2026-11-01): it makes no writes of any kind — no Notion, no KV, no status, no placement,
+// no publishing. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's hubCids. Development IS pre-approval: the
+// view only filters by each record's current Notion status; approval happens elsewhere by changing that status with the existing controls.
 const HD_DAYS = [['Mon', ['AI Implementation', 'Sunflower Acres']], ['Tue', ['Build Watcher', 'Sustainable Aquarium']], ['Wed', ['Home Services', 'Surf Vacations']],
   ['Thu', ['Creative Flow Guitar', 'Mountainwize']], ['Fri', ['The Care Gap', 'Multifamily Acquisitions']], ['Sat', ['Construction Project Management', 'Medicare Services Consulting']], ['Sun', []]];
-let HD = { rows: null, open: null, day: '', err: '', approvals: null, proposals: null, busy: {} };
+let HD = { rows: null, open: null, day: '', err: '' };
 const hdNid = x => String(x || '').replace(/-/g, '');
 function hdHubs() {   // one per campaign (HUB_SITES + KV-registered extras)
   const seen = new Set(); return HUB_SITES.filter(h => h.campaignId && !seen.has(hdNid(h.campaignId)) && seen.add(hdNid(h.campaignId)));
@@ -5732,26 +5732,10 @@ async function hdLoad(force) {
   if (HD.rows && !force) return hdRender();
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   if (force) _devTblLast = null;
-  const [d, a, p] = await Promise.all([devAssetsTable().catch(e => ({ error: e.message })), call('getInfoFlowTable', { name: 'hubapprovals' }).catch(() => null), call('getInfoFlowTable', { name: 'proposals' }).catch(() => null)]);
+  const d = await devAssetsTable().catch(e => ({ error: e.message }));
   if (!d || d.error) { HD.err = (d && d.error) || 'no response'; HD.rows = null; return hdRender(); }
   HD.err = ''; HD.rows = d.rows || [];
-  const real = t => t && Array.isArray(t.columns) && Array.isArray(t.rows) && !(t.columns.length === 3 && t.columns[0].name === 'Stage' && t.columns[1].name === 'Input');   // the worker's placeholder = no table
-  HD.approvals = real(a && a.table) ? a.table : { columns: [{ id: 'h', name: 'Hub' }, { id: 'u', name: 'Record URL' }, { id: 'n', name: 'Record' }, { id: 's', name: 'Approved' }, { id: 'd', name: 'Date' }], rows: [] };
-  HD.proposals = real(p && p.table) ? p.table : null;
   hdRender();
-}
-function hdApproval(slug, url) { const r = (HD.approvals.rows || []).find(x => x.cells && x.cells.h === slug && x.cells.u === url); return r ? r.cells.s : ''; }
-async function hdDecide(slug, url, name, state, btn) {
-  if (!confirm(state + ' "' + name + '" for ' + slug + '?\n\nThis only records your decision in the hub approvals list. Nothing is placed, written to Notion, published or posted.')) return;
-  if (btn) btn.disabled = true;
-  const cur = await call('getInfoFlowTable', { name: 'hubapprovals' }).catch(e => ({ error: e.message }));   // re-read, so another tab's decisions are kept
-  if (!cur || cur.error) { if (btn) btn.disabled = false; return showToast('Not saved: ' + ((cur && cur.error) || 'no response'), 'error'); }
-  const t = cur.table && Array.isArray(cur.table.rows) && cur.table.columns && cur.table.columns.some(c => c.id === 'u') ? cur.table : { columns: HD.approvals.columns, rows: [] };
-  t.rows = (t.rows || []).filter(x => !(x.cells && x.cells.h === slug && x.cells.u === url));
-  t.rows.push({ id: 'a' + Date.now().toString(36), cells: { h: slug, u: url, n: name, s: state, d: new Date().toISOString().slice(0, 10) } });
-  const r = await call('saveInfoFlowTable', { name: 'hubapprovals', table: t }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { if (btn) btn.disabled = false; return showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); }
-  HD.approvals = t; hdRender();
 }
 function hdPick(kind, v) {
   if (kind === 'day') { HD.day = v; HD.open = new Set(hdDayHubs(v).map(h => hdNid(h.campaignId))); }
@@ -5776,7 +5760,6 @@ function hdForm(x, all) {   // Social / Digest / Series / Interview — separate
 }
 function hdMember(x, cid) {   // the Keywords section = the hub campaign's keyword topics; anything else is not claimed
   if (hdNid(x.campId) === cid && x.keywordTopic) return ['In Hub', '#4ade80'];
-  if (hdNid(x.campId) === cid) return ['Pending — not in hub yet', '#f59e0b'];
   return ['Hub-related — membership not verified here', 'var(--text3)'];
 }
 function hdRecId(x) { return x.kind === 'asset' ? x.assetId : x.kind === 'title' ? x.titleId : x.kind === 'product' ? x.productId : x.interviewId; }
@@ -5799,14 +5782,10 @@ function hdRender() {
     const st = x => String(x.status || x.assetStatus || x.titleStatus || x.productStatus || '');
     const upcoming = mine.filter(x => (x.kind === 'asset' || x.kind === 'title') && /^(development|publish)$/i.test(st(x)) || (x.kind === 'interview' && !/finished|done|complete/i.test(st(x))));
     const live = mine.filter(x => x.kind === 'asset' && /^published$/i.test(st(x)));
-    const pending = mine.filter(x => x.kind !== 'interview' && /^development$/i.test(st(x)));
-    const props = HD.proposals ? (() => { const C = HD.proposals.columns, col = re => (C.find(c => re.test(c.name)) || {}).id;
-      const ch = col(/hub|campaign/i), cs = col(/status|state/i), cn = col(/title|name|record|proposal/i) || (C[0] || {}).id, cu = col(/url|link/i);
-      return (HD.proposals.rows || []).filter(r => { const c = r.cells || {}, hv = String(c[ch] || '').toLowerCase(); return /proposed/i.test(String(c[cs] || '')) && hv && (hv.includes(h.slug) || hv.includes(String(h.name).toLowerCase()) || hdNid(hv).includes(cid)); })
-        .map(r => ({ name: String((r.cells || {})[cn] || '(proposal)'), url: String((r.cells || {})[cu] || ('proposal:' + r.id)) })); })() : [];
+    const byStatus = s => mine.filter(x => x.kind !== 'interview' && st(x).toLowerCase() === s.toLowerCase());
     const head = `<div onclick="hdToggle('${cid}')" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 12px;">
       <span style="color:var(--text3);">${open ? '▾' : '▸'}</span><b style="font-size:14px;">${esc(h.name)}</b><span style="font-size:11px;color:var(--text3);">${esc(h.slug)}${day ? ' · ' + day : ''}</span>
-      <span style="font-size:11px;color:var(--text3);flex:1;">${prods.length} products · ${upcoming.length} upcoming · ${live.length} live · ${pending.length + props.length} pending</span>
+      <span style="font-size:11px;color:var(--text3);flex:1;">${prods.length} products · ${upcoming.length} upcoming · ${live.length} live · ${byStatus('Development').length} in Development</span>
       <button style="${B('var(--accent)')}" onclick="event.stopPropagation();hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button></div>`;
     if (!open) return `<div style="border:1px solid var(--border2);border-radius:10px;margin-bottom:8px;">${head}</div>`;
     const link = x => { const id = hdRecId(x); return id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" style="color:var(--text);">${esc(hdName(x))}</a>` : esc(hdName(x)); };
@@ -5824,14 +5803,10 @@ function hdRender() {
     const P2 = forms.map(f => { const L = upcoming.filter(x => hdForm(x, all) === f); return L.length ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text2);font-weight:600;">${f} · ${L.length}</div>` + L.map(x => line(x, x.nextDue ? ` <span style="font-size:10.5px;color:var(--text3);">due ${esc(x.nextDue)}</span>` : '')).join('') : ''; }).join('');
     // 3 Live — with live links
     const P3 = live.map(x => line(x, (x.liveUrl || x.contentUrl) ? ` <a href="${esc(x.liveUrl || x.contentUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">live ↗</a>` : ' <span style="font-size:10.5px;color:var(--text3);">no live link</span>')).join('');
-    // 4 Pending — membership label + Approve / Reject (KV only)
-    const dec = (url, name) => { const s = hdApproval(h.slug, url);
-      return s ? ` <span style="font-size:10.5px;font-weight:700;color:${s === 'Rejected' ? '#f87171' : '#4ade80'};">${esc(s)}</span>`
-        : ` <button style="${B('#4ade80')}" onclick="hdDecide('${esc(h.slug)}','${esc(url)}',${esc(JSON.stringify(name))},'Approved',this)">Approve</button> <button style="${B('#f87171')}" onclick="hdDecide('${esc(h.slug)}','${esc(url)}',${esc(JSON.stringify(name))},'Rejected',this)">Reject</button>`; };
-    const P4 = pending.map(x => { const [m, c] = hdMember(x, cid), url = 'https://www.notion.so/' + hdNid(hdRecId(x)); return line(x, ` <span style="font-size:10.5px;color:${c};">${esc(m)}</span>` + dec(url, hdName(x))); }).join('')
-      + props.map(p => `<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--border);font-size:12px;flex-wrap:wrap;"><span style="flex:1;">${/^https?:/.test(p.url) ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--text);">${esc(p.name)}</a>` : esc(p.name)}</span><span style="font-size:11px;color:var(--text3);">Proposed</span> <span style="font-size:10.5px;color:#f59e0b;">Pending — not in hub yet</span>${dec(p.url, p.name)}</div>`).join('');
+    // 4 By current status — Development is pre-approval; each record shows only its own Notion status + whether it is in the hub
+    const P4 = ['Development', 'Publish', 'Published'].map(s => { const L = byStatus(s); return L.length ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text2);font-weight:600;">${s} · ${L.length}</div>` + L.map(x => { const [m, c] = hdMember(x, cid); return line(x, ` <span style="font-size:10.5px;color:${c};">${esc(m)}</span>`); }).join('') : ''; }).join('');
     return `<div style="border:1px solid var(--accent);border-radius:10px;margin-bottom:8px;">${head}<div style="padding:0 14px 12px;">
-      ${sec('1 · Products', P1, prods.length)}${sec('2 · Upcoming content (pre-approval)', P2, upcoming.length)}${sec('3 · Live content', P3, live.length)}${sec('4 · Pending additions', P4, pending.length + props.length)}</div></div>`;
+      ${sec('1 · Products', P1, prods.length)}${sec('2 · Upcoming content (pre-approval)', P2, upcoming.length)}${sec('3 · Live content', P3, live.length)}${sec('4 · By current status', P4, ['Development', 'Publish', 'Published'].reduce((n, s) => n + byStatus(s).length, 0))}</div></div>`;
   }).join('');
   el.innerHTML = bar + cards;
 }
