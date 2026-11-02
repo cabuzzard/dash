@@ -5900,6 +5900,8 @@ async function psRun(resume) {
   if (PS.busy) return;
   if (!resume && !confirm('Set ' + PS.dry.titles + ' titles and ' + PS.dry.products + ' products to Planning in Notion? Every old status is logged — ↶ Undo restores them.')) return;
   PS.busy = 'run'; psDraw(); let changed = 0, skipped = [];
+  const st0 = PS.status || {};   // fewer undo entries than records done → re-walk from the start once so every moved record gets its undo entry
+  if (resume && st0.plan && (st0.logged || 0) < st0.plan.done) await call('planningSweep', { op: 'rewind' }).catch(() => {});
   for (;;) {
     const r = await call('planningSweep', { op: 'run' }).catch(e => ({ error: e.message }));
     if (!PS) return; if (!r || r.error) { PS.log = '✗ Stopped: ' + ((r && r.error) || 'no response') + ' — ' + changed + ' changed so far; run again to continue'; break; }
