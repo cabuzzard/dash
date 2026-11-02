@@ -5646,8 +5646,8 @@ async function pubSetTypeNow() {
   PB.changed = true; PB.writeAs = ''; PB.log = '✓ Asset type is now ' + r.type; await pubLoad();
 }
 async function pubCreateChild() {
-  if (!PB) return; const t = PB.writeAs || (document.getElementById('pubChildType') || {}).value; if (!t) { PB.log = '✗ Pick the child\'s asset type'; return pubDraw(); }
-  if (!confirm('Create a new "' + t + '" child of this asset (at Development, linked by Parent Asset)? It is then written from this asset\'s brief.')) return;
+  if (!PB) return; const t = (document.getElementById('pubChildType') || {}).value; if (!t) { PB.log = '✗ Pick the child\'s asset type'; return pubDraw(); }
+  if (!confirm('Create a new "' + t + '" from this asset (a new asset at Development, linked by Parent Asset)? The source stays as it is; you write the new one next.')) return;
   const r = await call('pubCreateChild', { parentId: PB.id, type: t }).catch(e => ({ error: e.message }));
   if (!PB) return; if (!r || r.error) { PB.log = '✗ Child not created: ' + ((r && r.error) || 'no response'); return pubDraw(); }
   PB.changed = true; const ch = PB.changed; await pubOpen(r.assetId); if (PB) { PB.changed = ch; PB.log = '✓ Created "' + r.title + '" — write its fields from the parent below'; pubDraw(); }
@@ -5663,23 +5663,37 @@ async function pubNewField() {
   if (!PB) return; if (!r || r.error) { PB.log = '✗ Field not added: ' + ((r && r.error) || 'no response'); return pubDraw(); }
   PB.newField = false; PB.extra.push(name); PB.log = '✓ "' + name + '" added to the field catalog + a draft on ' + PB.ctx.specType + ' — commit it to make every ' + PB.ctx.specType + ' fill it'; await pubLoad();
 }
+function pubMode() { return PB.mode || (/external parent/i.test(PB.ctx.asset.type) ? 'repurpose' : 'rewrite'); }
+function pubSetMode(m) { if (!PB) return; PB.mode = m; PB.relabel = false; if (PB.writeAs) { PB.writeAs = ''; PB.extra = []; PB.prop = {}; return pubLoad(); } pubDraw(); }
 function pubTypeBar() {
-  const C = PB.ctx, A = C.asset, cur = PB.writeAs || A.type, sp = C.spec || {}, nDraft = (sp.drafts || []).length, kids = C.children || [], parentish = /external parent|series|digest parent/i.test(A.type) || kids.length;
+  const C = PB.ctx, A = C.asset, sp = C.spec || {}, nDraft = (sp.drafts || []).length, kids = C.children || [], mode = pubMode();
   const IN = 'font-size:12px;padding:5px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
-  const opts = (sel) => (C.allTypes || []).map(n => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const opts = sel => (C.allTypes || []).map(n => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('');
   const notIn = (C.catalog || []).filter(f => !C.fields.includes(f) && !PB.extra.includes(f));
-  return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>Write as</b><select style="${IN}" onchange="pubWriteAs(this.value)">${opts(cur)}</select>
-      <span style="color:var(--text3);">${sp.type ? esc(sp.type.name) + ' spec · ' + (sp.fields || []).length + ' field' + ((sp.fields || []).length === 1 ? '' : 's') + (sp.type.status !== 'Committed' ? ' (draft spec)' : '') : 'no Writing Spec yet — platform defaults'}${nDraft ? ' · <b style="color:#f59e0b;">' + nDraft + ' draft' + (nDraft === 1 ? '' : 's') + ' to review</b>' : ''}</span>
-      ${PB.writeAs && PB.writeAs !== A.type ? `<button style="${pubBtn('var(--accent)')}" onclick="pubSetTypeNow()">Set this asset's type to ${esc(PB.writeAs)}</button><button style="${pubBtn('#c084fc')}" onclick="pubCreateChild()">＋ Create a ${esc(PB.writeAs)} child</button>` : ''}</div>
-    ${parentish && !(PB.writeAs && PB.writeAs !== A.type) ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><b>Children</b><select id="pubChildType" style="${IN}"><option value="">— asset type —</option>${opts('')}</select><button style="${pubBtn('#c084fc')}" onclick="pubCreateChild()">＋ Create child</button><span style="color:var(--text3);">written from this asset's brief + the hub research</span></div>` : ''}
-    ${kids.length ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${kids.map(k => `<a href="#" onclick="event.preventDefault();pubOpen('${esc(k.id)}')" style="font-size:11.5px;border:1px solid var(--border2);border-radius:6px;padding:2px 8px;color:var(--text2);text-decoration:none;">${esc(k.type)} · ${esc(k.status)} · ${esc((k.title || '').slice(0, 40))}</a>`).join('')}</div>` : ''}
-    ${C.parent ? `<div style="margin-top:6px;color:var(--text3);">Parent: <a href="#" onclick="event.preventDefault();pubOpen('${esc(C.parent.id)}')" style="color:var(--accent);">${esc(C.parent.type)} — ${esc(C.parent.title)}</a> · its brief is in every field the writer writes here</div>` : ''}
+  const kidLinks = kids.length ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${kids.map(k => `<a href="#" onclick="event.preventDefault();pubOpen('${esc(k.id)}')" style="font-size:11.5px;border:1px solid var(--border2);border-radius:6px;padding:2px 8px;color:var(--text2);text-decoration:none;">${esc(k.type)} · ${esc(k.status)} · ${esc((k.title || '').slice(0, 40))}</a>`).join('')}</div>` : '';
+  const parentLine = C.parent ? `<div style="margin-top:6px;color:var(--text3);">Parent: <a href="#" onclick="event.preventDefault();pubOpen('${esc(C.parent.id)}')" style="color:var(--accent);">${esc(C.parent.type)} — ${esc(C.parent.title)}</a> · its brief goes into every field written here</div>` : '';
+  const sw = `<div style="display:flex;gap:0;border:1px solid var(--border2);border-radius:7px;overflow:hidden;">${[['rewrite', '✍ Rewrite this asset'], ['repurpose', '↗ Repurpose into a new asset']].map(([k, l]) => `<button onclick="pubSetMode('${k}')" style="font-size:12px;padding:5px 12px;border:0;background:${mode === k ? 'var(--accent)' : 'var(--surface2)'};color:${mode === k ? 'var(--bg)' : 'var(--text2)'};font-weight:${mode === k ? 700 : 400};cursor:pointer;">${l}</button>`).join('')}</div>`;
+  if (mode === 'repurpose') return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;">${sw}
+    <div style="color:var(--text3);margin:8px 0;">The source stays exactly as it is. Pick what to make from it — a new ${'linked'} asset is created and opened, and you write its fields there from this asset's brief + the hub research.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>Into</b><select id="pubChildType" style="${IN}"><option value="">— asset type —</option>${opts('')}</select><button style="${pubBtn('#c084fc')}font-weight:600;" onclick="pubCreateChild()">＋ Create &amp; write</button></div>
+    ${kids.length ? '<div style="margin-top:10px;font-weight:700;">Already made from this</div>' + kidLinks : ''}${parentLine}</div>`;
+  const relabel = PB.relabel ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding:8px;border:1px dashed var(--border2);border-radius:8px;"><b>Reclassify</b><select id="pubRelabel" style="${IN}">${opts(A.type)}</select><button style="${pubBtn('var(--accent)')}" onclick="pubRelabelNow()">Set type</button><span style="color:var(--text3);">changes the label only — nothing is written</span><a href="#" onclick="event.preventDefault();PB.relabel=false;pubDraw()" style="color:var(--text3);">cancel</a></div>` : '';
+  return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;">${sw}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><span>Writing as <b>${esc(A.type)}</b> — ${sp.type ? esc(sp.type.name) + ' spec · ' + (sp.fields || []).length + ' field' + ((sp.fields || []).length === 1 ? '' : 's') + (sp.type.status !== 'Committed' ? ' (draft spec)' : '') : 'no Writing Spec yet — platform defaults'}${nDraft ? ' · <b style="color:#f59e0b;">' + nDraft + ' draft' + (nDraft === 1 ? '' : 's') + ' to review</b>' : ''}</span>
+      ${PB.relabel ? '' : `<a href="#" onclick="event.preventDefault();PB.relabel=true;pubDraw()" style="color:var(--text3);font-size:11px;">wrong type? reclassify…</a>`}</div>${relabel}
+    ${parentLine}${kids.length ? '<div style="margin-top:8px;color:var(--text3);">Made from this:</div>' + kidLinks : ''}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><b>＋ Field</b><select style="${IN}" onchange="pubAddField(this.value);this.value=''"><option value="">— add a field from the catalog —</option>${notIn.map(f => `<option>${esc(f)}</option>`).join('')}<option value="__new">＋ a new field…</option></select>
       <span style="color:var(--text3);">the type's spec decides the fields; add any other for this asset, or add it to the type with ✎ Rule</span></div>
     ${PB.newField ? `<div style="margin-top:8px;border:1px dashed var(--border2);border-radius:8px;padding:8px;"><input id="pubNFName" style="${IN}width:100%;box-sizing:border-box;" placeholder="Field name (becomes an asset field, e.g. First Comment, Chapters)">
       <textarea id="pubNFRule" rows="2" style="${IN}width:100%;box-sizing:border-box;margin-top:5px;" placeholder="Its rule for ${esc(C.specType)}"></textarea><input id="pubNFLim" style="${IN}width:100%;box-sizing:border-box;margin-top:5px;" placeholder="Hard limits (optional)">
       <div style="display:flex;gap:6px;margin-top:6px;"><button style="${pubBtn('#4ade80')}" onclick="pubNewField()">Add field (draft on ${esc(C.specType)})</button><button style="${pubBtn('var(--text2)')}" onclick="PB.newField=false;pubDraw()">Cancel</button></div></div>` : ''}</div>`;
+}
+async function pubRelabelNow() {
+  const t = (document.getElementById('pubRelabel') || {}).value; if (!PB || !t || t === PB.ctx.asset.type) return;
+  if (!confirm('Reclassify this asset as "' + t + '"? Only the label changes — nothing is written.')) return;
+  const r = await call('pubSetType', { assetId: PB.id, type: t }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Type not changed: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.changed = true; PB.relabel = false; PB.log = '✓ Reclassified as ' + r.type; await pubLoad();
 }
 function pubDirty(i) { const b = document.getElementById('pubSave' + i); if (b) b.style.display = ''; }
 async function pubWrite(field, imageKind) {
@@ -5814,7 +5828,7 @@ function pubDraw() {
   const publish = sec('Status & publish', `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select onchange="pubStatus(this)" style="font-size:12.5px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:${/^published$/i.test(A.status) ? '#4ade80' : '#ff7a00'};font-weight:600;">${[...new Set([A.status, ...PB_STATUSES])].filter(Boolean).map(s => `<option ${s === A.status ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
     ${/^published$/i.test(A.status) ? '' : `<button style="${pubBtn('#4ade80')}font-weight:600;" ${PB.busy.pub ? 'disabled' : ''} onclick="pubPublish()">${A.hub ? '📤 Publish to hub' : '✓ Mark Published'}</button>`}</div>`);
   P.innerHTML = head + (PB.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(PB.log) ? '#f87171' : 'var(--text2)'};">${esc(PB.log)}</div>` : '')
-    + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${sec('✍ Copy — field by field', copy)}${sec('🖼 Images', images)}${video}${buffer}${publish}</div></div></div>`;
+    + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${pubMode() === 'repurpose' ? sec('↗ Repurpose', pubTypeBar()) : sec('✍ Rewrite — field by field', copy) + sec('🖼 Images', images) + video + buffer + publish}</div></div></div>`;
 }
 // ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only scan of every hub, one card per hub. READ-ONLY: no writes of any kind —
 // no Notion, no KV, no status, no placement, no publishing. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's
