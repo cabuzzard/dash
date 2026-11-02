@@ -3057,6 +3057,81 @@ async function matrixAllTick(env) {
     return { stopped: plan.reason };
   } finally { await env.TRADES.delete("matrixall:lock").catch(() => {}); }
 }
+// ══ RUNS (operator 2026-11-02): an asset can be traced to the Series (or any Pillar parent) and the RUN it came from. Parent Asset is the
+// existing self-relation (its other side is the parent's Components — setting it appends to Components, never replaces). Two fields:
+// "Run" (text, the run id) and "Run Status" (select: Queued · Posted · Tracked · Held) — separate from Asset Status, which never changes here.
+// createRunAssets {seriesAssetId, runId, items[]} adds assets programmatically under a parent (title / product / campaign from the parent),
+// at Review (or Development), Run Status Queued; setRunStatus moves it on (Posted / Tracked / Held + reason, the held payload kept for
+// replay in KV run:held:<assetId>). Buffer sends set Posted automatically. Nothing here publishes, places or deletes.
+const RUN_STATUSES = ["Queued", "Posted", "Tracked", "Held"];
+async function runEnsureProps(env) {
+  if (await env.TRADES.get("runprops:v1")) return;
+  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }).then(r => r.json());
+  const need = {};
+  if (!db.properties?.Run) need.Run = { rich_text: {} };
+  if (!db.properties?.["Run Status"]) need["Run Status"] = { select: { options: RUN_STATUSES.map(name => ({ name })) } };
+  if (Object.keys(need).length) { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: need }) });
+    if (!r.ok) throw new Error("Could not add Run / Run Status to Assets: " + ((await r.json().catch(() => ({}))).message || r.status)); }
+  await env.TRADES.put("runprops:v1", "1");
+}
+async function runHold(env, key, reason, payload) {
+  await env.TRADES.put("run:held:" + key, JSON.stringify({ reason, payload, at: new Date().toISOString() }), { expirationTtl: 90 * 86400 });
+}
+async function createRunAssets(env, body) {
+  const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
+  if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
+  if (!/^[a-f0-9]{32}$/.test(parentId)) return { error: "seriesAssetId required (the parent asset's id)" };
+  if (!items.length || items.length > 10) return { error: "items: 1–10 per call (no bulk adds)" };
+  await runEnsureProps(env);
+  const parent = await ivPage(parentId).catch(() => null), pp = parent?.properties || {};
+  if (!parent || parent.archived || parent.in_trash) return { error: "Parent asset not found" };
+  if (pp["Asset Class"]?.select?.name !== "Pillar") return { error: "The parent must be a Pillar asset (a Series / Digest parent) — this one is " + (pp["Asset Class"]?.select?.name || "unclassed") };
+  const titleId = ivRid(pp, "Content Strategy"), cid = ivRid(pp, "Campaign"), pid = ivRid(pp, "Product");
+  if (!titleId) return { error: "The parent has no title (Content Strategy) — runs link to the parent's title" };
+  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }).then(r => r.json());
+  const opts = n => new Set((db.properties?.[n]?.select?.options || []).map(o => o.name));
+  const types = opts("Asset Type"), platforms = opts("Platform Name");
+  const out = [];
+  for (const [i, it] of items.entries()) {
+    const assetTitle = String(it.assetTitle || it.title || "").trim().slice(0, 1900), assetType = String(it.assetType || "").trim(), platformName = String(it.platformName || "").trim();
+    const status = /^development$/i.test(it.assetStatus || "") ? "Development" : "Review";
+    const bad = !assetTitle ? "assetTitle required" : !types.has(assetType) ? `Asset Type "${assetType}" is not a live option (exact, case-sensitive)` : platformName && !platforms.has(platformName) ? `Platform Name "${platformName}" is not a live option — use "Other" for Facebook / Meta` : "";
+    if (bad) { out.push({ index: i, error: bad }); continue; }
+    const text = k => it[k] != null && String(it[k]).trim() ? { rich_text: ivRt(String(it[k]).slice(0, 190000)) } : null;
+    const props = {
+      "Asset Title": { title: [{ text: { content: assetTitle } }] }, "Asset Type": { select: { name: assetType } }, "Asset Status": { select: { name: status } },
+      "Asset Class": { select: { name: "Publishable" } }, "Parent Asset": { relation: [{ id: ivDash(parentId) }] }, "Content Strategy": { relation: [{ id: ivDash(titleId) }] },
+      ...(cid ? { Campaign: { relation: [{ id: ivDash(cid) }] } } : {}), ...(pid ? { Product: { relation: [{ id: ivDash(pid) }] } } : {}),
+      ...(platformName ? { "Platform Name": { select: { name: platformName } } } : {}),
+      Run: { rich_text: ivRt(runId) }, "Run Status": { select: { name: "Queued" } },
+    };
+    for (const [k, f] of [["Body", "body"], ["Description", "description"], ["Platform Title", "platformTitle"], ["Post Caption", "postCaption"], ["Hashtags", "hashtags"], ["Image Direction", "imageDirection"]]) { const v = text(f); if (v) props[k] = v; }
+    const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { const reason = (r.status === 429 ? "rate limited (429) — not retried" : (d.message || "HTTP " + r.status)); await runHold(env, runId + ":" + i, reason, { seriesAssetId: parentId, runId, item: it });
+      out.push({ index: i, held: true, error: reason }); if (r.status === 429) break; continue; }
+    const aid = hubAssetId(d.id), back = await ivPage(aid).catch(() => null), bp = back?.properties || {};   // read back
+    const ok = back && ivRid(bp, "Parent Asset") === parentId && hubRichText(bp.Run?.rich_text) === runId && bp["Run Status"]?.select?.name === "Queued";
+    if (!ok) { await runHold(env, aid, "read-back mismatch after create", { seriesAssetId: parentId, runId, item: it });
+      await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Run Status": { select: { name: "Held" } } } }) }).catch(() => {}); }
+    out.push({ index: i, assetId: aid, url: "https://app.notion.com/" + aid, assetType, assetStatus: status, runStatus: ok ? "Queued" : "Held", parentAssetId: parentId, titleId });
+  }
+  const log = (await env.TRADES.get("run:log:" + runId, "json")) || [];
+  await env.TRADES.put("run:log:" + runId, JSON.stringify([...log, ...out.map(x => ({ ...x, at: new Date().toISOString() }))].slice(-500)), { expirationTtl: 365 * 86400 });
+  return { ok: out.some(x => x.assetId), runId, parentAssetId: parentId, titleId, created: out.filter(x => x.assetId).length, results: out };
+}
+async function setRunStatus(env, body) {
+  const aid = hubAssetId(body.assetId || ""), st = String(body.runStatus || body.status || "");
+  if (!/^[a-f0-9]{32}$/.test(aid)) return { error: "assetId required" };
+  if (!RUN_STATUSES.includes(st)) return { error: "runStatus must be one of " + RUN_STATUSES.join(" · ") };
+  await runEnsureProps(env);
+  const props = { "Run Status": { select: { name: st } } };
+  if (st === "Tracked" && /^https?:\/\//.test(body.liveUrl || "")) props["Content URL"] = { url: String(body.liveUrl).trim() };
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+  if (!r.ok) return { error: "Not saved: " + ((await r.json().catch(() => ({}))).message || r.status) };
+  if (st === "Held") await runHold(env, aid, String(body.reason || "held (no reason given)").slice(0, 2000), body.payload || null);
+  return { ok: true, assetId: aid, runStatus: st };
+}
 async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
 async function wrTypeSave(env, body) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
@@ -21237,6 +21312,7 @@ Return: {
             pillarSync: p["Pillar Sync"]?.select?.name || "",
             interviewRequired: !!p["Interview Required"]?.checkbox,
             parentAssetId: (p["Parent Asset"]?.relation || [])[0]?.id ? dropDash(p["Parent Asset"].relation[0].id) : null,
+            run: hubRichText(p.Run?.rich_text), runStatus: p["Run Status"]?.select?.name || "",
             deploymentStatus: p["Deployment Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             createdTime: a.created_time || null,
@@ -21281,7 +21357,7 @@ Return: {
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
           dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
+          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
           deploymentStatus: a.deploymentStatus || "",
           ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
@@ -21329,7 +21405,7 @@ Return: {
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
+              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
               dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
@@ -52795,6 +52871,7 @@ ${assemblyManifest}`;
             }
           } catch (e) { console.error("sendAssetToBuffer: carousel slide status", e.message); }
         }
+        if (hubRichText(P.Run?.rich_text)) await fetch("https://api.notion.com/v1/pages/" + dashId(assetId), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Run Status": { select: { name: "Posted" } } } }) }).catch(() => {});   // run asset sent → Posted (2026-11-02)
         return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
           channelName: channel.name, organizationName: channel.organizationName || "", statusSet, tagsWhere: tags ? tagsWhere : "" });
       }
@@ -55541,6 +55618,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "createRunAssets") { try { return json(await createRunAssets(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
+      if (body.action === "setRunStatus") { try { return json(await setRunStatus(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
+      if (body.action === "getRun") { const runId = String(body.runId || "").trim(); return json({ ok: true, runId, log: (await env.TRADES.get("run:log:" + runId, "json")) || [] }); }
       if (body.action === "matrixAllStatus") { const plan = await env.TRADES.get("matrixall:plan", "json"), log = await env.TRADES.get("matrixall:log", "json"); return json({ ok: true, plan: plan ? { status: plan.status, reason: plan.reason || "", hub: plan.hubs[plan.hi]?.hub || "done", hubsDone: plan.hi, hubs: plan.hubs.length } : null, log }); }
       if (body.action === "interviewClear") { try { return json(await interviewClear(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "planningSweep") { try { return json(await planningSweep(env, body)); } catch (e) { return json({ error: e.message }, 500); } }

@@ -4644,7 +4644,7 @@ async function ao2SetToggle(titleId, title, on, cb) {
   showToast(on ? '→ All Output 2: "' + (title || 'title') + '" and its product + assets' : 'Removed from All Output 2', 'success');
   renderDev2(); if (AO2_ROWS) ao2Load();
 }
-const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'created', label: 'Date created' }, { key: 'parent', label: 'Parent' }, { key: 'writer', label: 'Writer' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
+const AO2_COLS = [{ key: 'title', label: 'Record title' }, { key: 'ofTitle', label: 'Title' }, { key: 'product', label: 'Product' }, { key: 'platformTitle', label: 'Platform title' }, { key: 'type', label: 'Record type' }, { key: 'assetType', label: 'Asset type' }, { key: 'status', label: 'Status' }, { key: 'created', label: 'Date created' }, { key: 'parent', label: 'Parent' }, { key: 'run', label: 'Run' }, { key: 'runStatus', label: 'Run status' }, { key: 'writer', label: 'Writer' }, { key: 'topic', label: 'Topic' }, { key: 'cluster', label: 'Cluster' }, { key: 'hub', label: 'Hub' }, { key: 'dev', label: 'Assets · Dev' }, { key: 'publish', label: 'Assets · Publish' }, { key: 'pub', label: 'Assets · Published' }];
 let AO2_ROWS = null, AO2_DRAG = '';
 // Collapsible column groups (operator 2026-10-30: "+ collapse column … a collapsible horizontal column section I can drag other columns
 // into"). A group is a column of its own ("g:<id>") in the order; its member columns render right after it when expanded and disappear
@@ -4709,7 +4709,7 @@ async function ao2Load() {
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), sTitle: tSync(t), sProd: prodSync(x.assetProductId || x.productId), sTopic: topSync(x.keywordTopicId), title: x.assetName || '', ofTitle: t.title || '', product: x.product && x.product !== 'No Product' ? x.product : '', productId: nid(x.assetProductId || x.productId), platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.pillarType && /^pillar$/i.test(x.rawAssetType || '') ? x.pillarType : (x.rawAssetType || ''),   /* a Series / Digest parent shows what it is (operator 2026-10-30: 'just series, it isn't a pillar') */ status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, created: x.dateCreated || '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+      .map(x => ({ id: nid(x.assetId), sTitle: tSync(t), sProd: prodSync(x.assetProductId || x.productId), sTopic: topSync(x.keywordTopicId), title: x.assetName || '', ofTitle: t.title || '', product: x.product && x.product !== 'No Product' ? x.product : '', productId: nid(x.assetProductId || x.productId), platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.pillarType && /^pillar$/i.test(x.rawAssetType || '') ? x.pillarType : (x.rawAssetType || ''),   /* a Series / Digest parent shows what it is (operator 2026-10-30: 'just series, it isn't a pillar') */ status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, src: x, created: x.dateCreated || '', run: x.run || '', runStatus: x.runStatus || '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
     const pr = t.productId ? all.find(y => y.kind === 'product' && nid(y.productId) === nid(t.productId)) : null;
     const prodRow = pr ? [{ id: nid(pr.productId), src: pr, created: pr.productCreated || '', sProd: pSync(pr), sTopic: topSync(pr.keywordTopicId), title: pr.product || '', type: 'Product', product: pr.product || '', productId: nid(pr.productId), assetType: '', status: pr.status || pr.productStatus || '',
       topic: pr.keywordTopic || '', topicId: pr.keywordTopicId || '', cluster: pr.keywordCluster || '', campId: t.campId || pr.campId || '', hub: slugs([pr]) }] : [];
@@ -5812,7 +5812,7 @@ function hdRender() {
     const link = x => { const id = hdRecId(x); return id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" style="color:var(--text);">${esc(hdName(x))}</a>` : esc(hdName(x)); };
     const line = (x, extra) => `<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--border);font-size:12px;flex-wrap:wrap;">
       <span style="min-width:0;flex:1;">${link(x)}</span><span style="color:var(--text3);font-size:11px;">${esc(x.kind === 'asset' ? (x.rawAssetType || x.assetType || '') : x.kind)}</span>
-      <span style="font-size:11px;color:${/^published$/i.test(hdSt(x)) ? '#4ade80' : '#ff7a00'};">${esc(hdSt(x))}</span>${extra || ''}</div>`;
+      <span style="font-size:11px;color:${/^published$/i.test(hdSt(x)) ? '#4ade80' : '#ff7a00'};">${esc(hdSt(x))}</span>${x.run ? ` <span title="Run" style="font-size:10.5px;color:#c084fc;">⟲ ${esc(x.run)}${x.runStatus ? ' · ' + esc(x.runStatus) : ''}</span>` : ''}${extra || ''}</div>`;
     const sub = (t, body, n) => `<div style="margin:10px 0 3px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);">${t} <span style="font-weight:400;color:var(--text3);">${n}</span></div>${body || '<div style="font-size:11.5px;color:var(--text3);">none</div>'}`;
     const groups = topics.map(t => {
       const tk = cid + '|' + t.key, topen = HD.topicOpen.has(tk);
@@ -13640,6 +13640,9 @@ const DEV2_COLS = [
   { key: 'assetType',    label: 'Asset type' },
   { key: 'status',       label: 'Record status' },
   { key: 'created',      label: 'Created' },
+  { key: 'parentAsset',  label: 'Parent asset' },   // the Series / Digest parent (Parent Asset relation) — group by it to see a series' episodes
+  { key: 'run',          label: 'Run' },
+  { key: 'runStatus',    label: 'Run status' },
   { key: 'inputApp',     label: 'App' },   // the Client Studio app the asset's input came from (Assets "Input App")   // same as the Content Hubs 2 Content table: the asset's created date, else its title's (YYYY-MM-DD)
   { key: 'hubPublish',   label: 'Hub publish' },
   // STATUS TABLE (2026-10-10): the update vectors, each its own column — none of them is Status, so visibility is unchanged
@@ -13766,6 +13769,7 @@ function dev2EditApply(r, k, v) {
 const DEV2_KIND = { product: 'Product', title: 'Title', asset: 'Asset', interview: 'Interview' };
 function dev2Val(r, col) { if (col === 'recordTitle') return String(r.kind === 'product' ? r.product || '' : r.kind === 'title' ? r.title || '' : r.assetName || (r.assetId ? '' : r.titleId ? r.title || '' : r.product || ''));
   if (col === 'ao2') return r.titleId && AO2_SET && AO2_SET.has(kwNid(r.titleId)) ? 'yes' : '';
+  if (col === 'parentAsset') { if (!r.parentAssetId) return ''; const p = (DEV2_ROWS || []).find(x => x.kind === 'asset' && kwNid(x.assetId) === kwNid(r.parentAssetId)); return p ? String(p.assetName || '') : '(parent ' + String(r.parentAssetId).slice(0, 8) + ')'; }
   if (col === 'assetType' && r.assetId && r.assetClass !== 'Pillar') return String(r.rawAssetType || r.assetType || '');   // ASSET TYPE column = the asset's own Asset Type (operator 2026-10-30), never its Method name; parents keep their "<type> parent" label
   if(col === 'hubSection')return String(r.hubSectionDisplay || ''); if (col === 'kind') return DEV2_KIND[r.kind] || (r.assetId ? 'Asset' : r.titleId ? 'Title' : r.productId ? 'Product' : ''); if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); if (col === 'inputApp') return appLabel(r.inputApp); return String(r[col] == null ? '' : r[col]); }
 // ★ column: toggle a product's ★ main-offering status on its hub (same worker action as the hub card's ★), then repaint every row of it
