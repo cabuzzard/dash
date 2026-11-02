@@ -597,6 +597,7 @@
   .amf-tabs button { font-size: 12.5px; padding: 7px 12px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: transparent; color: var(--text2); cursor: pointer; white-space: nowrap; }
   .amf-tabs button.on { background: var(--surface2); border-color: var(--border2); color: var(--text); font-weight: 600; }
   .amf-bd { flex: 1; overflow: auto; padding: 16px; -webkit-overflow-scrolling: touch; }
+  .hd-row:hover { background: var(--surface2); }
   .wr-panel { width: min(1320px, 96vw); }
   .wr-grid { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 18px; align-items: start; }
   .wr-left { position: sticky; top: 0; }
@@ -5840,11 +5841,12 @@ function hdRender() {
     const cardsTop = hubs.map(hb => { const c = hdNid(hb.campaignId), rowsH = HD.rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
       const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !HD_HIDDEN.test(hdSt(x).trim())), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
       const nA = vis.filter(x => x.kind === 'asset').length, nT = vis.filter(x => x.kind === 'title').length;
-      return `<div onclick="hdPickKey(${i})" style="cursor:pointer;border:1px solid var(--accent);border-radius:10px;padding:10px 12px;background:var(--surface);">
-        <b style="font-size:13.5px;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><div style="font-size:11px;color:var(--text3);margin-top:3px;">${tr.length} clusters · ${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets</div>
-        <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">${nw ? 'newest ' + esc(nw) : 'no date'}</div></div>`; }).join('');
+      return { nw, html: `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+        <b style="font-size:13.5px;flex:1 1 220px;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);">${tr.length} clusters · ${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets</span>
+        <span style="font-size:11px;color:var(--text3);min-width:84px;text-align:right;">${nw ? esc(nw) : 'no date'}</span><span style="color:var(--text3);">›</span></div>` }; })
+      .sort((a, b) => (b.nw || '').localeCompare(a.nw || '')).map(x => x.html).join('');
     el.innerHTML = tools + `<div style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><b>All hubs</b><span style="float:right;font-size:11px;color:var(--text3);">Hubs</span></div>`
-      + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;">${cardsTop}</div>`;
+      + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Hub</span><span>Newest created inside ↓</span></div>${cardsTop}</div>`;
     return;
   }
   const all = HD.rows, cid = HD.hub;
@@ -5868,25 +5870,27 @@ function hdRender() {
   const nlink = (id, name) => id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Notion" style="color:var(--text3);font-size:11px;">↗</a>` : '';
   const dt = d => d ? `<div style="font-size:10.5px;color:var(--text3);margin-top:4px;">newest ${esc(d)}</div>` : '<div style="font-size:10.5px;color:var(--text3);margin-top:4px;">no date</div>';
   HD._keys = [];
-  const tile = (key, title, sub, extra, newest, link) => { const i = HD._keys.push(key) - 1;
-    return `<div onclick="hdPickKey(${i})" style="cursor:pointer;border:1px solid var(--border2);border-radius:10px;padding:10px 12px;background:var(--surface);min-width:0;">
-      <div style="display:flex;gap:6px;align-items:baseline;"><b style="font-size:13px;flex:1;min-width:0;overflow-wrap:anywhere;">${esc(title)}</b>${link || ''}</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div>${extra || ''}${dt(newest)}</div>`; };
-  const grid = inner => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;">${inner || '<div style="font-size:12px;color:var(--text3);">Nothing here yet</div>'}</div>`;
+  const tile = (key, title, sub, extra, newest, link) => { const i = HD._keys.push(key) - 1;   // a ROW (operator 2026-11-02)
+    return `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+      <b style="font-size:13px;flex:1 1 220px;min-width:0;overflow-wrap:anywhere;">${esc(title)}</b>
+      <span style="font-size:11px;color:var(--text3);">${sub}</span>${extra || ''}
+      <span style="font-size:11px;color:var(--text3);min-width:84px;text-align:right;">${newest ? esc(newest) : 'no date'}</span>${link || ''}<span style="color:var(--text3);">›</span></div>`; };
+  const grid = inner => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Name</span><span>Newest created inside ↓</span></div>${inner || '<div style="font-size:12px;color:var(--text3);padding:10px;">Nothing here yet</div>'}</div>`;
   let body;
   if (depth === 0) body = grid(tree.map(C => tile(C.name, C.name, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'} · ${C.topics.reduce((n, t) => n + t.products.length, 0)} products`, '', C.newest)).join(''));
   else if (depth === 1) body = grid(cur.topics.map(T => { const sig = hdTopicSignal(T);
-    return tile(T.key, T.name, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, `<div style="font-size:11px;font-weight:700;color:${hdSigColor(sig)};margin-top:3px;">${esc(sig)}</div>`, T.newest); }).join(''));
+    return tile(T.key, T.name, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, `<span style="font-size:11px;font-weight:700;color:${hdSigColor(sig)};">${esc(sig)}</span>`, T.newest); }).join(''));
   else if (depth === 2) body = grid(cur.products.map(Pn => tile(Pn.key, Pn.name, `${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${Pn.titles.reduce((n, t) => n + t.assets.length, 0)} assets`,
-    Pn.row ? `<div style="font-size:11px;color:${stCol(hdSt(Pn.row))};margin-top:3px;">${esc(hdSt(Pn.row))}</div>` : '', Pn.newest, nlink(Pn.row && Pn.row.productId))).join(''));
+    Pn.row ? `<span style="font-size:11px;color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span>` : '', Pn.newest, nlink(Pn.row && Pn.row.productId))).join(''));
   else if (depth === 3) body = grid(cur.titles.map(Ti => tile(Ti.key, Ti.name, `${Ti.assets.length} asset${Ti.assets.length === 1 ? '' : 's'}`,
-    Ti.row ? `<div style="font-size:11px;color:${stCol(hdSt(Ti.row))};margin-top:3px;">${esc(hdSt(Ti.row))}</div>` : '', Ti.newest, nlink(Ti.row && Ti.row.titleId))).join(''));
+    Ti.row ? `<span style="font-size:11px;color:${stCol(hdSt(Ti.row))};">${esc(hdSt(Ti.row))}</span>` : '', Ti.newest, nlink(Ti.row && Ti.row.titleId))).join(''));
   else body = (cur.assets.map(a => { const [m, mc] = hdMember(a, cid);
-    return `<div style="border:1px solid var(--border2);border-radius:10px;padding:9px 12px;margin-bottom:6px;background:var(--surface);font-size:12px;">
+    return `<div style="padding:9px 10px;border-bottom:1px solid var(--border);font-size:12px;">
       <div style="display:flex;gap:6px;align-items:baseline;"><b style="flex:1;min-width:0;overflow-wrap:anywhere;">${esc(hdName(a))}</b>${nlink(a.assetId)}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:11px;"><span style="color:var(--text3);">${esc(a.rawAssetType || a.assetType || '')}</span><span style="color:${stCol(hdSt(a))};">${esc(hdSt(a))}</span>
         ${a.run ? `<span title="Run" style="color:#c084fc;">⟲ ${esc(a.run)}${a.runStatus ? ' · ' + esc(a.runStatus) : ''}</span>` : ''}${(a.liveUrl || a.contentUrl) && /^published$/i.test(hdSt(a)) ? `<a href="${esc(a.liveUrl || a.contentUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''}
-        <span style="color:${mc};">${esc(m)}</span><span style="color:var(--text3);margin-left:auto;">${esc(hdDate(a)) || 'no date'}</span></div></div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);">No assets yet</div>');
+        <span style="color:${mc};">${esc(m)}</span><span style="color:var(--text3);margin-left:auto;">${esc(hdDate(a)) || 'no date'}</span></div></div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+  if (depth >= 4) body = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Asset</span><span>Created ↓</span></div>${body}</div>`;
   el.innerHTML = tabs + tools + nav + body;
 }
 // ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
