@@ -20956,6 +20956,7 @@ Return: {
             campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
             status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "",
             outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
+            created: p.created_time ? String(p.created_time).slice(0, 10) : "",
           };
         });
 
@@ -21155,7 +21156,7 @@ Return: {
           const camp = prod.campId ? campById[prod.campId] : null;
           rows.push({ kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "",
             productStack: prod.stack || "No Stack", product: prod.name, productId: pid, title: "", titleId: null,
-            productStatus: prod.status || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+            productStatus: prod.status || "", productCreated: prod.created || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
         });
         // Group = the campaign's product group for this stack (KV stackgroups:<campaignId>, Group → Stack → Product)
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
