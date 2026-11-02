@@ -2696,9 +2696,9 @@ const PUB_FIELD_RULES = {
   "Thumbnail Text": "At most 5 words that go over the thumbnail.",
   "Image Direction": "Direction for the WORDLESS background image of this asset: the scene, the subject and people (who, doing what), the moment and emotion, the visual metaphor for the message, light and composition — leaving a clear zone where the text sits. Stay inside the hub design spec's look; never ask for words, letters or logos in the image. 3–6 sentences.",
 };
-async function wrSources(env, G, type) {   // the same research ① Write reads, as prompt sections
+async function wrSources(env, G, type, assetId) {   // the same research ① Write reads, as prompt sections (assetId: that asset's OWN interviews too)
   const [pillar, research, voice, audience, product, iv] = await Promise.all([extractPillarContent(ivHdr(), ivDash(G.tid)).catch(() => ""), titleResearchBlock(env, G.tid).catch(() => ""),
-    G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, "").catch(() => null)]);
+    G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, assetId || "").catch(() => null)]);
   const prodFacts = G.pid ? Object.entries(writingFieldValues((await ivPage(G.pid).catch(() => ({}))).properties || {})).filter(([k, v]) => ["Name", "Description", "Price", "Offer Structure", "Transformation", "Unique Angle"].includes(k) && String(v).trim()).map(([k, v]) => k + ": " + v).join("\n") : "";
   const sec = (h, t, max) => String(t || "").trim() ? "\n## " + h + "\n" + String(t).trim().slice(0, max) + "\n" : "";
   return sec("Pillar (the substance)", pillar, 5000) + sec("Title research", research, 3000) + sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4000)
@@ -2762,7 +2762,7 @@ Pain points: ${U.pains || "—"}
 
 # WHAT IT'S ABOUT
 Title: ${A.titleName || "—"}${I.keywords ? "\nKeywords: " + I.keywords : ""}${B.subject ? `\nThe writer's brief — subject: ${B.subject} · intent: ${B.intent || ""} · reader: ${B.reader || ""} · outcome: ${B.outcome || ""} · angle: ${B.angle || ""}` : ""}
-${others ? "\n# THE OTHER FIELDS AS THEY STAND (stay consistent with them)\n" + others + "\n" : ""}${design ? "\n# THE HUB DESIGN SPEC FOR THIS IMAGE FORMAT (the look — stay inside it)\n" + design + "\n" : ""}${await wrSources(env, G, A.type)}
+${others ? "\n# THE OTHER FIELDS AS THEY STAND (stay consistent with them)\n" + others + "\n" : ""}${design ? "\n# THE HUB DESIGN SPEC FOR THIS IMAGE FORMAT (the look — stay inside it)\n" + design + "\n" : ""}${await wrSources(env, G, A.type, A.id)}
 
 # RULES
 - Facts, numbers, prices, names, credentials and results come ONLY from the sources above — never invent them.
