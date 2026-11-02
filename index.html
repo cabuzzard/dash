@@ -1035,7 +1035,7 @@
     <div style="max-width:1200px;margin:0 auto;min-width:0;">
       <h2 style="font-size:18px;margin:0 0 6px;">Hub Dashboard</h2>
       <p style="font-size:12px;color:var(--text3);margin:0 0 4px;">Pre-approval view. Hub-related, not hub membership. Membership is still the Keywords section of the Content Hubs 2 card. Development is pre-approval — this tab simply filters by current status.</p>
-      <p style="font-size:11.5px;color:var(--text3);margin:0 0 12px;">Read-only: this tab makes no changes. Change a record's status with the existing status controls. The day schedule is a plan, not a booking.</p>
+      <p style="font-size:11.5px;color:var(--text3);margin:0 0 12px;">Read-only: this tab makes no changes. Change a record's status with the existing status controls. Sequence, not dates: hubs run 1 → 12 then repeat; inside a topic the next post is x+1 after the last published one, whenever it publishes.</p>
       <div id="hdBody"></div>
     </div>
   </div>
@@ -5710,25 +5710,25 @@ function pubDraw() {
   P.innerHTML = head + (PB.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(PB.log) ? '#f87171' : 'var(--text2)'};">${esc(PB.log)}</div>` : '')
     + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${sec('✍ Copy — field by field', copy)}${sec('🖼 Images', images)}${video}${buffer}${publish}</div></div></div>`;
 }
-// ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only view: everything hub-related per hub (incl. Buzz's additions), one
-// collapsible card per hub. READ-ONLY (operator 2026-11-01): it makes no writes of any kind — no Notion, no KV, no status, no placement,
-// no publishing. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's hubCids. Development IS pre-approval: the
-// view only filters by each record's current Notion status; approval happens elsewhere by changing that status with the existing controls.
-const HD_DAYS = [['Mon', ['AI Implementation', 'Sunflower Acres']], ['Tue', ['Build Watcher', 'Sustainable Aquarium']], ['Wed', ['Home Services', 'Surf Vacations']],
-  ['Thu', ['Creative Flow Guitar', 'Mountainwize']], ['Fri', ['The Care Gap', 'Multifamily Acquisitions']], ['Sat', ['Construction Project Management', 'Medicare Services Consulting']], ['Sun', []]];
-let HD = { rows: null, open: null, day: '', err: '' };
+// ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only scan of every hub, one card per hub. READ-ONLY: no writes of any kind —
+// no Notion, no KV, no status, no placement, no publishing. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's
+// hubCids. Development IS pre-approval: the view only filters by each record's current Notion status.
+// Scheduling is SEQUENCE (x+1), never a date: hubs run in HD_SEQ order; inside a topic, Published rows are completed steps and the first
+// Development / Publish row is "Next in sequence (x+1)". Inside a hub everything is grouped by KEYWORD TOPIC first (the focus unit); each
+// topic header shows its signal — a summary label from existing status + counts only, never a status and never written anywhere.
+const HD_SEQ = ['AI Implementation', 'Sunflower Acres', 'Build Watcher', 'Sustainable Aquarium', 'Home Services', 'Surf Vacations', 'Creative Flow Guitar',
+  'Mountainwize', 'The Care Gap', 'Multifamily Acquisitions', 'Construction Project Management', 'Medicare Services Consulting'];
+const HD_HIDDEN = /^(idea|research|planning|archived|paused)$/i;   // hidden by default — a filter only
+const HD_SIGNALS = ['Ready to publish', 'Interview needed', 'Live, in development', 'Live', 'In development, nothing live yet', 'No content yet'];
+let HD = { rows: null, err: '', only: '', closed: new Set(), topicOpen: new Set(), showAll: new Set(), showAllGlobal: false };
 const hdNid = x => String(x || '').replace(/-/g, '');
-function hdHubs() {   // one per campaign (HUB_SITES + KV-registered extras)
-  const seen = new Set(); return HUB_SITES.filter(h => h.campaignId && !seen.has(hdNid(h.campaignId)) && seen.add(hdNid(h.campaignId)));
+function hdHubs() {   // one per campaign (HUB_SITES + KV-registered extras), in sequence order; any other hub after
+  const seen = new Set(), list = HUB_SITES.filter(h => h.campaignId && !seen.has(hdNid(h.campaignId)) && seen.add(hdNid(h.campaignId)));
+  const pos = h => { const n = String(h.name).toLowerCase(), i = HD_SEQ.findIndex(s => { s = s.toLowerCase(); return n === s || String(h.campaign || '').toLowerCase() === s || n.startsWith(s) || s.startsWith(n); }); return i < 0 ? 99 : i; };
+  return list.map(h => ({ h, p: pos(h) })).sort((a, b) => a.p - b.p).map(x => ({ ...x.h, seq: x.p < 99 ? x.p + 1 : 0 }));
 }
-function hdDayHubs(day) {
-  const names = ((HD_DAYS.find(d => d[0] === day) || [])[1] || []).map(n => n.toLowerCase());
-  return hdHubs().filter(h => names.some(n => String(h.name).toLowerCase() === n || String(h.campaign || '').toLowerCase() === n || String(h.name).toLowerCase().startsWith(n) || n.startsWith(String(h.name).toLowerCase())));
-}
-function hdToday() { return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()]; }
 async function hdLoad(force) {
   const el = document.getElementById('hdBody'); if (!el) return;
-  if (!HD.open) { HD.day = hdToday(); HD.open = new Set(hdDayHubs(HD.day).map(h => hdNid(h.campaignId))); }
   if (HD.rows && !force) return hdRender();
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   if (force) _devTblLast = null;
@@ -5737,12 +5737,6 @@ async function hdLoad(force) {
   HD.err = ''; HD.rows = d.rows || [];
   hdRender();
 }
-function hdPick(kind, v) {
-  if (kind === 'day') { HD.day = v; HD.open = new Set(hdDayHubs(v).map(h => hdNid(h.campaignId))); }
-  else if (v) { HD.day = ''; HD.open = new Set([v]); }
-  hdRender();
-}
-function hdToggle(cid) { HD.open.has(cid) ? HD.open.delete(cid) : HD.open.add(cid); hdRender(); }
 function hdOpenCh2(slug) {
   const i = HUB_SITES.findIndex(h => h.slug === slug); if (i < 0) return;
   HUB2_IDX = i; _hub2Restored = true; try { localStorage.setItem('hub2Slug', slug); } catch (e) {}
@@ -5764,49 +5758,81 @@ function hdMember(x, cid) {   // the Keywords section = the hub campaign's keywo
 }
 function hdRecId(x) { return x.kind === 'asset' ? x.assetId : x.kind === 'title' ? x.titleId : x.kind === 'product' ? x.productId : x.interviewId; }
 function hdName(x) { return x.kind === 'asset' ? (x.assetName || x.platformTitle || '(untitled asset)') : x.kind === 'title' ? (x.title || '(untitled title)') : x.kind === 'product' ? (x.product || '(product)') : (x.assetName || 'Interview'); }
+function hdSt(x) { return String(x.status || x.assetStatus || x.titleStatus || x.productStatus || ''); }
+function hdSeqKey(x) { return String(x.datePublished || '') + '|' + String(x.dateCreated || x.titleCreated || '') + '|' + hdName(x); }   // order only — no date is shown or invented
+function hdTopics(hub, rows, all) {   // keyword topic first: the row's existing topic linkage (product → topic; title's own topic) — never guessed
+  const tName = {}, tCluster = {}; all.forEach(x => { if (x.keywordTopicId && x.keywordTopic) { tName[x.keywordTopicId] = x.keywordTopic; if (x.keywordCluster) tCluster[x.keywordTopicId] = x.keywordCluster; } });
+  const groups = new Map(), key = x => x.keywordTopicId || (x.titleTopicId && tName[hdNid(x.titleTopicId)] ? hdNid(x.titleTopicId) : '');
+  rows.forEach(x => { const k = key(x) || '__none'; if (!groups.has(k)) groups.set(k, { key: k, name: k === '__none' ? 'No topic assigned' : tName[k] || x.keywordTopic || k, cluster: tCluster[k] || x.keywordCluster || '', rows: [] }); groups.get(k).rows.push(x); });
+  const mainP = _hubMainProd[hub.slug] && _hubMainProd[hub.slug].id ? hdNid(_hubMainProd[hub.slug].id) : '';
+  const isMain = x => x.kind === 'product' && (x.keywordTopicId === '__main' || (mainP && hdNid(x.productId) === mainP));
+  return [...groups.values()].map(g => {
+    const n = s => g.rows.filter(x => (x.kind === 'asset' || x.kind === 'title') && hdSt(x).toLowerCase() === s).length;
+    const pub = n('publish'), dev = n('development'), live = g.rows.filter(x => x.kind === 'asset' && /^published$/i.test(hdSt(x))).length;
+    const content = g.rows.some(x => x.kind === 'asset' || x.kind === 'title');
+    const iv = g.rows.some(x => (x.kind === 'interview' && !/finish|done|complete/i.test(hdSt(x))) || (x.kind === 'asset' && x.interviewRequired && !/^published$/i.test(hdSt(x))));
+    const signal = pub > 0 ? HD_SIGNALS[0] : iv ? HD_SIGNALS[1] : live > 0 && dev > 0 ? HD_SIGNALS[2] : live > 0 ? HD_SIGNALS[3] : dev > 0 ? HD_SIGNALS[4] : !content ? HD_SIGNALS[5] : HD_SIGNALS[4];
+    const seq = g.rows.filter(x => x.kind === 'asset' || x.kind === 'title').sort((a, b) => hdSeqKey(a).localeCompare(hdSeqKey(b)));
+    const next = seq.find(x => /^(development|publish)$/i.test(hdSt(x))) || null;
+    return { ...g, pub, dev, live, signal, rank: g.key === '__none' ? 99 : signal === HD_SIGNALS[5] ? 4 : HD_SIGNALS.indexOf(signal) <= 1 ? HD_SIGNALS.indexOf(signal) + 1 : 3,
+      main: g.rows.find(isMain) || null, isMain, next, done: seq.filter(x => x.kind === 'asset' && /^published$/i.test(hdSt(x))).length };
+  }).sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+}
+function hdSigColor(s) { return s === HD_SIGNALS[0] ? '#4ade80' : s === HD_SIGNALS[1] ? '#f472b6' : /^Live/.test(s) ? '#8ab4f8' : s === HD_SIGNALS[4] ? '#ff7a00' : 'var(--text3)'; }
+function hdToggle(set, k) { HD[set].has(k) ? HD[set].delete(k) : HD[set].add(k); hdRender(); }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
   const hubs = hdHubs();
-  const bar = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:12px;">
-    <span style="color:var(--text3);">Day</span>${HD_DAYS.map(([d, n]) => `<button style="${B(HD.day === d ? 'var(--accent)' : 'var(--border2)')}${HD.day === d ? 'font-weight:700;' : 'color:var(--text2);'}" title="${esc(n.join(' + ') || 'open')}" onclick="hdPick('day','${d}')">${d}${d === hdToday() ? ' •' : ''}</button>`).join('')}
-    <span style="color:var(--text3);margin-left:8px;">Hub</span><select style="font-size:12px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:5px;" onchange="hdPick('hub',this.value)"><option value="">— one hub —</option>${hubs.map(h => `<option value="${hdNid(h.campaignId)}">${esc(h.name)}</option>`).join('')}</select>
+  const bar = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:12px;">
+    <span style="color:var(--text3);">Hub</span><select style="font-size:12px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:5px;" onchange="HD.only=this.value;hdRender()"><option value="">— all hubs, in sequence —</option>${hubs.map(h => `<option value="${hdNid(h.campaignId)}" ${HD.only === hdNid(h.campaignId) ? 'selected' : ''}>${h.seq ? h.seq + ' · ' : ''}${esc(h.name)}</option>`).join('')}</select>
+    <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button></div>`;
   if (HD.err) { el.innerHTML = bar + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = bar; return; }
   const all = HD.rows;
-  const cards = hubs.map(h => {
-    const cid = hdNid(h.campaignId), open = HD.open.has(cid), day = (HD_DAYS.find(([d]) => hdDayHubs(d).some(x => hdNid(x.campaignId) === cid)) || [''])[0];
-    const mine = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
-    const prods = [], seenP = new Set(); mine.filter(x => x.kind === 'product' && x.productId && !seenP.has(hdNid(x.productId)) && seenP.add(hdNid(x.productId))).forEach(x => prods.push(x));
-    const st = x => String(x.status || x.assetStatus || x.titleStatus || x.productStatus || '');
-    const upcoming = mine.filter(x => (x.kind === 'asset' || x.kind === 'title') && /^(development|publish)$/i.test(st(x)) || (x.kind === 'interview' && !/finished|done|complete/i.test(st(x))));
-    const live = mine.filter(x => x.kind === 'asset' && /^published$/i.test(st(x)));
-    const byStatus = s => mine.filter(x => x.kind !== 'interview' && st(x).toLowerCase() === s.toLowerCase());
-    const head = `<div onclick="hdToggle('${cid}')" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 12px;">
-      <span style="color:var(--text3);">${open ? '▾' : '▸'}</span><b style="font-size:14px;">${esc(h.name)}</b><span style="font-size:11px;color:var(--text3);">${esc(h.slug)}${day ? ' · ' + day : ''}</span>
-      <span style="font-size:11px;color:var(--text3);flex:1;">${prods.length} products · ${upcoming.length} upcoming · ${live.length} live · ${byStatus('Development').length} in Development</span>
-      <button style="${B('var(--accent)')}" onclick="event.stopPropagation();hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button></div>`;
+  const cards = hubs.filter(h => !HD.only || hdNid(h.campaignId) === HD.only).map(h => {
+    const cid = hdNid(h.campaignId), open = !HD.closed.has(cid), showAll = HD.showAllGlobal || HD.showAll.has(cid);
+    const mineAll = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
+    const mine = showAll ? mineAll : mineAll.filter(x => !HD_HIDDEN.test(hdSt(x).trim()));
+    const topics = hdTopics(h, mine, all), hidden = mineAll.length - mine.length;
+    const sigList = topics.map(t => `<div style="display:flex;gap:8px;font-size:11.5px;"><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${t.key === '__none' ? 'color:var(--text3);font-style:italic;' : ''}">${esc(t.name)}</span><span style="color:${hdSigColor(t.signal)};white-space:nowrap;">${esc(t.signal)}</span></div>`).join('');
+    const head = `<div style="padding:9px 12px;"><div onclick="hdToggle('closed','${cid}')" style="display:flex;gap:10px;align-items:center;cursor:pointer;flex-wrap:wrap;">
+      <span style="color:var(--text3);">${open ? '▾' : '▸'}</span><b style="font-size:14px;">${h.seq ? h.seq + ' · ' : ''}${esc(h.name)}</b><span style="font-size:11px;color:var(--text3);flex:1;">${esc(h.slug)} · ${topics.filter(t => t.key !== '__none').length} topics</span>
+      <label onclick="event.stopPropagation()" style="font-size:11px;color:var(--text2);display:flex;gap:4px;align-items:center;"><input type="checkbox" ${showAll ? 'checked' : ''} ${HD.showAllGlobal ? 'disabled' : ''} onchange="hdToggle('showAll','${cid}')"> Show all${hidden ? ' (' + hidden + ' hidden)' : ''}</label>
+      <button style="${B('var(--accent)')}" onclick="event.stopPropagation();hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button></div>
+      <div style="margin:6px 0 0 22px;max-width:640px;">${sigList || '<div style="font-size:11.5px;color:var(--text3);">No content yet</div>'}</div></div>`;
     if (!open) return `<div style="border:1px solid var(--border2);border-radius:10px;margin-bottom:8px;">${head}</div>`;
     const link = x => { const id = hdRecId(x); return id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" style="color:var(--text);">${esc(hdName(x))}</a>` : esc(hdName(x)); };
     const line = (x, extra) => `<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--border);font-size:12px;flex-wrap:wrap;">
       <span style="min-width:0;flex:1;">${link(x)}</span><span style="color:var(--text3);font-size:11px;">${esc(x.kind === 'asset' ? (x.rawAssetType || x.assetType || '') : x.kind)}</span>
-      <span style="font-size:11px;color:${/^published$/i.test(st(x)) ? '#4ade80' : '#ff7a00'};">${esc(st(x))}</span>${extra || ''}</div>`;
-    const sec = (t, body, n) => `<div style="margin:12px 0 4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);">${t} <span style="font-weight:400;color:var(--text3);">${n}</span></div>${body || '<div style="font-size:12px;color:var(--text3);">none</div>'}`;
-    // 1 Products — main first
-    const mainP = _hubMainProd[h.slug] && _hubMainProd[h.slug].id ? hdNid(_hubMainProd[h.slug].id) : '';
-    const isMain = x => x.keywordTopicId === '__main' || (mainP && hdNid(x.productId) === mainP);
-    prods.sort((a, b) => (isMain(b) - isMain(a)) || String(a.product).localeCompare(String(b.product)));
-    const P1 = prods.map(x => line(x, isMain(x) ? ' <span style="font-size:10.5px;color:#facc15;">★ main</span>' : x.keywordTopic ? ` <span style="font-size:10.5px;color:var(--text3);">${esc(x.keywordTopic)}</span>` : '')).join('');
-    // 2 Upcoming — by form label, never one list
-    const forms = ['Title', 'Social', 'Digest', 'Series', 'Interview'];
-    const P2 = forms.map(f => { const L = upcoming.filter(x => hdForm(x, all) === f); return L.length ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text2);font-weight:600;">${f} · ${L.length}</div>` + L.map(x => line(x, x.nextDue ? ` <span style="font-size:10.5px;color:var(--text3);">due ${esc(x.nextDue)}</span>` : '')).join('') : ''; }).join('');
-    // 3 Live — with live links
-    const P3 = live.map(x => line(x, (x.liveUrl || x.contentUrl) ? ` <a href="${esc(x.liveUrl || x.contentUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">live ↗</a>` : ' <span style="font-size:10.5px;color:var(--text3);">no live link</span>')).join('');
-    // 4 By current status — Development is pre-approval; each record shows only its own Notion status + whether it is in the hub
-    const P4 = ['Development', 'Publish', 'Published'].map(s => { const L = byStatus(s); return L.length ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text2);font-weight:600;">${s} · ${L.length}</div>` + L.map(x => { const [m, c] = hdMember(x, cid); return line(x, ` <span style="font-size:10.5px;color:${c};">${esc(m)}</span>`); }).join('') : ''; }).join('');
-    return `<div style="border:1px solid var(--accent);border-radius:10px;margin-bottom:8px;">${head}<div style="padding:0 14px 12px;">
-      ${sec('1 · Products', P1, prods.length)}${sec('2 · Upcoming content (pre-approval)', P2, upcoming.length)}${sec('3 · Live content', P3, live.length)}${sec('4 · By current status', P4, ['Development', 'Publish', 'Published'].reduce((n, s) => n + byStatus(s).length, 0))}</div></div>`;
+      <span style="font-size:11px;color:${/^published$/i.test(hdSt(x)) ? '#4ade80' : '#ff7a00'};">${esc(hdSt(x))}</span>${extra || ''}</div>`;
+    const sub = (t, body, n) => `<div style="margin:10px 0 3px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);">${t} <span style="font-weight:400;color:var(--text3);">${n}</span></div>${body || '<div style="font-size:11.5px;color:var(--text3);">none</div>'}`;
+    const groups = topics.map(t => {
+      const tk = cid + '|' + t.key, topen = HD.topicOpen.has(tk);
+      const th = `<div onclick="hdToggle('topicOpen','${esc(tk)}')" style="display:flex;gap:10px;align-items:baseline;cursor:pointer;padding:7px 10px;flex-wrap:wrap;">
+        <span style="color:var(--text3);">${topen ? '▾' : '▸'}</span><b style="font-size:13px;${t.key === '__none' ? 'font-style:italic;color:var(--text2);' : ''}">${esc(t.name)}</b>${t.cluster ? `<span style="font-size:11px;color:var(--text3);">${esc(t.cluster)}</span>` : ''}
+        ${t.main ? `<span style="font-size:11px;color:#facc15;">★ ${esc(t.main.product || '')}</span>` : ''}
+        <span style="font-size:11px;color:var(--text3);flex:1;">Publish ready ${t.pub} · Development ${t.dev} · Published / live ${t.live}${t.next ? ' · x+1: ' + esc(hdName(t.next)) : ''}</span>
+        <span style="font-size:11.5px;font-weight:700;color:${hdSigColor(t.signal)};">${esc(t.signal)}</span></div>`;
+      if (!topen) return `<div style="border:1px solid var(--border2);border-radius:8px;margin-bottom:6px;">${th}</div>`;
+      const R = t.rows, seqSort = L => L.slice().sort((a, b) => hdSeqKey(a).localeCompare(hdSeqKey(b)));
+      const nextTag = x => t.next && x === t.next ? ' <span style="font-size:10.5px;font-weight:700;color:#8ab4f8;">Next in sequence (x+1)</span>' : '';
+      const mem = x => { const [m, c] = hdMember(x, cid); return ` <span style="font-size:10.5px;color:${c};">${esc(m)}</span>`; };
+      const prods = R.filter(x => x.kind === 'product').sort((a, b) => (t.isMain(b) - t.isMain(a)) || String(a.product).localeCompare(String(b.product)));
+      const S1 = prods.map(x => line(x, (t.isMain(x) ? ' <span style="font-size:10.5px;color:#facc15;">★ main</span>' : '') + mem(x))).join('');
+      const S2 = seqSort(R.filter(x => x.kind === 'title')).map(x => line(x, nextTag(x) + mem(x))).join('');
+      const assets = R.filter(x => x.kind === 'asset');
+      const S3 = ['Publish', 'Development', 'Published'].map(s => { const L = seqSort(assets.filter(x => hdSt(x).toLowerCase() === s.toLowerCase())); return L.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2);font-weight:600;">${s} · ${L.length}</div>` + L.map(x => line(x, nextTag(x) + mem(x))).join('') : ''; }).join('')
+        + (showAll ? (() => { const o = assets.filter(x => !/^(publish|development|published)$/i.test(hdSt(x))); return o.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text3);font-weight:600;">Other statuses · ${o.length}</div>` + seqSort(o).map(x => line(x, mem(x))).join('') : ''; })() : '');
+      const upcoming = R.filter(x => ((x.kind === 'asset' || x.kind === 'title') && /^(development|publish)$/i.test(hdSt(x))) || (x.kind === 'interview' && !/finish|done|complete/i.test(hdSt(x))));
+      const S4 = ['Title', 'Social', 'Digest', 'Series', 'Interview'].map(f => { const L = seqSort(upcoming.filter(x => hdForm(x, all) === f)); return L.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2);font-weight:600;">${f} · ${L.length}</div>` + L.map(x => line(x, nextTag(x))).join('') : ''; }).join('');
+      const liveL = seqSort(assets.filter(x => /^published$/i.test(hdSt(x))));
+      const S5 = liveL.map((x, i) => line(x, ` <span style="font-size:10.5px;color:var(--text3);">step ${i + 1}</span>` + ((x.liveUrl || x.contentUrl) ? ` <a href="${esc(x.liveUrl || x.contentUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">live ↗</a>` : ' <span style="font-size:10.5px;color:var(--text3);">no live link</span>'))).join('');
+      return `<div style="border:1px solid var(--border2);border-radius:8px;margin-bottom:6px;">${th}<div style="padding:0 12px 10px 28px;">
+        ${sub('Products', S1, prods.length)}${sub('Titles', S2, R.filter(x => x.kind === 'title').length)}${sub('Assets — by current status', S3, assets.length)}${sub('Upcoming content', S4, upcoming.length)}${sub('Live content', S5, liveL.length)}</div></div>`;
+    }).join('');
+    return `<div style="border:1px solid var(--accent);border-radius:10px;margin-bottom:10px;">${head}<div style="padding:0 12px 10px;">${groups || '<div style="font-size:12px;color:var(--text3);">No content yet</div>'}</div></div>`;
   }).join('');
   el.innerHTML = bar + cards;
 }
