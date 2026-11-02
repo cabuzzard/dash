@@ -2704,12 +2704,109 @@ async function wrSources(env, G, type, assetId) {   // the same research ① Wri
   return sec("Pillar (the substance)", pillar, 5000) + sec("Title research", research, 3000) + sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4000)
     + sec("Interview answers (the operator's own knowledge and voice)", iv && iv.text, 4000) + sec("Hub audience", audience, 1500) + sec("Voice", voice, 2000);
 }
+// ── FIELD CATALOG + TYPE SPECS (operator 2026-11-02: "add all existing sub asset fields to the writer and then just have asset type decide
+// which ones to fill … different types might have different rules for the same fields but that can all be held in the writing spec for each
+// asset type"). The CATALOG is every writable sub-asset field (an Assets property): the classic Publish fields + every field a 🧭 Writing Spec
+// names + fields added from the Writer (KV writer:catalog). A type's spec picks which catalog fields it fills and holds ITS rule + limits for
+// each — "Body" in a single post and "Body" in a sales page are one field with two rules. No spec → the platform defaults. Rule edits,
+// additions and removals made in the Writer land as DRAFT Writing Specs rows; pubSpecCommit makes one live (the old row → Superseded).
+const PUB_NOT_WRITABLE = /^(asset status|asset type|asset title|asset class|status|hub section|hub placement|method|campaign|product|content strategy|parent asset|components|run|run status|platform name|publishing|deployment status|interviews|placed in hub)$/i;
+async function pubCatalog(env) {
+  const rows = await writingSpecsRows(env).catch(() => []), extra = (await env.TRADES.get("writer:catalog", "json").catch(() => null)) || [];
+  const set = new Set([...PUB_TEXT_FIELDS, ...extra]);
+  rows.filter(r => r.kind === "Field" && r.status !== "Superseded" && !/^(operator|derived)$/i.test(r.filledBy) && r.property && !/·/.test(r.property))
+    .forEach(r => { const p = r.property.trim(); if (!PUB_NOT_WRITABLE.test(p)) set.add(p); });
+  return [...set];
+}
+function pubSpecTypeRow(rows, type) {
+  const n = ivNorm; return rows.find(r => r.kind === "Type" && r.status !== "Superseded" && (n(r.name) === n(type) || r.aliases.split(";").map(n).includes(n(type))));
+}
+async function pubTypeSpec(env, type) {
+  const rows = await writingSpecsRows(env), T = type ? pubSpecTypeRow(rows, type) : null;
+  if (!T) return { type: null, fields: [], drafts: [] };
+  const kids = rows.filter(r => r.kind === "Field" && r.belongsTo.includes(T.id) && r.property && !/·/.test(r.property)), seen = new Set();
+  const fields = kids.filter(r => r.status === "Committed" && !/^(operator|derived)$/i.test(r.filledBy)).sort((a, b) => a.order - b.order)
+    .map(r => ({ prop: r.property.trim(), label: r.name, rule: r.rule, limits: r.limits, required: r.required, rowId: r.id })).filter(f => !seen.has(f.prop) && seen.add(f.prop));
+  const drafts = kids.filter(r => /^(draft|staged)$/i.test(r.status)).map(r => ({ prop: r.property.trim(), label: r.name, rule: r.rule, limits: r.limits, rowId: r.id, status: r.status, remove: /^remove$/i.test(r.notes.trim()) }));
+  return { type: { id: T.id, name: T.name, status: T.status, platform: T.platform }, fields, drafts };
+}
+async function pubSpecDraft(env, body) {
+  const type = String(body.type || "").trim(), prop = String(body.prop || "").trim().replace(/\s+/g, " ").slice(0, 80), op = String(body.op || "rule");
+  if (!type || !prop) throw new Error("An asset type and a field are required");
+  if (PUB_NOT_WRITABLE.test(prop) || /·/.test(prop)) throw new Error(prop + " is not a writable field");
+  const hdr = ivHdr(), rt = v => ({ rich_text: ivRt(String(v || "").slice(0, 1990)) }), sel = v => ({ select: { name: v } });
+  const rows = await writingSpecsRows(env); let T = pubSpecTypeRow(rows, type), typeId = T && T.id;
+  if (!typeId) {   // the type has no spec yet — start one as a Draft
+    const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: WRITING_SPECS_DB }, properties: {
+      Name: { title: [{ text: { content: type } }] }, Kind: sel("Type"), Status: sel("Draft"), Scope: sel("Extension"), Notes: rt("Started from the Writer " + new Date().toISOString().slice(0, 10)) } }) });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error("Spec type not created: " + (d.message || r.status)); typeId = hubAssetId(d.id);
+  }
+  if (op === "add") { const cat = await pubCatalog(env); if (!cat.includes(prop)) { const extra = (await env.TRADES.get("writer:catalog", "json").catch(() => null)) || []; await env.TRADES.put("writer:catalog", JSON.stringify([...extra, prop])); } }
+  const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: WRITING_SPECS_DB }, properties: {
+    Name: { title: [{ text: { content: String(body.label || prop).slice(0, 120) } }] }, Kind: sel("Field"), Property: rt(prop), Rule: rt(body.rule), Limits: rt(body.limits),
+    "Filled By": sel("Writer"), Status: sel("Draft"), Scope: sel("Extension"), "Belongs To": { relation: [{ id: ivDash(typeId) }] },
+    Notes: rt(op === "remove" ? "remove" : "From the Writer " + new Date().toISOString().slice(0, 10) + (body.why ? " — " + body.why : "")), ...(Number.isFinite(+body.order) ? { Order: { number: +body.order } } : {}) } }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error("Draft not saved: " + (d.message || r.status));
+  await env.TRADES.delete("writingspecs:cache").catch(() => {});
+  return { ok: true, rowId: hubAssetId(d.id), typeId, op };
+}
+async function pubSpecCommit(env, body) {   // the operator's explicit commit of ONE draft row
+  const rows = await writingSpecsRows(env), D = rows.find(r => r.id === hubAssetId(body.rowId || ""));
+  if (!D || !/^(draft|staged)$/i.test(D.status)) throw new Error("That draft isn't there any more");
+  const patch = (id, status) => fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: status } } } }) });
+  const remove = /^remove$/i.test(D.notes.trim()), T = rows.find(r => r.id === D.belongsTo[0]), done = [];
+  if (D.kind === "Field" && T) for (const old of rows.filter(r => r.kind === "Field" && r.status === "Committed" && r.belongsTo.includes(T.id) && r.property.trim() === D.property.trim())) { await patch(old.id, "Superseded"); done.push(old.id); }
+  await patch(D.id, remove ? "Superseded" : "Committed");
+  if (T && T.status !== "Committed" && !remove) await patch(T.id, "Committed");
+  await env.TRADES.delete("writingspecs:cache").catch(() => {});
+  return { ok: true, committed: !remove, removed: remove, superseded: done.length };
+}
+async function pubSpecFold(env, body) {   // a writer iteration → a proposed rule (DRAFT): the current rule + the operator's guidance + the value they approved
+  const ctx = await pubContext(env, body.assetId, body.writeAs), f = String(body.prop || ""), R = ctx.ruleOf[f] || {};
+  const prompt = `You maintain the writing spec for the asset type "${ctx.specType}". One field's rule needs updating from what the operator just did.
+Field: ${f}${R.label && R.label !== f ? " (shown as " + R.label + ")" : ""}
+Current rule: ${R.rule || "— none —"}
+Current limits: ${R.limits || "— none —"}
+The operator's guidance while writing it: ${String(body.guidance || "").trim() || "— none —"}
+The value the operator approved:
+${String(body.value || "").slice(0, 4000)}
+
+Rewrite the RULE so the writer would produce this kind of value for ANY asset of this type next time — general, not about this one asset's subject. Keep what still holds from the current rule, fold in the guidance, and say what the approved value does well. Plain, specific, at most 3 sentences. Limits: hard, measurable limits only (e.g. "≤ 60 characters", "exactly 5 tags"), else keep the current ones.`;
+  const schema = { type: "object", additionalProperties: false, required: ["rule", "limits", "why"], properties: { rule: { type: "string" }, limits: { type: "string" }, why: { type: "string" } } };
+  const out = await hcClaude(env, prompt, "propose_rule", schema, 1500, null, { model: "claude-sonnet-4-6" });
+  const d = await pubSpecDraft(env, { type: ctx.specType, prop: f, label: R.label || f, rule: out.rule, limits: out.limits, why: out.why, op: "rule" });
+  return { ...d, rule: out.rule, limits: out.limits, why: out.why };
+}
+async function pubSetType(env, body) {
+  const aid = hubAssetId(body.assetId), type = String(body.type || "").trim(), page = await ivPage(aid);
+  if (!page?.properties || page.archived) throw new Error("Asset unavailable");
+  if (/^published$/i.test(page.properties["Asset Status"]?.select?.name || "")) throw new Error("This asset is Published — change its type in Notion if you really mean to");
+  const ok = (await wrAssetTypes(env)).some(n => ivNorm(n) === ivNorm(type)) || (await wrTypes(env)).some(t => ivNorm(t.name) === ivNorm(type));
+  if (!ok) throw new Error("Unknown asset type: " + type);
+  await kwNotionPatch(env, aid, { "Asset Type": { select: { name: type } } });
+  return { ok: true, type };
+}
+async function pubCreateChild(env, body) {   // an External Parent (or any parent) → a new linked child of the picked type, written later from the parent
+  const pid = hubAssetId(body.parentId), type = String(body.type || "").trim(), par = await ivPage(pid);
+  if (!par?.properties || par.archived) throw new Error("Parent asset unavailable");
+  if (!(await wrAssetTypes(env)).some(n => ivNorm(n) === ivNorm(type)) && !(await wrTypes(env)).some(t => ivNorm(t.name) === ivNorm(type))) throw new Error("Unknown asset type: " + type);
+  const p = par.properties, titleId = ivRid(p, "Content Strategy"); if (!titleId) throw new Error("The parent has no title — a child needs the title's flow");
+  await requireHierarchyPlacement(env, await ivPage(titleId), "title");
+  const rel = id => id ? { relation: [{ id: ivDash(id) }] } : undefined, cid = ivRid(p, "Campaign"), prod = ivRid(p, "Product"), pn = p["Platform Name"]?.select?.name || "";
+  const name = (hubRichText(p["Asset Title"]?.title) || "Untitled") + " — " + type;
+  const properties = { "Asset Title": { title: [{ text: { content: name.slice(0, 180) } }] }, "Asset Type": { select: { name: type } }, "Asset Status": { select: { name: "Development" } },
+    "Asset Class": { select: { name: "Publishable" } }, "Content Strategy": rel(titleId), "Parent Asset": rel(pid), ...(cid ? { Campaign: rel(cid) } : {}), ...(prod ? { Product: rel(prod) } : {}),
+    ...(body.platformName || pn ? { "Platform Name": { select: { name: String(body.platformName || pn) } } } : {}), ...(await assetMethodProp(null, type).catch(() => ({}))) };
+  const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }) }), d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Child not created: " + (d.message || r.status));
+  return { ok: true, assetId: hubAssetId(d.id), title: name, type };
+}
 function pubImageFormat(type, platform, kind) {
   if (kind === "thumbnail") return /youtube/i.test(type + platform) ? "youtube_thumb" : "blog_thumb";
   if (kind === "ig-background") return "offer_bg";
   return /reel|story|tiktok|9:16|video|short/i.test(type + " " + platform) ? "story" : /carousel/i.test(type) ? "carousel_slide" : "social_square";
 }
-async function pubContext(env, assetId) {
+async function pubContext(env, assetId, writeAs) {
   const aid = hubAssetId(assetId), page = await ivPage(aid); if (!page?.properties || page.archived) throw new Error("Asset unavailable");
   const p = page.properties, v = writingFieldValues(p), type = p["Asset Type"]?.select?.name || "", titleId = ivRid(p, "Content Strategy");
   let link = await env.TRADES.get("writer:asset:" + aid, "json").catch(() => null), fromWriter = !!link;
@@ -2720,20 +2817,35 @@ async function pubContext(env, assetId) {
   const keywords = tv["Title Keywords"] || tv["Keywords"] || tv["SEO Keywords"] || tv["Keyword"] || "";
   const video = !!(v["Story Areas"] || v["Video Spec"]) || /reel|story|tiktok|video|short/i.test(type + " " + platform);
   const want = new Set([...(P ? P.fields : []), "Platform Title", "Post Caption", "Hashtags", "Alt Text", ...(video ? ["Story Areas"] : [])]);
-  const fields = PUB_TEXT_FIELDS.filter(f => want.has(f) || String(v[f] || "").trim());
+  const specType = String(writeAs || "").trim() || type, spec = await pubTypeSpec(env, specType).catch(() => ({ type: null, fields: [], drafts: [] }));
+  const catalog = await pubCatalog(env).catch(() => PUB_TEXT_FIELDS.slice());
+  // the type's spec decides which catalog fields get filled; no spec → the platform defaults (+ anything already filled)
+  const fields = spec.fields.length ? spec.fields.map(f => f.prop) : PUB_TEXT_FIELDS.filter(f => want.has(f) || String(v[f] || "").trim());
+  const ruleOf = Object.fromEntries(catalog.map(f => [f, { label: f, rule: PUB_FIELD_RULES[f] || "", limits: "", from: PUB_FIELD_RULES[f] ? "default" : "" }]));
+  spec.fields.forEach(f => { ruleOf[f.prop] = { label: f.label, rule: f.rule, limits: f.limits, from: "spec", rowId: f.rowId }; });
+  ruleOf["Image Direction"] = { label: "Image Direction", rule: PUB_FIELD_RULES["Image Direction"], limits: "", from: "default" };
+  const parId = ivRid(p, "Parent Asset"); let parent = null, children = [];
+  if (parId) { const pp = await ivPage(parId).catch(() => null), pv = pp?.properties ? writingFieldValues(pp.properties) : {};
+    parent = pp?.properties ? { id: parId, title: hubRichText(pp.properties["Asset Title"]?.title), type: pp.properties["Asset Type"]?.select?.name || "",
+      fields: Object.fromEntries(Object.entries(pv).filter(([k, x]) => typeof x === "string" && x.trim() && !/(url|^id$| id$|status|class|date|link|source|template|manifest|package|review page|task|asset title)/i.test(k)).map(([k, x]) => [k, x.slice(0, 2500)])) } : null; }
+  children = (await notionQuery(ASSETS_DB, { filter: { property: "Parent Asset", relation: { contains: ivDash(aid) } } }).catch(() => []))
+    .filter(k => !k.archived && !k.in_trash).slice(0, 60).map(k => ({ id: hubAssetId(k.id), title: hubRichText(k.properties?.["Asset Title"]?.title), type: k.properties?.["Asset Type"]?.select?.name || "", status: k.properties?.["Asset Status"]?.select?.name || "" }));
+  const allTypes = [...new Set([...(await wrAssetTypes(env).catch(() => [])), ...(await wrTypes(env)).map(t => t.name)])].sort((x, y) => x.localeCompare(y));
   const hubSection = p["Hub Section"]?.select?.name || "";
   return { ok: true, asset: { id: aid, title: hubRichText(p["Asset Title"]?.title), type, status: p["Asset Status"]?.select?.name || "", platformName: p["Platform Name"]?.select?.name || "",
       hubSection, hub: (!!hubSection && !/^(unlisted|email)$/i.test(hubSection)) || /^sub ?page$/i.test(type), campaignId: ivRid(p, "Campaign"), titleId, titleName: tv.Title || "",
       postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
       videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
-    fields, values: Object.fromEntries([...PUB_TEXT_FIELDS, "Image Direction"].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
+    fields, catalog, values: Object.fromEntries([...new Set([...catalog, "Image Direction"])].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
+    specType, spec: { type: spec.type, fields: spec.fields, drafts: spec.drafts }, ruleOf, parent, children, allTypes,
     informed: { settings: link?.settings || null, upstream: link?.upstream || null, guidance: link?.guidance || "", brief: link?.brief || {}, keywords, titleIntent: tv["Title Intent"] || "", titleAudience: tv["Title Audience"] || "" },
     rules: PUB_FIELD_RULES };
 }
 async function pubFieldWrite(env, body) {
-  const ctx = await pubContext(env, body.assetId), A = ctx.asset, field = String(body.field || "");
+  const ctx = await pubContext(env, body.assetId, body.writeAs), A = ctx.asset, field = String(body.field || "");
   if (!A.titleId) throw new Error("This asset has no title — the field writer needs the title's flow");
-  if (field !== "Image Direction" && !PUB_TEXT_FIELDS.includes(field)) throw new Error("Not a writable field: " + field);
+  if (field !== "Image Direction" && !ctx.catalog.includes(field)) throw new Error("Not a writable field: " + field);
+  const R = ctx.ruleOf[field] || {}, par = ctx.parent;
   const G = await wrGather(env, A.titleId), I = ctx.informed, S = I.settings || {}, U = I.upstream || {}, B = I.brief || {};
   const L = await wrLists(env), pick = (list, n) => list.find(x => x.name === n);
   const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, ctx.platform || S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
@@ -2741,16 +2853,19 @@ async function pubFieldWrite(env, body) {
   let design = "";
   if (img) { const brief = await assembleImageBrief(env, { assetId: A.id, format: pubImageFormat(A.type, ctx.platform, kind) }).catch(() => null);
     design = brief ? [brief.storedSpec || brief.legacySpec || "", ...(brief.facts || [])].filter(Boolean).join("\n").slice(0, 7000) : ""; }
-  const others = ctx.fields.filter(f => f !== field && String(ctx.values[f] || "").trim()).map(f => "### " + f + "\n" + String(ctx.values[f]).slice(0, 2500)).join("\n\n");
+  const others = [...new Set([...ctx.fields, ...ctx.catalog])].filter(f => f !== field && String(ctx.values[f] || "").trim()).map(f => "### " + ((ctx.ruleOf[f] || {}).label || f) + "\n" + String(ctx.values[f]).slice(0, 2500)).join("\n\n");
+  const parentBlock = par && Object.keys(par.fields).length ? `\n# THE PARENT — ${par.type || "parent"}: "${par.title}" (the brief / vision this asset carries out — follow it, inside the research and hub constraints below; it never overrides a fact in the sources)\n` + Object.entries(par.fields).map(([k, x]) => "### " + k + "\n" + x).join("\n\n").slice(0, 9000) + "\n" : "";
   const prompt = `You are the writer of this asset, writing ONE field of it: "${field}". Write the best possible value for that field for this reader on this platform — the way an expert who understood this reader, this product and this subject would.
 
 # THE FIELD
-${field}: ${PUB_FIELD_RULES[field] || "Write this field so it does its job on the platform; platform-native length."}
+${field}${R.label && R.label !== field ? " (this asset type calls it \"" + R.label + "\")" : ""}: ${R.rule || PUB_FIELD_RULES[field] || "Write this field so it does its job on the platform; platform-native length."}${R.from === "spec" ? "\n(This rule is the " + ctx.specType + " spec's own rule for this field.)" : ""}
+${R.limits ? "LIMITS (hard): " + R.limits : ""}
+Apply what you know about this platform's real constraints for this field (character counts, truncation points, tag counts, what the platform shows where) on top of the rule; where the rule's limit is stricter, the rule wins.
 Current value (improve it, or replace it if it's weak): ${String(ctx.values[field] || "").slice(0, 3000) || "— empty —"}
 ${String(body.guidance || "").trim() ? "Operator guidance for this field (follow it): " + String(body.guidance).trim() : ""}
 
 # THE ASSET'S SETUP
-Asset type: ${A.type}${ctx.writerType ? " (a Writer type)" : ""} · Platform: ${P ? P.name + " — " + P.rule : (A.platformName || "—")}
+Asset type: ${ctx.specType}${ctx.writerType ? " (a Writer type)" : ""} · Platform: ${P ? P.name + " — " + P.rule : (A.platformName || "—")}
 ${purpose ? "Purpose: " + purpose.name + " — " + purpose.rule : ""}${layout ? "\nLayout: " + layout.name + " — " + layout.rule : ""}${script ? "\nScripting: " + script.name + " — " + script.rule : ""}${I.guidance ? "\nThe operator's guidance when it was written: " + I.guidance : ""}
 
 # WHO IT'S FOR
@@ -2762,7 +2877,7 @@ Pain points: ${U.pains || "—"}
 
 # WHAT IT'S ABOUT
 Title: ${A.titleName || "—"}${I.keywords ? "\nKeywords: " + I.keywords : ""}${B.subject ? `\nThe writer's brief — subject: ${B.subject} · intent: ${B.intent || ""} · reader: ${B.reader || ""} · outcome: ${B.outcome || ""} · angle: ${B.angle || ""}` : ""}
-${others ? "\n# THE OTHER FIELDS AS THEY STAND (stay consistent with them)\n" + others + "\n" : ""}${design ? "\n# THE HUB DESIGN SPEC FOR THIS IMAGE FORMAT (the look — stay inside it)\n" + design + "\n" : ""}${await wrSources(env, G, A.type, A.id)}
+${parentBlock}${others ? "\n# THE OTHER FIELDS AS THEY STAND (stay consistent with them)\n" + others + "\n" : ""}${design ? "\n# THE HUB DESIGN SPEC FOR THIS IMAGE FORMAT (the look — stay inside it)\n" + design + "\n" : ""}${await wrSources(env, G, A.type, A.id)}
 
 # RULES
 - Facts, numbers, prices, names, credentials and results come ONLY from the sources above — never invent them.
@@ -2776,9 +2891,10 @@ Return via the tool: "value" (the field) and "why" (one line: what you aimed for
 }
 async function pubFieldSave(env, body) {
   const aid = hubAssetId(body.assetId), field = String(body.field || ""), value = String(body.value ?? "");
-  if (field !== "Image Direction" && !PUB_TEXT_FIELDS.includes(field)) throw new Error("Not a writable field: " + field);
+  if (field !== "Image Direction" && !(await pubCatalog(env)).includes(field)) throw new Error("Not a writable field: " + field);
   const page = await ivPage(aid), hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
   let t = page.properties?.[field]?.type; if (!t) { await ensureDbRichTextProperty(hdr, ASSETS_DB, field); t = "rich_text"; }
+  if (t === "select") { await kwNotionPatch(env, aid, { [field]: { select: value.trim() ? { name: value.trim().slice(0, 90) } : null } }); return { ok: true, field }; }
   if (!["rich_text", "title"].includes(t)) throw new Error(field + " is not a text field");
   await kwNotionPatch(env, aid, { [field]: { [t]: ivRt((field === "Image Direction" ? value.slice(0, 1990) : value).slice(0, 190000)) } });
   const reel = field === "Story Areas" && value.trim() ? await assetReelSpec(env, aid).catch(e => ({ error: e.message })) : null;
@@ -3158,14 +3274,16 @@ async function writerContext(env, titleId) {
   return { ok: true, title: { id: G.tid, name: G.tv.Title || "", status: G.tp.Status?.select?.name || G.tp.Status?.status?.name || "", product: G.prodName, campaignId: G.cid || "", productId: G.pid || "" },
     lists: L, settings: { purpose: has(L.purposes, saved?.purpose) ? saved.purpose : "Inform", platform, layout: has(L.layouts, saved?.layout) ? saved.layout : "Writer decides",
       scripting: has(L.scripting, saved?.scripting) ? saved.scripting : (P.scripting || "None"), guidance: saved?.guidance || "" },
-    upstream, draft, types: await wrTypes(env) };
+    upstream, draft, types: await wrTypes(env), assetTypes: await wrAssetTypes(env).catch(() => []) };
 }
 async function writerDraft(env, body) {
   const ctx = await writerContext(env, body.titleId), G = await wrGather(env, body.titleId), L = ctx.lists;
   const S = { ...ctx.settings, ...(body.settings || {}) }, U = { ...ctx.upstream, ...(body.upstream || {}) };
   const pick = (list, v) => list.find(x => x.name === v) || list[0];
   const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
-  const fields = P.fields.slice(0, 12), type = P.name;
+  const sysSpec = body.assetType ? await pubTypeSpec(env, body.assetType).catch(() => ({ fields: [] })) : { fields: [] };
+  const fields = sysSpec.fields.length ? sysSpec.fields.map(f => f.prop).slice(0, 16) : P.fields.slice(0, 12), type = sysSpec.fields.length ? body.assetType : P.name;
+  const fieldRules = sysSpec.fields.length ? "\n# THE FIELDS — the " + body.assetType + " spec (write each to its rule; limits are hard)\n" + sysSpec.fields.map(f => "- " + f.prop + (f.label !== f.prop ? " (" + f.label + ")" : "") + ": " + f.rule + (f.limits ? " — LIMITS: " + f.limits : "")).join("\n") + "\nApply what you know about the platform's real constraints on top; where a limit here is stricter, it wins.\n" : "";
   await env.TRADES.put("writer:settings:t:" + G.tid, JSON.stringify({ purpose: purpose.name, platform: P.name, layout: layout.name, scripting: script.name, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
   const [pillar, research, voice, audience, product, iv] = await Promise.all([extractPillarContent(ivHdr(), ivDash(G.tid)).catch(() => ""), titleResearchBlock(env, G.tid).catch(() => ""),
     G.cid ? voiceBlock(env, G.cid).catch(() => "") : "", G.cid ? hubAudienceBlock(env, G.cid).catch(() => "") : "", G.pid ? ivProdResearch(G.pid).catch(() => "") : "", ivBlock(env, G.tid, type, "").catch(() => null)]);
@@ -3192,6 +3310,7 @@ Pain points: ${U.pains || "—"}
 Title: ${G.tv.Title || "—"}${G.tv["Title Keywords"] ? "\nKeywords: " + G.tv["Title Keywords"] : ""}
 ${sec("Pillar (the substance)", pillar, 7000)}${sec("Title research", research, 3000)}${sec("Product", (G.prodName ? "Name: " + G.prodName + "\n" : "") + prodFacts + (product ? "\n" + product : ""), 4500)}${sec("Interview answers (the operator's own knowledge and voice)", iv && iv.text, 5000)}${sec("Hub audience", audience, 1800)}${sec("Voice", voice, 2200)}
 
+${fieldRules}
 # HARD LIMITS (only these are rules)
 - Write exactly these fields: ${fields.join(", ")}.
 - Facts, numbers, prices, names, credentials and results come ONLY from the sources above. Never invent them; if something is missing, write around it and say so in "notes".
@@ -3214,8 +3333,9 @@ First fill "brief" (your understanding: subject, the keyword / intent you are se
 }
 async function writerSave(env, body) {   // approve: CREATE the asset under the title at Development, with the draft's fields (protected fields never written)
   const G = await wrGather(env, body.titleId), draft = await env.TRADES.get("writer:draft:t:" + G.tid, "json"); if (!draft) throw new Error("No draft to save — write one first");
-  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, T = (await wrTypes(env)).find(t => ivNorm(t.name) === ivNorm(body.assetType || "")), type = T && T.name;
-  if (!T) throw new Error("Pick or name the asset type (a Writer type) before approving");
+  const vals = { ...draft.fields, ...Object.fromEntries(Object.entries(body.fields || {}).filter(([k]) => k in draft.fields)) }, T = (await wrTypes(env)).find(t => ivNorm(t.name) === ivNorm(body.assetType || ""));
+  const sys = T ? "" : (await wrAssetTypes(env).catch(() => [])).find(n => ivNorm(n) === ivNorm(body.assetType || "")) || "", type = T ? T.name : sys;
+  if (!type) throw new Error("Pick or name the asset type before approving");
   const PROT = new Set(["status", "asset status", "asset type", "asset title", "hub section", "content hub", "publishing date", "deployment status", "site url", "content url", "method"]);
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
   const assetTitle = String(vals["Platform Title"] || "").trim().slice(0, 180) || ((G.tv.Title || "Untitled") + " — " + type);
@@ -55648,7 +55768,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "planningSweep") { try { return json(await planningSweep(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "pubContext" || body.action === "pubFieldWrite" || body.action === "pubFieldSave") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
-        try { return json(body.action === "pubContext" ? await pubContext(env, body.assetId) : body.action === "pubFieldWrite" ? await pubFieldWrite(env, body) : await pubFieldSave(env, body)); }
+        try { return json(body.action === "pubContext" ? await pubContext(env, body.assetId, body.writeAs) : body.action === "pubFieldWrite" ? await pubFieldWrite(env, body) : await pubFieldSave(env, body)); }
+        catch (e) { return json({ error: e.message }, 500); }
+      }
+      if (["pubSpecDraft", "pubSpecCommit", "pubSpecFold", "pubSetType", "pubCreateChild"].includes(body.action)) {
+        try { const F = { pubSpecDraft, pubSpecCommit, pubSpecFold, pubSetType, pubCreateChild }[body.action]; return json(await F(env, body)); }
         catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "assetReelSpec") { try { return json(await assetReelSpec(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }

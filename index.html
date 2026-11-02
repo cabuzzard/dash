@@ -5451,6 +5451,8 @@ const WR_DIMS = ['platform', 'purpose', 'layout', 'scripting'];
 function wrTypeOf(st) { return ((WR && WR.ctx && WR.ctx.types) || []).find(t => WR_DIMS.every(k => t[k] === st[k])) || null; }
 function wrPickType(name) {
   if (!WR) return; if (name === '__new') { WR.add = 'type'; return wrDraw(); }
+  if (String(name).startsWith('sys:')) { WR.sysType = name.slice(4); return wrDraw(); }
+  WR.sysType = '';
   const t = (WR.ctx.types || []).find(x => x.name === name); if (!t) return;
   WR_DIMS.forEach(k => { WR.S[k] = t[k]; }); if (t.guidance && !String(WR.S.guidance || '').trim()) WR.S.guidance = t.guidance; wrDraw();
 }
@@ -5492,8 +5494,9 @@ function wrDraw() {
       <input id="wrTypeName" style="${IN}" placeholder="Name this asset type (e.g. Fiverr Sales Gig)">
       <div style="font-size:11px;color:var(--text3);margin-top:4px;">Saves ${esc(S.platform)} · ${esc(S.purpose)} · ${esc(S.layout)} · ${esc(S.scripting)}${String(S.guidance || '').trim() ? ' + your guidance' : ''}. Every asset of this type gets this setup.</div>
       <div style="display:flex;gap:6px;margin-top:6px;"><button style="${btn('#4ade80')}padding:4px 10px;" onclick="wrTypeSaveNew()">Save type</button><button style="${btn('var(--text2)')}padding:4px 10px;" onclick="WR.add='';wrDraw()">Cancel</button></div></div>`;
-    return `<label style="${lab}">Asset type</label><select style="${IN}" onchange="wrPickType(this.value)">${cur ? '' : '<option selected>— custom setup (not a saved type) —</option>'}${(C.types || []).map(t => `<option ${cur && cur.name === t.name ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}<option value="__new">＋ save this setup as a new type…</option></select>
-      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${cur ? 'Sets the four choices below. Changing one makes it a custom setup.' : 'Pick a type, or set the choices below and save them as a named type.'}</div>`; };
+    const sys = WR.sysType || '';
+    return `<label style="${lab}">Asset type</label><select style="${IN}" onchange="wrPickType(this.value)">${cur || sys ? '' : '<option selected>— custom setup (not a saved type) —</option>'}<optgroup label="Asset types (fields + rules from the Writing Spec)">${(C.assetTypes || []).map(n => `<option value="sys:${esc(n)}" ${sys === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup><optgroup label="Your saved setups">${(C.types || []).map(t => `<option ${!sys && cur && cur.name === t.name ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</optgroup><option value="__new">＋ save this setup as a new type…</option></select>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sys ? 'Writes ' + esc(sys) + '’s own fields and rules from its Writing Spec (platform defaults if it has none yet). The choices below still set platform, purpose and voice.' : cur ? 'Sets the four choices below. Changing one makes it a custom setup.' : 'Pick a type, or set the choices below and save them as a named type.'}</div>`; };
   const left = `<div class="wr-left">
     <div style="font-size:12.5px;font-weight:700;">The asset's dimensions</div>
     ${wrTypeSel()}${sel('purpose', 'Purpose', L.purposes)}${sel('platform', 'Platform', L.platforms)}${sel('layout', 'Layout', L.layouts)}${sel('scripting', 'Scripting', L.scripting)}
@@ -5526,17 +5529,17 @@ function wrDraw() {
 }
 async function wrWrite() {
   if (!WR) return; WR.busy = 'write'; WR.log = ''; WR.edit = false; wrDraw();
-  const r = await call('writerDraft', { titleId: WR.id, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '' }).catch(e => ({ error: e.message }));
+  const r = await call('writerDraft', { titleId: WR.id, settings: WR.S, upstream: WR.U, guidance: WR.S.guidance || '', assetType: WR.sysType || undefined }).catch(e => ({ error: e.message }));
   if (!WR) return; WR.busy = '';
   if (!r || r.error) WR.log = '✗ Not written: ' + ((r && r.error) || 'no response'); else { WR.draft = r.draft; WR.log = '✓ Draft ready — review it, edit if you like, then approve'; }
   wrDraw();
 }
 async function wrApprove(publish) {
-  if (!WR || !WR.draft) return; const C = WR.ctx, D = WR.draft, known = wrTypeOf(D.settings || {}), type = known ? known.name : String(WR.aType || '').trim(), hub = false;
+  if (!WR || !WR.draft) return; const C = WR.ctx, D = WR.draft, known = WR.sysType ? null : wrTypeOf(D.settings || {}), type = WR.sysType || (known ? known.name : String(WR.aType || '').trim()), hub = false;
   if (!type) { WR.log = '✗ Name the asset type first'; return wrDraw(); }
   if (!confirm(publish ? (hub ? 'Create this ' + type + ' asset and publish it to its hub (live page)?' : 'Create this ' + type + ' asset and mark it Published?') : 'Create this ' + type + ' asset under the title, at Development?')) return;
   WR.busy = 'save'; wrDraw();
-  if (!known && !(await wrTypeSave(type, { ...D.settings, guidance: D.guidance || '' }))) { WR.busy = ''; return wrDraw(); }
+  if (!known && !WR.sysType && !(await wrTypeSave(type, { ...D.settings, guidance: D.guidance || '' }))) { WR.busy = ''; return wrDraw(); }
   const r = await call('writerSave', { titleId: WR.id, fields: WR.draft.fields, assetType: type }).catch(e => ({ error: e.message }));
   if (!r || r.error) { WR.busy = ''; WR.log = '✗ Not created: ' + ((r && r.error) || 'no response'); return wrDraw(); }
   WR.changed = true; WR.draft.savedAs = r.assetId;
@@ -5555,11 +5558,11 @@ let PB = null;
 const PB_STATUSES = ['Idea', 'Planning', 'Development', 'Review', 'Publish', 'Published'];
 async function pubOpen(assetId) {
   wrEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
-  WR = null; PB = { id: kwNid(assetId), ctx: null, busy: {}, log: '', prop: {}, guide: {}, edits: {}, rg: {}, buf: null };
+  WR = null; PB = { id: kwNid(assetId), ctx: null, busy: {}, log: '', prop: {}, guide: {}, edits: {}, rg: {}, buf: null, writeAs: '', extra: [], ruleEdit: {}, newField: false };
   pubDraw(); await pubLoad(); pubBufferLoad();
 }
 async function pubLoad() {
-  if (!PB) return; const r = await call('pubContext', { assetId: PB.id }).catch(e => ({ error: e.message }));
+  if (!PB) return; const r = await call('pubContext', { assetId: PB.id, writeAs: PB.writeAs || undefined }).catch(e => ({ error: e.message }));
   if (!PB) return; if (!r || r.error) { PB.log = '✗ ' + ((r && r.error) || 'no response'); return pubDraw(); }
   PB.ctx = r; PB.edits = {}; pubDraw();
 }
@@ -5571,21 +5574,117 @@ function pubFieldCard(f, i, opts) {
   const rows = /^(Body|Story Areas|FAQ|Pricing Tiers)$/.test(f) ? 9 : /^(Post Caption|Image Direction|Description)$/.test(f) ? 4 : 2;
   const dirty = PB.edits[f] != null && PB.edits[f] !== (C.values[f] || '');
   return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
-    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:13px;">${esc(f)}</b><span style="font-size:11px;color:var(--text3);flex:1;min-width:200px;">${esc(C.rules[f] || '')}</span></div>
+    ${pubRuleHead(f)}
     <textarea rows="${rows}" style="${IN}margin-top:6px;" oninput="PB.edits[${esc(JSON.stringify(f))}]=this.value;pubDirty(${i})" placeholder="— empty —">${esc(cur)}</textarea>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">
       <input style="${IN}flex:1;min-width:180px;width:auto;padding:5px 8px;" placeholder="Guidance for this field (optional)" value="${esc(PB.guide[f] || '')}" oninput="PB.guide[${esc(JSON.stringify(f))}]=this.value">
       <button style="${pubBtn('#8ab4f8')}" ${busy ? 'disabled' : ''} onclick="pubWrite(${esc(JSON.stringify(f))}${o.imageKind ? `,'${o.imageKind}'` : ''})">${busy === 'write' ? '⏳ Writing…' : cur.trim() ? '↻ Rewrite' : '✍ Write'}</button>
-      <button id="pubSave${i}" style="${pubBtn('#4ade80')}${dirty ? '' : 'display:none;'}" onclick="pubSaveField(${esc(JSON.stringify(f))}, PB.edits[${esc(JSON.stringify(f))}])">💾 Save edit</button></div>
+      <button id="pubSave${i}" style="${pubBtn('#4ade80')}${dirty ? '' : 'display:none;'}" onclick="pubSaveField(${esc(JSON.stringify(f))}, PB.edits[${esc(JSON.stringify(f))}])">💾 Save edit</button>${o.imageKind ? '' : pubSpecBtns(f)}</div>${o.imageKind ? '' : pubRuleTools(f)}
     ${pr ? `<div style="margin-top:8px;border:1px solid #8ab4f8;border-radius:8px;padding:8px;background:rgba(138,180,248,.06);">
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Proposal — ${esc(pr.why || '')}${pr.designUsed ? ' · used the hub design spec' : ''}</div>
       <textarea rows="${rows}" style="${IN}" oninput="PB.prop[${esc(JSON.stringify(f))}].value=this.value">${esc(pr.value)}</textarea>
       <div style="display:flex;gap:6px;margin-top:6px;"><button style="${pubBtn('#4ade80')}font-weight:600;" onclick="pubSaveField(${esc(JSON.stringify(f))}, PB.prop[${esc(JSON.stringify(f))}].value, true)">✓ Approve</button><button style="${pubBtn('var(--text2)')}" onclick="delete PB.prop[${esc(JSON.stringify(f))}];pubDraw()">✕ Discard</button></div></div>` : ''}</div>`;
 }
+// ── per-field spec (operator 2026-11-02): the rule shown is THIS asset type's rule for the field (🧭 Writing Specs), else the default.
+// ✎ Rule edits it, ⇪ Fold turns guidance + the approved value into a proposed rule — both save as DRAFT rows; ✓ Commit makes one live.
+function pubLimitN(lim) { const m = String(lim || '').match(/≤\s*([\d,]+)\s*char/i); return m ? +m[1].replace(/,/g, '') : 0; }
+function pubRuleHead(f) {
+  const C = PB.ctx, R = (C.ruleOf || {})[f] || {}, cur = PB.edits[f] != null ? PB.edits[f] : (C.values[f] || ''), n = pubLimitN(R.limits), len = String(cur).length;
+  return `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:13px;">${esc(R.label || f)}</b>${R.label && R.label !== f ? `<span style="font-size:10.5px;color:var(--text3);">→ ${esc(f)}</span>` : ''}
+    <span style="font-size:10px;padding:0 6px;border-radius:4px;border:1px solid ${R.from === 'spec' ? '#4ade80' : 'var(--border2)'};color:${R.from === 'spec' ? '#4ade80' : 'var(--text3)'};">${R.from === 'spec' ? esc(C.specType) + ' rule' : 'default rule'}</span>
+    <span style="font-size:11px;color:var(--text3);flex:1;min-width:200px;">${esc(R.rule || 'No rule yet — the writer uses what it knows about this platform.')}${R.limits ? ' · <b>' + esc(R.limits) + '</b>' : ''}</span>
+    ${cur ? `<span style="font-size:10.5px;color:${n && len > n ? '#f87171' : 'var(--text3)'};">${len}${n ? ' / ' + n : ''} chars</span>` : ''}</div>`;
+}
+function pubSpecBtns(f) {
+  const J = esc(JSON.stringify(f)), v = (PB.edits[f] != null ? PB.edits[f] : PB.ctx.values[f]) || '';
+  return `<button style="${pubBtn('var(--text2)')}" onclick="PB.ruleEdit[${J}]=PB.ruleEdit[${J}]?null:{};pubDraw()" title="Edit this field's rule for ${esc(PB.ctx.specType)} — saves as a draft">✎ Rule</button>`
+    + `<button style="${pubBtn('#c084fc')}" ${v.trim() ? '' : 'disabled'} onclick="pubSpecFold(${J})" title="Turn your guidance + this value into a proposed rule for every ${esc(PB.ctx.specType)} (draft)">⇪ Fold into spec</button>`;
+}
+function pubRuleTools(f) {
+  const C = PB.ctx, R = (C.ruleOf || {})[f] || {}, J = esc(JSON.stringify(f)), E = PB.ruleEdit[f], drafts = ((C.spec || {}).drafts || []).filter(d => d.prop === f);
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+  let out = '';
+  if (E) out += `<div style="margin-top:8px;border:1px dashed var(--border2);border-radius:8px;padding:8px;">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Rule for <b>${esc(R.label || f)}</b> in <b>${esc(C.specType)}</b> only — saved as a draft in 🧭 Writing Specs; nothing changes until you commit it.</div>
+    <input id="pubRL_${esc(f)}" style="${IN}" placeholder="Label (what this type calls the field)" value="${esc(R.label || f)}">
+    <textarea id="pubRR_${esc(f)}" rows="3" style="${IN}margin-top:5px;resize:vertical;" placeholder="The rule">${esc(R.rule || '')}</textarea>
+    <input id="pubRM_${esc(f)}" style="${IN}margin-top:5px;" placeholder="Hard limits, e.g. ≤ 60 characters · exactly 5 tags" value="${esc(R.limits || '')}">
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><button style="${pubBtn('#4ade80')}" onclick="pubRuleSave(${J})">Save draft</button>
+      ${R.from === 'spec' ? `<button style="${pubBtn('#f87171')}" onclick="pubSpecDraftCall(${J},{op:'remove'})">Remove from ${esc(C.specType)} (draft)</button>` : ''}
+      <button style="${pubBtn('var(--text2)')}" onclick="PB.ruleEdit[${J}]=null;pubDraw()">Cancel</button></div></div>`;
+  drafts.forEach(d => { out += `<div style="margin-top:6px;font-size:11.5px;border:1px solid #f59e0b;border-radius:8px;padding:6px 8px;background:rgba(245,158,11,.06);">
+    <b style="color:#f59e0b;">Draft</b> · ${d.remove ? 'remove this field from ' + esc(C.specType) : esc(d.label) + ': ' + esc(d.rule) + (d.limits ? ' · <b>' + esc(d.limits) + '</b>' : '')}
+    <button style="${pubBtn('#4ade80')}padding:2px 8px;margin-left:6px;" onclick="pubSpecCommit('${esc(d.rowId)}')">✓ Commit</button></div>`; });
+  return out;
+}
+async function pubSpecDraftCall(f, extra) {
+  if (!PB) return; const C = PB.ctx;
+  const r = await call('pubSpecDraft', { type: C.specType, prop: f, ...extra }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Draft not saved: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.ruleEdit[f] = null; PB.log = '✓ Draft saved to 🧭 Writing Specs — commit it to make it the rule'; await pubLoad();
+}
+function pubRuleSave(f) { const g = id => (document.getElementById(id + f) || {}).value || '';
+  pubSpecDraftCall(f, { op: 'rule', label: g('pubRL_').trim() || f, rule: g('pubRR_').trim(), limits: g('pubRM_').trim() }); }
+async function pubSpecFold(f) {
+  if (!PB) return; PB.busy[f] = 'fold'; PB.log = '⏳ Proposing a rule from this iteration…'; pubDraw();
+  const v = (PB.edits[f] != null ? PB.edits[f] : PB.ctx.values[f]) || '';
+  const r = await call('pubSpecFold', { assetId: PB.id, writeAs: PB.writeAs || undefined, prop: f, value: v, guidance: PB.guide[f] || '' }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy[f];
+  if (!r || r.error) { PB.log = '✗ Not folded: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.log = '✓ Draft rule proposed — ' + (r.why || '') + ' · review it on the field, then ✓ Commit'; await pubLoad();
+}
+async function pubSpecCommit(rowId) {
+  if (!PB || !confirm('Commit this draft? It becomes the rule for every asset of this type.')) return;
+  const r = await call('pubSpecCommit', { rowId }).catch(e => ({ error: e.message }));
+  if (!PB) return; PB.log = !r || r.error ? '✗ Not committed: ' + ((r && r.error) || 'no response') : r.removed ? '✓ Removed from the type' : '✓ Committed — it is now the rule'; await pubLoad();
+}
+function pubWriteAs(v) { if (!PB) return; PB.writeAs = v; PB.extra = []; PB.prop = {}; pubLoad(); }
+async function pubSetTypeNow() {
+  if (!PB || !PB.writeAs || !confirm('Change this asset\'s type to "' + PB.writeAs + '"?')) return;
+  const r = await call('pubSetType', { assetId: PB.id, type: PB.writeAs }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Type not changed: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.changed = true; PB.writeAs = ''; PB.log = '✓ Asset type is now ' + r.type; await pubLoad();
+}
+async function pubCreateChild() {
+  if (!PB) return; const t = PB.writeAs || (document.getElementById('pubChildType') || {}).value; if (!t) { PB.log = '✗ Pick the child\'s asset type'; return pubDraw(); }
+  if (!confirm('Create a new "' + t + '" child of this asset (at Development, linked by Parent Asset)? It is then written from this asset\'s brief.')) return;
+  const r = await call('pubCreateChild', { parentId: PB.id, type: t }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Child not created: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.changed = true; const ch = PB.changed; await pubOpen(r.assetId); if (PB) { PB.changed = ch; PB.log = '✓ Created "' + r.title + '" — write its fields from the parent below'; pubDraw(); }
+}
+function pubAddField(v) {
+  if (!PB || !v) return; if (v === '__new') { PB.newField = true; return pubDraw(); }
+  if (!PB.extra.includes(v)) PB.extra.push(v); pubDraw();
+}
+async function pubNewField() {
+  const name = ((document.getElementById('pubNFName') || {}).value || '').trim(), rule = ((document.getElementById('pubNFRule') || {}).value || '').trim(), lim = ((document.getElementById('pubNFLim') || {}).value || '').trim();
+  if (!name) { PB.log = '✗ Name the field'; return pubDraw(); }
+  const r = await call('pubSpecDraft', { type: PB.ctx.specType, prop: name, label: name, rule, limits: lim, op: 'add' }).catch(e => ({ error: e.message }));
+  if (!PB) return; if (!r || r.error) { PB.log = '✗ Field not added: ' + ((r && r.error) || 'no response'); return pubDraw(); }
+  PB.newField = false; PB.extra.push(name); PB.log = '✓ "' + name + '" added to the field catalog + a draft on ' + PB.ctx.specType + ' — commit it to make every ' + PB.ctx.specType + ' fill it'; await pubLoad();
+}
+function pubTypeBar() {
+  const C = PB.ctx, A = C.asset, cur = PB.writeAs || A.type, sp = C.spec || {}, nDraft = (sp.drafts || []).length, kids = C.children || [], parentish = /external parent|series|digest parent/i.test(A.type) || kids.length;
+  const IN = 'font-size:12px;padding:5px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const opts = (sel) => (C.allTypes || []).map(n => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const notIn = (C.catalog || []).filter(f => !C.fields.includes(f) && !PB.extra.includes(f));
+  return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><b>Write as</b><select style="${IN}" onchange="pubWriteAs(this.value)">${opts(cur)}</select>
+      <span style="color:var(--text3);">${sp.type ? esc(sp.type.name) + ' spec · ' + (sp.fields || []).length + ' field' + ((sp.fields || []).length === 1 ? '' : 's') + (sp.type.status !== 'Committed' ? ' (draft spec)' : '') : 'no Writing Spec yet — platform defaults'}${nDraft ? ' · <b style="color:#f59e0b;">' + nDraft + ' draft' + (nDraft === 1 ? '' : 's') + ' to review</b>' : ''}</span>
+      ${PB.writeAs && PB.writeAs !== A.type ? `<button style="${pubBtn('var(--accent)')}" onclick="pubSetTypeNow()">Set this asset's type to ${esc(PB.writeAs)}</button><button style="${pubBtn('#c084fc')}" onclick="pubCreateChild()">＋ Create a ${esc(PB.writeAs)} child</button>` : ''}</div>
+    ${parentish && !(PB.writeAs && PB.writeAs !== A.type) ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><b>Children</b><select id="pubChildType" style="${IN}"><option value="">— asset type —</option>${opts('')}</select><button style="${pubBtn('#c084fc')}" onclick="pubCreateChild()">＋ Create child</button><span style="color:var(--text3);">written from this asset's brief + the hub research</span></div>` : ''}
+    ${kids.length ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${kids.map(k => `<a href="#" onclick="event.preventDefault();pubOpen('${esc(k.id)}')" style="font-size:11.5px;border:1px solid var(--border2);border-radius:6px;padding:2px 8px;color:var(--text2);text-decoration:none;">${esc(k.type)} · ${esc(k.status)} · ${esc((k.title || '').slice(0, 40))}</a>`).join('')}</div>` : ''}
+    ${C.parent ? `<div style="margin-top:6px;color:var(--text3);">Parent: <a href="#" onclick="event.preventDefault();pubOpen('${esc(C.parent.id)}')" style="color:var(--accent);">${esc(C.parent.type)} — ${esc(C.parent.title)}</a> · its brief is in every field the writer writes here</div>` : ''}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><b>＋ Field</b><select style="${IN}" onchange="pubAddField(this.value);this.value=''"><option value="">— add a field from the catalog —</option>${notIn.map(f => `<option>${esc(f)}</option>`).join('')}<option value="__new">＋ a new field…</option></select>
+      <span style="color:var(--text3);">the type's spec decides the fields; add any other for this asset, or add it to the type with ✎ Rule</span></div>
+    ${PB.newField ? `<div style="margin-top:8px;border:1px dashed var(--border2);border-radius:8px;padding:8px;"><input id="pubNFName" style="${IN}width:100%;box-sizing:border-box;" placeholder="Field name (becomes an asset field, e.g. First Comment, Chapters)">
+      <textarea id="pubNFRule" rows="2" style="${IN}width:100%;box-sizing:border-box;margin-top:5px;" placeholder="Its rule for ${esc(C.specType)}"></textarea><input id="pubNFLim" style="${IN}width:100%;box-sizing:border-box;margin-top:5px;" placeholder="Hard limits (optional)">
+      <div style="display:flex;gap:6px;margin-top:6px;"><button style="${pubBtn('#4ade80')}" onclick="pubNewField()">Add field (draft on ${esc(C.specType)})</button><button style="${pubBtn('var(--text2)')}" onclick="PB.newField=false;pubDraw()">Cancel</button></div></div>` : ''}</div>`;
+}
 function pubDirty(i) { const b = document.getElementById('pubSave' + i); if (b) b.style.display = ''; }
 async function pubWrite(field, imageKind) {
   if (!PB) return; PB.busy[field] = 'write'; pubDraw();
-  const r = await call('pubFieldWrite', { assetId: PB.id, field, guidance: PB.guide[field] || '', imageKind }).catch(e => ({ error: e.message }));
+  const r = await call('pubFieldWrite', { assetId: PB.id, field, guidance: PB.guide[field] || '', imageKind, writeAs: PB.writeAs || undefined }).catch(e => ({ error: e.message }));
   if (!PB) return; delete PB.busy[field];
   if (!r || r.error) PB.log = '✗ ' + field + ' not written: ' + ((r && r.error) || 'no response'); else { PB.prop[field] = r; PB.log = ''; }
   pubDraw();
@@ -5686,7 +5785,7 @@ function pubDraw() {
     <div style="font-weight:700;margin-top:12px;">Who it's for</div>${kv('Niche', U.niche)}${kv('Reader intent', U.intent || I.titleIntent)}${kv('Persona', U.persona || I.titleAudience)}${kv('Frustrations', U.frustrations)}${kv('Pains', U.pains)}
     <div style="font-weight:700;margin-top:12px;">What it's about</div>${kv('Title', A.titleName)}${kv('Keywords', I.keywords)}${kv('Subject', B.subject)}${kv('Intent', B.intent)}${kv('Reader', B.reader)}${kv('Outcome', B.outcome)}${kv('Angle', B.angle)}
     <div style="font-size:11px;color:var(--text3);margin-top:12px;">Every field below is written from all of this, plus the title, product and interview research and the other fields as they stand.</div></div>`;
-  const copy = C.fields.map((f, i) => pubFieldCard(f, i)).join('');
+  const copy = pubTypeBar() + [...C.fields, ...PB.extra.filter(f => !C.fields.includes(f))].map((f, i) => pubFieldCard(f, i)).join('');
   const imgKinds = ['post-image', ...(A.offer ? ['ig-background'] : []), 'blog-thumbnail'];
   const imgSlot = k => { const url = A[PB_IMG[k].prop], b = PB.busy['img:' + k];
     return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px;flex:1;min-width:230px;">
