@@ -133,7 +133,7 @@ function hubProductAssetStats(productRows, titleRows, assetRows) {
   for (const a of assetRows) {
     if (a.archived || a.in_trash) continue;
     const status = a.properties?.["Asset Status"]?.select?.name || a.properties?.["Asset Status"]?.status?.name || "";
-    const bucket = status === "Development" ? "development" : status === "Published" ? "published" : "";
+    const bucket = status === "Development" || status === "Review" ? "development" : status === "Published" ? "published" : "";   // Review shows as Development (2026-11-01)
     if (!bucket) continue;
     for (const t of a.properties?.["Content Strategy"]?.relation || []) {
       for (const pid of titles[id(t.id)] || []) stats[pid][bucket].add(id(a.id));
@@ -2954,7 +2954,22 @@ Return one entry per product index with the chosen topic key, or "TRENDING".`;
   } else H.items.forEach(it => { map[it.name] = "TRENDING"; });
   return { topics, trendingStaged: trending ? hubAssetId(trending.id) : "", map };
 }
+async function matrixReviewFill(env) {   // operator 2026-11-01: "make all of the matrix additions review"
+  const q = (await env.TRADES.get("matrixall:review:queue", "json")) || []; if (!q.length) return 0;
+  const done = [], t0 = Date.now();
+  for (const it of q.slice(0, 20)) {
+    if (Date.now() - t0 > 40000) break;
+    const pg = await mxFetch("https://api.notion.com/v1/pages/" + ivDash(it.id), { headers: ivHdr() }), prop = it.kind === "title" ? "Status" : "Asset Status";
+    if (!pg.archived && !pg.in_trash && pg.properties?.[prop]?.select?.name === "Development")
+      await mxFetch("https://api.notion.com/v1/pages/" + ivDash(it.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { [prop]: { select: { name: "Review" } } } }) });
+    done.push(it.id);
+  }
+  await env.TRADES.put("matrixall:review:queue", JSON.stringify(q.filter(x => !done.includes(x.id))));
+  await mxLog(env, "events", { event: "review backfill", moved: done.length, left: q.length - done.length });
+  return done.length;
+}
 async function matrixAllTick(env) {
+  if (!(await env.TRADES.get("matrixall:lock"))) { try { await env.TRADES.put("matrixall:lock", "1", { expirationTtl: 120 }); await matrixReviewFill(env); } catch (e) { await mxLog(env, "events", { event: "review backfill paused", reason: String(e.message || e) }); } finally { await env.TRADES.delete("matrixall:lock").catch(() => {}); } }
   const plan = await env.TRADES.get("matrixall:plan", "json"); if (!plan || plan.status !== "running") return { idle: true };
   if (await env.TRADES.get("matrixall:lock")) return { busy: true };
   await env.TRADES.put("matrixall:lock", "1", { expirationTtl: 280 });
@@ -3010,7 +3025,7 @@ async function matrixAllTick(env) {
         let titleId;
         if (titles.length) { titleId = hubAssetId(titles[0].id); await mxLog(env, "skipped", { ...base, type: "title", name: it.name, url: "https://app.notion.com/" + titleId, reason: "exact-name title already linked to the product" + (titles.length > 1 ? " (" + titles.length + " found — none added)" : "") }); }
         else {
-          const pg = await mxCreate({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: { Title: { title: [{ text: { content: it.name } }] }, Status: { select: { name: "Development" } },
+          const pg = await mxCreate({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: { Title: { title: [{ text: { content: it.name } }] }, Status: { select: { name: "Review" } },
             product: { relation: [{ id: ivDash(it.pid) }] }, Campaign: { relation: [{ id: ivDash(H.cid) }] }, ...(tp ? { "Topic ID": { rich_text: [{ text: { content: tp.key } }] } } : {}) } });
           titleId = hubAssetId(pg.id); made.push({ kind: "title", id: titleId });
           await mxLog(env, "created", { ...base, ...topicLog, type: "title", name: it.name, url: "https://app.notion.com/" + titleId });
@@ -3018,7 +3033,7 @@ async function matrixAllTick(env) {
         const assets = await mxQuery(ASSETS_DB, { and: [{ property: "Content Strategy", relation: { contains: ivDash(titleId) } }, { property: "Asset Type", select: { equals: "Product" } }] });
         if (assets.length) { await mxLog(env, "skipped", { ...base, type: "asset", name: it.name + " — Product", url: "https://app.notion.com/" + hubAssetId(assets[0].id), title: "https://app.notion.com/" + titleId, reason: "Product asset already linked to the title" }); continue; }
         const ap = await mxCreate({ parent: { database_id: ASSETS_DB }, properties: { "Asset Title": { title: [{ text: { content: (it.name + " — Product").slice(0, 1900) } }] }, "Asset Type": { select: { name: "Product" } },
-          "Asset Status": { select: { name: "Development" } }, "Asset Class": { select: { name: "Publishable" } }, "Content Strategy": { relation: [{ id: ivDash(titleId) }] },
+          "Asset Status": { select: { name: "Review" } }, "Asset Class": { select: { name: "Publishable" } }, "Content Strategy": { relation: [{ id: ivDash(titleId) }] },
           Product: { relation: [{ id: ivDash(it.pid) }] }, Campaign: { relation: [{ id: ivDash(H.cid) }] } } });
         made.push({ kind: "asset", id: hubAssetId(ap.id), titleId });
         await mxLog(env, "created", { ...base, ...topicLog, type: "asset", name: it.name + " — Product", url: "https://app.notion.com/" + hubAssetId(ap.id), title: "https://app.notion.com/" + titleId,
@@ -3026,8 +3041,8 @@ async function matrixAllTick(env) {
       }
       for (const m of made) {   // read back by URL: exists, Development, linked
         const pg = await mxFetch("https://api.notion.com/v1/pages/" + ivDash(m.id), { headers: ivHdr() }), p = pg.properties || {};
-        const ok = m.kind === "title" ? p.Status?.select?.name === "Development" && (p.product?.relation || []).length
-          : p["Asset Status"]?.select?.name === "Development" && p["Asset Type"]?.select?.name === "Product" && (p["Content Strategy"]?.relation || []).some(r => hubAssetId(r.id) === m.titleId);
+        const ok = m.kind === "title" ? p.Status?.select?.name === "Review" && (p.product?.relation || []).length
+          : p["Asset Status"]?.select?.name === "Review" && p["Asset Type"]?.select?.name === "Product" && (p["Content Strategy"]?.relation || []).some(r => hubAssetId(r.id) === m.titleId);
         if (!ok || pg.archived) throw new MxStop("read-back failed for " + m.kind + " " + m.id);
       }
       H.ii += batch.length; await save();
@@ -9815,7 +9830,7 @@ async function getCampaigns() {
   const devCount = {};
   titleRows.forEach(t => {
     const _ds = t.properties.Status?.select?.name;
-    if (_ds !== "Development" && _ds !== "Writing") return;
+    if (_ds !== "Development" && _ds !== "Writing" && _ds !== "Review") return;
     (t.properties.Campaign?.relation || []).forEach(r => {
       const id = r.id.replace(/-/g, "");
       devCount[id] = (devCount[id] || 0) + 1;
@@ -19964,7 +19979,7 @@ the one aesthetic risk taken + why:`;
           const P_kv = env.TRADES.get("hub:build:" + slug, "json").catch(() => null);
           const P_prods = notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashHb(campaignId) } } }).catch(() => []);
           const P_sg = env.TRADES.get("stackgroups:" + cidN0, "json").catch(() => null);
-          const P_dev = notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [campRel, { property: "Status", select: { equals: "Development" } }] } }).catch(() => []);
+          const P_dev = notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [campRel, { or: [{ property: "Status", select: { equals: "Development" } }, { property: "Status", select: { equals: "Review" } }] }] } }).catch(() => []);
           const P_listed = notionQuery(ASSETS_DB, { filter: { and: [campRel, { property: "Asset Status", select: { does_not_equal: "Delete" } }] } }).catch(() => []);
           const P_secIds = Promise.all(["main", "offers", "news", "articles", "interactive", "cta"].map(k => env.TRADES.get("hub:sectiontitles:" + k + ":" + cidN0).then(v => [k, v]).catch(() => [k, null])));
           const P_flow = Promise.all([
@@ -21075,7 +21090,7 @@ Return: {
         };
 
         const campaigns = Object.entries(campTitles).map(([campId, camp]) => {
-          const devCount  = camp.titles.filter(t => t.status === "Development").length;
+          const devCount  = camp.titles.filter(t => t.status === "Development" || t.status === "Review").length;
           const pubCount  = camp.titles.filter(t => t.status === "Publish").length;
           const prodCount = activeProdCount[campId] || 0;
           const STATUS_RANK = { "Development": 0, "Publish": 1 };
@@ -24996,7 +25011,7 @@ ${bodyText.slice(0, 6000)}`;
         // page via the title's product.
         titleRows.forEach(t => {
           const p = t.properties || {};
-          if ((p.Status?.select?.name || "") !== "Development") return;
+          if (!["Development", "Review"].includes(p.Status?.select?.name || "")) return;
           const mId = titleMethodById[norm(t.id)];
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
@@ -38928,6 +38943,7 @@ Return ONLY a JSON object with these exact keys:
           notionQuery(CONTENT_STRATEGY_DB, {
             filter: { or: [
               { property: "Status", select: { equals: "Development" } },
+              { property: "Status", select: { equals: "Review" } },
               { property: "Status", select: { equals: "Writing" } },
               { property: "Status", select: { equals: "Idea" } },
               { property: "Status", select: { equals: "Outline" } },

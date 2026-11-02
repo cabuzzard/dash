@@ -4748,7 +4748,7 @@ function ao2BulkBar() {
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:8px 10px;border:1px solid #8ab4f8;border-radius:8px;background:rgba(138,180,248,.06);font-size:11.5px;">
     <b>${S.length} selected</b><span style="color:var(--text3);">${[nA && nA + ' asset' + (nA === 1 ? '' : 's'), nT && nT + ' title' + (nT === 1 ? '' : 's'), nP && nP + ' product' + (nP === 1 ? '' : 's')].filter(Boolean).join(' · ')}</span>
     ${nA ? `<span>Asset status ${sel('ao2BulkAS', ['Idea', 'Development', 'Review', 'Publish', 'Published'])}</span>` : ''}
-    ${nT ? `<span>Title status ${sel('ao2BulkTS', ['Planning', 'Development', 'Publish', 'Published'])}</span>` : ''}
+    ${nT ? `<span>Title status ${sel('ao2BulkTS', ['Planning', 'Development', 'Review', 'Publish', 'Published'])}</span>` : ''}
     ${nP ? `<span>Product stage ${sel('ao2BulkPS', ['Raw', 'Keyword Research', 'Development'])}</span>` : ''}
     ${nA || nT || nP ? `<button style="${btn}border-color:#4ade80;color:#4ade80;" onclick="ao2BulkApply(this)">Apply</button>` : ''}
     ${nT ? `<button style="${btn}" title="Take these titles (and their product + assets) out of All Output 2 — nothing in Notion changes" onclick="ao2BulkRemoveTitles(this)">Remove titles from AO2</button>` : ''}
@@ -5774,12 +5774,12 @@ function hdTopics(hub, rows, all) {   // keyword topic first: the row's existing
   const isMain = x => x.kind === 'product' && (x.keywordTopicId === '__main' || (mainP && hdNid(x.productId) === mainP));
   return [...groups.values()].map(g => {
     const n = s => g.rows.filter(x => (x.kind === 'asset' || x.kind === 'title') && hdSt(x).toLowerCase() === s).length;
-    const pub = n('publish'), dev = n('development'), live = g.rows.filter(x => x.kind === 'asset' && /^published$/i.test(hdSt(x))).length;
+    const pub = n('publish'), dev = n('development') + n('review'), live = g.rows.filter(x => x.kind === 'asset' && /^published$/i.test(hdSt(x))).length;
     const content = g.rows.some(x => x.kind === 'asset' || x.kind === 'title');
     const iv = g.rows.some(x => (x.kind === 'interview' && !/finish|done|complete/i.test(hdSt(x))) || (x.kind === 'asset' && x.interviewRequired && !/^published$/i.test(hdSt(x))));
     const signal = pub > 0 ? HD_SIGNALS[0] : iv ? HD_SIGNALS[1] : live > 0 && dev > 0 ? HD_SIGNALS[2] : live > 0 ? HD_SIGNALS[3] : dev > 0 ? HD_SIGNALS[4] : !content ? HD_SIGNALS[5] : HD_SIGNALS[4];
     const seq = g.rows.filter(x => x.kind === 'asset' || x.kind === 'title').sort((a, b) => hdSeqKey(a).localeCompare(hdSeqKey(b)));
-    const next = seq.find(x => /^(development|publish)$/i.test(hdSt(x))) || null;
+    const next = seq.find(x => /^(development|review|publish)$/i.test(hdSt(x))) || null;
     return { ...g, pub, dev, live, signal, rank: g.key === '__none' ? 99 : signal === HD_SIGNALS[5] ? 4 : HD_SIGNALS.indexOf(signal) <= 1 ? HD_SIGNALS.indexOf(signal) + 1 : 3,
       main: g.rows.find(isMain) || null, isMain, next, done: seq.filter(x => x.kind === 'asset' && /^published$/i.test(hdSt(x))).length };
   }).sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
@@ -5829,9 +5829,9 @@ function hdRender() {
       const S1 = prods.map(x => line(x, (t.isMain(x) ? ' <span style="font-size:10.5px;color:#facc15;">★ main</span>' : '') + mem(x))).join('');
       const S2 = seqSort(R.filter(x => x.kind === 'title')).map(x => line(x, nextTag(x) + mem(x))).join('');
       const assets = R.filter(x => x.kind === 'asset');
-      const S3 = ['Publish', 'Development', 'Published'].map(s => { const L = seqSort(assets.filter(x => hdSt(x).toLowerCase() === s.toLowerCase())); return L.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2);font-weight:600;">${s} · ${L.length}</div>` + L.map(x => line(x, nextTag(x) + mem(x))).join('') : ''; }).join('')
-        + (showAll ? (() => { const o = assets.filter(x => !/^(publish|development|published)$/i.test(hdSt(x))); return o.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text3);font-weight:600;">Other statuses · ${o.length}</div>` + seqSort(o).map(x => line(x, mem(x))).join('') : ''; })() : '');
-      const upcoming = R.filter(x => ((x.kind === 'asset' || x.kind === 'title') && /^(development|publish)$/i.test(hdSt(x))) || (x.kind === 'interview' && !/finish|done|complete/i.test(hdSt(x))));
+      const S3 = ['Publish', 'Review', 'Development', 'Published'].map(s => { const L = seqSort(assets.filter(x => hdSt(x).toLowerCase() === s.toLowerCase())); return L.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2);font-weight:600;">${s} · ${L.length}</div>` + L.map(x => line(x, nextTag(x) + mem(x))).join('') : ''; }).join('')
+        + (showAll ? (() => { const o = assets.filter(x => !/^(publish|review|development|published)$/i.test(hdSt(x))); return o.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text3);font-weight:600;">Other statuses · ${o.length}</div>` + seqSort(o).map(x => line(x, mem(x))).join('') : ''; })() : '');
+      const upcoming = R.filter(x => ((x.kind === 'asset' || x.kind === 'title') && /^(development|review|publish)$/i.test(hdSt(x))) || (x.kind === 'interview' && !/finish|done|complete/i.test(hdSt(x))));
       const S4 = ['Title', 'Social', 'Digest', 'Series', 'Interview'].map(f => { const L = seqSort(upcoming.filter(x => hdForm(x, all) === f)); return L.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text2);font-weight:600;">${f} · ${L.length}</div>` + L.map(x => line(x, nextTag(x))).join('') : ''; }).join('');
       const liveL = seqSort(assets.filter(x => /^published$/i.test(hdSt(x))));
       const S5 = liveL.map((x, i) => line(x, ` <span style="font-size:10.5px;color:var(--text3);">step ${i + 1}</span>` + ((x.liveUrl || x.contentUrl) ? ` <a href="${esc(x.liveUrl || x.contentUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">live ↗</a>` : ' <span style="font-size:10.5px;color:var(--text3);">no live link</span>'))).join('');
@@ -15013,7 +15013,7 @@ function renderDev() {
           tRow.appendChild(titleLink);
 
           // Claude button — only for Development and Writing
-          if (t.status === 'Development' || t.status === 'Writing') {
+          if (t.status === 'Development' || t.status === 'Writing' || t.status === 'Review') {
             const claudeBtn = document.createElement('span');
             claudeBtn.textContent = '✦';
             claudeBtn.title = 'Ask Claude';
@@ -18515,7 +18515,7 @@ function hub2ChecklistRows(slug) {
       : pRow ? (!parents ? 'Waiting for ' + pRow.name.toLowerCase() : complete ? 'On track' : 'Due')
       : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
     const grayed = hub2IsGrayed(m);
-    return { ...m, notBuilt: grayed, grayLabel: grayed ? 'on' : '', creatable: !/^hub$/i.test(m.parent) && !grayed, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, dev: items.filter(x => /^development$/i.test(x.assetStatus || x.status || '')).length, progress, complete, due, status,
+    return { ...m, notBuilt: grayed, grayLabel: grayed ? 'on' : '', creatable: !/^hub$/i.test(m.parent) && !grayed, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, dev: items.filter(x => /^(development|review)$/i.test(x.assetStatus || x.status || '')).length, progress, complete, due, status,
       target, parents: pRow ? parents : 0, goalTip: pRow ? `${m.target} per ${pRow.name.toLowerCase()} × ${parents} ${pRow.name.toLowerCase()}${parents === 1 ? '' : 's'} this ${HUB2_UNIT[pRow.cadence] || 'period'}` : '', periodLabel: pRow ? pRow.cadence : m.cadence };
   });
 }
@@ -20734,7 +20734,7 @@ async function hubKidBoxes(slug, boxId, cls, tid) {
   try { if (!(_hub2Checklist[slug] && _hub2Checklist[slug].methods)) await hub2ChecklistLoad(slug); } catch (e) {}
   const box = document.getElementById(boxId); if (!box) return;
   // this title's Development assets, by every name their type goes by
-  const exist = {}; if (tid) ((_hubTitles[slug] || {}).rows || []).forEach(r => { if (r.titleId === tid && r.kind === 'asset' && r.assetId && r.assetStatus === 'Development')
+  const exist = {}; if (tid) ((_hubTitles[slug] || {}).rows || []).forEach(r => { if (r.titleId === tid && r.kind === 'asset' && r.assetId && /^(Development|Review)$/.test(r.assetStatus || ''))
     [r.rawAssetType, r.assetType, r.pillarType].filter(Boolean).forEach(n => { const k = String(n).toLowerCase(); (exist[k] = exist[k] || new Set()).add(r.assetId); }); });
   const ex = type => [...(exist[String(type).toLowerCase()] || [])];
   const boxRow = (type, label, extra) => { const ids = ex(type); return `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(type)}" ${ids.length ? `checked data-existing="${esc(ids.join(','))}"` : ''}>${label}${ids.length ? ` <span style="font-size:10px;color:var(--text3);">· ${ids.length} in Development${tid ? ' — untick to delete' : ''}</span>` : ''}${extra || ''}</label>`; };
@@ -21790,7 +21790,7 @@ function hubKwProductApps(slug, pid) {
 }
 function hubTitlesByTopic(slug) {
   const T = _hubTitles[slug], m = new Map(), seen = new Set(), dev = {}; if (!T || !T.rows) return m;
-  const series = {}, digestOf = {}, apps = {}; T.rows.forEach(r => { if (r.titleId && r.kind === 'asset' && r.assetStatus === 'Development') dev[r.titleId] = (dev[r.titleId] || 0) + 1;
+  const series = {}, digestOf = {}, apps = {}; T.rows.forEach(r => { if (r.titleId && r.kind === 'asset' && /^(Development|Review)$/.test(r.assetStatus || '')) dev[r.titleId] = (dev[r.titleId] || 0) + 1;
     if (r.titleId && r.kind === 'asset' && /^series$/i.test(r.pillarType || '')) series[r.titleId] = r.assetId;
     if (r.titleId && r.kind === 'asset' && (/^digest$/i.test(r.pillarType || '') || [r.assetType, r.rawAssetType].some(t => /^digest parent$/i.test(String(t || '').trim())))) digestOf[r.titleId] = r.assetId;   // 📰 digest button
     if (r.titleId && r.kind === 'asset' && r.inputApp) (apps[r.titleId] ||= new Set()).add(r.inputApp); });   // A = Client Studio input
@@ -23393,7 +23393,7 @@ function renderHubBuildRows(slug) {
         if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => { const as = t.assets || [], live = as.find(a => a.status === 'Published'), any = as[0];
           return hubGridRow({ pad: 0, bar: live ? '#4ade80' : '#f6ad55', title: t.title,
           type: t.productName ? (moIds.includes(t.productId) ? '★ ' : '') + t.productName : 'no product', typeTip: t.productName ? 'Product: ' + t.productName : 'No product yet — ✎ the title or re-add it with a main-offering product',
-          method: live ? 'offer live' : any ? `asset · ${any.status || '?'}` : (t.status === 'Development' ? 'pillar ✓ · no asset yet' : 'no pillar yet'), status: t.status, date: t.date,
+          method: live ? 'offer live' : any ? `asset · ${any.status || '?'}` : (/^(Development|Review)$/.test(t.status || '') ? 'pillar ✓ · no asset yet' : 'no pillar yet'), status: t.status, date: t.date,
           links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status — and ✍ Write pillar" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button>`
           + ` <button onclick="openCareGapEditor('${esc(h.campaignId)}','','${esc(t.id)}')" title="Open the Create Asset modal here" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Asset</button>`
           + ` <button onclick="hubTitleOfferAsset('${slug}','${t.id}')" title="Write the Offer – Content Hub asset from this title's pillar + product, and put it in the Products section" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍ Asset</button>`
