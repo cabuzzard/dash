@@ -5853,7 +5853,8 @@ async function ao2TrendingAll(btn) {
   for (const h of hubs) {
     btn.textContent = '⏳ ' + h.name + '…';
     try {
-      await hubKwLoad(h.slug); const K = _hubKw[h.slug]; if (!K) throw new Error('keywords not loaded');
+      delete _hubKw[h.slug]; await hubKwLoad(h.slug); const K = _hubKw[h.slug];   // fresh read, so an existing Trending topic is always seen
+      if (!K || !Array.isArray(K.staged) || !Array.isArray(K.committed)) throw new Error((K && K.error) || 'keywords not loaded');
       if ([...K.staged, ...K.committed].some(t => String(t.name || '').trim().toLowerCase() === 'trending')) { out.had.push(h.name); continue; }
       const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name, ops: [{ op: 'newTopics', mode: 'one', keywords: ['trending'], ids: [kwHubNewId(0)], name: 'Trending', cluster: 'Trending', move: false }] });
       if (!r || r.error || (r.errors && r.errors.length)) throw new Error((r && (r.error || r.errors.join(' · '))) || 'no response');
