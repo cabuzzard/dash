@@ -9628,6 +9628,8 @@ async function signToken(secret, ttlMs = 8 * 3600 * 1000) {
   return payloadB64 + "." + sigB64;
 }
 
+// Actions an EXTERNAL_WORKER_KEY caller may run — images, run assets (≤10 per call, never published), run read-back.
+const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -18595,9 +18597,29 @@ export default {
     }
 
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-    if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
+    // External worker key (2026-11-02): outside tools (Buzz, …) send secret EXTERNAL_WORKER_KEY as the
+    // X-External-Key header (or body.externalKey) instead of a PIN session. It unlocks ONLY the actions in
+    // EXTERNAL_ACTIONS; every call is logged to KV external:log (last 200, no key material). Unset secret = off.
+    const extKey = String(request.headers.get("X-External-Key") || body.externalKey || "").trim();
+    let externalCaller = false;
+    if (extKey) {
+      const want = (env.EXTERNAL_WORKER_KEY || "").trim();
+      const h = async v => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)));
+      const [a, b] = await Promise.all([h(extKey), h(want)]);
+      let diff = want ? 0 : 1; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+      const allowed = EXTERNAL_ACTIONS.has(body.action);
+      const entry = { at: new Date().toISOString(), action: String(body.action || ""), assetId: body.assetId || body.seriesAssetId || "", runId: body.runId || "",
+        kind: body.kind || "", items: Array.isArray(body.items) ? body.items.length : undefined, ip: request.headers.get("CF-Connecting-IP") || "",
+        result: diff ? "bad key" : allowed ? "allowed" : "action not allowed" };
+      try { const log = (await env.TRADES.get("external:log", "json")) || []; log.unshift(entry); await env.TRADES.put("external:log", JSON.stringify(log.slice(0, 200))); } catch (e) {}
+      if (diff) return json({ error: "Unauthorized" }, 401);
+      if (!allowed) return json({ error: "This key can't call " + (body.action || "that action") + ". Allowed: " + [...EXTERNAL_ACTIONS].join(", ") }, 403);
+      externalCaller = true;
+    }
+    if (!externalCaller && (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET)))) {
       return json({ error: "Unauthorized" }, 401);
     }
+    if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
     if(body.action==='reconcileHubHierarchy') {
