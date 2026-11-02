@@ -4842,6 +4842,7 @@ function ao2Render() {
     + `<button style="${btn}" onclick="AO2_PANEL=!AO2_PANEL;ao2Render()">⚲ Filter &amp; sort</button>`
     + `<button style="${btn}" title="Reload the table: re-reads the AO2 title list and every row from Notion" onclick="ao2Refresh(this)">↻ Refresh</button>`
     + `<button style="${btn}" title="Titles with no assets and products with no titles → Planning (dry run first; undoable)" onclick="psOpen()">🧹 Planning sweep</button>`
+    + `<button style="${btn}" title="Add a regular cluster called Trending with a Trending topic in it, in every hub (skips hubs that already have one)" onclick="ao2TrendingAll(this)">＋ Trending (all hubs)</button>`
     + `<select style="${btn}" title="Which titles AO2 shows" onchange="ao2SetScope(this.value)"><option value="list" ${ao2Scope() === 'list' ? 'selected' : ''}>Scope: my list</option><option value="dev" ${ao2Scope() === 'dev' ? 'selected' : ''}>Scope: my list + every title at Development or later</option></select>`
     + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
@@ -5843,6 +5844,26 @@ function hdRender() {
 // ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
 // changes; Run applies in batches (worker planningSweep, every old status logged); Undo restores. Published / Idea / Archived never touched.
 let PS = null;
+// ＋ Trending (operator 2026-11-01): a REGULAR cluster "Trending" holding a topic "Trending" in every hub — a placeholder for upcoming
+// development products and titles. No special rules: the same kwHubApply newTopics path as AO2's ＋ topic modal (it adds the cluster).
+async function ao2TrendingAll(btn) {
+  const hubs = HUB_SITES.filter((x, i, a) => x.campaignId && a.findIndex(y => kwNid(y.campaignId) === kwNid(x.campaignId)) === i);
+  if (!confirm('Add a cluster "Trending" with a topic "Trending" to all ' + hubs.length + ' hubs? Hubs that already have a Trending topic are skipped.')) return;
+  btn.disabled = true; const out = { made: [], had: [], fail: [] };
+  for (const h of hubs) {
+    btn.textContent = '⏳ ' + h.name + '…';
+    try {
+      await hubKwLoad(h.slug); const K = _hubKw[h.slug]; if (!K) throw new Error('keywords not loaded');
+      if ([...K.staged, ...K.committed].some(t => String(t.name || '').trim().toLowerCase() === 'trending')) { out.had.push(h.name); continue; }
+      const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name, ops: [{ op: 'newTopics', mode: 'one', keywords: ['trending'], ids: [kwHubNewId(0)], name: 'Trending', cluster: 'Trending', move: false }] });
+      if (!r || r.error || (r.errors && r.errors.length)) throw new Error((r && (r.error || r.errors.join(' · '))) || 'no response');
+      out.made.push(h.name); delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[h.slug];
+    } catch (e) { out.fail.push(h.name + ': ' + e.message); }
+  }
+  btn.disabled = false; btn.textContent = '＋ Trending (all hubs)';
+  alert('Trending cluster + topic\n\nAdded: ' + (out.made.join(', ') || 'none') + '\nAlready had one: ' + (out.had.join(', ') || 'none') + (out.fail.length ? '\nFailed: ' + out.fail.join(' · ') : ''));
+  _devTblLast = null; ao2Load();
+}
 function ao2Scope() { try { return localStorage.getItem('ao2Scope') === 'dev' ? 'dev' : 'list'; } catch (e) { return 'list'; } }
 function ao2SetScope(v) { try { localStorage.setItem('ao2Scope', v === 'dev' ? 'dev' : 'list'); } catch (e) {} _devTblLast = null; if (document.getElementById('ao2Body')) ao2Load(); }
 function psOpen() {
