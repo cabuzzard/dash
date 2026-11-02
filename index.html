@@ -5820,14 +5820,13 @@ function hdGo(hubCid, depth, key) {
   if (depth != null) { HD.path = (HD.path || []).slice(0, depth); if (key != null) HD.path.push(key); }
   hdRender(); const el = document.getElementById('hdBody'); if (el && el.scrollIntoView && key != null) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
-function hdPickKey(i) { const k = (HD._keys || [])[i]; if (k != null) hdGo(null, (HD.path || []).length, k); }
+function hdPickKey(i) { const k = (HD._keys || [])[i]; if (k == null) return; if (!HD.hub) return hdGo(k, 0); hdGo(null, (HD.path || []).length, k); }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
   const hubs = hdHubs();
-  if (!HD.hub || !hubs.some(h => hdNid(h.campaignId) === HD.hub)) { HD.hub = hubs[0] ? hdNid(hubs[0].campaignId) : ''; HD.path = []; }
-  const tabs = `<div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px;border-bottom:1px solid var(--border2);">${hubs.map(h => { const on = hdNid(h.campaignId) === HD.hub;
-    return `<button onclick="hdGo('${hdNid(h.campaignId)}',0)" style="flex:none;font-size:12px;padding:5px 11px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:7px;background:${on ? 'var(--accent)' : 'var(--surface2)'};color:${on ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;font-weight:${on ? 700 : 400};white-space:nowrap;">${h.seq ? h.seq + ' · ' : ''}${esc(h.name)}</button>`; }).join('')}</div>`;
+  if (HD.hub && !hubs.some(h => hdNid(h.campaignId) === HD.hub)) { HD.hub = ''; HD.path = []; }
+  const tabs = '';
   const h = hubs.find(x => hdNid(x.campaignId) === HD.hub);
   const tools = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
@@ -5835,7 +5834,19 @@ function hdRender() {
     ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button>` : ''}
     <span style="color:var(--text3);font-size:11px;">Each level is ordered by the newest thing created inside it.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
-  if (!HD.rows || !h) { el.innerHTML = tabs + tools; return; }
+  if (!HD.rows) { el.innerHTML = tabs + tools; return; }
+  if (!h) {   // TOP LEVEL: every hub as a card, in sequence order, with the newest thing created inside it
+    HD._keys = [];
+    const cardsTop = hubs.map(hb => { const c = hdNid(hb.campaignId), rowsH = HD.rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
+      const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !HD_HIDDEN.test(hdSt(x).trim())), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
+      const nA = vis.filter(x => x.kind === 'asset').length, nT = vis.filter(x => x.kind === 'title').length;
+      return `<div onclick="hdPickKey(${i})" style="cursor:pointer;border:1px solid var(--accent);border-radius:10px;padding:10px 12px;background:var(--surface);">
+        <b style="font-size:13.5px;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><div style="font-size:11px;color:var(--text3);margin-top:3px;">${tr.length} clusters · ${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">${nw ? 'newest ' + esc(nw) : 'no date'}</div></div>`; }).join('');
+    el.innerHTML = tools + `<div style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><b>All hubs</b><span style="float:right;font-size:11px;color:var(--text3);">Hubs</span></div>`
+      + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;">${cardsTop}</div>`;
+    return;
+  }
   const all = HD.rows, cid = HD.hub;
   const mineAll = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
   const mine = HD.showAllGlobal ? mineAll : mineAll.filter(x => !HD_HIDDEN.test(hdSt(x).trim()));
@@ -5849,9 +5860,9 @@ function hdRender() {
   }
   const depth = P.length, cur = nodes[depth - 1];
   const names = ['Clusters', 'Topics', 'Products', 'Titles', 'Assets'];
-  const crumbs = [`<a href="#" onclick="event.preventDefault();hdGo(null,0)" style="color:${depth ? 'var(--accent)' : 'var(--text)'};font-weight:700;">${esc(h.name)}</a>`]
+  const crumbs = [`<a href="#" onclick="event.preventDefault();HD.hub='';HD.path=[];hdRender()" style="color:var(--accent);">All hubs</a>`, `<a href="#" onclick="event.preventDefault();hdGo(null,0)" style="color:${depth ? 'var(--accent)' : 'var(--text)'};font-weight:700;">${esc(h.name)}</a>`]
     .concat(nodes.map((n, i) => i === depth - 1 ? `<b>${esc(n.name)}</b>` : `<a href="#" onclick="event.preventDefault();hdGo(null,${i + 1})" style="color:var(--accent);">${esc(n.name)}</a>`)).join(' <span style="color:var(--text3);">›</span> ');
-  const up = depth ? `<button style="${B('var(--text2)')}" onclick="hdGo(null,${depth - 1})">↑ Up</button>` : '';
+  const up = depth ? `<button style="${B('var(--text2)')}" onclick="hdGo(null,${depth - 1})">↑ Up</button>` : `<button style="${B('var(--text2)')}" onclick="HD.hub='';HD.path=[];hdRender()">↑ All hubs</button>`;
   const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;">${up}<span>${crumbs}</span><span style="margin-left:auto;font-size:11px;color:var(--text3);">${names[depth]}</span></div>`;
   const stCol = s => /^published$/i.test(s) ? '#4ade80' : '#ff7a00';
   const nlink = (id, name) => id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Notion" style="color:var(--text3);font-size:11px;">↗</a>` : '';
