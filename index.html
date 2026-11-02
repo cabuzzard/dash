@@ -754,6 +754,7 @@
     <div class="tab active" onclick="switchTab('td')">TD</div>
     <div class="tab"        onclick="switchTab('dev2')">All Output</div>
     <div class="tab"        onclick="switchTab('tracking')">Tracking</div>
+    <div class="tab" onclick="switchTab('hubdashboard')">Hub Dashboard</div>
     <div class="tab"        onclick="switchTab('contenthubs2')">Content Hubs 2</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
@@ -1030,6 +1031,14 @@
 
 
 
+  <div class="tab-panel" id="tabHubdashboard">
+    <div style="max-width:1200px;margin:0 auto;min-width:0;">
+      <h2 style="font-size:18px;margin:0 0 6px;">Hub Dashboard</h2>
+      <p style="font-size:12px;color:var(--text3);margin:0 0 4px;">Pre-approval view. Hub-related, not hub membership. Membership is still the Keywords section of the Content Hubs 2 card. Nothing here is published, placed, or built just by appearing here.</p>
+      <p style="font-size:11.5px;color:var(--text3);margin:0 0 12px;">Day schedule is proposed, not booked. Approve / Reject only records your decision (hub approvals list) — execution happens outside the dash.</p>
+      <div id="hdBody"></div>
+    </div>
+  </div>
   <div class="tab-panel" id="tabTracking">
     <div style="max-width:1100px;margin:0 auto;min-width:0;">
       <h2 style="font-size:18px;margin:0 0 6px;">Tracking</h2>
@@ -5701,6 +5710,131 @@ function pubDraw() {
   P.innerHTML = head + (PB.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(PB.log) ? '#f87171' : 'var(--text2)'};">${esc(PB.log)}</div>` : '')
     + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${sec('✍ Copy — field by field', copy)}${sec('🖼 Images', images)}${video}${buffer}${publish}</div></div></div>`;
 }
+// ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only view: everything hub-related per hub (incl. Buzz's additions), one
+// collapsible card per hub. It never changes hub membership (that is the Keywords section of the Content Hubs 2 card), never writes Notion,
+// never places or publishes. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's hubCids. The only write is
+// Approve / Reject on a pending row → KV infoflow:table:hubapprovals (getInfoFlowTable / saveInfoFlowTable) — execution happens outside.
+const HD_DAYS = [['Mon', ['AI Implementation', 'Sunflower Acres']], ['Tue', ['Build Watcher', 'Sustainable Aquarium']], ['Wed', ['Home Services', 'Surf Vacations']],
+  ['Thu', ['Creative Flow Guitar', 'Mountainwize']], ['Fri', ['The Care Gap', 'Multifamily Acquisitions']], ['Sat', ['Construction Project Management', 'Medicare Services Consulting']], ['Sun', []]];
+let HD = { rows: null, open: null, day: '', err: '', approvals: null, proposals: null, busy: {} };
+const hdNid = x => String(x || '').replace(/-/g, '');
+function hdHubs() {   // one per campaign (HUB_SITES + KV-registered extras)
+  const seen = new Set(); return HUB_SITES.filter(h => h.campaignId && !seen.has(hdNid(h.campaignId)) && seen.add(hdNid(h.campaignId)));
+}
+function hdDayHubs(day) {
+  const names = ((HD_DAYS.find(d => d[0] === day) || [])[1] || []).map(n => n.toLowerCase());
+  return hdHubs().filter(h => names.some(n => String(h.name).toLowerCase() === n || String(h.campaign || '').toLowerCase() === n || String(h.name).toLowerCase().startsWith(n) || n.startsWith(String(h.name).toLowerCase())));
+}
+function hdToday() { return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()]; }
+async function hdLoad(force) {
+  const el = document.getElementById('hdBody'); if (!el) return;
+  if (!HD.open) { HD.day = hdToday(); HD.open = new Set(hdDayHubs(HD.day).map(h => hdNid(h.campaignId))); }
+  if (HD.rows && !force) return hdRender();
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  if (force) _devTblLast = null;
+  const [d, a, p] = await Promise.all([devAssetsTable().catch(e => ({ error: e.message })), call('getInfoFlowTable', { name: 'hubapprovals' }).catch(() => null), call('getInfoFlowTable', { name: 'proposals' }).catch(() => null)]);
+  if (!d || d.error) { HD.err = (d && d.error) || 'no response'; HD.rows = null; return hdRender(); }
+  HD.err = ''; HD.rows = d.rows || [];
+  const real = t => t && Array.isArray(t.columns) && Array.isArray(t.rows) && !(t.columns.length === 3 && t.columns[0].name === 'Stage' && t.columns[1].name === 'Input');   // the worker's placeholder = no table
+  HD.approvals = real(a && a.table) ? a.table : { columns: [{ id: 'h', name: 'Hub' }, { id: 'u', name: 'Record URL' }, { id: 'n', name: 'Record' }, { id: 's', name: 'Approved' }, { id: 'd', name: 'Date' }], rows: [] };
+  HD.proposals = real(p && p.table) ? p.table : null;
+  hdRender();
+}
+function hdApproval(slug, url) { const r = (HD.approvals.rows || []).find(x => x.cells && x.cells.h === slug && x.cells.u === url); return r ? r.cells.s : ''; }
+async function hdDecide(slug, url, name, state, btn) {
+  if (!confirm(state + ' "' + name + '" for ' + slug + '?\n\nThis only records your decision in the hub approvals list. Nothing is placed, written to Notion, published or posted.')) return;
+  if (btn) btn.disabled = true;
+  const cur = await call('getInfoFlowTable', { name: 'hubapprovals' }).catch(e => ({ error: e.message }));   // re-read, so another tab's decisions are kept
+  if (!cur || cur.error) { if (btn) btn.disabled = false; return showToast('Not saved: ' + ((cur && cur.error) || 'no response'), 'error'); }
+  const t = cur.table && Array.isArray(cur.table.rows) && cur.table.columns && cur.table.columns.some(c => c.id === 'u') ? cur.table : { columns: HD.approvals.columns, rows: [] };
+  t.rows = (t.rows || []).filter(x => !(x.cells && x.cells.h === slug && x.cells.u === url));
+  t.rows.push({ id: 'a' + Date.now().toString(36), cells: { h: slug, u: url, n: name, s: state, d: new Date().toISOString().slice(0, 10) } });
+  const r = await call('saveInfoFlowTable', { name: 'hubapprovals', table: t }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { if (btn) btn.disabled = false; return showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); }
+  HD.approvals = t; hdRender();
+}
+function hdPick(kind, v) {
+  if (kind === 'day') { HD.day = v; HD.open = new Set(hdDayHubs(v).map(h => hdNid(h.campaignId))); }
+  else if (v) { HD.day = ''; HD.open = new Set([v]); }
+  hdRender();
+}
+function hdToggle(cid) { HD.open.has(cid) ? HD.open.delete(cid) : HD.open.add(cid); hdRender(); }
+function hdOpenCh2(slug) {
+  const i = HUB_SITES.findIndex(h => h.slug === slug); if (i < 0) return;
+  HUB2_IDX = i; _hub2Restored = true; try { localStorage.setItem('hub2Slug', slug); } catch (e) {}
+  const t = [...document.querySelectorAll('.tab')].find(x => /switchTab\('contenthubs2'\)/.test(x.getAttribute('onclick') || ''));
+  if (t) t.click(); if (hubs2TabLoaded) renderHubs2();
+}
+function hdForm(x, all) {   // Social / Digest / Series / Interview — separate labels, never one list
+  if (x.kind === 'interview') return 'Interview';
+  if (x.kind === 'title') return 'Title';
+  const t = (x.pillarType || '') + ' ' + (x.rawAssetType || '') + ' ' + (x.assetType || '');
+  if (/digest|newsletter/i.test(t)) return 'Digest';
+  if (/series/i.test(t)) return 'Series';
+  if (x.parentAssetId) { const p = all.find(y => y.kind === 'asset' && hdNid(y.assetId) === hdNid(x.parentAssetId)); if (p && /series/i.test((p.pillarType || '') + ' ' + (p.rawAssetType || ''))) return 'Series'; if (p && /digest/i.test((p.pillarType || '') + ' ' + (p.rawAssetType || ''))) return 'Digest'; }
+  return 'Social';
+}
+function hdMember(x, cid) {   // the Keywords section = the hub campaign's keyword topics; anything else is not claimed
+  if (hdNid(x.campId) === cid && x.keywordTopic) return ['In Hub', '#4ade80'];
+  if (hdNid(x.campId) === cid) return ['Pending — not in hub yet', '#f59e0b'];
+  return ['Hub-related — membership not verified here', 'var(--text3)'];
+}
+function hdRecId(x) { return x.kind === 'asset' ? x.assetId : x.kind === 'title' ? x.titleId : x.kind === 'product' ? x.productId : x.interviewId; }
+function hdName(x) { return x.kind === 'asset' ? (x.assetName || x.platformTitle || '(untitled asset)') : x.kind === 'title' ? (x.title || '(untitled title)') : x.kind === 'product' ? (x.product || '(product)') : (x.assetName || 'Interview'); }
+function hdRender() {
+  const el = document.getElementById('hdBody'); if (!el) return;
+  const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const hubs = hdHubs();
+  const bar = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;font-size:12px;">
+    <span style="color:var(--text3);">Day</span>${HD_DAYS.map(([d, n]) => `<button style="${B(HD.day === d ? 'var(--accent)' : 'var(--border2)')}${HD.day === d ? 'font-weight:700;' : 'color:var(--text2);'}" title="${esc(n.join(' + ') || 'open')}" onclick="hdPick('day','${d}')">${d}${d === hdToday() ? ' •' : ''}</button>`).join('')}
+    <span style="color:var(--text3);margin-left:8px;">Hub</span><select style="font-size:12px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:5px;" onchange="hdPick('hub',this.value)"><option value="">— one hub —</option>${hubs.map(h => `<option value="${hdNid(h.campaignId)}">${esc(h.name)}</option>`).join('')}</select>
+    <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button></div>`;
+  if (HD.err) { el.innerHTML = bar + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
+  if (!HD.rows) { el.innerHTML = bar; return; }
+  const all = HD.rows;
+  const cards = hubs.map(h => {
+    const cid = hdNid(h.campaignId), open = HD.open.has(cid), day = (HD_DAYS.find(([d]) => hdDayHubs(d).some(x => hdNid(x.campaignId) === cid)) || [''])[0];
+    const mine = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
+    const prods = [], seenP = new Set(); mine.filter(x => x.kind === 'product' && x.productId && !seenP.has(hdNid(x.productId)) && seenP.add(hdNid(x.productId))).forEach(x => prods.push(x));
+    const st = x => String(x.status || x.assetStatus || x.titleStatus || x.productStatus || '');
+    const upcoming = mine.filter(x => (x.kind === 'asset' || x.kind === 'title') && /^(development|publish)$/i.test(st(x)) || (x.kind === 'interview' && !/finished|done|complete/i.test(st(x))));
+    const live = mine.filter(x => x.kind === 'asset' && /^published$/i.test(st(x)));
+    const pending = mine.filter(x => x.kind !== 'interview' && /^development$/i.test(st(x)));
+    const props = HD.proposals ? (() => { const C = HD.proposals.columns, col = re => (C.find(c => re.test(c.name)) || {}).id;
+      const ch = col(/hub|campaign/i), cs = col(/status|state/i), cn = col(/title|name|record|proposal/i) || (C[0] || {}).id, cu = col(/url|link/i);
+      return (HD.proposals.rows || []).filter(r => { const c = r.cells || {}, hv = String(c[ch] || '').toLowerCase(); return /proposed/i.test(String(c[cs] || '')) && hv && (hv.includes(h.slug) || hv.includes(String(h.name).toLowerCase()) || hdNid(hv).includes(cid)); })
+        .map(r => ({ name: String((r.cells || {})[cn] || '(proposal)'), url: String((r.cells || {})[cu] || ('proposal:' + r.id)) })); })() : [];
+    const head = `<div onclick="hdToggle('${cid}')" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 12px;">
+      <span style="color:var(--text3);">${open ? '▾' : '▸'}</span><b style="font-size:14px;">${esc(h.name)}</b><span style="font-size:11px;color:var(--text3);">${esc(h.slug)}${day ? ' · ' + day : ''}</span>
+      <span style="font-size:11px;color:var(--text3);flex:1;">${prods.length} products · ${upcoming.length} upcoming · ${live.length} live · ${pending.length + props.length} pending</span>
+      <button style="${B('var(--accent)')}" onclick="event.stopPropagation();hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button></div>`;
+    if (!open) return `<div style="border:1px solid var(--border2);border-radius:10px;margin-bottom:8px;">${head}</div>`;
+    const link = x => { const id = hdRecId(x); return id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" style="color:var(--text);">${esc(hdName(x))}</a>` : esc(hdName(x)); };
+    const line = (x, extra) => `<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--border);font-size:12px;flex-wrap:wrap;">
+      <span style="min-width:0;flex:1;">${link(x)}</span><span style="color:var(--text3);font-size:11px;">${esc(x.kind === 'asset' ? (x.rawAssetType || x.assetType || '') : x.kind)}</span>
+      <span style="font-size:11px;color:${/^published$/i.test(st(x)) ? '#4ade80' : '#ff7a00'};">${esc(st(x))}</span>${extra || ''}</div>`;
+    const sec = (t, body, n) => `<div style="margin:12px 0 4px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);">${t} <span style="font-weight:400;color:var(--text3);">${n}</span></div>${body || '<div style="font-size:12px;color:var(--text3);">none</div>'}`;
+    // 1 Products — main first
+    const mainP = _hubMainProd[h.slug] && _hubMainProd[h.slug].id ? hdNid(_hubMainProd[h.slug].id) : '';
+    const isMain = x => x.keywordTopicId === '__main' || (mainP && hdNid(x.productId) === mainP);
+    prods.sort((a, b) => (isMain(b) - isMain(a)) || String(a.product).localeCompare(String(b.product)));
+    const P1 = prods.map(x => line(x, isMain(x) ? ' <span style="font-size:10.5px;color:#facc15;">★ main</span>' : x.keywordTopic ? ` <span style="font-size:10.5px;color:var(--text3);">${esc(x.keywordTopic)}</span>` : '')).join('');
+    // 2 Upcoming — by form label, never one list
+    const forms = ['Title', 'Social', 'Digest', 'Series', 'Interview'];
+    const P2 = forms.map(f => { const L = upcoming.filter(x => hdForm(x, all) === f); return L.length ? `<div style="margin-top:6px;font-size:11.5px;color:var(--text2);font-weight:600;">${f} · ${L.length}</div>` + L.map(x => line(x, x.nextDue ? ` <span style="font-size:10.5px;color:var(--text3);">due ${esc(x.nextDue)}</span>` : '')).join('') : ''; }).join('');
+    // 3 Live — with live links
+    const P3 = live.map(x => line(x, (x.liveUrl || x.contentUrl) ? ` <a href="${esc(x.liveUrl || x.contentUrl)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">live ↗</a>` : ' <span style="font-size:10.5px;color:var(--text3);">no live link</span>')).join('');
+    // 4 Pending — membership label + Approve / Reject (KV only)
+    const dec = (url, name) => { const s = hdApproval(h.slug, url);
+      return s ? ` <span style="font-size:10.5px;font-weight:700;color:${s === 'Rejected' ? '#f87171' : '#4ade80'};">${esc(s)}</span>`
+        : ` <button style="${B('#4ade80')}" onclick="hdDecide('${esc(h.slug)}','${esc(url)}',${esc(JSON.stringify(name))},'Approved',this)">Approve</button> <button style="${B('#f87171')}" onclick="hdDecide('${esc(h.slug)}','${esc(url)}',${esc(JSON.stringify(name))},'Rejected',this)">Reject</button>`; };
+    const P4 = pending.map(x => { const [m, c] = hdMember(x, cid), url = 'https://www.notion.so/' + hdNid(hdRecId(x)); return line(x, ` <span style="font-size:10.5px;color:${c};">${esc(m)}</span>` + dec(url, hdName(x))); }).join('')
+      + props.map(p => `<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--border);font-size:12px;flex-wrap:wrap;"><span style="flex:1;">${/^https?:/.test(p.url) ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--text);">${esc(p.name)}</a>` : esc(p.name)}</span><span style="font-size:11px;color:var(--text3);">Proposed</span> <span style="font-size:10.5px;color:#f59e0b;">Pending — not in hub yet</span>${dec(p.url, p.name)}</div>`).join('');
+    return `<div style="border:1px solid var(--accent);border-radius:10px;margin-bottom:8px;">${head}<div style="padding:0 14px 12px;">
+      ${sec('1 · Products', P1, prods.length)}${sec('2 · Upcoming content (pre-approval)', P2, upcoming.length)}${sec('3 · Live content', P3, live.length)}${sec('4 · Pending additions', P4, pending.length + props.length)}</div></div>`;
+  }).join('');
+  el.innerHTML = bar + cards;
+}
 // ── Product modal (operator 2026-10-30): one modal for everything the Content Hubs 2 Keywords product row does — name, description,
 // stage, ★ main offering (hubKwEditProductSave, the same save), move to another topic (attachProductToTopic), 🔬 research
 // (hubResOpen — keywords, isolate, re-run), ＋ title (hubKwTitleAdd) and delete. Delete is refused while ANY asset on the product or
@@ -7166,6 +7300,7 @@ function loadTabContentNow(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); usLoadPast(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs2' && !hubs2TabLoaded) { hubs2TabLoaded = true; renderHubs2(); }
+  if (name === 'hubdashboard') hdLoad();
   if (name === 'dev2') { restoreAllOutputTables(); }   // the review / interview flag strips were removed (2026-10-22) — interview flagging moves into the hub assets table
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
