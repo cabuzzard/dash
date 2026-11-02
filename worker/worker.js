@@ -2900,6 +2900,127 @@ async function interviewClear(env, body) {
     return { ok: true, ...out, left: left.length, finished: !left.length };
   } finally { await env.TRADES.delete("ivclear:lock").catch(() => {}); }
 }
+// ══ MATRIX ALL-HUBS ADD (operator 2026-11-01: "add the whole matrix now so I will have something to do in the morning"). A KV-queued job
+// the */4 cron drains, ONE hub at a time in sequence order, at most 5 products per tick. Per product: exact-name lookup within the hub's
+// campaign (0 or >1 matches → stopped, never guessed, never a new product) · link-features (Amazon-linked / "(Affiliate)" / the matrix §6
+// names) are skipped as products · title (exact product name) only if missing · Product asset (Asset Type "Product") only if that title has
+// none · Development only · best CURRENT committed topic on new titles (Trending = staged → Topic ID blank). Every create logged at once
+// (KV matrixall:log). Every Notion call is single-shot: a 429 STOPS the job (no retry), a failed lookup STOPS the job (never "none").
+// Each batch is read back by URL before the next tick. Plan: KV matrixall:plan {hubs:[{hub,cid,items:[{name,cluster,topic}]}],hi,ii,status}.
+const MX_LINK_NAMES = new Set(["aquarium supplies", "aquuarium products", "diy hob filter upgrade kit"]);
+class MxStop extends Error { constructor(m, rate) { super(m); this.rate = !!rate; } }
+async function mxFetch(url, init) {
+  const r = await fetch(url, init);
+  if (r.status === 429) throw new MxStop("Notion rate limit (429) at " + url.replace(/^https:\/\/api\.notion\.com\/v1\//, ""), true);
+  const d = await r.json().catch(() => null);
+  if (!r.ok || !d) throw new MxStop("Notion error " + r.status + ": " + ((d && d.message) || "no body"));
+  return d;
+}
+async function mxQuery(db, filter) {   // full result, every page; any failure stops the job
+  const out = []; let cursor;
+  for (;;) {
+    const d = await mxFetch("https://api.notion.com/v1/databases/" + db + "/query", { method: "POST", headers: ivHdr(), body: JSON.stringify({ page_size: 100, filter, ...(cursor ? { start_cursor: cursor } : {}) }) });
+    if (!Array.isArray(d.results)) throw new MxStop("Notion query returned no results array");
+    out.push(...d.results.filter(p => !p.archived && !p.in_trash));
+    if (!d.has_more || !d.next_cursor) return out;
+    cursor = d.next_cursor;
+  }
+}
+const mxCreate = props => mxFetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify(props) });
+async function mxLog(env, section, entry) {
+  const L = (await env.TRADES.get("matrixall:log", "json")) || { note: "Matrix all-hubs add (resubmission rules). Development only.", created: [], skipped: [], stopped: [], linkFeatures: [], topics: {}, events: [] };
+  (L[section] = L[section] || []).push({ ...entry, at: new Date().toISOString() }); await env.TRADES.put("matrixall:log", JSON.stringify(L)); return L;
+}
+async function mxHubTopics(env, H) {   // committed (Active) topics of this hub + the staged Trending key; then each item → best topic
+  const rows = await mxQuery(SEO_KEYWORD_CLUSTERS_DB, { and: [{ property: "Campaign", relation: { contains: ivDash(H.cid) } }, { property: "Status", select: { equals: "Active" } }] });
+  const topics = rows.map(p => ({ key: hubRichText(p.properties?.["Topic Key"]?.rich_text) || hubAssetId(p.id), name: hubRichText(p.properties?.Name?.title), cluster: hubRichText(p.properties?.["Hub Cluster"]?.rich_text) })).filter(t => t.key && t.name);
+  const staged = (await env.TRADES.get("seoclusters:staged:" + H.cid, "json").catch(() => null)) || [];
+  const trending = (Array.isArray(staged) ? staged : []).find(t => /^trending$/i.test(String(t.name || "").trim()));
+  const map = {};
+  if (H.overrides) { for (const it of H.items) { const k = H.overrides[it.name]; map[it.name] = k && topics.some(t => t.key === k) ? k : "TRENDING"; } }
+  else if (topics.length) {
+    const prompt = `Hub: ${H.hub}. Assign each product to the BEST fitting topic from this hub's CURRENT topics, or "TRENDING" when none genuinely fits. Do not force-fit: a product only belongs to a topic when it is clearly about that topic. Never pick a topic just because it is the hub's main / featured one.
+
+CURRENT TOPICS (key — name — cluster):
+${topics.map(t => t.key + " — " + t.name + " — " + t.cluster).join("\n")}
+
+PRODUCTS (name — old registry cluster / topic, for context only):
+${H.items.map((it, i) => i + ". " + it.name + " — " + it.cluster + " / " + it.topic).join("\n")}
+
+Return one entry per product index with the chosen topic key, or "TRENDING".`;
+    const out = await hcClaude(env, prompt, "assign_topics", { type: "object", required: ["assign"], properties: { assign: { type: "array", items: { type: "object", required: ["i", "key"], properties: { i: { type: "integer" }, key: { type: "string" } } } } } }, 4000, null, { model: "claude-sonnet-4-6" });
+    (out.assign || []).forEach(a => { const it = H.items[a.i]; if (it) map[it.name] = topics.some(t => t.key === a.key) ? a.key : "TRENDING"; });
+    H.items.forEach(it => { if (!map[it.name]) map[it.name] = "TRENDING"; });
+  } else H.items.forEach(it => { map[it.name] = "TRENDING"; });
+  return { topics, trendingStaged: trending ? hubAssetId(trending.id) : "", map };
+}
+async function matrixAllTick(env) {
+  const plan = await env.TRADES.get("matrixall:plan", "json"); if (!plan || plan.status !== "running") return { idle: true };
+  if (await env.TRADES.get("matrixall:lock")) return { busy: true };
+  await env.TRADES.put("matrixall:lock", "1", { expirationTtl: 280 });
+  const t0 = Date.now(), save = () => env.TRADES.put("matrixall:plan", JSON.stringify(plan));
+  try {
+    while (plan.hi < plan.hubs.length && Date.now() - t0 < 150000) {
+      const H = plan.hubs[plan.hi];
+      if (!H.prepared) {   // once per hub: the campaign's products by exact name + topic choices
+        const prods = await mxQuery(PRODUCTS_DB, { property: "Campaigns", relation: { contains: ivDash(H.cid) } });
+        const byName = {}; prods.forEach(p => { const n = hubRichText(p.properties?.Name?.title); (byName[n] = byName[n] || []).push(p); });
+        const seen = new Set(); H.items = H.items.filter(it => !seen.has(it.name) && seen.add(it.name));   // registry repeats a name → once
+        for (const it of H.items) {
+          const m = byName[it.name] || [];
+          it.matches = m.length; if (m.length === 1) {
+            const p = m[0].properties || {}, links = [p.URL?.url, hubRichText(p.productsite?.rich_text), hubRichText(p.Notes?.rich_text), hubRichText(p.Description?.rich_text)].join(" ");
+            it.pid = hubAssetId(m[0].id); it.link = MX_LINK_NAMES.has(it.name.toLowerCase()) || /\(affiliate\)/i.test(it.name) || /amazon\.|amzn\./i.test(links);
+          }
+        }
+        const T = await mxHubTopics(env, H); H.topicMap = T.map; H.topics = T.topics; H.trendingStaged = T.trendingStaged; H.prepared = true; H.ii = 0;
+        await mxLog(env, "events", { hub: H.hub, event: "hub prepared", products: H.items.length, committedTopics: T.topics.map(t => t.name), trendingStaged: !!T.trendingStaged });
+        await save(); continue;
+      }
+      if (H.ii >= H.items.length) { await mxLog(env, "events", { hub: H.hub, event: "hub done" }); plan.hi++; await save(); continue; }
+      // one batch of ≤5 products, then read back by URL
+      const batch = H.items.slice(H.ii, H.ii + 5), made = [];
+      for (const it of batch) {
+        const base = { hub: H.hub, product: it.pid ? "https://app.notion.com/" + it.pid : "", registryCluster: it.cluster, registryTopic: it.topic };
+        if (it.matches !== 1) { await mxLog(env, "stopped", { ...base, type: "product", name: it.name, reason: it.matches ? it.matches + " products with this exact name in the campaign — not guessed" : "no product with this exact name in the campaign — not guessed, nothing created" }); continue; }
+        if (it.link) { await mxLog(env, "linkFeatures", { ...base, name: it.name, reason: "link-feature, skipped as product (third-party / affiliate / Amazon-linked — the writer features it as a link inside content)" }); continue; }
+        const key = H.topicMap[it.name] || "TRENDING", tp = H.topics.find(t => t.key === key), topicLog = tp ? { cluster: tp.cluster, topic: tp.name, topicId: tp.key } : { cluster: "Trending", topic: "Trending", topicId: "" };
+        const titles = await mxQuery(CONTENT_STRATEGY_DB, { and: [{ property: "product", relation: { contains: ivDash(it.pid) } }, { property: "Title", title: { equals: it.name } }] });
+        let titleId;
+        if (titles.length) { titleId = hubAssetId(titles[0].id); await mxLog(env, "skipped", { ...base, type: "title", name: it.name, url: "https://app.notion.com/" + titleId, reason: "exact-name title already linked to the product" + (titles.length > 1 ? " (" + titles.length + " found — none added)" : "") }); }
+        else {
+          const pg = await mxCreate({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: { Title: { title: [{ text: { content: it.name } }] }, Status: { select: { name: "Development" } },
+            product: { relation: [{ id: ivDash(it.pid) }] }, Campaign: { relation: [{ id: ivDash(H.cid) }] }, ...(tp ? { "Topic ID": { rich_text: [{ text: { content: tp.key } }] } } : {}) } });
+          titleId = hubAssetId(pg.id); made.push({ kind: "title", id: titleId });
+          await mxLog(env, "created", { ...base, ...topicLog, type: "title", name: it.name, url: "https://app.notion.com/" + titleId });
+        }
+        const assets = await mxQuery(ASSETS_DB, { and: [{ property: "Content Strategy", relation: { contains: ivDash(titleId) } }, { property: "Asset Type", select: { equals: "Product" } }] });
+        if (assets.length) { await mxLog(env, "skipped", { ...base, type: "asset", name: it.name + " — Product", url: "https://app.notion.com/" + hubAssetId(assets[0].id), title: "https://app.notion.com/" + titleId, reason: "Product asset already linked to the title" }); continue; }
+        const ap = await mxCreate({ parent: { database_id: ASSETS_DB }, properties: { "Asset Title": { title: [{ text: { content: (it.name + " — Product").slice(0, 1900) } }] }, "Asset Type": { select: { name: "Product" } },
+          "Asset Status": { select: { name: "Development" } }, "Asset Class": { select: { name: "Publishable" } }, "Content Strategy": { relation: [{ id: ivDash(titleId) }] },
+          Product: { relation: [{ id: ivDash(it.pid) }] }, Campaign: { relation: [{ id: ivDash(H.cid) }] } } });
+        made.push({ kind: "asset", id: hubAssetId(ap.id), titleId });
+        await mxLog(env, "created", { ...base, ...topicLog, type: "asset", name: it.name + " — Product", url: "https://app.notion.com/" + hubAssetId(ap.id), title: "https://app.notion.com/" + titleId,
+          assetType: "Product", platform: "not set (product build — Platform Name left empty)", purpose: "not set (product build)" });
+      }
+      for (const m of made) {   // read back by URL: exists, Development, linked
+        const pg = await mxFetch("https://api.notion.com/v1/pages/" + ivDash(m.id), { headers: ivHdr() }), p = pg.properties || {};
+        const ok = m.kind === "title" ? p.Status?.select?.name === "Development" && (p.product?.relation || []).length
+          : p["Asset Status"]?.select?.name === "Development" && p["Asset Type"]?.select?.name === "Product" && (p["Content Strategy"]?.relation || []).some(r => hubAssetId(r.id) === m.titleId);
+        if (!ok || pg.archived) throw new MxStop("read-back failed for " + m.kind + " " + m.id);
+      }
+      H.ii += batch.length; await save();
+      await mxLog(env, "events", { hub: H.hub, event: "batch verified", done: H.ii, of: H.items.length, made: made.length });
+      if (made.length) break;   // one written batch per tick
+    }
+    if (plan.hi >= plan.hubs.length) { plan.status = "done"; plan.finishedAt = new Date().toISOString(); await save(); await mxLog(env, "events", { event: "all hubs done" }); }
+    return { ok: true, hub: plan.hubs[plan.hi]?.hub || "done" };
+  } catch (e) {
+    plan.status = "stopped"; plan.reason = String(e.message || e); plan.stoppedAt = new Date().toISOString(); await save();
+    await mxLog(env, "events", { event: "STOPPED", reason: plan.reason, rateLimit: !!e.rate, hub: plan.hubs[plan.hi]?.hub });
+    return { stopped: plan.reason };
+  } finally { await env.TRADES.delete("matrixall:lock").catch(() => {}); }
+}
 async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
 async function wrTypeSave(env, body) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
@@ -55383,6 +55504,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "matrixAllStatus") { const plan = await env.TRADES.get("matrixall:plan", "json"), log = await env.TRADES.get("matrixall:log", "json"); return json({ ok: true, plan: plan ? { status: plan.status, reason: plan.reason || "", hub: plan.hubs[plan.hi]?.hub || "done", hubsDone: plan.hi, hubs: plan.hubs.length } : null, log }); }
       if (body.action === "interviewClear") { try { return json(await interviewClear(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "planningSweep") { try { return json(await planningSweep(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "pubContext" || body.action === "pubFieldWrite" || body.action === "pubFieldSave") {
@@ -56509,6 +56631,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await titleJobsRun(env, invoke); })());   // ＋ title research / pillar jobs left by a closed tab
+      cw("matrixAllTick", matrixAllTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("matrixAll:", JSON.stringify(r).slice(0, 300)); }));   // operator 2026-11-01: whole matrix, one hub at a time
       cw("storyCronTick", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
