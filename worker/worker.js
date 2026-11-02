@@ -2850,6 +2850,56 @@ async function planningSweepStep(env, op, BATCH, sel) {
   if (op === "status") { const plan = await env.TRADES.get("planningsweep:plan", "json"), log = (await env.TRADES.get("planningsweep:log", "json")) || []; return { ok: true, plan: plan ? { at: plan.at, done: plan.done, total: plan.items.length } : null, logged: log.length }; }
   return { error: "Unknown op" };
 }
+// ── 🎤 CLEAR INTERVIEW FLAGS (operator 2026-11-01: "clear out all interview flags, start completely new" — "leave the partly answered as
+// flagged, leave the finished also"). Every Flagged interview with NO answer text at all → Superseded (the status the system already uses
+// for retired interviews: hidden from the lists, ignored by writers). Partly answered, Finished, Idea and Superseded are never touched.
+// dry → KV ivclear:plan · run → batches (re-checks status + answers first) · every change logged in ivclear:log · undo → back to Flagged.
+async function interviewClear(env, body) {
+  const op = String(body.op || "dry"), BATCH = 15, t0 = Date.now();
+  const rawAnswers = pg => (pg.properties?.Answers?.rich_text || []).map(t => t.plain_text).join("").trim();
+  if (op === "dry") {
+    const rows = (await notionQuery(INTERVIEWS_DB, { filter: { property: "Status", select: { equals: "Flagged" } } })).filter(r => !r.archived && !r.in_trash);
+    const items = [], kept = [];
+    for (const pg of rows) { const iv = ivParse(pg), answered = !!rawAnswers(pg) || iv.answers.some(a => String(a || "").trim());
+      (answered ? kept : items).push({ id: iv.id, name: iv.title || iv.angle || "(interview)", scope: iv.scope }); }
+    const plan = { at: new Date().toISOString(), items, done: 0 };
+    await env.TRADES.put("ivclear:plan", JSON.stringify(plan));
+    return { ok: true, at: plan.at, clear: items.length, keptAnswered: kept.length, items, kept };
+  }
+  if (op === "status") { const plan = await env.TRADES.get("ivclear:plan", "json"), log = (await env.TRADES.get("ivclear:log", "json")) || []; return { ok: true, plan: plan ? { at: plan.at, done: plan.done, total: plan.items.length } : null, logged: log.length }; }
+  if (op !== "run" && op !== "undo") return { error: "Unknown op" };
+  if (await env.TRADES.get("ivclear:lock")) return { busy: true, error: "Already running (another click or tab) — wait, or try again in two minutes" };
+  await env.TRADES.put("ivclear:lock", "1", { expirationTtl: 120 });
+  try {
+    const log = (await env.TRADES.get("ivclear:log", "json")) || [];
+    const setStatus = (id, name) => fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name } } } }) });
+    if (op === "run") {
+      const plan = await env.TRADES.get("ivclear:plan", "json"); if (!plan) return { error: "No dry run yet — run the dry run first" };
+      const logged = new Set(log.map(x => x.id)), out = { changed: 0, skipped: [] }; let n = 0;
+      for (const it of plan.items.slice(plan.done, plan.done + BATCH)) {
+        if (Date.now() - t0 > 25000) break; n++;
+        const pg = await ivPage(it.id).catch(() => null), st = pg?.properties?.Status?.select?.name || "";
+        if (pg && !pg.archived && st === "Superseded" && !logged.has(it.id)) { log.push({ ...it, from: "Flagged", at: new Date().toISOString(), recovered: true }); logged.add(it.id); out.changed++; continue; }
+        if (!pg || pg.archived || st !== "Flagged") { out.skipped.push(it.name + " (now " + (st || "gone") + ")"); continue; }
+        if (rawAnswers(pg) || ivParse(pg).answers.some(a => String(a || "").trim())) { out.skipped.push(it.name + " (answered since the dry run — kept)"); continue; }
+        const r = await setStatus(it.id, "Superseded");
+        if (!r.ok) { out.skipped.push(it.name + " (" + ((await r.json().catch(() => ({}))).message || r.status) + ")"); continue; }
+        log.push({ ...it, from: "Flagged", at: new Date().toISOString() }); logged.add(it.id); out.changed++;
+      }
+      plan.done += n;
+      await env.TRADES.put("ivclear:log", JSON.stringify(log)); await env.TRADES.put("ivclear:plan", JSON.stringify(plan));
+      return { ok: true, ...out, done: plan.done, total: plan.items.length, finished: plan.done >= plan.items.length };
+    }
+    const slice = log.slice(-BATCH), out = { restored: 0, skipped: [] };
+    for (const it of slice) {
+      const pg = await ivPage(it.id).catch(() => null), st = pg?.properties?.Status?.select?.name || "";
+      if (pg && !pg.archived && st === "Superseded") { const r = await setStatus(it.id, "Flagged"); if (r.ok) out.restored++; else out.skipped.push(it.name); }
+      else out.skipped.push(it.name + " (now " + (st || "gone") + " — left as is)");
+    }
+    const left = log.slice(0, log.length - slice.length); await env.TRADES.put("ivclear:log", JSON.stringify(left));
+    return { ok: true, ...out, left: left.length, finished: !left.length };
+  } finally { await env.TRADES.delete("ivclear:lock").catch(() => {}); }
+}
 async function wrTypes(env) { return (await env.TRADES.get("writer:types", "json").catch(() => null)) || []; }
 async function wrTypeSave(env, body) {
   const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 80), S = body.settings || {}, L = await wrLists(env);
@@ -55333,6 +55383,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "interviewClear") { try { return json(await interviewClear(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "planningSweep") { try { return json(await planningSweep(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "pubContext" || body.action === "pubFieldWrite" || body.action === "pubFieldSave") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
