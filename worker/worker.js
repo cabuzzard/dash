@@ -7317,6 +7317,25 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     return { assetId: aid, republished: true, liveUrl: result.liveUrl, clearedRewrite: clearRewrite };
   } catch (error) { return hubHoldRepublication(env, aid, payload, error); }
 }
+// FIRST PUBLISH (operator 2026-11-03: "its ok that they come in as published but I need the hub post to get pushed to the hub when it comes in").
+// A hub-publishable asset that ARRIVES at Published (Buzz, Notion, any outside tool) and has never been on the hub is pushed there by the
+// sweep through the same path as the Publish modal's button (publishHubAsset → hierarchy guard, writing check, offer / blog renderers).
+// No Hub Section → the type's default (offer → Offers, news → News, else Articles). Only assets created on/after HUB_FIRSTPUB_SINCE — the
+// back catalogue of never-deployed Published records is left alone. One attempt per sweep, at most 3; KV hub:firstpub:<id> records it.
+const HUB_FIRSTPUB_SINCE = '2026-11-03T00:00:00Z';
+function hubDefaultSection(type) { return /offer/i.test(type) ? 'Offers' : /news/i.test(type) ? 'News' : 'Articles'; }
+async function hubFirstPublish(env, page, hub) {
+  const p = page.properties || {}, aid = hubAssetId(page.id), type = p['Asset Type']?.select?.name || '';
+  if (page.archived || page.in_trash || p['Asset Status']?.select?.name !== 'Published' || String(page.created_time || '') < HUB_FIRSTPUB_SINCE || !hubPublishableType(type)) return null;
+  const K = 'hub:firstpub:' + aid, prev = await env.TRADES.get(K, 'json').catch(() => null);
+  if (prev && (prev.ok || (prev.tries || 0) >= 3)) return null;
+  let section = p['Hub Section']?.select?.name || '';
+  if (!section || /^(unlisted|email)$/i.test(section)) { if (/^(unlisted|email)$/i.test(section)) return null; section = hubDefaultSection(type); await kwNotionPatch(env, aid, { 'Hub Section': { select: { name: section } } }); }
+  const r = await selfAction(env, 'publishHubAsset', { assetId: aid });
+  const ok = !!(r && !r.error && !r.skipped), rec = { at: new Date().toISOString(), ok, section, tries: ((prev && prev.tries) || 0) + 1, error: ok ? '' : String((r && (r.error || r.skipped)) || 'no response').slice(0, 300), liveUrl: (r && r.liveUrl) || '' };
+  await env.TRADES.put(K, JSON.stringify(rec));
+  return { assetId: aid, firstPublish: ok, section, liveUrl: rec.liveUrl, error: rec.error || undefined, held: ok ? undefined : undefined };
+}
 async function hubRepublishSweep(env, campaignId) {
   NOTION_TOKEN = (env.NOTION_TOKEN || '').trim();
   const targets = HUB_SITES.filter(h => !campaignId || hubAssetId(h.campaignId) === hubAssetId(campaignId)), results = [];
@@ -7326,7 +7345,11 @@ async function hubRepublishSweep(env, campaignId) {
     const ids = new Set(rows.map(page => hubAssetId(page.id)));
     for (const entry of manifest) if (entry.assetId && !ids.has(hubAssetId(entry.assetId))) rows.push(await ivPage(entry.assetId));
     for (const page of rows) {
-      if (!manifest.some(m => hubAssetId(m.assetId) === hubAssetId(page.id)) && page.properties?.['Deployment Status']?.select?.name !== 'Deployed' && !await env.TRADES.get('hub:republish:asset:' + hubAssetId(page.id))) continue;
+      if (!manifest.some(m => hubAssetId(m.assetId) === hubAssetId(page.id)) && page.properties?.['Deployment Status']?.select?.name !== 'Deployed' && !await env.TRADES.get('hub:republish:asset:' + hubAssetId(page.id))) {
+        const fp = await hubFirstPublish(env, page, hub).catch(e => ({ assetId: hubAssetId(page.id), firstPublish: false, error: e.message }));
+        if (fp) results.push({ hub: hub.slug, ...fp });
+        continue;
+      }
       const result = env.SELF ? await selfAction(env, 'hubRepublishAsset', { assetId: hubAssetId(page.id), hubSlug:hub.slug, source: 'sweep' }) : await hubRefreshPlacedAsset(env, page.id, { page, manifest, hubSlug:hub.slug, source: 'sweep' });
       results.push({ hub: hub.slug, ...result });
     }

@@ -515,6 +515,8 @@ Republication uses the existing single-asset blog/offer renderer, with `hubSiteT
 
 Hierarchy/sync failures prune the asset's listings and page, preserving a suspended-route ticket in KV. Returning to placement and sync restores its current content. Explicit unpublication, removing its section, archiving, or moving away from the hub consumes that ticket; a rewrite cannot recreate an operator-removed placement. An answered interview alone is not proof of a rewrite: the actual prose must change after the finished interview before a rewrite-debt flag can clear. The flag and Interview Sync are updated only after the new hub commit succeeds.
 
+**First publish (2026-11-03):** the same sweep also pushes a hub-publishable asset that ARRIVES at Published (Buzz, Notion) and was never on the hub, through publishHubAsset (hierarchy guard + writing check); no Hub Section → default by type (offer → Offers, news → News, else Articles). Only assets created on/after HUB_FIRSTPUB_SINCE (2026-11-03); ≤3 tries, KV hub:firstpub:<id>.
+
 Failures are active per-asset records at `hub:republish:held:<id>`, containing source payload, campaign, title, hash, timestamp and reason, plus an audit entry in `flow:held:v1`. Successful republication clears the active hold. `getHubRepublicationHeld {campaignId?}` returns active holds; `getDigests` and the hub's Digest panel display them, and `getMorningBriefing` includes them. These operational notices are never inserted into customer-facing digest copy. `hub:republish:last-sweep` records sweep coverage; the existing Cron log reports the sweep job.
 
 ## Governance write gate (Oct 22, 2026)
