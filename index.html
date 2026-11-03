@@ -4704,21 +4704,25 @@ async function ao2Load() {
   const prodSync = pid => prodById[nid(pid)] ? pSync(prodById[nid(pid)]) : ['', ''];   // Parent Asset id → that asset's name
   try { await ao2SetLoad(); } catch (e) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc(e.message)}</div>`; return; }
   const AO2_DEV = /^(development|review|publish|published)$/i, ids = new Set(AO2_SET);
-  if (ao2Scope() === 'dev') all.forEach(x => { if (x.kind === 'title' && x.titleId && AO2_DEV.test(String(x.titleStatus || x.status || '').trim())) ids.add(nid(x.titleId)); });
+  all.forEach(x => { if (x.kind === 'title' && x.titleId) ids.add(nid(x.titleId)); });   // EVERYTHING (operator 2026-11-03): every title, any status, with its product and assets
+  const slugs = rows => [...new Set(rows.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))].join(', ');
+  const ao2AssetRow = (x, t, id) => ({ id: nid(x.assetId), sTitle: tSync(t), sProd: prodSync(x.assetProductId || x.productId), sTopic: topSync(x.keywordTopicId), edited: ao2When(x.dateEdited), title: x.assetName || '', ofTitle: t.title || '', product: x.product && x.product !== 'No Product' ? x.product : '', productId: nid(x.assetProductId || x.productId), platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.pillarType && /^pillar$/i.test(x.rawAssetType || '') ? x.pillarType : (x.rawAssetType || ''),   /* a Series / Digest parent shows what it is (operator 2026-10-30: 'just series, it isn't a pillar') */ status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, ivs: ivOf['a:' + nid(x.assetId)] || [], src: x, created: x.dateCreated || '', run: x.run || '', runStatus: x.runStatus || '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) });
+  const ao2ProdRow = (pr, t) => ({ id: nid(pr.productId), src: pr, created: pr.productCreated || '', edited: ao2When(pr.productEdited), sProd: pSync(pr), sTopic: topSync(pr.keywordTopicId), title: pr.product || '', type: 'Product', product: pr.product || '', productId: nid(pr.productId), assetType: '', status: pr.status || pr.productStatus || '', topic: pr.keywordTopic || '', topicId: pr.keywordTopicId || '', cluster: pr.keywordCluster || '', campId: t.campId || pr.campId || '', hub: slugs([pr]) });
   AO2_ROWS = [...ids].flatMap(id => {
     const mine = all.filter(x => nid(x.titleId) === id); if (!mine.length) return [];
     const t = mine.find(x => x.kind === 'title') || mine[0];
-    const slugs = rows => [...new Set(rows.flatMap(x => x.hubCids || []).map(cid => { const s = HUB_SITES.find(h => nid(h.campaignId) === nid(cid)); return s ? s.slug : ''; }).filter(Boolean))].join(', ');
     const hubs = slugs(mine);
     const st = {}; mine.forEach(x => { if (x.kind === 'asset' && x.assetId) st[nid(x.assetId)] = String(x.assetStatus || ''); });   // one count per distinct asset, by its own Status
     const n = s => String(Object.values(st).filter(v => v === s).length);
     const seen = new Set(), assets = mine.filter(x => x.kind === 'asset' && x.assetId && !seen.has(nid(x.assetId)) && seen.add(nid(x.assetId)))
-      .map(x => ({ id: nid(x.assetId), sTitle: tSync(t), sProd: prodSync(x.assetProductId || x.productId), sTopic: topSync(x.keywordTopicId), edited: ao2When(x.dateEdited), title: x.assetName || '', ofTitle: t.title || '', product: x.product && x.product !== 'No Product' ? x.product : '', productId: nid(x.assetProductId || x.productId), platformTitle: x.platformTitle || '', type: 'Asset', assetType: x.pillarType && /^pillar$/i.test(x.rawAssetType || '') ? x.pillarType : (x.rawAssetType || ''),   /* a Series / Digest parent shows what it is (operator 2026-10-30: 'just series, it isn't a pillar') */ status: x.assetStatus || '', topicId: x.keywordTopicId || '', campId: x.campId || '', parent: x.parentAssetId ? (nameOf[nid(x.parentAssetId)] || '') : '', parentId: x.parentAssetId ? nid(x.parentAssetId) : '', titleId: id, ivs: ivOf['a:' + nid(x.assetId)] || [], src: x, created: x.dateCreated || '', run: x.run || '', runStatus: x.runStatus || '', topic: x.keywordTopic || '', cluster: x.keywordCluster || '', hub: slugs([x]) }));
+      .map(x => ao2AssetRow(x, t, id));
     const pr = t.productId ? all.find(y => y.kind === 'product' && nid(y.productId) === nid(t.productId)) : null;
-    const prodRow = pr ? [{ id: nid(pr.productId), src: pr, created: pr.productCreated || '', edited: ao2When(pr.productEdited), sProd: pSync(pr), sTopic: topSync(pr.keywordTopicId), title: pr.product || '', type: 'Product', product: pr.product || '', productId: nid(pr.productId), assetType: '', status: pr.status || pr.productStatus || '',
-      topic: pr.keywordTopic || '', topicId: pr.keywordTopicId || '', cluster: pr.keywordCluster || '', campId: t.campId || pr.campId || '', hub: slugs([pr]) }] : [];
+    const prodRow = pr ? [ao2ProdRow(pr, t)] : [];
     return [{ id, ivs: ivOf['t:' + id] || [], src: t, created: t.titleCreated || '', edited: ao2When(t.titleEdited), sTitle: tSync(t), sProd: prodSync(t.productId), sTopic: topSync(t.keywordTopicId), title: t.title || '', type: 'Title', product: t.productId && t.product !== 'No Product' ? t.product || '' : '', productId: nid(t.productId), topicId: t.keywordTopicId || '', campId: t.campId || '', assetType: '', status: t.titleStatus || '', topic: t.keywordTopic || '', cluster: t.keywordCluster || '', hub: hubs, dev: n('Development'), publish: n('Publish'), pub: n('Published') }, ...prodRow, ...assets];   // the title, then each of its assets (Asset type = the asset's own Asset Type)
   });
+  { const seenP = new Set(AO2_ROWS.filter(r => r.type === 'Product').map(r => r.id)), seenA = new Set(AO2_ROWS.filter(r => r.type === 'Asset').map(r => r.id));
+    all.forEach(x => { if (x.kind === 'product' && x.productId && !seenP.has(nid(x.productId))) { seenP.add(nid(x.productId)); AO2_ROWS.push(ao2ProdRow(x, {})); } });
+    all.forEach(x => { if (x.kind === 'asset' && x.assetId && !x.titleId && !seenA.has(nid(x.assetId))) { seenA.add(nid(x.assetId)); AO2_ROWS.push(ao2AssetRow(x, {}, '')); } }); }
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
@@ -4851,7 +4855,7 @@ function ao2Render() {
     + `<button style="${btn}" title="Titles with no assets and products with no titles → Planning (dry run first; undoable)" onclick="psOpen()">🧹 Planning sweep</button>`
     + `<button style="${btn}" title="Remove every interview flag that has no answers (partly answered and Finished are kept; dry run first; undoable)" onclick="icOpen()">🎤 Remove interview flags</button>`
     + `<button style="${btn}" title="Add a regular cluster called Trending with a Trending topic in it, in every hub (skips hubs that already have one)" onclick="ao2TrendingAll(this)">＋ Trending (all hubs)</button>`
-    + `<span style="font-size:11px;color:var(--text3);" title="AO2 shows your list plus every title at Development or later — the same on every device">Your list + Development or later</span>`
+    + `<span style="font-size:11px;color:var(--text3);" title="AO2 shows every title at any status, with its product and assets — the same on every device">Everything</span>`
     + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
@@ -6092,7 +6096,7 @@ async function ao2TrendingAll(btn) {
   alert('Trending cluster + topic\n\nAdded: ' + (out.made.join(', ') || 'none') + '\nAlready had one: ' + (out.had.join(', ') || 'none') + (out.fail.length ? '\nFailed: ' + out.fail.join(' · ') : ''));
   _devTblLast = null; ao2Load();
 }
-function ao2Scope() { return 'dev'; }   // ONE scope everywhere (operator 2026-11-03): your list + every title at Development or later — same on every device
+function ao2Scope() { return 'all'; }   // ONE scope everywhere (operator 2026-11-03): every title, any status — same on every device
 function ao2SetScope(v) { try { localStorage.setItem('ao2Scope', v === 'dev' ? 'dev' : 'list'); } catch (e) {} _devTblLast = null; if (document.getElementById('ao2Body')) ao2Load(); }
 function psOpen() {
   let bg = document.getElementById('psBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'psBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="psPanel" style="max-width:760px;width:94vw;max-height:88vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
