@@ -2857,7 +2857,7 @@ async function pubContext(env, assetId, writeAs) {
   return { ok: true, asset: { id: aid, title: hubRichText(p["Asset Title"]?.title), type, status: p["Asset Status"]?.select?.name || "", platformName: p["Platform Name"]?.select?.name || "",
       hubSection, hub: (!!hubSection && !/^(unlisted|email)$/i.test(hubSection)) || /^sub ?page$/i.test(type), campaignId: ivRid(p, "Campaign"), titleId, titleName: tv.Title || "",
       hubType: hubPublishableType(type) || /^sub ?page$/i.test(type), hubSectionName: p["Hub Section"]?.select?.name || "",
-      hubLive: p["Deployment Status"]?.select?.name === "Deployed" && !!hubSection && !/^(unlisted|email)$/i.test(hubSection), contentUrl: p["Content URL"]?.url || "",
+      hubLive: p["Deployment Status"]?.select?.name === "Deployed" && !/^(unlisted|email)$/i.test(hubSection),   // live with no section yet still counts as live contentUrl: p["Content URL"]?.url || "",
       hubLast: (await env.TRADES.get("hub:lastsection:" + aid).catch(() => "")) || "",
       postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
       videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
