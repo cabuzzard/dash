@@ -21524,7 +21524,7 @@ Return: {
           // operator 2026-10-22: "only put the flag on the asset that needs the interview" — an asset's own interview is listed only
           // while one of its assets is live (not Idea / gone); a title interview stays with its title
           const liveA = new Set((assetsByTitle[titleId] || []).filter(a => a.status && a.status !== "Idea").map(a => String(a.id).replace(/-/g, "")));
-          (ivByTitle[titleId] || []).filter(iv => iv.scope !== "Asset" || !(iv.assetIds || []).length || iv.assetIds.some(x => liveA.has(String(x).replace(/-/g, "")))).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
+          (ivByTitle[titleId] || []).filter(iv => iv.scope !== "Asset" || !(iv.assetIds || []).length || iv.assetIds.some(x => liveA.has(String(x).replace(/-/g, "")))).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, ivAssetIds: iv.assetIds || [], ivAngle: iv.angle || "", assetId: null,
             assetName: "🎤 " + (iv.scope === "Asset" ? `[own · ${iv.forType}] ` : "") + (iv.angle || "Interview"), assetType: iv.scope === "Asset" ? "Interview (own)" : "Interview (title)", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
           const assets = assetsByTitle[titleId] || [];
           // operator 2026-10-25: "All Output is supposed to be ALL ROWS — anything that references the hub": every title has its OWN row
