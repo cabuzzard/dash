@@ -4851,7 +4851,7 @@ function ao2Render() {
     + `<button style="${btn}" title="Titles with no assets and products with no titles → Planning (dry run first; undoable)" onclick="psOpen()">🧹 Planning sweep</button>`
     + `<button style="${btn}" title="Remove every interview flag that has no answers (partly answered and Finished are kept; dry run first; undoable)" onclick="icOpen()">🎤 Remove interview flags</button>`
     + `<button style="${btn}" title="Add a regular cluster called Trending with a Trending topic in it, in every hub (skips hubs that already have one)" onclick="ao2TrendingAll(this)">＋ Trending (all hubs)</button>`
-    + `<select style="${btn}" title="Which titles AO2 shows" onchange="ao2SetScope(this.value)"><option value="list" ${ao2Scope() === 'list' ? 'selected' : ''}>Scope: my list</option><option value="dev" ${ao2Scope() === 'dev' ? 'selected' : ''}>Scope: my list + every title at Development or later</option></select>`
+    + `<span style="font-size:11px;color:var(--text3);" title="AO2 shows your list plus every title at Development or later — the same on every device">Your list + Development or later</span>`
     + `<button style="${btn}border-color:#c084fc;color:#c084fc;" title="Add a collapsible column group — drag column headers onto it" onclick="ao2GroupAdd()">＋ Collapse column</button>`
     + `<button style="${btn}" title="Keep the current filters and sort for next time" onclick="ao2Save(this)">💾 Save</button>`
     + `<button style="${btn}" title="Go back to the saved filters and sort" onclick="ao2Revert()">↺ Revert</button>`
@@ -6092,7 +6092,7 @@ async function ao2TrendingAll(btn) {
   alert('Trending cluster + topic\n\nAdded: ' + (out.made.join(', ') || 'none') + '\nAlready had one: ' + (out.had.join(', ') || 'none') + (out.fail.length ? '\nFailed: ' + out.fail.join(' · ') : ''));
   _devTblLast = null; ao2Load();
 }
-function ao2Scope() { try { return localStorage.getItem('ao2Scope') === 'dev' ? 'dev' : 'list'; } catch (e) { return 'list'; } }
+function ao2Scope() { return 'dev'; }   // ONE scope everywhere (operator 2026-11-03): your list + every title at Development or later — same on every device
 function ao2SetScope(v) { try { localStorage.setItem('ao2Scope', v === 'dev' ? 'dev' : 'list'); } catch (e) {} _devTblLast = null; if (document.getElementById('ao2Body')) ao2Load(); }
 function psOpen() {
   let bg = document.getElementById('psBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'psBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="psPanel" style="max-width:760px;width:94vw;max-height:88vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
