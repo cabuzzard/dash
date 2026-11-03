@@ -21380,7 +21380,7 @@ Return: {
             campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
             status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "",
             outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
-            created: p.created_time ? String(p.created_time).slice(0, 10) : "",
+            created: p.created_time ? String(p.created_time).slice(0, 10) : "", edited: p.last_edited_time || "",
           };
         });
 
@@ -21390,7 +21390,7 @@ Return: {
           const p = t.properties || {};
           titleById[id] = {
             title: (p.Title?.title || []).map(x => x.plain_text).join("") || "Untitled",
-            created: t.created_time ? String(t.created_time).slice(0, 10) : "",
+            created: t.created_time ? String(t.created_time).slice(0, 10) : "", edited: t.last_edited_time || "",
             notes: (p.Notes?.rich_text || []).map(x => x.plain_text).join("") || "",
             status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
@@ -21497,7 +21497,7 @@ Return: {
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
+          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
           interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
           deploymentStatus: a.deploymentStatus || "",
@@ -21514,7 +21514,7 @@ Return: {
             hub: t.campId ? (hubByCampId[t.campId] || "") : "",
             productStack: prod ? (prod.stack || "No Stack") : "No Product",
             product: prod ? prod.name : "No Product",
-            title: t.title, titleCreated: t.created || "",
+            title: t.title, titleCreated: t.created || "", titleEdited: t.edited || "",
             titleId,
             titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
@@ -21550,7 +21550,7 @@ Return: {
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
+              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
               ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
@@ -21581,7 +21581,7 @@ Return: {
           const camp = prod.campId ? campById[prod.campId] : null;
           rows.push({ kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "",
             productStack: prod.stack || "No Stack", product: prod.name, productId: pid, title: "", titleId: null,
-            productStatus: prod.status || "", productCreated: prod.created || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+            productStatus: prod.status || "", productCreated: prod.created || "", productEdited: prod.edited || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
         });
         // Group = the campaign's product group for this stack (KV stackgroups:<campaignId>, Group → Stack → Product)
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
