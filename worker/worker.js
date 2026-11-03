@@ -2788,6 +2788,26 @@ async function pubSetType(env, body) {
   await kwNotionPatch(env, aid, { "Asset Type": { select: { name: type } } });
   return { ok: true, type };
 }
+const PUB_HUB_SECTIONS = ["News", "Articles", "Offers", "Main Offering", "CTA", "Interactive"];
+async function pubHubSet(env, body) {
+  const aid = hubAssetId(body.assetId), page = await ivPage(aid); if (!page?.properties || page.archived) throw new Error("Asset unavailable");
+  const p = page.properties, type = p["Asset Type"]?.select?.name || "", cur = p["Hub Section"]?.select?.name || "";
+  if (!hubPublishableType(type) && !/^sub ?page$/i.test(type)) throw new Error("This asset type isn't a hub page");
+  let section = body.section != null ? String(body.section).trim() : "";
+  if (section && !PUB_HUB_SECTIONS.includes(section)) throw new Error("Unknown hub section: " + section);
+  if (body.on === false) {
+    if (cur && !/^(unlisted|email)$/i.test(cur)) await env.TRADES.put("hub:lastsection:" + aid, cur);
+    await kwNotionPatch(env, aid, { "Hub Section": { select: { name: "Unlisted" } } });
+    return { ok: true, on: false, section: "Unlisted" };
+  }
+  if (!section) section = !/^(unlisted|email)$/i.test(cur) && cur ? cur : (await env.TRADES.get("hub:lastsection:" + aid).catch(() => "")) || hubDefaultSection(type);
+  if (section !== cur) await kwNotionPatch(env, aid, { "Hub Section": { select: { name: section } } });
+  await env.TRADES.put("hub:lastsection:" + aid, section);
+  if (body.on !== true) return { ok: true, section };
+  const r = await publishSelectedAssetToHub(env, aid);
+  if (!r || r.error || r.skipped) throw new Error((r && (r.error || r.skipped)) || "Not published");
+  return { ok: true, on: true, section, liveUrl: r.liveUrl || "" };
+}
 async function pubCreateChild(env, body) {   // an External Parent (or any parent) → a new linked child of the picked type, written later from the parent
   const pid = hubAssetId(body.parentId), type = String(body.type || "").trim(), par = await ivPage(pid);
   if (!par?.properties || par.archived) throw new Error("Parent asset unavailable");
@@ -2836,6 +2856,9 @@ async function pubContext(env, assetId, writeAs) {
   const hubSection = p["Hub Section"]?.select?.name || "";
   return { ok: true, asset: { id: aid, title: hubRichText(p["Asset Title"]?.title), type, status: p["Asset Status"]?.select?.name || "", platformName: p["Platform Name"]?.select?.name || "",
       hubSection, hub: (!!hubSection && !/^(unlisted|email)$/i.test(hubSection)) || /^sub ?page$/i.test(type), campaignId: ivRid(p, "Campaign"), titleId, titleName: tv.Title || "",
+      hubType: hubPublishableType(type) || /^sub ?page$/i.test(type), hubSectionName: p["Hub Section"]?.select?.name || "",
+      hubLive: p["Deployment Status"]?.select?.name === "Deployed" && !!hubSection && !/^(unlisted|email)$/i.test(hubSection), contentUrl: p["Content URL"]?.url || "",
+      hubLast: (await env.TRADES.get("hub:lastsection:" + aid).catch(() => "")) || "",
       postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
       videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
     fields, catalog, values: Object.fromEntries([...new Set([...catalog, "Image Direction"])].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
@@ -55799,8 +55822,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         try { return json(body.action === "pubContext" ? await pubContext(env, body.assetId, body.writeAs) : body.action === "pubFieldWrite" ? await pubFieldWrite(env, body) : await pubFieldSave(env, body)); }
         catch (e) { return json({ error: e.message }, 500); }
       }
-      if (["pubSpecDraft", "pubSpecCommit", "pubSpecFold", "pubSetType", "pubCreateChild"].includes(body.action)) {
-        try { const F = { pubSpecDraft, pubSpecCommit, pubSpecFold, pubSetType, pubCreateChild }[body.action]; return json(await F(env, body)); }
+      if (["pubSpecDraft", "pubSpecCommit", "pubSpecFold", "pubSetType", "pubCreateChild", "pubHubSet"].includes(body.action)) {
+        try { const F = { pubSpecDraft, pubSpecCommit, pubSpecFold, pubSetType, pubCreateChild, pubHubSet }[body.action]; return json(await F(env, body)); }
         catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "assetReelSpec") { try { return json(await assetReelSpec(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }

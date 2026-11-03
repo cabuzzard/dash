@@ -5651,6 +5651,21 @@ async function pubSpecCommit(rowId) {
   const r = await call('pubSpecCommit', { rowId }).catch(e => ({ error: e.message }));
   if (!PB) return; PB.log = !r || r.error ? '✗ Not committed: ' + ((r && r.error) || 'no response') : r.removed ? '✓ Removed from the type' : '✓ Committed — it is now the rule'; await pubLoad();
 }
+async function pubHubSection(v) {
+  if (!PB || !v) return; PB.busy.hub = 'sec'; pubDraw();
+  const r = await call('pubHubSet', { assetId: PB.id, section: v }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.hub; PB.log = !r || r.error ? '✗ Section not saved: ' + ((r && r.error) || 'no response') : '✓ Hub section: ' + r.section; PB.changed = true; await pubLoad();
+}
+async function pubHubToggle(on) {
+  if (!PB) return; const sec = (document.getElementById('pubHubSec') || {}).value || '';
+  if (on && !confirm('Publish this to the hub now' + (sec ? ' in ' + sec : '') + '? It goes live and becomes Published.')) return pubDraw();
+  if (!on && !confirm('Take this off the hub? The live page and its listings are removed (it stays in Notion).')) return pubDraw();
+  PB.busy.hub = on ? 'on' : 'off'; pubDraw();
+  const r = await call('pubHubSet', { assetId: PB.id, section: sec || undefined, on }).catch(e => ({ error: e.message }));
+  if (!PB) return; delete PB.busy.hub;
+  PB.log = !r || r.error ? '✗ ' + (on ? 'Not published: ' : 'Not taken off: ') + ((r && r.error) || 'no response') : on ? '✓ Live on the hub in ' + r.section + (r.liveUrl ? ' — ' + r.liveUrl : '') : '✓ Off the hub';
+  PB.changed = true; await pubLoad();
+}
 function pubWriteAs(v) { if (!PB) return; PB.writeAs = v; PB.extra = []; PB.prop = {}; pubLoad(); }
 async function pubSetTypeNow() {
   if (!PB || !PB.writeAs || !confirm('Change this asset\'s type to "' + PB.writeAs + '"?')) return;
@@ -5813,6 +5828,15 @@ function pubDraw() {
     <div style="font-weight:700;margin-top:12px;">What it's about</div>${kv('Title', A.titleName)}${kv('Keywords', I.keywords)}${kv('Subject', B.subject)}${kv('Intent', B.intent)}${kv('Reader', B.reader)}${kv('Outcome', B.outcome)}${kv('Angle', B.angle)}
     <div style="font-size:11px;color:var(--text3);margin-top:12px;">Every field below is written from all of this, plus the title, product and interview research and the other fields as they stand.</div></div>`;
   const copy = pubTypeBar() + [...C.fields, ...PB.extra.filter(f => !C.fields.includes(f))].map((f, i) => pubFieldCard(f, i)).join('');
+  // 🌐 HUB box (operator 2026-11-03: "a 'which section' field and a toggle clearly marked on the asset modal") — hub page types only
+  const hubBox = !A.hubType ? '' : (() => { const on = !!A.hubLive, cur = /^(unlisted|email)$/i.test(A.hubSectionName || '') ? '' : A.hubSectionName, pick = cur || A.hubLast || '', b = PB.busy.hub;
+    return `<div style="border:2px solid ${on ? '#4ade80' : 'var(--accent)'};border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><b style="font-size:13.5px;">🌐 On the hub</b>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;"><input type="checkbox" ${on ? 'checked' : ''} ${b ? 'disabled' : ''} onchange="pubHubToggle(this.checked)" style="width:18px;height:18px;"> ${on ? '<b style="color:#4ade80;">ON — live</b>' : '<b style="color:var(--text3);">OFF</b>'}</label>
+        <span style="font-size:12.5px;">Which section</span><select id="pubHubSec" ${b ? 'disabled' : ''} onchange="pubHubSection(this.value)" style="font-size:12.5px;padding:5px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">
+          <option value="" ${pick ? '' : 'selected'}>— choose —</option>${['News', 'Articles', 'Offers', 'Main Offering', 'CTA', 'Interactive'].map(x => `<option ${x === pick ? 'selected' : ''}>${x}</option>`).join('')}</select>
+        ${b ? '<span style="font-size:12px;color:var(--text3);">⏳ ' + (b === 'on' ? 'publishing to the hub…' : b === 'off' ? 'taking it off the hub…' : 'saving…') + '</span>' : ''}</div>
+      <div style="font-size:11.5px;color:var(--text3);margin-top:6px;">${on ? 'Live' + (A.contentUrl ? ` — <a href="${esc(A.contentUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">view ↗</a>` : '') + ' · switch OFF to take it off the hub (the page and its listings are removed).' : 'Switch ON to publish it to the hub now, in the section picked. The section alone is saved when you change it.'}</div></div>`; })();
   const imgKinds = ['post-image', ...(A.offer ? ['ig-background'] : []), 'blog-thumbnail'];
   const imgSlot = k => { const url = A[PB_IMG[k].prop], b = PB.busy['img:' + k];
     return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px;flex:1;min-width:230px;">
@@ -5841,7 +5865,7 @@ function pubDraw() {
   const publish = sec('Status & publish', `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><select onchange="pubStatus(this)" style="font-size:12.5px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:${/^published$/i.test(A.status) ? '#4ade80' : '#ff7a00'};font-weight:600;">${[...new Set([A.status, ...PB_STATUSES])].filter(Boolean).map(s => `<option ${s === A.status ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>
     ${/^published$/i.test(A.status) ? '' : `<button style="${pubBtn('#4ade80')}font-weight:600;" ${PB.busy.pub ? 'disabled' : ''} onclick="pubPublish()">${A.hub ? '📤 Publish to hub' : '✓ Mark Published'}</button>`}</div>`);
   P.innerHTML = head + (PB.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(PB.log) ? '#f87171' : 'var(--text2)'};">${esc(PB.log)}</div>` : '')
-    + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${pubMode() === 'repurpose' ? sec('↗ Repurpose', pubTypeBar()) : sec('✍ Rewrite — field by field', copy) + sec('🖼 Images', images) + video + buffer + publish}</div></div></div>`;
+    + `<div class="amf-bd"><div class="wr-grid">${left}<div class="wr-right">${pubMode() === 'repurpose' ? sec('↗ Repurpose', pubTypeBar()) : hubBox + sec('✍ Rewrite — field by field', copy) + sec('🖼 Images', images) + video + buffer + publish}</div></div></div>`;
 }
 // ══ HUB DASHBOARD (operator 2026-11-01) — a PRE-APPROVAL, read-only scan of every hub, one card per hub. READ-ONLY: no writes of any kind —
 // no Notion, no KV, no status, no placement, no publishing. Data = the same devAssetsTable() fetch All Output 2 uses, filtered by the row's
