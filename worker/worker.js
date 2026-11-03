@@ -2710,12 +2710,13 @@ async function wrSources(env, G, type, assetId) {   // the same research ① Wri
 // names + fields added from the Writer (KV writer:catalog). A type's spec picks which catalog fields it fills and holds ITS rule + limits for
 // each — "Body" in a single post and "Body" in a sales page are one field with two rules. No spec → the platform defaults. Rule edits,
 // additions and removals made in the Writer land as DRAFT Writing Specs rows; pubSpecCommit makes one live (the old row → Superseded).
+const PUB_SLOT_PROPS = /^(thumbnail|post image|instagram background|longform background|design link|video url|content url|site url|canva link|product link)$/i;
 const PUB_NOT_WRITABLE = /^(asset status|asset type|asset title|asset class|status|hub section|hub placement|method|campaign|product|content strategy|parent asset|components|run|run status|platform name|publishing|deployment status|interviews|placed in hub)$/i;
 async function pubCatalog(env) {
   const rows = await writingSpecsRows(env).catch(() => []), extra = (await env.TRADES.get("writer:catalog", "json").catch(() => null)) || [];
   const set = new Set([...PUB_TEXT_FIELDS, ...extra]);
-  rows.filter(r => r.kind === "Field" && r.status !== "Superseded" && !/^(operator|derived)$/i.test(r.filledBy) && r.property && !/·/.test(r.property))
-    .forEach(r => { const p = r.property.trim(); if (!PUB_NOT_WRITABLE.test(p)) set.add(p); });
+  rows.filter(r => r.kind === "Field" && r.status !== "Superseded" && !/^derived$/i.test(r.filledBy) && r.property && !/·/.test(r.property))
+    .forEach(r => { const p = r.property.trim(); if (!PUB_NOT_WRITABLE.test(p) && !PUB_SLOT_PROPS.test(p)) set.add(p); });
   return [...set];
 }
 function pubSpecTypeRow(rows, type) {
@@ -2725,10 +2726,11 @@ async function pubTypeSpec(env, type) {
   const rows = await writingSpecsRows(env), T = type ? pubSpecTypeRow(rows, type) : null;
   if (!T) return { type: null, fields: [], drafts: [] };
   const kids = rows.filter(r => r.kind === "Field" && r.belongsTo.includes(T.id) && r.property && !/·/.test(r.property)), seen = new Set();
-  const fields = kids.filter(r => r.status === "Committed" && !/^(operator|derived)$/i.test(r.filledBy)).sort((a, b) => a.order - b.order)
-    .map(r => ({ prop: r.property.trim(), label: r.name, rule: r.rule, limits: r.limits, required: r.required, rowId: r.id })).filter(f => !seen.has(f.prop) && seen.add(f.prop));
+  const fields = kids.filter(r => r.status === "Committed" && !/^derived$/i.test(r.filledBy) && !PUB_SLOT_PROPS.test(r.property.trim())).sort((a, b) => a.order - b.order)
+    .map(r => ({ prop: r.property.trim(), label: r.name, rule: r.rule, limits: r.limits, required: r.required, rowId: r.id, you: /^operator$/i.test(r.filledBy) })).filter(f => !seen.has(f.prop) && seen.add(f.prop));
+  const rules = rows.filter(r => r.kind === "Rule" && r.status === "Committed" && r.belongsTo.includes(T.id)).sort((a, b) => a.order - b.order).map(r => ({ name: r.name, rule: r.rule }));
   const drafts = kids.filter(r => /^(draft|staged)$/i.test(r.status)).map(r => ({ prop: r.property.trim(), label: r.name, rule: r.rule, limits: r.limits, rowId: r.id, status: r.status, remove: /^remove$/i.test(r.notes.trim()) }));
-  return { type: { id: T.id, name: T.name, status: T.status, platform: T.platform }, fields, drafts };
+  return { type: { id: T.id, name: T.name, status: T.status, platform: T.platform }, fields, drafts, rules };
 }
 async function pubSpecDraft(env, body) {
   const type = String(body.type || "").trim(), prop = String(body.prop || "").trim().replace(/\s+/g, " ").slice(0, 80), op = String(body.op || "rule");
@@ -2822,7 +2824,7 @@ async function pubContext(env, assetId, writeAs) {
   // the type's spec decides which catalog fields get filled; no spec → the platform defaults (+ anything already filled)
   const fields = spec.fields.length ? spec.fields.map(f => f.prop) : PUB_TEXT_FIELDS.filter(f => want.has(f) || String(v[f] || "").trim());
   const ruleOf = Object.fromEntries(catalog.map(f => [f, { label: f, rule: PUB_FIELD_RULES[f] || "", limits: "", from: PUB_FIELD_RULES[f] ? "default" : "" }]));
-  spec.fields.forEach(f => { ruleOf[f.prop] = { label: f.label, rule: f.rule, limits: f.limits, from: "spec", rowId: f.rowId }; });
+  spec.fields.forEach(f => { ruleOf[f.prop] = { label: f.label, rule: f.rule, limits: f.limits, from: "spec", rowId: f.rowId, you: !!f.you }; });
   ruleOf["Image Direction"] = { label: "Image Direction", rule: PUB_FIELD_RULES["Image Direction"], limits: "", from: "default" };
   const parId = ivRid(p, "Parent Asset"); let parent = null, children = [];
   if (parId) { const pp = await ivPage(parId).catch(() => null), pv = pp?.properties ? writingFieldValues(pp.properties) : {};
@@ -2837,7 +2839,7 @@ async function pubContext(env, assetId, writeAs) {
       postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
       videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
     fields, catalog, values: Object.fromEntries([...new Set([...catalog, "Image Direction"])].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
-    specType, spec: { type: spec.type, fields: spec.fields, drafts: spec.drafts }, ruleOf, parent, children, allTypes,
+    specType, spec: { type: spec.type, fields: spec.fields, drafts: spec.drafts, rules: spec.rules || [] }, ruleOf, parent, children, allTypes,
     informed: { settings: link?.settings || null, upstream: link?.upstream || null, guidance: link?.guidance || "", brief: link?.brief || {}, keywords, titleIntent: tv["Title Intent"] || "", titleAudience: tv["Title Audience"] || "" },
     rules: PUB_FIELD_RULES };
 }
@@ -2846,6 +2848,8 @@ async function pubFieldWrite(env, body) {
   if (!A.titleId) throw new Error("This asset has no title — the field writer needs the title's flow");
   if (field !== "Image Direction" && !ctx.catalog.includes(field)) throw new Error("Not a writable field: " + field);
   const R = ctx.ruleOf[field] || {}, par = ctx.parent;
+  if (R.you) throw new Error(field + " is yours to fill — the writer reads it, it never writes it");
+  const typeRules = (ctx.spec.rules || []).length ? "\n# THE " + ctx.specType + " RULES (for every field)\n" + ctx.spec.rules.map(r => "- " + r.name + ": " + r.rule).join("\n") + "\n" : "";
   const G = await wrGather(env, A.titleId), I = ctx.informed, S = I.settings || {}, U = I.upstream || {}, B = I.brief || {};
   const L = await wrLists(env), pick = (list, n) => list.find(x => x.name === n);
   const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, ctx.platform || S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
@@ -2860,7 +2864,7 @@ async function pubFieldWrite(env, body) {
 # THE FIELD
 ${field}${R.label && R.label !== field ? " (this asset type calls it \"" + R.label + "\")" : ""}: ${R.rule || PUB_FIELD_RULES[field] || "Write this field so it does its job on the platform; platform-native length."}${R.from === "spec" ? "\n(This rule is the " + ctx.specType + " spec's own rule for this field.)" : ""}
 ${R.limits ? "LIMITS (hard): " + R.limits : ""}
-Apply what you know about this platform's real constraints for this field (character counts, truncation points, tag counts, what the platform shows where) on top of the rule; where the rule's limit is stricter, the rule wins.
+Apply what you know about this platform's real constraints for this field (character counts, truncation points, tag counts, what the platform shows where) on top of the rule; where the rule's limit is stricter, the rule wins.${typeRules}
 Current value (improve it, or replace it if it's weak): ${String(ctx.values[field] || "").slice(0, 3000) || "— empty —"}
 ${String(body.guidance || "").trim() ? "Operator guidance for this field (follow it): " + String(body.guidance).trim() : ""}
 
@@ -3282,6 +3286,7 @@ async function writerDraft(env, body) {
   const pick = (list, v) => list.find(x => x.name === v) || list[0];
   const purpose = pick(L.purposes, S.purpose), P = pick(L.platforms, S.platform), layout = pick(L.layouts, S.layout), script = pick(L.scripting, S.scripting);
   const sysSpec = body.assetType ? await pubTypeSpec(env, body.assetType).catch(() => ({ fields: [] })) : { fields: [] };
+  sysSpec.fields = (sysSpec.fields || []).filter(f => !f.you);
   const fields = sysSpec.fields.length ? sysSpec.fields.map(f => f.prop).slice(0, 16) : P.fields.slice(0, 12), type = sysSpec.fields.length ? body.assetType : P.name;
   const fieldRules = sysSpec.fields.length ? "\n# THE FIELDS — the " + body.assetType + " spec (write each to its rule; limits are hard)\n" + sysSpec.fields.map(f => "- " + f.prop + (f.label !== f.prop ? " (" + f.label + ")" : "") + ": " + f.rule + (f.limits ? " — LIMITS: " + f.limits : "")).join("\n") + "\nApply what you know about the platform's real constraints on top; where a limit here is stricter, it wins.\n" : "";
   await env.TRADES.put("writer:settings:t:" + G.tid, JSON.stringify({ purpose: purpose.name, platform: P.name, layout: layout.name, scripting: script.name, guidance: String(body.guidance || "").slice(0, 4000), upstream: U }));
