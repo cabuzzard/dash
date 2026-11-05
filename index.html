@@ -791,9 +791,6 @@
         <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Initiatives table</h3></div>
       <div class="oc-bd"><div id="initvBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div>
       <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div></div>
-      <div class="oc-sec" data-ock="cplana" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad(false,'content-plan-assets')" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
-        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — All Assets</h3><span id="cplanMsg-content-plan-assets" style="font-size:11px;color:var(--text3);"></span></div>
-      <div class="oc-bd"><div id="cplanBody-content-plan-assets"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
       <div style="margin-top:14px;">
 <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
       .allrow-tbl > tbody > tr.allrow-h:hover > td { background:var(--border2) !important; }   /* row highlight on the Digest / Series headings */</style>
@@ -816,15 +813,6 @@
       </div></div>
     </div>
 
-        <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
-    <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
-      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — parents (Digest, Series…) count whenever they exist, same as All Output — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
-    <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
-    <div class="oc-sec" data-ock="hubweeklygoals"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
-      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Weekly Goals by Asset</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Asset types × sequence weeks, computed from Content Plan — All Assets.</span></div>
-    <div class="oc-bd"><div id="hubWeeklyGoals"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div></div></div>
     <div class="oc-sec" data-ock="hubproductsTable"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 id="hubProductsTableTitle" style="margin:0;font-size:16px;">Products</h2>
       <span style="font-size:11.5px;color:var(--text2);">Titles grouped by keyword topic and product, with the same deployed-only counts as All Hubs.</span><button onclick="productsClear(event)" title="Clear the selected hub" style="font-size:11px;padding:2px 7px;">× Clear</button></div>
@@ -886,10 +874,6 @@
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div></div>
-    <div class="oc-sec" data-ock="alloutput2"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
-      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output 2</h2>
-      <span style="font-size:11.5px;color:var(--text2);">New table, built around one record. Drag a header to reorder the columns.</span></div>
-    <div class="oc-bd"><div id="ao2Body"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
     <!-- HUB PRODUCTS AUDIT START -->
     <div class="oc-sec" data-ock="hubproducts" hidden title="Removed from All Output (2026-10-22); kept hidden as the clone source for hub-card Products views"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▶</span><h2 style="margin:0;font-size:16px;">Hub Products</h2><span style="font-size:11.5px;color:var(--text2);">12-hub audit · keyword snapshot October 19, 2026 · live product sync and asset counts</span></div>
@@ -941,6 +925,28 @@
       <span id="saFlowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div class="oc-bd"><div id="fvsubassetsBar"></div><div id="fvsubassetsPanel" style="display:none;"></div><div id="saFlowBody"></div></div></div>
+    <!-- PRODUCTION (operator 2026-11-05): the worksheet → its computed views → AO2, in that order; collapsed by default -->
+    <div class="oc-sec" data-ock="production"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Production</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Content Plan — All Assets (the one place to enter assets) → All Hubs — Deployed Assets + Weekly Goals (goals computed from it) → All Output 2.</span></div>
+    <div class="oc-bd">
+      <div class="oc-sec" data-ock="cplana" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad(false,'content-plan-assets')" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
+        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — All Assets</h3><span id="cplanMsg-content-plan-assets" style="font-size:11px;color:var(--text3);"></span></div>
+      <div class="oc-bd"><div id="cplanBody-content-plan-assets"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
+        <!-- ALL-HUBS DEPLOYED CHECKLIST (2026-10-22) -->
+    <div class="oc-sec" data-ock="hubchecklist"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — parents (Digest, Series…) count whenever they exist, same as All Output — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
+    <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
+    <div class="oc-sec" data-ock="hubweeklygoals"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Weekly Goals by Asset</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Asset types × sequence weeks, computed from Content Plan — All Assets.</span></div>
+    <div class="oc-bd"><div id="hubWeeklyGoals"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div></div></div>
+    <div class="oc-sec" data-ock="alloutput2"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output 2</h2>
+      <span style="font-size:11.5px;color:var(--text2);">New table, built around one record. Drag a header to reorder the columns.</span></div>
+    <div class="oc-bd"><div id="ao2Body"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
+    </div></div>
   </div>
 
 
