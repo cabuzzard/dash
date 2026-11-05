@@ -4631,7 +4631,7 @@ const CPLAN_DEFS = {
   'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
     { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
-function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, sort: null, open: new Set() }); }   // open = expanded hub groups (session only; all collapsed by default)
+function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set() }); }   // open = expanded headings (session only; all collapsed by default)
 // View layout (operator 2026-11-05): column order, widths and column groups are this browser's view only (localStorage) —
 // never written into the table, so a layout change never saves the table or races a portal edit.
 function cpView(name) { try { return JSON.parse(localStorage.getItem('cplan:view:' + name)) || {}; } catch (e) { return {}; } }
@@ -4696,18 +4696,37 @@ async function cplanLoad(force, name = 'content-plan-assets') {
   cplanPaint(name);
 }
 function cplanStatusOpts(name) { const c = (cpS(name).t.columns || []).find(x => x.id === 'status'); return (c && c.options) || CPLAN_STATUS; }
-function cplanSort(name, colId) {
-  const S = cpS(name); S.sort = !S.sort || S.sort.col !== colId ? { col: colId, dir: 1 } : S.sort.dir === 1 ? { col: colId, dir: -1 } : null; cplanPaint(name);
+// Multi-level sort with dynamic headings (operator 2026-11-05, like AO2): up to 7 levels; with Group by sort on, every level with
+// Heading ticked is a collapsible heading tier (default: Hub). Kept in this browser's view (localStorage), never in the table.
+const CPLAN_SORT_MAX = 7;
+function cplanSortLv(name) { const V = cpView(name); return Array.isArray(V.S) ? V.S : [{ col: 'hub', dir: 1, head: true }]; }
+function cplanSortPut(name, S) { const V = cpView(name); V.S = S.slice(0, CPLAN_SORT_MAX); cpViewSet(name, V); cplanPaint(name); }
+function cplanSort(name, colId, ev) {   // click: sort by this column only (again flips) · Ctrl/Shift-click: add a level (again flips, third time removes) · Alt-click: remove it
+  const S = cplanSortLv(name).map(s => ({ ...s })), i = S.findIndex(s => s.col === colId);
+  if (ev && ev.altKey) { if (i >= 0) S.splice(i, 1); }
+  else if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) { if (i < 0) S.push({ col: colId, dir: 1, head: true }); else if (S[i].dir === 1) S[i].dir = -1; else S.splice(i, 1); }
+  else return cplanSortPut(name, [{ col: colId, dir: i === 0 && S.length === 1 ? -S[0].dir : 1, head: i >= 0 ? S[i].head !== false : true }]);
+  cplanSortPut(name, S);
 }
+function cplanSortSet(name, i, f, v) { const S = cplanSortLv(name).map(s => ({ ...s })); if (!S[i]) return; S[i][f] = v; cplanSortPut(name, S); }
+function cplanSortAdd(name) { const S = cplanSortLv(name).map(s => ({ ...s })), T = cpS(name).t, used = new Set(S.map(s => s.col));
+  const c = (T.columns || []).find(c => !used.has(c.id) && !c.hidden); if (c) S.push({ col: c.id, dir: 1, head: true }); cplanSortPut(name, S); }
+function cplanSortDel(name, i) { const S = cplanSortLv(name).slice(); S.splice(i, 1); cplanSortPut(name, S); }
+function cplanSortMove(name, i, d) { const S = cplanSortLv(name).slice(), j = i + d; if (j < 0 || j >= S.length) return; [S[i], S[j]] = [S[j], S[i]]; cplanSortPut(name, S); }
+function cplanGroupBy(name, on) { const V = cpView(name); V.group = !!on; cpViewSet(name, V); cplanPaint(name); }
 function cplanPaint(name = 'content-plan-assets') {
   const S = cpS(name), T = S.t, el = document.getElementById('cplanBody' + cpId(name)); if (!el || !T) return;
   const q = "'" + name + "'";
-  const V = cpView(name), cols = cplanLayout(T, V, S.arch);
+  const V = cpView(name), cols = cplanLayout(T, V, S.arch), grpOn = V.group !== false;
+  const colName = id => ((T.columns.find(c => c.id === id) || {}).name || id);
+  const SL = cplanSortLv(name).filter(s => T.columns.some(c => c.id === s.col)), HL = grpOn ? SL.filter(s => s.head !== false) : [];
+  const cv = (r, k) => String(r.cells[k] || '').trim(), cmp = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   let rows = T.rows.filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
-  if (S.sort) { const k = S.sort.col, d = S.sort.dir; rows = rows.map((r, i) => [r, i]).sort((x, y) => {
-    const a = String(x[0].cells[k] || ''), b = String(y[0].cells[k] || '');
+  // stable multi-level sort; heading levels first (in their order) so each heading's rows sit together, then the rest
+  const order = [...HL, ...SL.filter(s => !HL.includes(s))];
+  if (order.length) rows = rows.map((r, i) => [r, i]).sort((x, y) => { for (const s of order) { const a = cv(x[0], s.col), b = cv(y[0], s.col);
     if (!a !== !b) return a ? -1 : 1;   // empty cells last either way
-    return (a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) * d) || (x[1] - y[1]); }).map(p => p[0]); }
+    const c = cmp(a, b) * (s.dir === -1 ? -1 : 1); if (c) return c; } return x[1] - y[1]; }).map(p => p[0]);
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const narrow = c => /^(week|day)$/.test(c.id);
@@ -4717,29 +4736,44 @@ function cplanPaint(name = 'content-plan-assets') {
   const grip = k => `<span draggable="true" ondragstart="CP_DRAG='${k}';try{event.dataTransfer.setData('text/plain','${k}')}catch(e){}" title="Drag to move this column (onto a group heading: into the group)" style="cursor:grab;color:var(--text3);font-size:12px;user-select:none;padding:0 1px;">⋮⋮</span>`;
   const sizer = k => `<span onpointerdown="cplanResize(event,${q},'${k}')" onclick="event.stopPropagation()" title="Drag to set this column's width" style="position:absolute;top:0;right:0;bottom:0;width:7px;cursor:col-resize;z-index:1;touch-action:none;"></span>`;
   const head = L => { if (L.group) { const g = L.group; return `<th draggable="true" ondragstart="CP_DRAG='${L.key}';try{event.dataTransfer.setData('text/plain','${L.key}')}catch(e){}" ondragover="event.preventDefault();this.style.outline='2px solid #c084fc'" ondragleave="this.style.outline=''" ondrop="cplanGroupDrop(event,${q},'${g.id}')" onclick="cplanGroupToggle(${q},'${g.id}')" title="Column group — click to ${g.collapsed ? 'expand' : 'collapse'} · drag a column's ⋮⋮ onto it to add it · double-click the name to rename" style="position:relative;width:${cplanColW(L.key, V)}px;cursor:pointer;user-select:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 8px;text-align:left;border-bottom:1px solid var(--border2);vertical-align:bottom;font-size:11px;font-weight:700;background:rgba(192,132,252,.14);color:#c084fc;">${g.collapsed ? '▸' : '▾'} <span ondblclick="event.stopPropagation();cplanGroupRename(${q},'${g.id}')">${esc(g.name)}</span> (${L.n})<span onclick="event.stopPropagation();if(confirm('Remove this group? Its columns go back into the table.'))cplanGroupRemove(${q},'${g.id}')" title="Remove the group" style="margin-left:6px;opacity:.7;">×</span>${sizer(L.key)}</th>`; }
-    const c = L.c, on = S.sort && S.sort.col === c.id;
+    const c = L.c, si = SL.findIndex(s => s.col === c.id), on = si >= 0;
     return `<th ondragover="event.preventDefault()" ondrop="cplanColDrop(event,${q},'${c.id}')" style="position:relative;width:${cplanColW(c.id, V)}px;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;${c.hidden ? 'opacity:.55;' : ''}${L.member ? 'background:rgba(192,132,252,.07);' : ''}">
     <div style="display:flex;gap:3px;align-items:center;">${grip(c.id)}<input value="${esc(c.name)}" title="Rename this column" onchange="cplanRename(${q},'${c.id}',this.value)" style="width:100%;min-width:0;font-size:11px;font-weight:700;color:var(--text2);background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 3px;" onfocus="this.style.borderColor='var(--border2)'" onblur="this.style.borderColor='transparent'">
-    <button onclick="cplanSort(${q},'${c.id}')" title="Sort by this column (A→Z, Z→A, off)" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (S.sort.dir === 1 ? '▲' : '▼') : '⇅'}</button></div>
+    <button onclick="cplanSort(${q},'${c.id}',event)" title="Click: sort by this column (again flips) · Ctrl- or Shift-click: add it as a level (again flips, third time removes) · Alt-click: remove it" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (SL[si].dir === -1 ? '▼' : '▲') + (SL.length > 1 ? si + 1 : '') : '⇅'}</button></div>
     ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}${sizer(c.id)}</th>`; };
-  // rows grouped by Hub (first-seen order; a sort applies inside each group); collapsed unless opened
-  const gm = new Map(); rows.forEach(r => { const k = String(r.cells.hub || '').trim(); if (!gm.has(k)) gm.set(k, []); gm.get(k).push(r); });
-  S._groups = [...gm.keys()];
+  // dynamic headings: one collapsible tier per heading level, nested; all collapsed unless opened
   const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}</tr>`;
-  const body = S._groups.map((k, i) => { const rs = gm.get(k), op = S.open.has(k);
-    return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:6px 8px;border-bottom:1px solid var(--border2);font-size:12.5px;font-weight:700;"><span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span>${esc(k || '(no hub)')} <span style="font-weight:400;color:var(--text3);">· ${rs.length} row${rs.length === 1 ? '' : 's'}</span></td></tr>${op ? rs.map(rowHtml).join('') : ''}`; }).join('');
+  S._groups = [];
+  const tier = (rs, d, path) => { if (d >= HL.length) return rs.map(rowHtml).join('');
+    const s = HL[d], runs = []; rs.forEach(r => { const v = cv(r, s.col), last = runs[runs.length - 1]; if (last && cmp(last.v, v) === 0 && !last.v === !v) last.rs.push(r); else runs.push({ v, rs: [r] }); });
+    return runs.map(g => { const k = path + '\u0001' + g.v.toLowerCase(), i = S._groups.push(k) - 1;
+      if (S.reveal && g.rs.some(r => r.id === S.reveal)) S.open.add(k);
+      const op = S.open.has(k), sz = [13, 12.5, 12, 11.5][Math.min(d, 3)];
+      return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:${d ? 'var(--surface)' : 'var(--surface2)'};"><td colspan="${cols.length}" style="padding:5px 8px 5px ${8 + d * 18}px;border-bottom:1px solid var(--border2);font-size:${sz}px;font-weight:700;"><span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span><span style="font-weight:400;color:var(--text3);">${esc(colName(s.col))}:</span> ${esc(g.v || '(blank)')} <span style="font-weight:400;color:var(--text3);">· ${g.rs.length} row${g.rs.length === 1 ? '' : 's'}</span></td></tr>${op ? tier(g.rs, d + 1, k) : ''}`; }).join(''); };
+  const body = tier(rows, 0, ''); delete S.reveal;
   const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0);
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
       <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
       <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
-      ${S.sort ? `<button style="${B}" onclick="cpS(${q}).sort=null;cplanPaint(${q})">✕ Clear sort</button>` : ''}
-      <button style="${B}" onclick="cplanGrpAll(${q},1)">▼ Expand all</button><button style="${B}" onclick="cplanGrpAll(${q},0)">▶ Collapse all</button>
+      <button style="${B}" onclick="cpS(${q}).panel=!cpS(${q}).panel;cplanPaint(${q})">⚲ Sort${SL.length ? ' (' + SL.length + ')' : ''}</button>
+      <button style="${B}" title="Group the rows under collapsible headings, one tier per sort level with Heading ticked" onclick="cplanGroupBy(${q},${grpOn ? 0 : 1})">☰ Headings: ${grpOn ? 'on' : 'off'}</button>
+      ${HL.length ? `<button style="${B}" onclick="cplanGrpAll(${q},1)">▼ Expand all</button><button style="${B}" onclick="cplanGrpAll(${q},0)">▶ Collapse all</button>` : ''}
       <button style="${B}" onclick="cplanGroupAdd(${q})" title="A named, collapsible column heading — drag columns' ⋮⋮ onto it">＋ Column group</button>
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="Computed from this table: every row that is not Archived and not Kind = Standalone counts 1 (a series row counts 1, however many posts it puts out)" style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
-      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. Every cell is editable and autosaves. ⇅ sorts the view only; drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+    ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
+      const opts = cur => T.columns.filter(c => S.arch || !c.hidden || c.id === cur).map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+      return `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:6px;">`
+        + SL.map((s, i) => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text2);width:52px;">${i ? 'then by' : 'Sort by'}</span>`
+          + `<select style="${sel}" onchange="cplanSortSet(${q},${i},'col',this.value)">${opts(s.col)}</select>`
+          + `<select style="${sel}" onchange="cplanSortSet(${q},${i},'dir',+this.value)"><option value="1" ${s.dir !== -1 ? 'selected' : ''}>A → Z</option><option value="-1" ${s.dir === -1 ? 'selected' : ''}>Z → A</option></select>`
+          + `<label title="With Headings on: this level gets its own collapsible heading. Off, it only orders the rows inside the headings." style="display:flex;align-items:center;gap:4px;color:var(--text2);cursor:pointer;"><input type="checkbox" ${s.head !== false ? 'checked' : ''} onchange="cplanSortSet(${q},${i},'head',this.checked)"> Heading</label>`
+          + `<button style="${sb}" title="Move up" onclick="cplanSortMove(${q},${i},-1)">↑</button><button style="${sb}" title="Move down" onclick="cplanSortMove(${q},${i},1)">↓</button><button style="${sb}color:#f87171;" title="Remove this level" onclick="cplanSortDel(${q},${i})">×</button></div>`).join('')
+        + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
+        + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
     <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr>${cols.map(head).join('')}</tr></thead>
     <tbody>${body || `<tr><td colspan="${cols.length}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
@@ -4755,7 +4789,7 @@ function cplanAddCol(name) {
   T.columns.push({ id: 'x' + Date.now().toString(36), name: v }); cplanPaint(name); cplanSave(name);
 }
 function cplanAddRow(name) {
-  const S = cpS(name); if (!S.t) return; const id = 'p' + Date.now().toString(36); S.t.rows.push({ id, cells: { status: 'Review' } }); S.sort = null; S.open.add(''); cplanPaint(name); cplanSave(name);
+  const S = cpS(name); if (!S.t) return; const id = 'p' + Date.now().toString(36); S.t.rows.push({ id, cells: { status: 'Review' } }); S.reveal = id; cplanPaint(name); cplanSave(name);
   const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tr[data-row="' + id + '"] textarea'); if (tas[0]) tas[0].focus();
 }
 async function cplanSave(name = 'content-plan-assets') {
