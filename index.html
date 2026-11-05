@@ -4723,13 +4723,14 @@ async function ao2Load() {
   { const seenP = new Set(AO2_ROWS.filter(r => r.type === 'Product').map(r => r.id)), seenA = new Set(AO2_ROWS.filter(r => r.type === 'Asset').map(r => r.id));
     all.forEach(x => { if (x.kind === 'product' && x.productId && !seenP.has(nid(x.productId))) { seenP.add(nid(x.productId)); AO2_ROWS.push(ao2ProdRow(x, {})); } });
     all.forEach(x => { if (x.kind === 'asset' && x.assetId && !x.titleId && !seenA.has(nid(x.assetId))) { seenA.add(nid(x.assetId)); AO2_ROWS.push(ao2AssetRow(x, {}, '')); } });
-    // ungated (operator 2026-11-04): archived products and EVERY interview record get rows too
+    // ungated (operator 2026-11-04): titles, products and assets — every status (archived products too) EXCEPT Idea; no interview rows
     const X = r.ao2Extra || {}, tName = {}, pName = {};
     all.forEach(y => { if (y.kind === 'title' && y.titleId) tName[nid(y.titleId)] = y.title || ''; if (y.kind === 'product' && y.productId) pName[nid(y.productId)] = y.product || ''; });
     (X.archivedProducts || []).forEach(x => { if (!seenP.has(nid(x.productId))) { seenP.add(nid(x.productId)); pName[nid(x.productId)] = x.product || ''; AO2_ROWS.push(ao2ProdRow(x, {})); } });
-    (X.interviews || []).forEach(v => AO2_ROWS.push({ id: nid(v.id), type: 'Interview', ivs: [{ id: nid(v.id), status: v.status, angle: v.angle }], title: '🎤 ' + (v.name || v.angle || 'Interview'),
+    if (false) (X.interviews || []).forEach(v => AO2_ROWS.push({ id: nid(v.id), type: 'Interview', ivs: [{ id: nid(v.id), status: v.status, angle: v.angle }], title: '🎤 ' + (v.name || v.angle || 'Interview'),
       ofTitle: tName[nid(v.titleId)] || '', titleId: nid(v.titleId), product: pName[nid(v.productId)] || '', productId: nid(v.productId), assetType: 'Interview' + (v.scope ? ' (' + v.scope + ')' : ''),
       status: v.status || '', campId: v.campId || '', created: String(v.created || '').slice(0, 10), edited: '', topic: '', cluster: '', hub: '' })); }
+  AO2_ROWS = AO2_ROWS.filter(x => !/^idea$/i.test(String(x.status || '').trim()));   // no Idea status (operator 2026-11-04)
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
