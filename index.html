@@ -4722,7 +4722,14 @@ async function ao2Load() {
   });
   { const seenP = new Set(AO2_ROWS.filter(r => r.type === 'Product').map(r => r.id)), seenA = new Set(AO2_ROWS.filter(r => r.type === 'Asset').map(r => r.id));
     all.forEach(x => { if (x.kind === 'product' && x.productId && !seenP.has(nid(x.productId))) { seenP.add(nid(x.productId)); AO2_ROWS.push(ao2ProdRow(x, {})); } });
-    all.forEach(x => { if (x.kind === 'asset' && x.assetId && !x.titleId && !seenA.has(nid(x.assetId))) { seenA.add(nid(x.assetId)); AO2_ROWS.push(ao2AssetRow(x, {}, '')); } }); }
+    all.forEach(x => { if (x.kind === 'asset' && x.assetId && !x.titleId && !seenA.has(nid(x.assetId))) { seenA.add(nid(x.assetId)); AO2_ROWS.push(ao2AssetRow(x, {}, '')); } });
+    // ungated (operator 2026-11-04): archived products and EVERY interview record get rows too
+    const X = r.ao2Extra || {}, tName = {}, pName = {};
+    all.forEach(y => { if (y.kind === 'title' && y.titleId) tName[nid(y.titleId)] = y.title || ''; if (y.kind === 'product' && y.productId) pName[nid(y.productId)] = y.product || ''; });
+    (X.archivedProducts || []).forEach(x => { if (!seenP.has(nid(x.productId))) { seenP.add(nid(x.productId)); pName[nid(x.productId)] = x.product || ''; AO2_ROWS.push(ao2ProdRow(x, {})); } });
+    (X.interviews || []).forEach(v => AO2_ROWS.push({ id: nid(v.id), type: 'Interview', ivs: [{ id: nid(v.id), status: v.status, angle: v.angle }], title: '🎤 ' + (v.name || v.angle || 'Interview'),
+      ofTitle: tName[nid(v.titleId)] || '', titleId: nid(v.titleId), product: pName[nid(v.productId)] || '', productId: nid(v.productId), assetType: 'Interview' + (v.scope ? ' (' + v.scope + ')' : ''),
+      status: v.status || '', campId: v.campId || '', created: String(v.created || '').slice(0, 10), edited: '', topic: '', cluster: '', hub: '' })); }
   ao2Render();
 }
 // Column widths (operator 2026-10-30): drag a header's right edge; kept in this browser (ao2ColW). Text never wraps — cells clip with …
@@ -4890,6 +4897,7 @@ function ao2Render() {
     : c.key === 'topic' && x.topic && x.topicId ? ao2Dot(x.sTopic) + `<a href="#" onclick="event.preventDefault();ao2TopicModal('${esc(x.id)}')" title="Edit this topic — name, seed keywords, keywords, isolate, cluster, delete" style="color:var(--accent);">${esc(x.topic)}</a>`
     : c.key === 'ofTitle' && x.ofTitle ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.titleId)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.ofTitle)}</a>${ao2TitleBtns(x.titleId, x.campId)}`
     : c.key === 'title' && x.type === 'Title' ? ao2Dot(x.sTitle) + `<a href="#" onclick="event.preventDefault();ao2TitleEdit('${esc(x.id)}','${esc(x.campId)}')" title="Title modal — edit, research, assets, series, digest, delete" style="color:var(--accent);">${esc(x.title)}</a>${ao2TitleBtns(x.id, x.campId)}`
+    : c.key === 'title' && x.type === 'Interview' ? `<a href="#" onclick="event.preventDefault();ivFlagOpen('${esc(x.id)}')" title="Open this interview — answer it / Expert Check" style="color:#ff7a00;">${esc(x.title)}</a>`
     : c.key === 'title' ? `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(x.title)}</a>` : esc(x[c.key] ?? '');
   const tip = (x, c) => c.key === 'parent' || c.key === 'asset' || c.key === 'writer' || c.key === 'cluster' ? '' : ` title="${esc(String(c.key === 'ofTitle' ? x.ofTitle || '' : x[c.key] ?? ''))}"`;
   const rowHtml = x => `<tr class="ao2-row"><td style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border);"><input type="checkbox" ${AO2_SEL.has(ao2Key(x)) ? 'checked' : ''} onchange="ao2SelToggle('${esc(ao2Key(x))}',this.checked)"></td>${cols.map(c => c.group ? `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.05);"></td>` : `<td${tip(x, c)} style="padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${c.member ? 'background:rgba(192,132,252,.04);' : ''}">${cell(x, c)}</td>`).join('')}</tr>`;
@@ -4912,7 +4920,8 @@ function ao2Render() {
     });
   }
   const W = ao2Widths(), tw = 32 + cols.reduce((a, c) => a + ao2W(W, c.key), 0), allOn = rows.length && rows.every(x => AO2_SEL.has(ao2Key(x)));
-  el.innerHTML = bar + panel + ao2BulkBar() + `<div style="overflow-x:auto;"><table id="ao2Tbl" class="ao2-tbl" style="border-collapse:collapse;font-size:12px;table-layout:fixed;width:${tw}px;"><colgroup><col style="width:32px;">${cols.map(c => `<col data-k="${c.key}" style="width:${ao2W(W, c.key)}px;">`).join('')}</colgroup><thead><tr><th style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" title="Select every visible row" ${allOn ? 'checked' : ''} onchange="ao2SelAll(this.checked)"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const hiddenN = AO2_ROWS.length - rows.length;
+  el.innerHTML = bar + panel + ao2BulkBar() + (hiddenN > 0 ? `<div style="font-size:12px;color:#f59e0b;margin:4px 0 6px;">Showing ${rows.length} of ${AO2_ROWS.length} records — ${hiddenN} hidden by your filters · <a href="#" onclick="event.preventDefault();ao2Clear()" style="color:var(--accent);">clear filters</a></div>` : `<div style="font-size:11.5px;color:var(--text3);margin:4px 0 6px;">All ${AO2_ROWS.length} records</div>`) + `<div style="overflow-x:auto;"><table id="ao2Tbl" class="ao2-tbl" style="border-collapse:collapse;font-size:12px;table-layout:fixed;width:${tw}px;"><colgroup><col style="width:32px;">${cols.map(c => `<col data-k="${c.key}" style="width:${ao2W(W, c.key)}px;">`).join('')}</colgroup><thead><tr><th style="padding:6px 4px 6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" title="Select every visible row" ${allOn ? 'checked' : ''} onchange="ao2SelAll(this.checked)"></th>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 // Parent cell: type-ahead over the OTHER assets on the same title only; clearing the box clears the parent
 function ao2Siblings(x) { return AO2_ROWS.filter(y => y.type === 'Asset' && y.titleId === x.titleId && y.id !== x.id); }

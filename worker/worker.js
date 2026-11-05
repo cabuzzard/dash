@@ -21750,7 +21750,12 @@ Return: {
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
             : r.assetSync === "Out of Sync · Regenerate" ? "Regenerate asset" : r.assetSync === "Out of Sync · Review" ? "Review asset" : "✓ Ready";
         });
-        return json({ rows, productStats: hubProductAssetStats(productRows, titleRows, assetRows), apps: await studioApps(env).catch(() => ({})) });
+        const ao2Extra = {
+          archivedProducts: Object.entries(productById).filter(([, prod]) => /^archived$/i.test(String(prod.status || "").trim())).map(([pid, prod]) => { const camp = prod.campId ? campById[prod.campId] : null;
+            return { kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "", productStack: prod.stack || "No Stack", product: prod.name, productId: pid,
+              title: "", titleId: null, productStatus: prod.status || "", productCreated: prod.created || "", productEdited: prod.edited || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null }; }),
+          interviews: ivRows.map(iv => ({ id: iv.id, name: iv.title || "", angle: iv.angle || "", status: iv.status || "", scope: iv.scope || "", titleId: iv.titleId || "", productId: iv.productId || "", campId: iv.cid || "", created: iv.created || "", assetIds: iv.assetIds || [] })) };
+        return json({ rows, ao2Extra, productStats: hubProductAssetStats(productRows, titleRows, assetRows), apps: await studioApps(env).catch(() => ({})) });
       }
 
       // Output bulk delete is deliberately a soft delete: Assets remain in
