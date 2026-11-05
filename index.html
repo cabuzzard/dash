@@ -940,7 +940,7 @@
     <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
     <div class="oc-sec" data-ock="hubweeklygoals"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Weekly Goals by Asset</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Open slots — asset types × hubs: Content Plan goal minus Dev + Published.</span></div>
+      <span style="font-size:11.5px;color:var(--text2);">Asset types × hubs — All Hubs turned on its side: remaining goal · dev · pub.</span></div>
     <div class="oc-bd"><div id="hubWeeklyGoals"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div></div></div>
     <div class="oc-sec" data-ock="alloutput2"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output 2</h2>
@@ -14295,25 +14295,38 @@ function hubPlanGoals(table, realTypes) {
 }
 function hubCheckGoal(slug, t) { const g = (HUBCHECK_PG.goals[slug] || {})[hubCheckNorm(t)]; return g ? { ...g, tip: g.goal + ' planned in Content Plan — All Assets (week ' + g.weeks.join(', ') + ')' } : null; }
 // Weekly Goals by Asset — rows = asset types, columns = the worksheet's weeks, cells = count; totals computed, never typed
-// Open slots (operator 2026-11-05): goal minus what already exists for that hub + type — a Development asset and a Published one each take
-// a slot away. Dev / Pub are All Hubs' own live counts (same assets, same rules; never written back). Never below 0.
+// Weekly Goals by Asset (operator 2026-11-05) = All Hubs — Deployed Assets turned on its side: rows = every asset type in Content Plan — All
+// Assets, columns = its hubs, totals both ways. Each cell: remaining goal · dev · pub. The goal comes only from the worksheet; dev / pub are All
+// Hubs' own live counts (same assets, same rules, never written back): dev = Development / Review / Planning, pub = Publish + Published (a
+// parent counts once it exists, as in All Hubs). Remaining = goal − dev − pub, never below 0. A dev / pub count opens those assets in AO2.
+let WG_SETS = [];
+function wgAo2(n) { const s = WG_SETS[n]; if (!s) return; (HD._sets = HD._sets || []).push(s); hdAo2(HD._sets.length - 1); }
 function renderWeeklyGoals(live) {
   if (live) renderWeeklyGoals.live = live; live = renderWeeklyGoals.live || { cells: {}, dev: {} };
-  const taken = {}; [['pub', live.cells], ['dev', live.dev]].forEach(([w, m]) => Object.entries(m || {}).forEach(([k, list]) => {
-    const i = k.indexOf('|'), key = k.slice(0, i) + '|' + hubCheckNorm(k.slice(i + 1)); (taken[key] = taken[key] || { dev: 0, pub: 0 })[w] += list.length; }));
   const el = document.getElementById('hubWeeklyGoals'); if (!el) return;
   if (!HUBCHECK_GOALS) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading the Content Plan…</div>'; return; }
   const P = HUBCHECK_PG, ks = Object.keys(P.byType);
   if (!ks.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);">No assets in Content Plan — All Assets yet.</div>'; return; }
-  const th = 'padding:4px 7px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;', td = 'padding:4px 7px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);';
-  const slot = (k, hb) => { const g = P.byType[k].hubs[hb] || 0, hh = hubPlanHub(hb), t = (hh && taken[hh.slug + '|' + k]) || { dev: 0, pub: 0 }; return { g, dev: t.dev, pub: t.pub, open: Math.max(0, g - t.dev - t.pub) }; };
-  const rowTot = k => P.hubs.reduce((a, hb) => a + slot(k, hb).open, 0), colTot = hb => ks.reduce((a, k) => a + slot(k, hb).open, 0), all = ks.reduce((a, k) => a + rowTot(k), 0), goalAll = ks.reduce((a, k) => a + P.byType[k].total, 0);
-  const cell = (k, hb) => { const s = slot(k, hb); if (!s.g) return `<td style="${td}color:var(--text3);" title="No goal">·</td>`;
-    return `<td style="${td}${s.open ? 'color:#ff7a00;font-weight:600;' : 'color:#4ade80;'}" title="Goal ${s.g} − Dev ${s.dev} − Published ${s.pub} = ${s.open} open">${s.open || '✓'}</td>`; };
-  el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Open slots: each hub's goal for each asset type in Content Plan — All Assets, minus the assets already in Development or Published there (All Hubs' live counts). ✓ = goal filled. Hover a cell for goal − dev − published. ${all} open of ${goalAll} goals.</div>
-    <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr><th style="${th}text-align:left;">Asset type</th>${P.hubs.map(hb => `<th style="${th}white-space:normal;min-width:64px;max-width:96px;vertical-align:bottom;">${esc(hb)}</th>`).join('')}<th style="${th}">Open</th></tr></thead><tbody>
-    ${ks.map(k => `<tr><td style="${td}text-align:left;white-space:nowrap;">${esc(hubCheckLabel(P.byType[k].label))}</td>${P.hubs.map(hb => cell(k, hb)).join('')}<td style="${td}font-weight:700;">${rowTot(k)}</td></tr>`).join('')}
-    <tr><td style="${td}text-align:left;font-weight:700;">Open</td>${P.hubs.map(hb => `<td style="${td}font-weight:700;">${colTot(hb)}</td>`).join('')}<td style="${td}font-weight:700;">${all}</td></tr></tbody></table></div>`;
+  const got = {}; const add = (k, w, r) => { const i = k.indexOf('|'), key = k.slice(0, i) + '|' + hubCheckNorm(k.slice(i + 1)); ((got[key] = got[key] || { dev: [], pub: [] })[w]).push(r.assetId); };
+  Object.entries(live.cells || {}).forEach(([k, l]) => l.forEach(r => add(k, 'pub', r)));
+  Object.entries(live.dev || {}).forEach(([k, l]) => l.forEach(r => add(k, /^publish$/i.test(r.assetStatus || '') ? 'pub' : 'dev', r)));
+  const hubs = P.hubs.map(name => ({ name, hh: hubPlanHub(name) }));
+  const c = (k, H) => { const t = (H.hh && got[H.hh.slug + '|' + k]) || { dev: [], pub: [] }, g = P.byType[k].hubs[H.name] || 0;
+    return { g, dev: t.dev, pub: t.pub, rem: Math.max(0, g - t.dev.length - t.pub.length) }; };
+  const sum = list => ({ g: list.reduce((a, x) => a + x.g, 0), rem: list.reduce((a, x) => a + x.rem, 0), dev: list.flatMap(x => x.dev), pub: list.flatMap(x => x.pub) });
+  WG_SETS = [];
+  const link = (ids, col, label) => { if (!ids.length) return `<span style="color:var(--text3);">0</span>`; const n = WG_SETS.push({ label, ids }) - 1;
+    return `<a href="#" onclick="event.preventDefault();wgAo2(${n})" title="Open these ${ids.length} in All Output 2" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${ids.length}</a>`; };
+  const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);vertical-align:bottom;', td = 'padding:5px 8px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap;';
+  const cell = (x, label, bold) => `<td style="${td}${bold ? 'font-weight:600;background:var(--surface2);' : ''}" title="Goal ${x.g} − dev ${x.dev.length} − pub ${x.pub.length} = ${x.rem} remaining">`
+    + (x.g ? `<span style="color:${x.rem ? '#ff7a00' : '#4ade80'};font-weight:700;">${x.rem || '✓'}</span>` : '<span style="color:var(--text3);">·</span>')
+    + ` · ${link(x.dev, 'var(--text)', label + ' · Dev')} · ${link(x.pub, '#16a34a', label + ' · Pub')}</td>`;
+  const rowsHtml = ks.map(k => { const L = hubCheckLabel(P.byType[k].label), xs = hubs.map(H => c(k, H));
+    return `<tr><td style="${td}text-align:left;">${esc(L)}</td>${xs.map((x, i) => cell(x, hubs[i].name + ' · ' + L)).join('')}${cell(sum(xs), 'All hubs · ' + L, true)}</tr>`; }).join('');
+  const colSums = hubs.map(H => sum(ks.map(k => c(k, H)))), grand = sum(colSums);
+  el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">All Hubs — Deployed Assets, turned on its side. Each cell: <b style="color:#ff7a00;">remaining goal</b> (✓ = met) · <b>dev</b> (Development / Review / Planning) · <b style="color:#16a34a;">pub</b> (Publish + Published). Goals come only from Content Plan — All Assets; dev and pub are All Hubs' live counts and each takes one off the goal. Click a dev / pub count to open those assets in All Output 2. Hover a cell for the sum.</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr><th style="${th}text-align:left;">Asset type ↓ · Hub →</th>${hubs.map(H => `<th style="${th}white-space:normal;min-width:72px;max-width:100px;">${esc(H.name)}${H.hh ? '' : ' <span style="color:#f87171;" title="Not matched to a hub — no live counts">⚠</span>'}</th>`).join('')}<th style="${th}">Total</th></tr></thead><tbody>
+    ${rowsHtml}<tr><td style="${td}text-align:left;font-weight:700;">Total</td>${colSums.map((x, i) => cell(x, hubs[i].name + ' · all types', true)).join('')}${cell(grand, 'All hubs · all types', true)}</tr></tbody></table></div>`;
 }
 // offered on every hub even with nothing deployed yet (operator 2026-10-23): the Client Studio app, the listing types (Fiverr gigs are
 // "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
