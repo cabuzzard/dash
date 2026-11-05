@@ -4672,6 +4672,7 @@ function cplanPaint(name = 'content-plan-assets') {
       <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
       <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
       ${S.sort ? `<button style="${B}" onclick="cpS(${q}).sort=null;cplanPaint(${q})">✕ Clear sort</button>` : ''}
+      ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="Computed from this table: every row that is not Archived and not Kind = Standalone counts 1 (a series row counts 1, however many posts it puts out)" style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
       <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. Every cell is editable and autosaves. ⇅ sorts the view only. Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr>${cols.map(head).join('')}</tr></thead>
     <tbody>${rows.map(row => `<tr style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
@@ -6085,8 +6086,8 @@ function hdPickKey(i) { const k = (HD._keys || [])[i]; if (k == null) return; if
 // "Topic" column naming it; otherwise it counts at hub level only (never guessed from the initiative text).
 function hdPlan(h) {
   const t = HD.plan; if (!t) return [];
-  const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i);
-  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim()) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
+  const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i);
+  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim()))) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
     .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { k: hubCheckNorm(raw), label: raw, topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
@@ -14278,8 +14279,9 @@ function hubPlanHub(name) {
 function hubPlanGoals(table, realTypes) {
   const out = { goals: {}, types: [], weeks: [], byType: {}, unresolved: [] }, seenW = new Set(), canon = {};
   (realTypes || []).forEach(t => { canon[hubCheckNorm(t)] = t; });   // show a worksheet type in its Notion spelling when one exists
+  const kindCol = (((table && table.columns) || []).find(c => /^kind$/i.test(String(c.name || '').trim())) || {}).id;   // Standalone = outside the goal flow
   for (const r of ((table && table.rows) || [])) {
-    const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim())) continue;
+    const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (kindCol && /^standalone$/i.test(String(c[kindCol] || '').trim()))) continue;
     const raw = String(c.atype || '').trim(); if (!raw) continue;
     const k = hubCheckNorm(raw), label = canon[k] || raw, w = String(c.week || '').trim() || '—';
     if (!out.byType[k]) { out.byType[k] = { label, weeks: {}, total: 0 }; out.types.push(label); }

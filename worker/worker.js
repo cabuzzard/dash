@@ -9799,8 +9799,98 @@ async function signToken(secret, ttlMs = 8 * 3600 * 1000) {
   return payloadB64 + "." + sigB64;
 }
 
-// Actions an EXTERNAL_WORKER_KEY caller may run — images, run assets (≤10 per call, never published), run read-back.
-const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun"]);
+// ── Content Plan portal (operator 2026-11-05): Content Plan — All Assets (KV CPLAN_KEY) is the master of cron + periodic goals.
+// updateContentPlan = add a row · edit a row's cells · archive a row — nothing else (no delete, no publish, no other table / KV key).
+// Every edit is validated against the table itself (hubs and asset types are the ones the table already uses; columns by name or id),
+// a refused edit is held with payload + reason (KV contentplan:held), an accepted one is logged with before/after (contentplan:log) and
+// read back from KV before success is reported. getContentPlanGoals = the cron-goal read: per hub + asset type, the goal (rows not
+// Archived, not Standalone — one row = one goal, a series row counts 1) with its Kind / Cadence / weeks. Both open to EXTERNAL_WORKER_KEY.
+const CPLAN_KEY = "infoflow:table:content-plan-assets";
+const CPLAN_KINDS = ["Sequence", "Periodic", "Standalone"];
+function cplanColOf(t, ref) { const r = String(ref || "").trim().toLowerCase(); return (t.columns || []).find(c => c.id === ref) || (t.columns || []).find(c => String(c.name || "").trim().toLowerCase() === r) || null; }
+function cplanCell(t, row, name) { const c = cplanColOf(t, name); return c ? String((row.cells || {})[c.id] || "").trim() : ""; }
+function cplanValidate(t, row) {   // → reason string, or "" when the row is valid
+  const live = (t.rows || []).filter(r => r.id !== row.id);
+  const hubs = new Set(live.map(r => cplanCell(t, r, "hub")).filter(Boolean)), types = new Set(live.map(r => cplanCell(t, r, "atype")).filter(Boolean));
+  const g = n => cplanCell(t, row, n), hub = g("hub"), atype = g("atype"), kind = g("Kind"), week = g("week"), slot = g("Slot"), status = g("status");
+  if (!hubs.has(hub)) return `Hub "${hub}" is not one of the table's hubs (${[...hubs].join(", ")})`;
+  if (!types.has(atype)) return `Asset type "${atype}" is not one of the table's exact asset types (${[...types].join(", ")})`;
+  if (!CPLAN_KINDS.includes(kind)) return `Kind "${kind}" must be one of ${CPLAN_KINDS.join(" | ")}`;
+  const opts = (cplanColOf(t, "status") || {}).options || ["Review", "Publish", "Published", "Archived"];
+  if (status && !opts.includes(status)) return `Status "${status}" must be one of ${opts.join(" | ")}`;
+  if (kind === "Standalone") {
+    if (week) return `A Standalone row has no Sequence week (got "${week}")`;
+    if (slot !== "none") return `A Standalone row's Slot must be "none" (got "${slot}")`;
+  } else {
+    if (!/^\d+$/.test(week) || +week < 1 || +week > 36) return `Sequence week must be 1–36 (got "${week}")`;
+    const m = slot.match(/^(.+?) \+ (.+?) \+ week (\d+)$/);
+    if (!m || !hubs.has(m[1]) || !types.has(m[2]) || +m[3] < 1 || +m[3] > 36) return `Slot "${slot}" must be "<hub> + <asset type> + week <1–36>" with a real hub and asset type, or "none" for Standalone`;
+  }
+  if (kind === "Periodic" && !/^(daily|weekly|monthly), \d+ per period$/i.test(g("Cadence"))) return `A Periodic row needs Cadence like "weekly, 1 per period" (got "${g("Cadence")}")`;
+  if (kind !== "Periodic" && kind !== "Sequence" && g("Cadence")) return `Cadence is for Periodic rows only`;
+  if (kind === "Sequence" && g("Sequence") && !/^\d+ [a-z]+/i.test(g("Sequence"))) return `Sequence must start with the number of pieces, e.g. "4 pieces, offsets 0, 3, 7, 14", "7 pieces, Days 1-6" or "30 episodes, daily, offsets 0-29" (got "${g("Sequence")}")`;
+  if (kind !== "Sequence" && g("Sequence")) return `Sequence is for Sequence rows only`;
+  if (kind !== "Standalone" && cplanColOf(t, "Own periodicity") && g("Own periodicity")) return `Own periodicity is for Standalone rows only`;
+  return "";
+}
+async function contentPlanAction(env, body, external) {
+  const t = (await env.TRADES.get(CPLAN_KEY, "json")) || null;
+  if (!t || !Array.isArray(t.columns)) return { status: 404, out: { error: "Content Plan — All Assets table not found at " + CPLAN_KEY } };
+  if (body.action === "getContentPlanGoals") {
+    const goals = {}, skipped = [];
+    for (const r of t.rows || []) {
+      const st = cplanCell(t, r, "status"), kind = cplanCell(t, r, "Kind"), hub = cplanCell(t, r, "hub"), atype = cplanCell(t, r, "atype");
+      if (/^archived$/i.test(st) || !atype) continue;
+      if (kind === "Standalone") { skipped.push({ rowId: r.id, hub, atype, init: cplanCell(t, r, "init"), ownPeriodicity: cplanCell(t, r, "Own periodicity") }); continue; }
+      if ((body.hub && body.hub !== hub) || (body.atype && body.atype !== atype)) continue;
+      const g = goals[hub + "\u0000" + atype] ||= { hub, atype, goal: 0, kinds: {}, cadences: [], weeks: [], rows: [] };
+      g.goal++; g.kinds[kind || "(blank)"] = (g.kinds[kind || "(blank)"] || 0) + 1;
+      const cad = cplanCell(t, r, "Cadence"), wk = cplanCell(t, r, "week");
+      if (cad && !g.cadences.includes(cad)) g.cadences.push(cad); if (wk && !g.weeks.includes(wk)) g.weeks.push(wk);
+      g.rows.push({ rowId: r.id, init: cplanCell(t, r, "init"), kind, cadence: cad, sequence: cplanCell(t, r, "Sequence"), slot: cplanCell(t, r, "Slot"), week: wk, status: st });
+    }
+    const list = Object.values(goals).map(g => ({ ...g, weeks: g.weeks.sort((a, b) => a - b) }));
+    return { status: 200, out: { ok: true, key: CPLAN_KEY, at: t.at || null, goals: list, total: list.reduce((n, g) => n + g.goal, 0), skippedStandalone: skipped } };
+  }
+  // updateContentPlan — edits: [{ op: "add" | "edit" | "archive", rowId?, cells?: { <column name or id>: value } }] (≤ 50), all or nothing
+  const edits = Array.isArray(body.edits) ? body.edits : body.op ? [{ op: body.op, rowId: body.rowId, cells: body.cells }] : [];
+  const hold = async reason => {
+    try { const h = (await env.TRADES.get("contentplan:held", "json")) || []; h.unshift({ at: new Date().toISOString(), external: !!external, reason, payload: edits }); await env.TRADES.put("contentplan:held", JSON.stringify(h.slice(0, 100))); } catch (e) {}
+    return { status: 400, out: { error: "Refused — nothing saved: " + reason, reason, payload: edits, held: true } };
+  };
+  if (!edits.length || edits.length > 50) return hold("send 1–50 edits as edits: [{ op, rowId, cells }]");
+  const next = JSON.parse(JSON.stringify(t)), log = [];
+  for (const [i, e] of edits.entries()) {
+    const at = `edit ${i + 1}: `;
+    if (!["add", "edit", "archive"].includes(e && e.op)) return hold(at + `op must be add | edit | archive (got "${e && e.op}") — rows are never deleted`);
+    let row = e.op === "add" ? null : next.rows.find(r => r.id === e.rowId);
+    if (e.op !== "add" && !row) return hold(at + `no row "${e.rowId}"`);
+    const before = row ? { ...row.cells } : null;
+    if (e.op === "add") { row = { id: "cp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), cells: {} }; next.rows.push(row); }
+    if (e.op === "archive") row.cells[cplanColOf(next, "status").id] = "Archived";
+    else for (const [k, v] of Object.entries(e.cells || {})) {
+      const c = cplanColOf(next, k); if (!c) return hold(at + `no column "${k}" (columns: ${next.columns.map(c => c.name).join(", ")})`);
+      const s = String(v ?? "").trim(); if (s.length > 4000) return hold(at + `"${k}" is over 4000 characters`);
+      if (s) row.cells[c.id] = s; else delete row.cells[c.id];
+    }
+    if (e.op !== "archive") { const why = cplanValidate(next, row); if (why) return hold(at + why); }
+    log.push({ op: e.op, rowId: row.id, before, after: { ...row.cells } });
+  }
+  next.at = Date.now();
+  await env.TRADES.put(CPLAN_KEY, JSON.stringify(next));
+  // read back: every edited row must hold exactly what was written
+  const back = (await env.TRADES.get(CPLAN_KEY, "json")) || {}, rows = [];
+  for (const l of log) {
+    const r = (back.rows || []).find(x => x.id === l.rowId);
+    if (!r || JSON.stringify(r.cells) !== JSON.stringify(l.after)) return { status: 500, out: { error: "Saved, but the read-back of row " + l.rowId + " did not match — check the table", rowId: l.rowId } };
+    rows.push({ rowId: r.id, cells: Object.fromEntries(Object.entries(r.cells).map(([k, v]) => [(back.columns.find(c => c.id === k) || {}).name || k, v])) });
+  }
+  try { const L = (await env.TRADES.get("contentplan:log", "json")) || []; L.unshift({ at: new Date().toISOString(), external: !!external, edits: log }); await env.TRADES.put("contentplan:log", JSON.stringify(L.slice(0, 200))); } catch (e) {}
+  return { status: 200, out: { ok: true, key: CPLAN_KEY, verified: true, rows } };
+}
+// Actions an EXTERNAL_WORKER_KEY caller may run — images, run assets (≤10 per call, never published), run read-back,
+// and the Content Plan portal (add / edit / archive rows of Content Plan — All Assets only) + its goal read.
+const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -18791,6 +18881,7 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
+    if (body.action === "updateContentPlan" || body.action === "getContentPlanGoals") { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
     if(body.action==='reconcileHubHierarchy') {
