@@ -4696,6 +4696,7 @@ async function cplanSave(name = 'content-plan-assets') {
   const r = await call('saveInfoFlowTable', { name, table: cpS(name).t }).catch(e => ({ error: e.message }));
   if (msg) { msg.style.color = r && !r.error ? 'var(--text3)' : '#f87171'; msg.textContent = r && !r.error ? 'Saved' : 'Not saved: ' + ((r && r.error) || 'no response'); }
   if (name === HUBPLAN_TABLE && r && !r.error && HUBCHECK_GOALS) { HUBCHECK_GOALS = { table: cpS(name).t, at: Date.now() }; renderHubChecklist(); }
+  if (name === HUBPLAN_TABLE && r && !r.error && HD.plan) { HD.plan = cpS(name).t; hdRender(); }
 }
 async function initvSave() {
   const msg = document.getElementById('initvMsg'); if (msg) msg.textContent = 'Saving…';
@@ -5991,7 +5992,8 @@ async function hdLoad(force) {
   if (HD.rows && !force) return hdRender();
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   if (force) _devTblLast = null;
-  const d = await devAssetsTable().catch(e => ({ error: e.message }));
+  const [d, pl] = await Promise.all([devAssetsTable().catch(e => ({ error: e.message })), call('getInfoFlowTable', { name: HUBPLAN_TABLE }).catch(e => ({ error: e.message }))]);
+  HD.plan = pl && !pl.error ? (pl.table || { columns: [], rows: [] }) : null; HD.planErr = pl && !pl.error ? '' : ((pl && pl.error) || 'no response');
   if (!d || d.error) { HD.err = (d && d.error) || 'no response'; HD.rows = null; return hdRender(); }
   HD.err = ''; HD.rows = d.rows || [];
   hdRender();
@@ -6074,6 +6076,48 @@ function hdGo(hubCid, depth, key) {
   hdRender(); const el = document.getElementById('hdBody'); if (el && el.scrollIntoView && key != null) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 function hdPickKey(i) { const k = (HD._keys || [])[i]; if (k == null) return; if (!HD.hub) return hdGo(k, 0); hdGo(null, (HD.path || []).length, k); }
+// ── Goal / Dev / Pub (operator 2026-11-05): the hub card lists TOPICS; every level (hub → topic → product → title → asset) shows the
+// goal, Development and Published counts, in total and per asset type. Goals come only from Content Plan — All Assets (the one
+// writable store, read here, never written); Dev / Pub are live asset statuses. Dev = Development + Review; Pub = Publish + Published
+// (either one meets a goal). A worksheet row lands under a title / product / topic when the worksheet has a "Title" / "Product" /
+// "Topic" column naming it; otherwise it counts at hub level only (never guessed from the initiative text).
+function hdPlan(h) {
+  const t = HD.plan; if (!t) return [];
+  const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i);
+  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim()) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
+    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { k: hubCheckNorm(raw), label: raw, topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
+}
+function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
+  const n = hubCheckNorm;
+  for (const r of plan) {
+    r.path = null;
+    if (r.title) for (const T of topics) { for (const P of T.products) { const Ti = P.titles.find(x => x.key !== '__none' && n(x.name) === n(r.title)); if (Ti) { r.path = [T.key, P.key, Ti.key]; break; } } if (r.path) break; }
+    if (!r.path && r.product) for (const T of topics) { const P = T.products.find(x => x.key !== '__none' && n(x.name) === n(r.product)); if (P) { r.path = [T.key, P.key]; break; } }
+    if (!r.path && r.topic) { const T = topics.find(x => x.key !== '__none' && n(x.name) === n(r.topic)); if (T) r.path = [T.key]; }
+  }
+}
+const hdAssetsOf = n => n.assets ? n.assets : n.titles ? n.titles.flatMap(hdAssetsOf) : n.products ? n.products.flatMap(hdAssetsOf) : [];
+function hdCount(assets, planRows) {   // per asset type → { label, goal, dev, pub }, plus the total
+  const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0 }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
+  planRows.forEach(r => { if (!m.has(r.k)) m.set(r.k, { label: r.label, goal: 0, dev: 0, pub: 0, fromPlan: true }); m.get(r.k).goal++; });
+  assets.forEach(a => { const t = String(a.rawAssetType || a.assetType || '').trim() || '(no type)', s = hdSt(a).trim(), o = get(hubCheckNorm(t), t);
+    if (/^(development|review)$/i.test(s)) o.dev++; else if (/^(publish|published)$/i.test(s)) o.pub++; });
+  const types = [...m.values()].filter(o => o.goal || o.dev || o.pub).sort((a, b) => b.goal - a.goal || (b.dev + b.pub) - (a.dev + a.pub) || a.label.localeCompare(b.label));
+  return { types, goal: types.reduce((s, o) => s + o.goal, 0), dev: types.reduce((s, o) => s + o.dev, 0), pub: types.reduce((s, o) => s + o.pub, 0) };
+}
+const hdGoalCol = (goal, pub) => !goal ? 'var(--text3)' : pub >= goal ? '#4ade80' : '#facc15';
+function hdChips(c, noGoal) {   // compact Goal · Dev · Pub, fixed widths so rows line up on a phone
+  const cell = (lab, v, col, tip) => `<span title="${tip}" style="display:inline-block;min-width:44px;text-align:right;font-size:11.5px;font-variant-numeric:tabular-nums;color:${col};"><span style="font-size:9.5px;color:var(--text3);">${lab}</span> ${v}</span>`;
+  return `<span style="display:inline-flex;gap:4px;flex:0 0 auto;margin-left:auto;">${cell('G', noGoal ? '—' : c.goal, noGoal ? 'var(--text3)' : hdGoalCol(c.goal, c.pub), 'Goal — Content Plan — All Assets')}${cell('D', c.dev, '#ff7a00', 'Development + Review')}${cell('P', c.pub, '#4ade80', 'Publish + Published (meets the goal)')}</span>`;
+}
+function hdTypeTable(c, noGoal) {   // the per-asset-type breakdown; one narrow table, wraps the type name instead of scrolling
+  if (!c.types.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">No goals or assets yet</div>';
+  const th = 'padding:5px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;', td = 'padding:5px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums;';
+  const row = (o, b) => `<tr${b ? ' style="font-weight:700;"' : ''}><td style="${td}overflow-wrap:anywhere;">${esc(o.label)}</td><td style="${td}text-align:right;color:${noGoal ? 'var(--text3)' : hdGoalCol(o.goal, o.pub)};">${noGoal ? '—' : o.goal}</td><td style="${td}text-align:right;color:#ff7a00;">${o.dev}</td><td style="${td}text-align:right;color:#4ade80;">${o.pub}</td></tr>`;
+  return `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;"><colgroup><col><col style="width:52px"><col style="width:46px"><col style="width:46px"></colgroup>
+    <thead><tr><th style="${th}text-align:left;">Asset type</th><th style="${th}text-align:right;">Goal</th><th style="${th}text-align:right;">Dev</th><th style="${th}text-align:right;">Pub</th></tr></thead>
+    <tbody>${c.types.map(o => row(o)).join('')}${c.types.length > 1 ? row({ label: 'Total', goal: c.goal, dev: c.dev, pub: c.pub }, true) : ''}</tbody></table>`;
+}
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
@@ -6085,7 +6129,7 @@ function hdRender() {
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button>
     ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button>` : ''}
-    <span style="color:var(--text3);font-size:11px;">Each level is ordered by the newest thing created inside it.</span></div>`;
+    <span style="color:var(--text3);font-size:11px;">G = goal (Content Plan — All Assets) · D = Development + Review · P = Publish + Published. Newest first.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }
   if (!h) {   // TOP LEVEL: every hub as a card, in sequence order, with the newest thing created inside it
@@ -6094,56 +6138,63 @@ function hdRender() {
       const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !HD_HIDDEN.test(hdSt(x).trim())), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
       const nA = vis.filter(x => x.kind === 'asset').length, nT = vis.filter(x => x.kind === 'title').length;
       return { nw, html: `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-        <b style="font-size:13.5px;flex:1 1 220px;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);">${tr.length} clusters · ${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets</span>
-        <span style="font-size:11px;color:var(--text3);min-width:84px;text-align:right;">${nw ? esc(nw) : 'no date'}</span><span style="color:var(--text3);">›</span></div>` }; })
+        <b style="font-size:13.5px;flex:1 1 120px;min-width:0;overflow-wrap:anywhere;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);flex:1 1 100%;order:3;">${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets · ${nw ? 'newest ' + esc(nw) : 'no date'}</span>
+        ${hdChips(hdCount(vis.filter(x => x.kind === 'asset'), hdPlan(hb)), !HD.plan)}<span style="color:var(--text3);">›</span></div>` }; })
       .sort((a, b) => (b.nw || '').localeCompare(a.nw || '')).map(x => x.html).join('');
     el.innerHTML = tools + `<div style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><b>All hubs</b><span style="float:right;font-size:11px;color:var(--text3);">Hubs</span></div>`
-      + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Hub</span><span>Newest created inside ↓</span></div>${cardsTop}</div>`;
+      + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Hub · newest created first</span><span style="display:inline-flex;gap:4px;"><span style="min-width:44px;text-align:right;">Goal</span><span style="min-width:44px;text-align:right;">Dev</span><span style="min-width:44px;text-align:right;">Pub</span></span><span style="width:8px;"></span></div>${cardsTop}</div>`;
     return;
   }
   const all = HD.rows, cid = HD.hub;
   const mineAll = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
   const mine = HD.showAllGlobal ? mineAll : mineAll.filter(x => !HD_HIDDEN.test(hdSt(x).trim()));
-  const tree = hdTree(h, mine, all);
-  // resolve the path; a stale step (after a refresh / filter change) is dropped
-  const P = HD.path = (HD.path || []).slice(); const nodes = [];
-  let level = tree;
+  const byNew = (a, b) => (b.newest || '').localeCompare(a.newest || '') || String(a.name).localeCompare(String(b.name));
+  const topics = hdTree(h, mine, all).flatMap(C => C.topics).sort(byNew);
+  const plan = hdPlan(h); hdPlace(plan, topics);
+  // resolve the path (topic → product → title); a stale step (after a refresh / filter change) is dropped
+  const P = HD.path = (HD.path || []).slice(0, 3), nodes = [];
   for (let i = 0; i < P.length; i++) {
-    const list = i === 0 ? tree : i === 1 ? nodes[0].topics : i === 2 ? nodes[1].products : nodes[2].titles;
-    const n = list.find(x => (i === 0 ? x.name : x.key) === P[i]); if (!n) { P.length = i; break; } nodes.push(n);
+    const list = i === 0 ? topics : i === 1 ? nodes[0].products : nodes[1].titles;
+    const n = list.find(x => x.key === P[i]); if (!n) { P.length = i; break; } nodes.push(n);
   }
-  const depth = P.length, cur = nodes[depth - 1];
-  const names = ['Clusters', 'Topics', 'Products', 'Titles', 'Assets'];
+  const depth = P.length, cur = nodes[depth - 1], noGoal = !HD.plan;
+  const under = path => plan.filter(r => r.path && path.every((k, i) => r.path[i] === k));
   const crumbs = [`<a href="#" onclick="event.preventDefault();HD.hub='';HD.path=[];hdRender()" style="color:var(--accent);">All hubs</a>`, `<a href="#" onclick="event.preventDefault();hdGo(null,0)" style="color:${depth ? 'var(--accent)' : 'var(--text)'};font-weight:700;">${esc(h.name)}</a>`]
     .concat(nodes.map((n, i) => i === depth - 1 ? `<b>${esc(n.name)}</b>` : `<a href="#" onclick="event.preventDefault();hdGo(null,${i + 1})" style="color:var(--accent);">${esc(n.name)}</a>`)).join(' <span style="color:var(--text3);">›</span> ');
   const up = depth ? `<button style="${B('var(--text2)')}" onclick="hdGo(null,${depth - 1})">↑ Up</button>` : `<button style="${B('var(--text2)')}" onclick="HD.hub='';HD.path=[];hdRender()">↑ All hubs</button>`;
-  const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;">${up}<span>${crumbs}</span><span style="margin-left:auto;font-size:11px;color:var(--text3);">${names[depth]}</span></div>`;
-  const stCol = s => /^published$/i.test(s) ? '#4ade80' : '#ff7a00';
-  const nlink = (id, name) => id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Notion" style="color:var(--text3);font-size:11px;">↗</a>` : '';
-  const dt = d => d ? `<div style="font-size:10.5px;color:var(--text3);margin-top:4px;">newest ${esc(d)}</div>` : '<div style="font-size:10.5px;color:var(--text3);margin-top:4px;">no date</div>';
+  const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;">${up}<span style="min-width:0;overflow-wrap:anywhere;">${crumbs}</span></div>`;
+  const stCol = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#8ab4f8' : '#ff7a00';
+  const nlink = id => id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Notion" style="color:var(--text3);font-size:11px;">↗</a>` : '';
   HD._keys = [];
-  const tile = (key, title, sub, extra, newest, link) => { const i = HD._keys.push(key) - 1;   // a ROW (operator 2026-11-02)
-    return `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-      <b style="font-size:13px;flex:1 1 220px;min-width:0;overflow-wrap:anywhere;">${esc(title)}</b>
-      <span style="font-size:11px;color:var(--text3);">${sub}</span>${extra || ''}
-      <span style="font-size:11px;color:var(--text3);min-width:84px;text-align:right;">${newest ? esc(newest) : 'no date'}</span>${link || ''}<span style="color:var(--text3);">›</span></div>`; };
-  const grid = inner => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Name</span><span>Newest created inside ↓</span></div>${inner || '<div style="font-size:12px;color:var(--text3);padding:10px;">Nothing here yet</div>'}</div>`;
+  const box = (head, inner) => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;"><div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">${head}</span><span style="display:inline-flex;gap:4px;"><span style="min-width:44px;text-align:right;">Goal</span><span style="min-width:44px;text-align:right;">Dev</span><span style="min-width:44px;text-align:right;">Pub</span></span></div>${inner}</div>`;
+  const row = (key, name, sub, c, link) => { const i = HD._keys.push(key) - 1;
+    return `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);">
+      <div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b> ${link || ''}<div style="font-size:10.5px;color:var(--text3);margin-top:2px;">${sub}</div></div>
+      ${hdChips(c, noGoal)}<span style="color:var(--text3);">›</span></div>`; };
+  // the summary for where you are: total + per asset type
+  const here = depth === 0 ? hdCount(mine.filter(x => x.kind === 'asset'), plan) : hdCount(hdAssetsOf(cur), under(P));
+  const hubOnly = depth === 0 ? plan.filter(r => !r.path).length : 0;
+  const summary = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;">
+    <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border2);"><b style="flex:1;font-size:13px;min-width:0;overflow-wrap:anywhere;">${esc(depth ? cur.name : h.name)}</b>${hdChips(here, noGoal)}</div>
+    ${hdTypeTable(here, noGoal)}
+    ${HD.planErr ? `<div style="font-size:11px;color:#f87171;padding:6px 10px;">Goals not loaded: ${esc(HD.planErr)}</div>` : ''}
+    ${hubOnly ? `<div style="font-size:11px;color:var(--text3);padding:6px 10px;border-top:1px solid var(--border);">${hubOnly} of ${plan.length} goals count at hub level only — Content Plan — All Assets doesn't name a topic, product or title for them (add a <b>Topic</b>, <b>Product</b> or <b>Title</b> column there to place them).</div>` : ''}</div>`;
+  const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
-  if (depth === 0) body = grid(tree.map(C => tile(C.name, C.name, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'} · ${C.topics.reduce((n, t) => n + t.products.length, 0)} products`, '', C.newest)).join(''));
-  else if (depth === 1) body = grid(cur.topics.map(T => { const sig = hdTopicSignal(T);
-    return tile(T.key, T.name, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, `<span style="font-size:11px;font-weight:700;color:${hdSigColor(sig)};">${esc(sig)}</span>`, T.newest); }).join(''));
-  else if (depth === 2) body = grid(cur.products.map(Pn => tile(Pn.key, Pn.name, `${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${Pn.titles.reduce((n, t) => n + t.assets.length, 0)} assets`,
-    Pn.row ? `<span style="font-size:11px;color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span>` : '', Pn.newest, nlink(Pn.row && Pn.row.productId))).join(''));
-  else if (depth === 3) body = grid(cur.titles.map(Ti => tile(Ti.key, Ti.name, `${Ti.assets.length} asset${Ti.assets.length === 1 ? '' : 's'}`,
-    Ti.row ? `<span style="font-size:11px;color:${stCol(hdSt(Ti.row))};">${esc(hdSt(Ti.row))}</span>` : '', Ti.newest, nlink(Ti.row && Ti.row.titleId))).join(''));
-  else body = (cur.assets.map(a => { const [m, mc] = hdMember(a, cid);
-    return `<div style="padding:9px 10px;border-bottom:1px solid var(--border);font-size:12px;">
-      <div style="display:flex;gap:6px;align-items:baseline;"><b style="flex:1;min-width:0;overflow-wrap:anywhere;">${esc(hdName(a))}</b>${nlink(a.assetId)}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:11px;"><span style="color:var(--text3);">${esc(a.rawAssetType || a.assetType || '')}</span><span style="color:${stCol(hdSt(a))};">${esc(hdSt(a))}</span>
-        ${a.run ? `<span title="Run" style="color:#c084fc;">⟲ ${esc(a.run)}${a.runStatus ? ' · ' + esc(a.runStatus) : ''}</span>` : ''}${(a.liveUrl || a.contentUrl) && /^published$/i.test(hdSt(a)) ? `<a href="${esc(a.liveUrl || a.contentUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''}
-        <span style="color:${mc};">${esc(m)}</span><span style="color:var(--text3);margin-left:auto;">${esc(hdDate(a)) || 'no date'}</span></div></div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
-  if (depth >= 4) body = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);"><div style="display:flex;gap:10px;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Asset</span><span>Created ↓</span></div>${body}</div>`;
-  el.innerHTML = tabs + tools + nav + body;
+  if (depth === 0) body = box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
+    return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
+  else if (depth === 1) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
+    hdCount(hdAssetsOf(Pn), under([P[0], Pn.key])), nlink(Pn.row && Pn.row.productId))).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No products yet</div>');
+  else if (depth === 2) body = box('Title', cur.titles.map(Ti => row(Ti.key, Ti.name, `${Ti.row ? `<span style="color:${stCol(hdSt(Ti.row))};">${esc(hdSt(Ti.row))}</span> · ` : ''}${Ti.assets.length} asset${Ti.assets.length === 1 ? '' : 's'} · ${dt(Ti)}`,
+    hdCount(Ti.assets, under([P[0], P[1], Ti.key])), nlink(Ti.row && Ti.row.titleId))).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No titles yet</div>');
+  else body = box('Asset', cur.assets.map(a => { const s = hdSt(a).trim(), dev = /^(development|review)$/i.test(s), pub = /^(publish|published)$/i.test(s);
+    return `<div style="display:flex;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);font-size:12px;">
+      <div style="flex:1 1 auto;min-width:0;"><b style="overflow-wrap:anywhere;">${esc(hdName(a))}</b> ${nlink(a.assetId)}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;font-size:11px;"><span style="color:var(--text3);">${esc(a.rawAssetType || a.assetType || '')}</span><span style="color:${stCol(s)};">${esc(s)}</span>
+        ${a.run ? `<span title="Run" style="color:#c084fc;">⟲ ${esc(a.run)}</span>` : ''}${(a.liveUrl || a.contentUrl) && /^published$/i.test(s) ? `<a href="${esc(a.liveUrl || a.contentUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''}
+        <span style="color:var(--text3);">${esc(hdDate(a)) || 'no date'}</span></div></div>
+      ${hdChips({ goal: '', dev: dev ? 1 : 0, pub: pub ? 1 : 0 }, true)}</div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+  el.innerHTML = tabs + tools + nav + summary + body;
 }
 // ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
 // changes; Run applies in batches (worker planningSweep, every old status logged); Undo restores. Published / Idea / Archived never touched.
