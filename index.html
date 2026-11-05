@@ -14299,7 +14299,7 @@ function hubCheckGoal(slug, t) { const g = (HUBCHECK_PG.goals[slug] || {})[hubCh
 // Assets, columns = its hubs, totals both ways. Each cell: remaining goal · dev · pub. The goal comes only from the worksheet; dev / pub are All
 // Hubs' own live counts (same assets, same rules, never written back): dev = Development / Review / Planning, pub = Publish + Published (a
 // parent counts once it exists, as in All Hubs). Remaining = goal − dev − pub, never below 0. A dev / pub count opens those assets in AO2.
-// A series counts 1 (operator 2026-11-05): assets of one type that share a Parent Asset are one unit in that cell — pub if any of them is
+// A run counts 1 (operator 2026-11-05): assets of one type that share a Run are one unit in that cell — pub if any of them is
 // Publish / Published, else dev. Clicking the count still opens every asset in it.
 let WG_SETS = [];
 function wgAo2(n) { const s = WG_SETS[n]; if (!s) return; (HD._sets = HD._sets || []).push(s); hdAo2(HD._sets.length - 1); }
@@ -14313,8 +14313,8 @@ function renderWeeklyGoals(live) {
   Object.entries(live.cells || {}).forEach(([k, l]) => l.forEach(r => add(k, 'pub', r)));
   Object.entries(live.dev || {}).forEach(([k, l]) => l.forEach(r => add(k, /^publish$/i.test(r.assetStatus || '') ? 'pub' : 'dev', r)));
   const got = {}, nid = x => String(x || '').replace(/-/g, '');
-  for (const [key, list] of Object.entries(raw)) {   // one unit per series (shared Parent Asset), else per asset
-    const units = new Map(); list.forEach(({ w, r }) => { const u = r.parentAssetId ? 'p:' + nid(r.parentAssetId) : 'a:' + nid(r.assetId); const o = units.get(u) || { pub: false, ids: [] }; o.ids.push(r.assetId); if (w === 'pub') o.pub = true; units.set(u, o); });
+  for (const [key, list] of Object.entries(raw)) {   // one unit per run (shared Run), else per asset
+    const units = new Map(); list.forEach(({ w, r }) => { const u = String(r.run || '').trim() ? 'r:' + String(r.run).trim() : 'a:' + nid(r.assetId); const o = units.get(u) || { pub: false, ids: [] }; o.ids.push(r.assetId); if (w === 'pub') o.pub = true; units.set(u, o); });
     const g = got[key] = { dev: [], pub: [], devN: 0, pubN: 0 }; for (const o of units.values()) { if (o.pub) { g.pubN++; g.pub.push(...o.ids); } else { g.devN++; g.dev.push(...o.ids); } }
   }
   const hubs = P.hubs.map(name => ({ name, hh: hubPlanHub(name) }));
@@ -14323,15 +14323,15 @@ function renderWeeklyGoals(live) {
   const sum = list => ({ g: list.reduce((a, x) => a + x.g, 0), rem: list.reduce((a, x) => a + x.rem, 0), dev: list.flatMap(x => x.dev), pub: list.flatMap(x => x.pub), devN: list.reduce((a, x) => a + x.devN, 0), pubN: list.reduce((a, x) => a + x.pubN, 0) });
   WG_SETS = [];
   const link = (ids, n0, col, label) => { if (!ids.length) return `<span style="color:var(--text3);">0</span>`; const n = WG_SETS.push({ label, ids }) - 1;
-    return `<a href="#" onclick="event.preventDefault();wgAo2(${n})" title="${n0} counted${n0 !== ids.length ? ' (a series counts 1)' : ''} — open these ${ids.length} assets in All Output 2" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${n0}</a>`; };
+    return `<a href="#" onclick="event.preventDefault();wgAo2(${n})" title="${n0} counted${n0 !== ids.length ? ' (a run counts 1)' : ''} — open these ${ids.length} assets in All Output 2" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${n0}</a>`; };
   const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);vertical-align:bottom;', td = 'padding:5px 8px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);white-space:nowrap;';
-  const cell = (x, label, bold) => `<td style="${td}${bold ? 'font-weight:600;background:var(--surface2);' : ''}" title="Goal ${x.g} − dev ${x.devN} − pub ${x.pubN} = ${x.rem} remaining (a series counts 1)">`
+  const cell = (x, label, bold) => `<td style="${td}${bold ? 'font-weight:600;background:var(--surface2);' : ''}" title="Goal ${x.g} − dev ${x.devN} − pub ${x.pubN} = ${x.rem} remaining (a run counts 1)">`
     + (x.g ? `<span style="color:${x.rem ? '#ff7a00' : '#4ade80'};font-weight:700;">${x.rem || '✓'}</span>` : '<span style="color:var(--text3);">·</span>')
     + ` · ${link(x.dev, x.devN, 'var(--text)', label + ' · Dev')} · ${link(x.pub, x.pubN, '#16a34a', label + ' · Pub')}</td>`;
   const rowsHtml = ks.map(k => { const L = hubCheckLabel(P.byType[k].label), xs = hubs.map(H => c(k, H));
     return `<tr><td style="${td}text-align:left;">${esc(L)}</td>${xs.map((x, i) => cell(x, hubs[i].name + ' · ' + L)).join('')}${cell(sum(xs), 'All hubs · ' + L, true)}</tr>`; }).join('');
   const colSums = hubs.map(H => sum(ks.map(k => c(k, H)))), grand = sum(colSums);
-  el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">All Hubs — Deployed Assets, turned on its side. Each cell: <b style="color:#ff7a00;">remaining goal</b> (✓ = met) · <b>dev</b> (Development / Review / Planning) · <b style="color:#16a34a;">pub</b> (Publish + Published). Goals come only from Content Plan — All Assets; dev and pub are All Hubs' live assets and each takes one off the goal — a <b>series counts 1</b> (assets of one type sharing a Parent Asset). Click a dev / pub count to open those assets in All Output 2. Hover a cell for the sum.</div>
+  el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">All Hubs — Deployed Assets, turned on its side. Each cell: <b style="color:#ff7a00;">remaining goal</b> (✓ = met) · <b>dev</b> (Development / Review / Planning) · <b style="color:#16a34a;">pub</b> (Publish + Published). Goals come only from Content Plan — All Assets; dev and pub are All Hubs' live assets and each takes one off the goal — a <b>run counts 1</b> (assets of one type sharing a Run). Click a dev / pub count to open those assets in All Output 2. Hover a cell for the sum.</div>
     <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr><th style="${th}text-align:left;">Asset type ↓ · Hub →</th>${hubs.map(H => `<th style="${th}white-space:normal;min-width:72px;max-width:100px;">${esc(H.name)}${H.hh ? '' : ' <span style="color:#f87171;" title="Not matched to a hub — no live counts">⚠</span>'}</th>`).join('')}<th style="${th}">Total</th></tr></thead><tbody>
     ${rowsHtml}<tr><td style="${td}text-align:left;font-weight:700;">Total</td>${colSums.map((x, i) => cell(x, hubs[i].name + ' · all types', true)).join('')}${cell(grand, 'All hubs · all types', true)}</tr></tbody></table></div>`;
 }
