@@ -4631,7 +4631,34 @@ const CPLAN_DEFS = {
   'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
     { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
-function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, sort: null }); }
+function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, sort: null, open: new Set() }); }   // open = expanded hub groups (session only; all collapsed by default)
+// View layout (operator 2026-11-05): column order, widths and collapsed columns are this browser's view only (localStorage) —
+// never written into the table, so a layout change never saves the table or races a portal edit.
+function cpView(name) { try { return JSON.parse(localStorage.getItem('cplan:view:' + name)) || {}; } catch (e) { return {}; } }
+function cpViewSet(name, v) { try { localStorage.setItem('cplan:view:' + name, JSON.stringify(v)); } catch (e) {} }
+function cplanColW(c, V) { return V.coll && V.coll[c.id] ? 30 : (V.w && V.w[c.id]) || (/^(week|day)$/.test(c.id) ? 80 : c.id === 'status' ? 120 : 180); }
+function cplanCollCol(name, colId) { const V = cpView(name); V.coll = V.coll || {}; if (V.coll[colId]) delete V.coll[colId]; else V.coll[colId] = 1; cpViewSet(name, V); cplanPaint(name); }
+function cplanGrp(name, i) { const S = cpS(name), k = (S._groups || [])[i]; if (k === undefined) return; S.open.has(k) ? S.open.delete(k) : S.open.add(k); cplanPaint(name); }
+function cplanGrpAll(name, open) { const S = cpS(name); S.open = new Set(open ? (S._groups || []) : []); cplanPaint(name); }
+function cplanDragStart(ev, name, colId) { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', 'cpcol:' + name + ':' + colId); }
+function cplanDrop(ev, name, colId) {
+  ev.preventDefault(); const d = String(ev.dataTransfer.getData('text/plain') || ''), pre = 'cpcol:' + name + ':'; if (!d.startsWith(pre)) return;
+  const from = d.slice(pre.length); if (from === colId) return;
+  const T = cpS(name).t, V = cpView(name), ids = cplanOrder(T, V).map(c => c.id).filter(id => id !== from);
+  const th = ev.currentTarget, after = th && ev.clientX > th.getBoundingClientRect().left + th.offsetWidth / 2;
+  ids.splice(ids.indexOf(colId) + (after ? 1 : 0), 0, from); V.order = ids; cpViewSet(name, V); cplanPaint(name);
+}
+function cplanOrder(T, V) { const o = V.order || [], at = id => { const i = o.indexOf(id); return i < 0 ? 1e6 : i; };
+  return T.columns.map((c, i) => [c, i]).sort((a, b) => (at(a[0].id) - at(b[0].id)) || (a[1] - b[1])).map(p => p[0]); }
+function cplanResize(ev, name, colId) {
+  ev.preventDefault(); ev.stopPropagation();
+  const th = ev.target.closest('th'), tbl = th.closest('table'), x0 = ev.clientX, w0 = th.offsetWidth, t0 = tbl.offsetWidth;
+  const mv = e => { const w = Math.max(50, w0 + e.clientX - x0); th.style.width = w + 'px'; tbl.style.width = (t0 + w - w0) + 'px'; };
+  const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+    const V = cpView(name); V.w = V.w || {}; V.w[colId] = th.offsetWidth; cpViewSet(name, V); };
+  document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+}
+function cplanResetView(name) { try { localStorage.removeItem('cplan:view:' + name); } catch (e) {} cplanPaint(name); }
 function cpId(name) { return name === 'content-plan' ? '' : '-' + name; }
 async function cplanLoad(force, name = 'content-plan-assets') {
   const S = cpS(name); if (S.t && !force) return cplanPaint(name);
@@ -4649,33 +4676,46 @@ function cplanSort(name, colId) {
 function cplanPaint(name = 'content-plan-assets') {
   const S = cpS(name), T = S.t, el = document.getElementById('cplanBody' + cpId(name)); if (!el || !T) return;
   const q = "'" + name + "'";
-  const cols = T.columns.filter(c => S.arch || !c.hidden);
+  const V = cpView(name), cols = cplanOrder(T, V).filter(c => S.arch || !c.hidden), coll = c => !!(V.coll && V.coll[c.id]);
   let rows = T.rows.filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
   if (S.sort) { const k = S.sort.col, d = S.sort.dir; rows = rows.map((r, i) => [r, i]).sort((x, y) => {
     const a = String(x[0].cells[k] || ''), b = String(y[0].cells[k] || '');
     if (!a !== !b) return a ? -1 : 1;   // empty cells last either way
     return (a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) * d) || (x[1] - y[1]); }).map(p => p[0]); }
-  const IN = 'width:100%;min-width:140px;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const narrow = c => /^(week|day)$/.test(c.id);
-  const cell = (row, c) => `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;${c.hidden ? 'opacity:.55;' : ''}">${c.id === 'status'
-    ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}min-width:100px;">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}${narrow(c) ? 'min-width:70px;' : ''}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`;
+  const cell = (row, c) => coll(c) ? `<td title="${esc(c.name)}: ${esc(row.cells[c.id] || '')}" style="border-bottom:1px solid var(--border);background:var(--surface2);"></td>` : `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${c.id === 'status'
+    ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+    : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`;
+  const drop = c => `ondragover="event.preventDefault()" ondrop="cplanDrop(event,${q},'${c.id}')"`;
+  const grip = c => `<span draggable="true" ondragstart="cplanDragStart(event,${q},'${c.id}')" title="Drag to move this column" style="cursor:grab;color:var(--text3);font-size:12px;user-select:none;padding:0 1px;">⋮⋮</span>`;
+  const tog = c => `<button onclick="cplanCollCol(${q},'${c.id}')" title="${coll(c) ? 'Expand' : 'Collapse'} this column" style="font-size:10px;padding:1px 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">${coll(c) ? '▸' : '◂'}</button>`;
   const head = c => { const on = S.sort && S.sort.col === c.id;
-    return `<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;${c.hidden ? 'opacity:.55;' : ''}">
-    <div style="display:flex;gap:3px;align-items:center;"><input value="${esc(c.name)}" title="Rename this column" onchange="cplanRename(${q},'${c.id}',this.value)" style="width:100%;min-width:${narrow(c) ? 60 : 120}px;font-size:11px;font-weight:700;color:var(--text2);background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 3px;" onfocus="this.style.borderColor='var(--border2)'" onblur="this.style.borderColor='transparent'">
+    if (coll(c)) return `<th ${drop(c)} title="${esc(c.name)} (collapsed)" style="width:30px;padding:4px 2px;border-bottom:1px solid var(--border2);vertical-align:bottom;"><div style="display:flex;flex-direction:column;align-items:center;gap:4px;">${tog(c)}${grip(c)}<span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:700;color:var(--text3);white-space:nowrap;max-height:120px;overflow:hidden;">${esc(c.name)}</span></div></th>`;
+    return `<th ${drop(c)} style="position:relative;width:${cplanColW(c, V)}px;text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;${c.hidden ? 'opacity:.55;' : ''}">
+    <div style="display:flex;gap:3px;align-items:center;">${grip(c)}${tog(c)}<input value="${esc(c.name)}" title="Rename this column" onchange="cplanRename(${q},'${c.id}',this.value)" style="width:100%;min-width:0;font-size:11px;font-weight:700;color:var(--text2);background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 3px;" onfocus="this.style.borderColor='var(--border2)'" onblur="this.style.borderColor='transparent'">
     <button onclick="cplanSort(${q},'${c.id}')" title="Sort by this column (A→Z, Z→A, off)" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (S.sort.dir === 1 ? '▲' : '▼') : '⇅'}</button></div>
-    ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}</th>`; };
+    ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}<span onpointerdown="cplanResize(event,${q},'${c.id}')" title="Drag to resize" style="position:absolute;top:0;right:-3px;bottom:0;width:7px;cursor:col-resize;z-index:1;touch-action:none;"></span></th>`; };
+  // rows grouped by Hub (first-seen order; a sort applies inside each group); collapsed unless opened
+  const gm = new Map(); rows.forEach(r => { const k = String(r.cells.hub || '').trim(); if (!gm.has(k)) gm.set(k, []); gm.get(k).push(r); });
+  S._groups = [...gm.keys()];
+  const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}</tr>`;
+  const body = S._groups.map((k, i) => { const rs = gm.get(k), op = S.open.has(k);
+    return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:var(--surface2);"><td colspan="${cols.length}" style="padding:6px 8px;border-bottom:1px solid var(--border2);font-size:12.5px;font-weight:700;"><span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span>${esc(k || '(no hub)')} <span style="font-weight:400;color:var(--text3);">· ${rs.length} row${rs.length === 1 ? '' : 's'}</span></td></tr>${op ? rs.map(rowHtml).join('') : ''}`; }).join('');
+  const tw = cols.reduce((s, c) => s + cplanColW(c, V), 0);
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
       <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
       <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
       ${S.sort ? `<button style="${B}" onclick="cpS(${q}).sort=null;cplanPaint(${q})">✕ Clear sort</button>` : ''}
+      <button style="${B}" onclick="cplanGrpAll(${q},1)">▼ Expand all</button><button style="${B}" onclick="cplanGrpAll(${q},0)">▶ Collapse all</button>
+      ${V.order || V.w || (V.coll && Object.keys(V.coll).length) ? `<button style="${B}" title="Column order, widths and collapsed columns back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="Computed from this table: every row that is not Archived and not Kind = Standalone counts 1 (a series row counts 1, however many posts it puts out)" style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
-      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. Every cell is editable and autosaves. ⇅ sorts the view only. Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
-    <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr>${cols.map(head).join('')}</tr></thead>
-    <tbody>${rows.map(row => `<tr style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. Every cell is editable and autosaves. ⇅ sorts the view only; drag ⋮⋮ to move a column, its right edge to resize, ◂ to collapse (layout is this browser only). Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr>${cols.map(head).join('')}</tr></thead>
+    <tbody>${body || `<tr><td colspan="${cols.length}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
 function cplanEdit(name, rowId, colId, value) {
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
@@ -4689,8 +4729,8 @@ function cplanAddCol(name) {
   T.columns.push({ id: 'x' + Date.now().toString(36), name: v }); cplanPaint(name); cplanSave(name);
 }
 function cplanAddRow(name) {
-  const S = cpS(name); if (!S.t) return; S.t.rows.push({ id: 'p' + Date.now().toString(36), cells: { status: 'Review' } }); S.sort = null; cplanPaint(name); cplanSave(name);
-  const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tbody tr:last-child textarea'); if (tas[0]) tas[0].focus();
+  const S = cpS(name); if (!S.t) return; const id = 'p' + Date.now().toString(36); S.t.rows.push({ id, cells: { status: 'Review' } }); S.sort = null; S.open.add(''); cplanPaint(name); cplanSave(name);
+  const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tr[data-row="' + id + '"] textarea'); if (tas[0]) tas[0].focus();
 }
 async function cplanSave(name = 'content-plan-assets') {
   const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Saving…';
