@@ -6154,7 +6154,7 @@ function hdRender() {
       const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !HD_HIDDEN.test(hdSt(x).trim())), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
       const nA = vis.filter(x => x.kind === 'asset').length, nT = vis.filter(x => x.kind === 'title').length;
       return { nw, html: `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
-        <b style="font-size:13.5px;flex:1 1 120px;min-width:0;overflow-wrap:anywhere;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);flex:1 1 100%;order:3;">${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets · ${nw ? 'newest ' + esc(nw) : 'no date'}</span>
+        <b style="font-size:13.5px;flex:0 1 auto;min-width:0;overflow-wrap:anywhere;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);flex:1 1 auto;min-width:0;">${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets · ${nw ? 'newest ' + esc(nw) : 'no date'}</span>
         ${hdChips(hdCount(vis.filter(x => x.kind === 'asset'), hdPlan(hb)), !HD.plan, hb.name)}<span style="color:var(--text3);">›</span></div>` }; })
       .sort((a, b) => (b.nw || '').localeCompare(a.nw || '')).map(x => x.html).join('');
     el.innerHTML = tools + `<div style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><b>All hubs</b><span style="float:right;font-size:11px;color:var(--text3);">Hubs</span></div>`
@@ -6186,7 +6186,7 @@ function hdRender() {
   const box = (head, inner) => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;"><div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">${head}</span><span style="display:inline-flex;gap:4px;"><span style="min-width:44px;text-align:right;">Goal</span><span style="min-width:44px;text-align:right;">Dev</span><span style="min-width:44px;text-align:right;">Pub</span></span></div>${inner}</div>`;
   const row = (key, name, sub, c, link) => { const i = HD._keys.push(key) - 1;
     return `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);">
-      <div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b> ${link || ''}<div style="font-size:10.5px;color:var(--text3);margin-top:2px;">${sub}</div></div>
+      <div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b> ${link || ''}<span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
       ${hdChips(c, noGoal, where + ' › ' + name)}<span style="color:var(--text3);">›</span></div>`; };
   // the summary for where you are: total + per asset type
   const here = depth === 0 ? hdCount(mine.filter(x => x.kind === 'asset'), plan) : hdCount(hdAssetsOf(cur), under(P));
