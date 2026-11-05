@@ -791,11 +791,8 @@
         <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Initiatives table</h3></div>
       <div class="oc-bd"><div id="initvBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div>
       <button onclick="initvAdd()" style="margin-top:8px;font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">＋ Add row</button></div></div>
-      <div class="oc-sec" data-ock="cplan" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad()" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
-        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — All Hubs</h3><span id="cplanMsg" style="font-size:11px;color:var(--text3);"></span></div>
-      <div class="oc-bd"><div id="cplanBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
       <div class="oc-sec" data-ock="cplana" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad(false,'content-plan-assets')" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
-        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — By Asset</h3><span id="cplanMsg-content-plan-assets" style="font-size:11px;color:var(--text3);"></span></div>
+        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — All Assets</h3><span id="cplanMsg-content-plan-assets" style="font-size:11px;color:var(--text3);"></span></div>
       <div class="oc-bd"><div id="cplanBody-content-plan-assets"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
       <div style="margin-top:14px;">
 <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
@@ -824,6 +821,10 @@
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Hubs — Deployed Assets</h2>
       <span style="font-size:11.5px;color:var(--text2);">Each hub a row, asset types across. Counts every asset (not Idea) whose title and product are live, in sync and placed in a keyword topic — parents (Digest, Series…) count whenever they exist, same as All Output — published · not yet published. ＋ add a column, drag a header to reorder, × remove. Click a count for its assets.</span></div>
     <div class="oc-bd"><div id="hubCheckBar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"></div><div id="hubCheckBody"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div><div id="hubCheckList" style="margin-top:8px;"></div></div></div>
+    <div class="oc-sec" data-ock="hubweeklygoals"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Weekly Goals by Asset</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Asset types × sequence weeks, computed from Content Plan — All Assets.</span></div>
+    <div class="oc-bd"><div id="hubWeeklyGoals"><div style="font-size:12px;color:var(--text3);">Loads with All Output…</div></div></div></div>
     <div class="oc-sec" data-ock="hubproductsTable"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 id="hubProductsTableTitle" style="margin:0;font-size:16px;">Products</h2>
       <span style="font-size:11.5px;color:var(--text2);">Titles grouped by keyword topic and product, with the same deployed-only counts as All Hubs.</span><button onclick="productsClear(event)" title="Clear the selected hub" style="font-size:11px;padding:2px 7px;">× Clear</button></div>
@@ -4626,7 +4627,7 @@ const CPLAN_DEFS = {
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
 function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, sort: null }); }
 function cpId(name) { return name === 'content-plan' ? '' : '-' + name; }
-async function cplanLoad(force, name = 'content-plan') {
+async function cplanLoad(force, name = 'content-plan-assets') {
   const S = cpS(name); if (S.t && !force) return cplanPaint(name);
   const r = await call('getInfoFlowTable', { name }).catch(e => ({ error: e.message }));
   const el = document.getElementById('cplanBody' + cpId(name)); if (!el) return;
@@ -4639,7 +4640,7 @@ function cplanStatusOpts(name) { const c = (cpS(name).t.columns || []).find(x =>
 function cplanSort(name, colId) {
   const S = cpS(name); S.sort = !S.sort || S.sort.col !== colId ? { col: colId, dir: 1 } : S.sort.dir === 1 ? { col: colId, dir: -1 } : null; cplanPaint(name);
 }
-function cplanPaint(name = 'content-plan') {
+function cplanPaint(name = 'content-plan-assets') {
   const S = cpS(name), T = S.t, el = document.getElementById('cplanBody' + cpId(name)); if (!el || !T) return;
   const q = "'" + name + "'";
   const cols = T.columns.filter(c => S.arch || !c.hidden);
@@ -4684,10 +4685,11 @@ function cplanAddRow(name) {
   const S = cpS(name); if (!S.t) return; S.t.rows.push({ id: 'p' + Date.now().toString(36), cells: { status: 'Review' } }); S.sort = null; cplanPaint(name); cplanSave(name);
   const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tbody tr:last-child textarea'); if (tas[0]) tas[0].focus();
 }
-async function cplanSave(name = 'content-plan') {
+async function cplanSave(name = 'content-plan-assets') {
   const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Saving…';
   const r = await call('saveInfoFlowTable', { name, table: cpS(name).t }).catch(e => ({ error: e.message }));
   if (msg) { msg.style.color = r && !r.error ? 'var(--text3)' : '#f87171'; msg.textContent = r && !r.error ? 'Saved' : 'Not saved: ' + ((r && r.error) || 'no response'); }
+  if (name === HUBPLAN_TABLE && r && !r.error && HUBCHECK_GOALS) { HUBCHECK_GOALS = { table: cpS(name).t, at: Date.now() }; renderHubChecklist(); }
 }
 async function initvSave() {
   const msg = document.getElementById('initvMsg'); if (msg) msg.textContent = 'Saving…';
@@ -14181,21 +14183,59 @@ function dev2CollapseAll(close) {
   dev2SaveOpen(o); renderDev2();
 }
 // ── All Hubs — Deployed Assets checklist: hubs × asset types, deployed-only counts (Published AND live on the hub).
-// Columns are the viewer's own (add from the asset types present in hubs, reorder, remove) — kept in this browser.
+// Columns = the asset types in Content Plan — All Assets (Initiatives); the viewer only orders / groups them (kept in this browser).
 const HUBCHECK_KEY = 'hubChecklistCols:v2';   // v2: parents split by name (Series / Digest / Sales parent)
-let HUBCHECK_COLS = null, HUBCHECK_OPEN = null, HUBCHECK_GOALS = null, HUBCHECK_FLAT = [];   // FLAT: every column type in display order (groups expanded)   // goals: worker getHubCheckGoals (per-period, cron-kept snapshot)
-async function hubCheckGoalsLoad(rebuild) {
-  const r = await call('getHubCheckGoals', rebuild ? { rebuild: true } : {}).catch(e => ({ error: e.message }));
-  if (r && !r.error) { HUBCHECK_GOALS = r; renderHubChecklist(); }
-}
+let HUBCHECK_COLS = null, HUBCHECK_OPEN = null, HUBCHECK_GOALS = null, HUBCHECK_FLAT = [];   // FLAT: every column type in display order (groups expanded)   // goals: {table} = Content Plan — All Assets worksheet (computed per render, hubPlanGoals)
 const hubCheckNorm = x => String(x || '').toLowerCase().replace(/[—–]/g, '-').replace(/\s+/g, ' ').trim();
-function hubCheckGoal(slug, t) { const g = HUBCHECK_GOALS && (HUBCHECK_GOALS.goals[slug] || {})[hubCheckNorm(t)]; return g || null; }
+// Goals + columns come ONLY from the Content Plan — All Assets worksheet (KV infoflow:table:content-plan-assets, operator 2026-11-05):
+// goal(hub, type) = the number of non-archived worksheet rows for that hub + asset type; the column list = the asset types the worksheet
+// names. Read-only, computed on every render — no goal number and no column list is stored or typed anywhere else. The Development /
+// Published counts beside them stay live from Notion (hubCheckData) and never read or write the worksheet.
+const HUBPLAN_TABLE = 'content-plan-assets';
+let HUBCHECK_PG = { goals: {}, types: [], weeks: [], byType: {}, unresolved: [] };
+async function hubCheckGoalsLoad() {
+  const r = await call('getInfoFlowTable', { name: HUBPLAN_TABLE }).catch(e => ({ error: e.message }));
+  if (r && !r.error) { HUBCHECK_GOALS = { table: r.table || { columns: [], rows: [] }, at: (r.table && r.table.at) || null }; renderHubChecklist(); }
+  else showToast('Content Plan not loaded: ' + ((r && r.error) || 'no response'), 'error');
+}
+function hubPlanHub(name) {
+  const n = hubCheckNorm(name), sl = n.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''), hs = HUB_SITES.filter(h => h.campaignId);
+  return hs.find(h => hubCheckNorm(h.name) === n) || hs.find(h => h.slug === sl) || hs.find(h => hubCheckNorm(h.campaign) === n) || null;
+}
+function hubPlanGoals(table, realTypes) {
+  const out = { goals: {}, types: [], weeks: [], byType: {}, unresolved: [] }, seenW = new Set(), canon = {};
+  (realTypes || []).forEach(t => { canon[hubCheckNorm(t)] = t; });   // show a worksheet type in its Notion spelling when one exists
+  for (const r of ((table && table.rows) || [])) {
+    const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim())) continue;
+    const raw = String(c.atype || '').trim(); if (!raw) continue;
+    const k = hubCheckNorm(raw), label = canon[k] || raw, w = String(c.week || '').trim() || '—';
+    if (!out.byType[k]) { out.byType[k] = { label, weeks: {}, total: 0 }; out.types.push(label); }
+    out.byType[k].weeks[w] = (out.byType[k].weeks[w] || 0) + 1; out.byType[k].total++; if (!seenW.has(w)) { seenW.add(w); out.weeks.push(w); }
+    const h = hubPlanHub(c.hub); if (!h) { if (c.hub && !out.unresolved.includes(c.hub)) out.unresolved.push(c.hub); continue; }
+    const g = ((out.goals[h.slug] = out.goals[h.slug] || {})[k] = out.goals[h.slug][k] || { goal: 0, weeks: [] }); g.goal++; if (!g.weeks.includes(w)) g.weeks.push(w);
+  }
+  out.weeks.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return out;
+}
+function hubCheckGoal(slug, t) { const g = (HUBCHECK_PG.goals[slug] || {})[hubCheckNorm(t)]; return g ? { ...g, tip: g.goal + ' planned in Content Plan — All Assets (week ' + g.weeks.join(', ') + ')' } : null; }
+// Weekly Goals by Asset — rows = asset types, columns = the worksheet's weeks, cells = count; totals computed, never typed
+function renderWeeklyGoals() {
+  const el = document.getElementById('hubWeeklyGoals'); if (!el) return;
+  if (!HUBCHECK_GOALS) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading the Content Plan…</div>'; return; }
+  const P = HUBCHECK_PG, ks = Object.keys(P.byType);
+  if (!ks.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);">No assets in Content Plan — All Assets yet.</div>'; return; }
+  const th = 'padding:4px 7px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;', td = 'padding:4px 7px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);';
+  const colTot = w => ks.reduce((a, k) => a + (P.byType[k].weeks[w] || 0), 0), all = ks.reduce((a, k) => a + P.byType[k].total, 0);
+  el.innerHTML = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Count of each asset type planned per sequence week in Content Plan — All Assets (archived rows excluded). Computed from the worksheet — edit the worksheet to change it.</div>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr><th style="${th}text-align:left;">Asset type</th>${P.weeks.map(w => `<th style="${th}">Wk ${esc(w)}</th>`).join('')}<th style="${th}">Total</th></tr></thead><tbody>
+    ${ks.map(k => `<tr><td style="${td}text-align:left;white-space:nowrap;">${esc(hubCheckLabel(P.byType[k].label))}</td>${P.weeks.map(w => `<td style="${td}${P.byType[k].weeks[w] ? 'color:#ff7a00;font-weight:600;' : 'color:var(--text3);'}">${P.byType[k].weeks[w] || '·'}</td>`).join('')}<td style="${td}font-weight:700;">${P.byType[k].total}</td></tr>`).join('')}
+    <tr><td style="${td}text-align:left;font-weight:700;">Total</td>${P.weeks.map(w => `<td style="${td}font-weight:700;">${colTot(w)}</td>`).join('')}<td style="${td}font-weight:700;">${all}</td></tr></tbody></table></div>`;
+}
 // offered on every hub even with nothing deployed yet (operator 2026-10-23): the Client Studio app, the listing types (Fiverr gigs are
 // "listing") and the T-shirt type. Exact Notion Asset Type names — a different spelling would make a new select option.
 // + 'Profile parent' (2026-10-23): the Profile collector (Pillar Type "Profile") — one platform profile (Fiverr, Upwork…) per hub
 // + 'Premium parent' (2026-10-24): a Premium Take — the Product parent built from an asset's banked expert-check arguments
 // + the digest issues (2026-10-29): stored as Asset Types "Newsletter paid" / "Newsletter Free", shown as Premium issue / Free issue
-const HUBCHECK_ALWAYS = ['Client Studio', 'listing', 't shirt', 'Profile parent', 'Premium parent', 'Newsletter paid', 'Newsletter Free'], HUBCHECK_ALWAYS_KEY = 'hubChecklistAlways:v1';
 const hubCheckLabel = t => /^newsletter paid$/i.test(t) ? 'Premium issue' : /^newsletter free$/i.test(t) ? 'Free issue' : t;
 const HUBCHECK_LIVE = new Set(['Planning', 'Development', 'Publish', 'Review', 'Published']);   // a live title / product (anything but Idea)
 function hubCheckHubOf(r) {
@@ -14218,22 +14258,18 @@ function hubCheckData() {
     if (r.assetStatus === 'Published' || / parent$/i.test(t)) (cells[k] = cells[k] || []).push(r);   // published — a parent asset counts as published once it exists
     else (dev[k] = dev[k] || []).push(r);                                    // not yet published (Development / Review / Publish / Planning)
   }
-  for (const t of HUBCHECK_ALWAYS) if (![...types].some(x => hubCheckNorm(x) === hubCheckNorm(t))) types.add(t);
   return { types: [...types].sort((a, b) => a.localeCompare(b)), cells, dev, flag, rw };
 }
 function hubCheckSave() { try { localStorage.setItem(HUBCHECK_KEY, JSON.stringify(HUBCHECK_COLS)); } catch (e) {} }
 function hubCheckCols(types, cells, dev) {
-  if (HUBCHECK_COLS) return HUBCHECK_COLS;
-  try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) HUBCHECK_COLS = v; } catch (e) {}
-  if (HUBCHECK_COLS) {   // one Digest Parent type (2026-10-29): a saved "Digest parent" column becomes "Digest Parent"; a duplicate is dropped
-    const canon = t => /^digest parent$/i.test(String(t || '').trim()) ? 'Digest Parent' : t, seen = new Set();
-    const fix = list => list.map(e => hubCheckIsGroup(e) ? { ...e, cols: fix(e.cols) } : canon(e)).filter(e => hubCheckIsGroup(e) || (!seen.has(e) && seen.add(e)));
-    HUBCHECK_COLS = fix(HUBCHECK_COLS);
-  }
-  if (!HUBCHECK_COLS) HUBCHECK_COLS = types.filter(t => [...Object.keys(cells), ...Object.keys(dev || {})].some(k => k.endsWith('|' + t)));   // default: types with something deployed or in development
-  let offered = []; try { const v = localStorage.getItem(HUBCHECK_ALWAYS_KEY); offered = v === '1' ? ['Client Studio', 'listing', 't shirt'] : JSON.parse(v || '[]'); } catch (e) {}
-  const fresh = HUBCHECK_ALWAYS.filter(t => !offered.includes(t));
-  if (fresh.length) { for (const t of fresh) if (!hubCheckFlat(HUBCHECK_COLS).some(x => hubCheckNorm(x) === hubCheckNorm(t))) HUBCHECK_COLS.push(t); hubCheckSave(); try { localStorage.setItem(HUBCHECK_ALWAYS_KEY, JSON.stringify(HUBCHECK_ALWAYS)); } catch (e) {} }
+  // the column SET is the worksheet's asset types; the saved arrangement (order + groups, this browser) only orders them
+  if (!HUBCHECK_COLS) { try { const v = JSON.parse(localStorage.getItem(HUBCHECK_KEY) || 'null'); if (Array.isArray(v)) HUBCHECK_COLS = v; } catch (e) {} }
+  const plan = HUBCHECK_PG.types, want = new Set(plan.map(hubCheckNorm)), seen = new Set();
+  const keep = list => (list || []).map(e => hubCheckIsGroup(e) ? { ...e, cols: keep(e.cols) } : e)
+    .filter(e => hubCheckIsGroup(e) || (want.has(hubCheckNorm(e)) && !seen.has(hubCheckNorm(e)) && seen.add(hubCheckNorm(e))));
+  const relabel = list => list.map(e => hubCheckIsGroup(e) ? { ...e, cols: relabel(e.cols) } : (plan.find(t => hubCheckNorm(t) === hubCheckNorm(e)) || e));
+  HUBCHECK_COLS = relabel(keep(HUBCHECK_COLS));
+  for (const t of plan) if (!seen.has(hubCheckNorm(t))) { seen.add(hubCheckNorm(t)); HUBCHECK_COLS.push(t); }
   return HUBCHECK_COLS;
 }
 // ── column groups ──
@@ -14366,7 +14402,10 @@ function renderHubChecklist() {
   const body = document.getElementById('hubCheckBody'), bar = document.getElementById('hubCheckBar'), list = document.getElementById('hubCheckList');
   if (!body) return;
   if (HUBCHECK_GOALS === null) { HUBCHECK_GOALS = false; hubCheckGoalsLoad(); }
-  const { types, cells, dev, flag, rw } = hubCheckData(), cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
+  const { types, cells, dev, flag, rw } = hubCheckData();
+  HUBCHECK_PG = hubPlanGoals(HUBCHECK_GOALS && HUBCHECK_GOALS.table, types); renderWeeklyGoals();
+  if (!HUBCHECK_GOALS) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading the Content Plan…</div>'; bar.innerHTML = ''; return; }
+  const cols = hubCheckCols(types, cells, dev), hubs = HUB_SITES.filter(h => h.campaignId);
   const flat = hubCheckFlat(cols); HUBCHECK_FLAT = flat;
   // display order: a group shows its summary column, then (when open) its members; fi = the column's index in flat
   const disp = []; let fi = 0;
@@ -14376,26 +14415,27 @@ function renderHubChecklist() {
   const rwBadge = (n, hi, ci) => n ? `<span style="color:var(--text3);"> · </span><span style="color:#3b82f6;font-weight:700;cursor:pointer;" onclick="hubCheckOpen(${hi},${ci},'flag')" title="Interview finished — the live text is waiting for a ↻ Rewrite">↻${n}</span>` : '';
   const nf = (slug, t) => (flag[slug + '|' + t] || []).length;
   const left = types.filter(t => !flat.includes(t));
-  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Add column — asset type…</option><option value="__group">＋ New column group…</option>${left.map(t => `<option value="${esc(t)}">${esc(hubCheckLabel(t))}</option>`).join('')}</select>`
-    + `<span style="font-size:11px;color:var(--text3);">${flat.length} column${flat.length === 1 ? '' : 's'} · ${types.length} asset types in hubs</span>`;
+  bar.innerHTML = `<button onclick="hubCheckRefresh(this)" title="Reload the counts, flags and goals from Notion now" style="font-size:11.5px;padding:3px 9px;">↻ Refresh</button><select onchange="hubCheckAdd(this)" style="font-size:11.5px;padding:3px 6px;"><option value="">＋ Column group…</option><option value="__group">＋ New column group…</option></select>`
+    + `<span style="font-size:11px;color:var(--text3);">${flat.length} column${flat.length === 1 ? '' : 's'} — the asset types in <b>Content Plan — All Assets</b> (Initiatives). Add an asset type there to add a column.</span>`
+    + (HUBCHECK_PG.unresolved.length ? `<span style="font-size:11px;color:#f87171;">⚠ Worksheet hub not matched to a hub (its goals are not counted): ${esc(HUBCHECK_PG.unresolved.join(', '))}</span>` : '');
   if (!disp.length) { body.innerHTML = '<div style="font-size:12px;color:var(--text3);">No columns — add an asset type above.</div>'; list.innerHTML = ''; return; }
   const th = 'padding:5px 8px;font-size:11px;text-align:center;border-bottom:1px solid var(--border2);white-space:nowrap;';
   const td = 'padding:5px 8px;font-size:12px;text-align:center;border-bottom:1px solid var(--border);';
   const n = (slug, t) => (cells[slug + '|' + t] || []).length, nd = (slug, t) => (dev[slug + '|' + t] || []).length;
   const dot = '<span style="color:var(--text3);"> · </span>';
   const pair = (live, d, clickLive, clickDev, onLive, onDev, goal, fl, clickFlag, onFlag) =>   // orange = this period's goal · development (not yet published) · green = published
-    (goal !== undefined ? `<span style="${goal ? 'color:#ff7a00;font-weight:700;' : 'color:var(--text3);'}" title="${esc(goal ? 'Goal this ' + (goal.cadence || 'period').toLowerCase() + ' period' + (goal.period ? ' (since ' + goal.period + ')' : '') + ' — ' + (goal.method || '') : 'No goal — no tracked method for this type on this hub')}">${goal ? goal.goal : '·'}</span>` + dot : '')
+    (goal !== undefined ? `<span style="${goal ? 'color:#ff7a00;font-weight:700;' : 'color:var(--text3);'}" title="${esc(goal ? (goal.tip || 'Planned in Content Plan — All Assets') : 'No goal — nothing planned for this type on this hub in Content Plan — All Assets')}">${goal ? goal.goal : '·'}</span>` + dot : '')
     + `<span style="${d ? 'color:var(--text);font-weight:600;' : 'color:var(--text3);'}${clickDev ? 'cursor:pointer;' : ''}${onDev ? 'text-decoration:underline;' : ''}"${clickDev ? ` onclick="${clickDev}"` : ''} title="Development — not yet published">${d || '·'}</span>`
     + dot + `<span style="${live ? 'color:#16a34a;font-weight:600;' : 'color:var(--text3);'}${clickLive ? 'cursor:pointer;' : ''}${onLive ? 'text-decoration:underline;' : ''}"${clickLive ? ` onclick="${clickLive}"` : ''} title="Published">${live || '·'}</span>`
     + (fl ? dot + `<span style="color:#dc2626;font-weight:700;${clickFlag ? 'cursor:pointer;' : ''}${onFlag ? 'text-decoration:underline;' : ''}"${clickFlag ? ` onclick="${clickFlag}"` : ''} title="Flagged — waiting on its interview (a digest: at Review)">⚑${fl}</span>` : '');
-  const gsum = list => { const g = list.filter(Boolean); return g.length ? { goal: g.reduce((a, x) => a + x.goal, 0), cadence: 'each method’s own', method: 'sum of the goals' } : null; };
+  const gsum = list => { const g = list.filter(Boolean); return g.length ? { goal: g.reduce((a, x) => a + x.goal, 0), tip: 'Sum of the planned assets in Content Plan — All Assets' } : null; };
   // a column group's cell = the sum of all its members (shown whether the group is open or collapsed)
   const grpTd = (slugs, g) => { const sum = f => slugs.reduce((a, sl) => a + g.cols.reduce((b, t) => b + f(sl, t), 0), 0);
     return `<td style="${td}background:var(--surface2);border-left:2px solid var(--accent);font-weight:600;">${pair(sum(n), sum(nd), '', '', false, false, gsum(slugs.flatMap(sl => g.cols.map(t => hubCheckGoal(sl, t)))), sum(nf))}</td>`; };
-  let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Each cell: <b style="color:#ff7a00;">goal this period</b> · <b>development</b> · <b style="color:#16a34a;">published</b> · <b style="color:#dc2626;">⚑ flagged</b> (an asset waiting on its own interview; a digest at Review) — counts are assets on synced, live titles and products (all-time); goals come from the Current Methods worksheet’s tracked methods and reset each period by cron${HUBCHECK_GOALS && HUBCHECK_GOALS.at ? ' (updated ' + new Date(HUBCHECK_GOALS.at).toLocaleString() + ')' : ''}</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th><th style="${th}" title="Development-status products in this hub — click a count to open the hub's Products">$</th>`
+  let html = `<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Each cell: <b style="color:#ff7a00;">goal this period</b> · <b>development</b> · <b style="color:#16a34a;">published</b> · <b style="color:#dc2626;">⚑ flagged</b> (an asset waiting on its own interview; a digest at Review) — counts are assets on synced, live titles and products (all-time); goals = the assets planned for that hub + type in <b>Content Plan — All Assets</b> (Initiatives; archived rows excluded)${HUBCHECK_GOALS && HUBCHECK_GOALS.at ? ' — worksheet saved ' + new Date(HUBCHECK_GOALS.at).toLocaleString() : ''}</div><div style="overflow-x:auto;"><table style="border-collapse:collapse;min-width:100%;"><thead><tr><th style="${th}text-align:left;">Hub</th><th style="${th}" title="Development-status products in this hub — click a count to open the hub's Products">$</th>`
     + disp.map(x => x.grp
       ? `<th style="${th}cursor:grab;background:var(--surface2);border-left:2px solid var(--accent);" draggable="true" ondragstart="hubCheckDragStart(event,'${x.gi}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.gi}',true)" title="Column group — drop a column here to add it; drag to move the group"><div><button onclick="hubCheckGroupToggle(${x.gi})" title="${x.grp.open ? 'Collapse' : 'Expand'} this group" style="font-size:10px;padding:0 4px;">${x.grp.open ? '◂' : '▸'}</button> ${esc(x.grp.name)} <span style="font-weight:400;color:var(--text3);">(${x.grp.cols.length})</span></div><div style="font-weight:400;"><button onclick="hubCheckGroupRename(${x.gi})" title="Rename group" style="font-size:10px;padding:0 4px;">✎</button><button onclick="hubCheckGroupUngroup(${x.gi})" title="Remove the group (its columns stay)" style="font-size:10px;padding:0 4px;">×</button></div></th>`
-      : `<th style="${th}cursor:grab;${x.member ? 'background:var(--surface2);' : ''}" draggable="true" ondragstart="hubCheckDragStart(event,'${x.addr}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.addr}',false)" title="${x.member ? 'In a group — drag onto another column to take it out' : 'Drag to reorder, or onto a group header to add it to that group'}"><div>${esc(hubCheckLabel(x.t))}</div><div style="font-weight:400;">${hubCheckCanAdd(x.t) ? `<button onclick="hubCheckAddAsset(${x.fi})" title="Add an unwritten ${esc(x.t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}<button onclick="hubCheckRemove('${x.addr}')" title="Remove column" style="font-size:10px;padding:0 4px;">×</button></div></th>`).join('')
+      : `<th style="${th}cursor:grab;${x.member ? 'background:var(--surface2);' : ''}" draggable="true" ondragstart="hubCheckDragStart(event,'${x.addr}')" ondragover="event.preventDefault()" ondrop="hubCheckDrop(event,'${x.addr}',false)" title="${x.member ? 'In a group — drag onto another column to take it out' : 'Drag to reorder, or onto a group header to add it to that group'}"><div>${esc(hubCheckLabel(x.t))}</div><div style="font-weight:400;">${hubCheckCanAdd(x.t) ? `<button onclick="hubCheckAddAsset(${x.fi})" title="Add an unwritten ${esc(x.t)} asset at Development — pick the hub and title" style="font-size:10px;padding:0 4px;">＋</button>` : ''}</div></th>`).join('')
     + `<th style="${th}" ondragover="event.preventDefault()" ondrop="hubCheckDropEnd(event)" title="Drop a column here to move it to the end">Total</th></tr></thead><tbody>`;
   const devProd = {}, seenProd = new Set();   // $ column: Development-status products per hub (All Output lists each product once, kind 'product')
   for (const r of (DEV2_ROWS || [])) { if (r.kind !== 'product' || !r.productId || seenProd.has(r.productId) || !/^development$/i.test(String(r.productStatus || '').trim())) continue;
