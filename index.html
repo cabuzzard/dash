@@ -794,6 +794,9 @@
       <div class="oc-sec" data-ock="cplan" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad()" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
         <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — All Hubs</h3><span id="cplanMsg" style="font-size:11px;color:var(--text3);"></span></div>
       <div class="oc-bd"><div id="cplanBody"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
+      <div class="oc-sec" data-ock="cplana" style="margin-top:14px;"><div class="oc-hd" onclick="ocToggle(event,this);cplanLoad(false,'content-plan-assets')" style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0 0 6px;">
+        <span class="oc-chev" style="font-size:10px;color:var(--text3);width:12px;">▼</span><h3 style="margin:0;font-size:14px;">Content Plan — By Asset</h3><span id="cplanMsg-content-plan-assets" style="font-size:11px;color:var(--text3);"></span></div>
+      <div class="oc-bd"><div id="cplanBody-content-plan-assets"><div style="font-size:12px;color:var(--text3);">Loading…</div></div></div></div>
       <div style="margin-top:14px;">
 <style>.alldig-x > details > summary { display:none; } .alldig-x > details { border:0 !important; margin:0 !important; }
       .allrow-tbl > tbody > tr.allrow-h:hover > td { background:var(--border2) !important; }   /* row highlight on the Digest / Series headings */</style>
@@ -4608,61 +4611,82 @@ function initvAdd() {
   _initv.rows.push({ id: 'u' + Date.now().toString(36), cells: {} }); initvPaint(); initvSave();
   const tas = document.querySelectorAll('#initvBody tr:last-child textarea'); if (tas[0]) tas[0].focus();
 }
-// ── Content Plan — All Hubs (operator 2026-11-04): an editable table inside Initiatives. KV infoflow:table:content-plan (generic table
-// store). The COLUMN SCHEMA lives in KV with the rows — add / rename columns at runtime; a column is archived (hidden), never deleted
-// with its data. Rows are never deleted: Status → Archived. Status: Review · Publish · Published (+ Archived). Seed rows come ONLY from
-// the operator's Content Plan PDF — an empty cell means "hold at Review", never a guessed fill.
-const CPLAN_COLS = [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
-  { id: 'cluster', name: 'Asset cluster' }, { id: 'step', name: 'Weekly production step' }, { id: 'status', name: 'Status', options: ['Review', 'Publish', 'Published', 'Archived'] }, { id: 'note', name: 'Review note' }];
-let _cplan = null, _cplanTimer = null, _cplanShowArch = false;
-async function cplanLoad(force) {
-  if (_cplan && !force) return cplanPaint();
-  const r = await call('getInfoFlowTable', { name: 'content-plan' }).catch(e => ({ error: e.message }));
-  const el = document.getElementById('cplanBody'); if (!el) return;
+// ── Content Plan tables (operator 2026-11-04/05), inside Initiatives. Generic table store, one KV key per table:
+//   content-plan         — one row per initiative per hub (asset cluster in one cell)
+//   content-plan-assets  — one row per ASSET TYPE per initiative per hub
+// The COLUMN SCHEMA lives in KV with the rows — add / rename columns at runtime; a column is archived (hidden), never deleted with its
+// data. Rows are never deleted: Status → Archived. Seed rows come ONLY from the operator's Content Plan PDF. Sorting is view-only
+// (click a header's ⇅) — the saved row order never changes; sorts are stable, so sort Day then Week to get week-and-day order.
+const CPLAN_STATUS = ['Review', 'Publish', 'Published', 'Archived'];
+const CPLAN_DEFS = {
+  'content-plan': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
+    { id: 'cluster', name: 'Asset cluster' }, { id: 'step', name: 'Weekly production step' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }],
+  'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
+    { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
+const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
+function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, sort: null }); }
+function cpId(name) { return name === 'content-plan' ? '' : '-' + name; }
+async function cplanLoad(force, name = 'content-plan') {
+  const S = cpS(name); if (S.t && !force) return cplanPaint(name);
+  const r = await call('getInfoFlowTable', { name }).catch(e => ({ error: e.message }));
+  const el = document.getElementById('cplanBody' + cpId(name)); if (!el) return;
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc((r && r.error) || 'no response')}</div>`; return; }
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
-  _cplan = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_COLS.map(c => ({ ...c })), rows: [] };   // not saved until you edit
-  cplanPaint();
+  S.t = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_DEFS[name].map(c => ({ ...c })), rows: [] };   // not saved until you edit
+  cplanPaint(name);
 }
-function cplanStatusOpts() { const c = (_cplan.columns || []).find(x => x.id === 'status'); return (c && c.options) || CPLAN_COLS[6].options; }
-function cplanPaint() {
-  const el = document.getElementById('cplanBody'); if (!el || !_cplan) return;
-  const cols = _cplan.columns.filter(c => _cplanShowArch || !c.hidden), rows = _cplan.rows.filter(r => _cplanShowArch || !/^archived$/i.test(r.cells.status || ''));
+function cplanStatusOpts(name) { const c = (cpS(name).t.columns || []).find(x => x.id === 'status'); return (c && c.options) || CPLAN_STATUS; }
+function cplanSort(name, colId) {
+  const S = cpS(name); S.sort = !S.sort || S.sort.col !== colId ? { col: colId, dir: 1 } : S.sort.dir === 1 ? { col: colId, dir: -1 } : null; cplanPaint(name);
+}
+function cplanPaint(name = 'content-plan') {
+  const S = cpS(name), T = S.t, el = document.getElementById('cplanBody' + cpId(name)); if (!el || !T) return;
+  const q = "'" + name + "'";
+  const cols = T.columns.filter(c => S.arch || !c.hidden);
+  let rows = T.rows.filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
+  if (S.sort) { const k = S.sort.col, d = S.sort.dir; rows = rows.map((r, i) => [r, i]).sort((x, y) => {
+    const a = String(x[0].cells[k] || ''), b = String(y[0].cells[k] || '');
+    if (!a !== !b) return a ? -1 : 1;   // empty cells last either way
+    return (a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) * d) || (x[1] - y[1]); }).map(p => p[0]); }
   const IN = 'width:100%;min-width:140px;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const narrow = c => /^(week|day)$/.test(c.id);
   const cell = (row, c) => `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;${c.hidden ? 'opacity:.55;' : ''}">${c.id === 'status'
-    ? `<select onchange="cplanEdit('${row.id}','status',this.value)" style="${IN}min-width:100px;">${['', ...cplanStatusOpts()].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
-    : `<textarea rows="2" oninput="cplanEdit('${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`;
-  const head = c => `<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;${c.hidden ? 'opacity:.55;' : ''}">
-    <input value="${esc(c.name)}" title="Rename this column" onchange="cplanRename('${c.id}',this.value)" style="width:100%;min-width:120px;font-size:11px;font-weight:700;color:var(--text2);background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 3px;" onfocus="this.style.borderColor='var(--border2)'" onblur="this.style.borderColor='transparent'">
-    ${CPLAN_COLS.some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol('${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}</th>`;
-  const nArchR = _cplan.rows.length - _cplan.rows.filter(r => !/^archived$/i.test(r.cells.status || '')).length, nArchC = _cplan.columns.filter(c => c.hidden).length;
+    ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}min-width:100px;">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
+    : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}${narrow(c) ? 'min-width:70px;' : ''}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`;
+  const head = c => { const on = S.sort && S.sort.col === c.id;
+    return `<th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;${c.hidden ? 'opacity:.55;' : ''}">
+    <div style="display:flex;gap:3px;align-items:center;"><input value="${esc(c.name)}" title="Rename this column" onchange="cplanRename(${q},'${c.id}',this.value)" style="width:100%;min-width:${narrow(c) ? 60 : 120}px;font-size:11px;font-weight:700;color:var(--text2);background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 3px;" onfocus="this.style.borderColor='var(--border2)'" onblur="this.style.borderColor='transparent'">
+    <button onclick="cplanSort(${q},'${c.id}')" title="Sort by this column (A→Z, Z→A, off)" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (S.sort.dir === 1 ? '▲' : '▼') : '⇅'}</button></div>
+    ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}</th>`; };
+  const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
-      <button style="${B}" onclick="cplanAddRow()">＋ Add row</button>
-      <input id="cplanNewCol" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol()">＋ Add column</button>
-      <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${_cplanShowArch ? 'checked' : ''} onchange="_cplanShowArch=this.checked;cplanPaint()"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
-      <span style="color:var(--text3);">Every cell is editable and autosaves. Rows are archived (Status → Archived), never deleted. ${_cplan.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+      <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
+      <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
+      <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
+      ${S.sort ? `<button style="${B}" onclick="cpS(${q}).sort=null;cplanPaint(${q})">✕ Clear sort</button>` : ''}
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. Every cell is editable and autosaves. ⇅ sorts the view only. Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     <div style="overflow-x:auto;"><table style="border-collapse:collapse;"><thead><tr>${cols.map(head).join('')}</tr></thead>
     <tbody>${rows.map(row => `<tr style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
-function cplanEdit(rowId, colId, value) {
-  const row = _cplan && _cplan.rows.find(r => r.id === rowId); if (!row) return;
-  row.cells[colId] = value; clearTimeout(_cplanTimer); _cplanTimer = setTimeout(cplanSave, 700);
-  if (colId === 'status') cplanPaint();
+function cplanEdit(name, rowId, colId, value) {
+  const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
+  row.cells[colId] = value; clearTimeout(S.timer); S.timer = setTimeout(() => cplanSave(name), 700);
+  if (colId === 'status') cplanPaint(name);
 }
-function cplanRename(colId, name) { const c = _cplan && _cplan.columns.find(x => x.id === colId); if (!c || !String(name).trim()) return cplanPaint(); c.name = String(name).trim(); cplanSave(); }
-function cplanHideCol(colId) { const c = _cplan && _cplan.columns.find(x => x.id === colId); if (!c) return; c.hidden = !c.hidden; if (!c.hidden) delete c.hidden; cplanPaint(); cplanSave(); }
-function cplanAddCol() {
-  const inp = document.getElementById('cplanNewCol'), name = String((inp && inp.value) || '').trim(); if (!name || !_cplan) return;
-  _cplan.columns.push({ id: 'x' + Date.now().toString(36), name }); cplanPaint(); cplanSave();
+function cplanRename(name, colId, val) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c || !String(val).trim()) return cplanPaint(name); c.name = String(val).trim(); cplanSave(name); }
+function cplanHideCol(name, colId) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c) return; c.hidden = !c.hidden; if (!c.hidden) delete c.hidden; cplanPaint(name); cplanSave(name); }
+function cplanAddCol(name) {
+  const T = cpS(name).t, inp = document.getElementById('cplanNewCol' + cpId(name)), v = String((inp && inp.value) || '').trim(); if (!v || !T) return;
+  T.columns.push({ id: 'x' + Date.now().toString(36), name: v }); cplanPaint(name); cplanSave(name);
 }
-function cplanAddRow() {
-  if (!_cplan) return; _cplan.rows.push({ id: 'p' + Date.now().toString(36), cells: { status: 'Review' } }); cplanPaint(); cplanSave();
-  const tas = document.querySelectorAll('#cplanBody tbody tr:last-child textarea'); if (tas[0]) tas[0].focus();
+function cplanAddRow(name) {
+  const S = cpS(name); if (!S.t) return; S.t.rows.push({ id: 'p' + Date.now().toString(36), cells: { status: 'Review' } }); S.sort = null; cplanPaint(name); cplanSave(name);
+  const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tbody tr:last-child textarea'); if (tas[0]) tas[0].focus();
 }
-async function cplanSave() {
-  const msg = document.getElementById('cplanMsg'); if (msg) msg.textContent = 'Saving…';
-  const r = await call('saveInfoFlowTable', { name: 'content-plan', table: _cplan }).catch(e => ({ error: e.message }));
+async function cplanSave(name = 'content-plan') {
+  const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Saving…';
+  const r = await call('saveInfoFlowTable', { name, table: cpS(name).t }).catch(e => ({ error: e.message }));
   if (msg) { msg.style.color = r && !r.error ? 'var(--text3)' : '#f87171'; msg.textContent = r && !r.error ? 'Saved' : 'Not saved: ' + ((r && r.error) || 'no response'); }
 }
 async function initvSave() {
