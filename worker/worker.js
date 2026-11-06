@@ -10019,9 +10019,10 @@ async function cpcPlan(env, t) {   // every row with a Cron number → runnable 
   for (const r of (t && t.rows) || []) {
     const g = k => cplanCell(t, r, k), n = Number(g("Cron"));
     if (!(isFinite(n) && n >= 1)) continue;
-    const P = { rowId: r.id, hub: g("hub"), atype: g("atype"), topic: g("Topic"), product: g("Product"), title: g("Title"), n: Math.floor(n) };
+    const P = { rowId: r.id, hub: g("hub"), atype: g("atype"), topic: g("Topic"), product: g("Product"), title: g("Title"), detail: g("detail"), n: Math.floor(n) };
     const c = cad.byName[cpcNorm(P.atype)] || cad.byAsset[cpcNorm(P.atype)] || "";
-    if (/^archived$/i.test(g("status"))) P.skip = "Archived";
+    if (/^series$/i.test(P.atype)) P.skip = "a Series row never runs — the cron makes assets through the series from the rows of the types it feeds";
+    else if (/^archived$/i.test(g("status"))) P.skip = "Archived";
     else if (/^standalone$/i.test(g("Kind"))) P.skip = "Standalone — outside the cron";
     else if (!c) P.skip = `no period — "${P.atype}" has no Cadence in Current Methods`;
     else if (c === "?") P.skip = `no period — Current Methods has different Cadences for "${P.atype}"`;
@@ -10061,7 +10062,32 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   // the cron counts no assets (operator 2026-11-06): each period it creates the row's Cron number from the table, once. The only thing
   // remembered is a run that broke part-way this period, so its retry makes the rest instead of starting over.
   const R = S.rows[P.rowId] || {}, partial = R.partial && R.partial.period === P.period ? R.partial.ids : [];
-  const create = Math.max(0, P.n - partial.length);
+  let create = Math.max(0, P.n - partial.length);
+  // series-aware (operator 2026-11-06): when the title has a Series parent (Pillar Type = Series), the assets are made THROUGH it —
+  // Topical - SEO Post = the series' best unused idea as a child (seriesUseIdea); a row whose Asset detail names a series run (a run type
+  // such as "FAQ run", or one of the series' saved Paste lists) = that run from its best unused ideas (seriesRun), unless that run was
+  // already made this period; anything else = a plain Development child linked to the Series parent. "Best" = the series' strategy
+  // ranking (seriesRank, cached a day), then source order. The Series row itself never runs.
+  const sp = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Pillar Type", select: { equals: "Series" } }, { property: "Content Strategy", relation: { contains: ivDash(tid) } }] } }))
+    .find(x => !x.archived && !x.in_trash);
+  const titleName = hubRichText(T.properties?.Title?.title) || P.title, productId = ivRid(T.properties, "product") || undefined;
+  let mode = "plain", rt = null, list = null;
+  if (sp) {
+    res.seriesAssetId = hubAssetId(sp.id);
+    if (/^topical\s*-\s*seo post$/i.test(type)) mode = "seo";
+    else if (P.detail) {
+      rt = RUN_TYPES.find(x => cpcNorm(x.name) === cpcNorm(P.detail) || x.id === cpcNorm(P.detail));
+      if (!rt) { list = ((await env.TRADES.get("series:lists:" + tid, "json")) || []).find(l => cpcNorm(l.name) === cpcNorm(P.detail)); if (list) rt = PASTE_RUN; }
+      mode = rt ? "run" : "child";
+    } else mode = "child";
+    if (/^single post$/i.test(type) && mode !== "run") return hold(`a single post on a series is made as a series run — name the run in Asset detail (${RUN_TYPES.map(x => x.name).join(", ")}, or one of the series' Paste lists)${P.detail ? ` — "${P.detail}" is not one` : ""}`);
+    if (mode === "run") {   // already made this period (by hand or by the cron) → nothing new for that run
+      const label = rt === PASTE_RUN ? "Run · Paste list" : "Run · " + rt.name;
+      const had = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: ivDash(tid) } }, { property: "Asset Title", title: { starts_with: label } }, { timestamp: "created_time", created_time: { on_or_after: P.period } }] } })).filter(x => !x.archived && !x.in_trash).length;
+      res.runThisPeriod = had; create = Math.max(0, create - had);
+    }
+    res.series = mode === "run" ? (list ? "Paste list: " + list.name : rt.name) : mode === "seo" ? "best series idea → Topical - SEO Post" : "child of the Series parent";
+  }
   let writePillar = create > 0 && ps !== "Written" && ps !== "Out of Sync";   // only when something is being made; never over a pillar that exists
   if (writePillar && !ps && await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "")) writePillar = false;   // blank status but the pillar is there
   Object.assign(res, { create, writePillar });
@@ -10071,16 +10097,36 @@ async function cpcRow(env, invoke, P, S, types, dry) {
     if (!w || w.error) return { ...hold("pillar not written: " + ((w && w.error) || "no response")), rate: /rate.?limit|429/i.test((w && w.error) || "") };
     res.pillar = "written";
   }
-  const made = [];
+  const made = [], base = { titleId: tid, titleName, seriesAssetId: res.seriesAssetId, campaignId: hubAssetId(H.campaignId), productId, slug: H.slug };
   for (let i = 0; i < create; i++) {
-    const a = await invoke({ action: "createAsset", titleId: tid, campId: hubAssetId(H.campaignId), productId: ivRid(T.properties, "product") || undefined,
-      assetTitle: `${hubRichText(T.properties?.Title?.title) || P.title} — ${type}`, assetType: type });
+    let a;
+    if (mode === "seo" || mode === "run") {
+      const k = mode === "seo" ? 1 : rt === PASTE_RUN ? 25 : rt.posts, ideas = await cpcSeriesBest(env, tid, mode === "seo" ? null : rt, list, k);
+      if (!ideas.length) { a = { error: `no unused ideas left for ${res.series} — refresh the series' sources or add lines` }; }
+      else if (mode === "seo") { const x = ideas[0]; a = await invoke({ action: "seriesUseIdea", ...base, ideaId: x.id, idea: x.t, source: x.src, kind: "seo", assetType: type }); if (a && a.assetId) a.id = a.assetId; }
+      else { a = await invoke({ action: "seriesRun", ...base, runType: rt.id, ideas, assetType: rt.shape === "carousel" ? (types.find(x => /^carousel$/i.test(x)) || "carousel") : type }); if (a && a.assetId) a.id = a.assetId; }
+    } else a = await invoke({ action: "createAsset", titleId: tid, campId: hubAssetId(H.campaignId), productId, parentAssetId: res.seriesAssetId || undefined,
+      assetTitle: `${titleName} — ${type}`, assetType: type });
     if (!a || a.error || !a.id) { R.partial = { period: P.period, ids: [...partial, ...made] }; S.rows[P.rowId] = R;
       return { ...hold(`asset ${i + 1} of ${create} not created: ${(a && a.error) || "no response"}`), made, rate: /rate.?limit|429/i.test((a && a.error) || "") }; }
     made.push(hubAssetId(a.id));
   }
   delete R.partial; R.doneP = P.period; S.rows[P.rowId] = R;
   return { ...res, made };
+}
+// the series' best unused ideas: rt = a run type (its sources only, round-robin like the Series modal), null = any source; list = a saved
+// Paste list (its unused lines, in order). Ranked ideas (seriesRank) go first, in rank order.
+async function cpcSeriesBest(env, tid, rt, list, k) {
+  const used = new Set((await env.TRADES.get("series:used:" + tid, "json").catch(() => null)) || []);
+  if (list) return (list.items || []).filter(x => !used.has(x.id)).slice(0, k).map(x => ({ id: x.id, t: x.t, src: "Paste list: " + list.name }));
+  const ideas = await seriesIdeas(env, tid, false), srcs = rt ? rt.sources : Object.keys(ideas.sources || {});
+  const lanes = srcs.map(src => ((ideas.sources || {})[src] || []).filter(x => x && x.id && !used.has(x.id)).map(x => ({ id: x.id, t: x.t, src })));
+  const rr = []; for (let i = 0; lanes.some(l => l.length > i); i++) lanes.forEach(l => { if (l[i]) rr.push(l[i]); });
+  let ranked = []; try { ranked = (await seriesRank(env, tid, false)).ranked || []; } catch (e) {}
+  const inPool = new Map(rr.map(x => [x.id, x])), out = [], seen = new Set();
+  for (const r of ranked) { const x = inPool.get(r.id); if (x && !seen.has(x.id)) { out.push(x); seen.add(x.id); } }
+  for (const x of rr) if (!seen.has(x.id)) { out.push(x); seen.add(x.id); }
+  return out.slice(0, k);
 }
 async function cpcSave(env, S) { S.log = (S.log || []).slice(-150); await env.TRADES.put(CPC_STATE, JSON.stringify(S)); }
 async function contentPlanCronTick(env, invoke) {   // */4 cron: once a day queue the due rows, then work the queue (~200 s per tick)
