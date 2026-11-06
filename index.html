@@ -4794,10 +4794,10 @@ function cplanPaint(name = 'content-plan-assets') {
   const sumOf = (rs, id) => id ? rs.reduce((a, r) => a + (/^archived$/i.test(r.cells.status || '') ? 0 : cplanCronN(r.cells, id)), 0) : 0;
   const cntAt = cols.findIndex(L => L.c && (L.c.id === cronId || L.c.id === pubId));   // first count column drawn (-1: none shown)
   const pubCounts = rs => { const live = rs.filter(r => !/^archived$/i.test(r.cells.status || ''));
-    return CPLAN_PUB.map((s, i) => `<span title="${s}" style="color:${CPLAN_PUB_COLORS[s]};">${live.filter(r => r.cells[pubId] === s).length}</span>`).join('<span style="color:var(--text3);">.</span>'); };
+    return CPLAN_PUB.map((s, i) => { const n = live.filter(r => r.cells[pubId] === s).length; return n ? `<span title="${s}" style="color:${CPLAN_PUB_COLORS[s]};">${n}</span>` : ""; }).join('<span style="color:var(--text3);">.</span>'); };
   const cntTd = (L, rs, bg) => { const id = L.c && L.c.id; if (id && id === pubId) return `<td style="padding:5px 6px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;font-size:13px;white-space:nowrap;">${pubCounts(rs)}</td>`;
     const n = id === cronId ? sumOf(rs, id) : null, col = '#ff7a00';
-    return `<td style="padding:5px 6px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;font-size:13px;${n === null ? '' : 'color:' + (n ? col : 'var(--text3)') + ';'}${bg}">${n === null ? '' : n}</td>`; };
+    return `<td style="padding:5px 6px;border-bottom:1px solid var(--border2);text-align:center;font-weight:700;font-size:13px;${n === null ? '' : 'color:' + (n ? col : 'var(--text3)') + ';'}${bg}">${n ? n : ''}</td>`; };
   const tier = (rs, d, path) => { if (d >= HL.length) return rs.map(rowHtml).join('');
     const s = HL[d], runs = []; rs.forEach(r => { const v = cv(r, s.col), last = runs[runs.length - 1]; if (last && cmp(last.v, v) === 0 && !last.v === !v) last.rs.push(r); else runs.push({ v, rs: [r] }); });
     return runs.map(g => { const k = path + '\u0001' + g.v.toLowerCase(), i = S._groups.push(k) - 1; S._grpRows[i] = g.rs.map(r => r.id); const nSel = g.rs.filter(r => SEL.has(r.id)).length, bg = '';
