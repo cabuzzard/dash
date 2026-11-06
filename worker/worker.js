@@ -9804,7 +9804,7 @@ async function signToken(secret, ttlMs = 8 * 3600 * 1000) {
 // Every edit is validated against the table itself (hubs and asset types are the ones the table already uses; columns by name or id),
 // a refused edit is held with payload + reason (KV contentplan:held), an accepted one is logged with before/after (contentplan:log) and
 // read back from KV before success is reported. getContentPlanGoals = the cron-goal read: per hub + asset type, the goal (rows not
-// Archived, not Standalone — one row = one goal, a series row counts 1) with its Kind / Cadence / weeks. Both open to EXTERNAL_WORKER_KEY.
+// Archived, not Standalone; the goal is the SUM of the Cron column — blank / 0 adds nothing) with its Kind / Cadence / weeks. Both open to EXTERNAL_WORKER_KEY.
 const CPLAN_KEY = "infoflow:table:content-plan-assets";
 const CPLAN_KINDS = ["Sequence", "Periodic", "Standalone"];
 function cplanColOf(t, ref) { const r = String(ref || "").trim().toLowerCase(); return (t.columns || []).find(c => c.id === ref) || (t.columns || []).find(c => String(c.name || "").trim().toLowerCase() === r) || null; }
@@ -9831,6 +9831,7 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
   if (kind === "Sequence" && g("Sequence") && !/^\d+ [a-z]+/i.test(g("Sequence"))) return `Sequence must start with the number of pieces, e.g. "4 pieces, offsets 0, 3, 7, 14", "7 pieces, Days 1-6" or "30 episodes, daily, offsets 0-29" (got "${g("Sequence")}")`;
   if (kind !== "Sequence" && g("Sequence")) return `Sequence is for Sequence rows only`;
   if (kind !== "Standalone" && cplanColOf(t, "Own periodicity") && g("Own periodicity")) return `Own periodicity is for Standalone rows only`;
+  if (g("Cron") && !(isFinite(Number(g("Cron"))) && Number(g("Cron")) >= 0)) return `Cron must be a number (got "${g("Cron")}") — the goal is the sum of Cron; blank or 0 adds nothing`;
   return "";
 }
 // Master copy (fix 2026-11-05, prompts/claude-content-plan-portal-fix-2026-11-05.md): edits used to read the whole table from KV, change it and
@@ -9887,11 +9888,12 @@ async function contentPlanAction(env, body, external) {
       if (/^archived$/i.test(st) || !atype) continue;
       if (kind === "Standalone") { skipped.push({ rowId: r.id, hub, atype, init: cplanCell(t, r, "init"), ownPeriodicity: cplanCell(t, r, "Own periodicity") }); continue; }
       if ((body.hub && body.hub !== hub) || (body.atype && body.atype !== atype)) continue;
+      const n = Number(cplanCell(t, r, "Cron")); if (!(isFinite(n) && n > 0)) continue;   // goal = the sum of the Cron column (operator 2026-11-05)
       const g = goals[hub + "\u0000" + atype] ||= { hub, atype, goal: 0, kinds: {}, cadences: [], weeks: [], rows: [] };
-      g.goal++; g.kinds[kind || "(blank)"] = (g.kinds[kind || "(blank)"] || 0) + 1;
+      g.goal += n; g.kinds[kind || "(blank)"] = (g.kinds[kind || "(blank)"] || 0) + 1;
       const cad = cplanCell(t, r, "Cadence"), wk = cplanCell(t, r, "week");
       if (cad && !g.cadences.includes(cad)) g.cadences.push(cad); if (wk && !g.weeks.includes(wk)) g.weeks.push(wk);
-      g.rows.push({ rowId: r.id, init: cplanCell(t, r, "init"), kind, cadence: cad, sequence: cplanCell(t, r, "Sequence"), slot: cplanCell(t, r, "Slot"), week: wk, status: st });
+      g.rows.push({ rowId: r.id, cron: n, init: cplanCell(t, r, "init"), kind, cadence: cad, sequence: cplanCell(t, r, "Sequence"), slot: cplanCell(t, r, "Slot"), week: wk, status: st });
     }
     const list = Object.values(goals).map(g => ({ ...g, weeks: g.weeks.sort((a, b) => a - b) }));
     return { status: 200, out: { ok: true, key: CPLAN_KEY, at: t.at || null, goals: list, total: list.reduce((n, g) => n + g.goal, 0), skippedStandalone: skipped } };

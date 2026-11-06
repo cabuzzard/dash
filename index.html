@@ -4763,7 +4763,7 @@ function cplanPaint(name = 'content-plan-assets') {
       ${HL.length ? `<button style="${B}" onclick="cplanGrpAll(${q},1)">▼ Expand all</button><button style="${B}" onclick="cplanGrpAll(${q},0)">▶ Collapse all</button>` : ''}
       <button style="${B}" onclick="cplanGroupAdd(${q})" title="A named, collapsible column heading — drag columns' ⋮⋮ onto it">＋ Column group</button>
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
-      ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="Computed from this table: every row that is not Archived and not Kind = Standalone counts 1 (a series row counts 1, however many posts it puts out)" style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
+      ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
       <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). Rows are archived (Status → Archived), never deleted. ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
       const opts = cur => T.columns.filter(c => S.arch || !c.hidden || c.id === cur).map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
@@ -6206,9 +6206,9 @@ function hdPickKey(i) { const k = (HD._keys || [])[i]; if (k == null) return; if
 // "Topic" column naming it; otherwise it counts at hub level only (never guessed from the initiative text).
 function hdPlan(h) {
   const t = HD.plan; if (!t) return [];
-  const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i);
-  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim()))) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { k: hubCheckNorm(raw), label: raw, topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
+  const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i), cc = cplanCronCol(t);
+  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim())) || !cplanCronN(c, cc)) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
+    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
   const n = hubCheckNorm;
@@ -6222,7 +6222,7 @@ function hdPlace(plan, topics) {   // most specific match wins: title, then prod
 const hdAssetsOf = n => n.assets ? n.assets : n.titles ? n.titles.flatMap(hdAssetsOf) : n.products ? n.products.flatMap(hdAssetsOf) : [];
 function hdCount(assets, planRows) {   // per asset type → { label, goal, dev, pub }, plus the total
   const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [] }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
-  planRows.forEach(r => { if (!m.has(r.k)) m.set(r.k, { label: r.label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], fromPlan: true }); m.get(r.k).goal++; });
+  planRows.forEach(r => { if (!m.has(r.k)) m.set(r.k, { label: r.label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], fromPlan: true }); m.get(r.k).goal += r.n || 0; });
   assets.forEach(a => { const t = String(a.rawAssetType || a.assetType || '').trim() || '(no type)', s = hdSt(a).trim(), o = get(hubCheckNorm(t), t);
     if (/^(development|review)$/i.test(s)) { o.dev++; o.devIds.push(a.assetId); } else if (/^(publish|published)$/i.test(s)) { o.pub++; o.pubIds.push(a.assetId); } });
   const types = [...m.values()].filter(o => o.goal || o.dev || o.pub).sort((a, b) => b.goal - a.goal || (b.dev + b.pub) - (a.dev + a.pub) || a.label.localeCompare(b.label));
@@ -14396,19 +14396,25 @@ function hubPlanHub(name) {
   const n = hubCheckNorm(name), sl = n.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''), hs = HUB_SITES.filter(h => h.campaignId);
   return hs.find(h => hubCheckNorm(h.name) === n) || hs.find(h => h.slug === sl) || hs.find(h => hubCheckNorm(h.campaign) === n) || null;
 }
+// The goal is the SUM of the Content Plan's Cron column (operator 2026-11-05): a row adds whatever number it holds; blank, 0 or text adds
+// nothing. Archived and Kind = Standalone rows never count. Column found by name.
+function cplanCronCol(table) { return (((table && table.columns) || []).find(c => /^cron$/i.test(String(c.name || '').trim())) || {}).id; }
+function cplanCronN(cells, id) { const n = id ? Number(String((cells || {})[id] || '').trim()) : 0; return isFinite(n) && n > 0 ? n : 0; }
 function hubPlanGoals(table, realTypes) {
   const out = { goals: {}, types: [], weeks: [], hubs: [], byType: {}, unresolved: [] }, seenW = new Set(), canon = {};
   (realTypes || []).forEach(t => { canon[hubCheckNorm(t)] = t; });   // show a worksheet type in its Notion spelling when one exists
   const kindCol = (((table && table.columns) || []).find(c => /^kind$/i.test(String(c.name || '').trim())) || {}).id;   // Standalone = outside the goal flow
+  const cronCol = cplanCronCol(table);
   for (const r of ((table && table.rows) || [])) {
     const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (kindCol && /^standalone$/i.test(String(c[kindCol] || '').trim()))) continue;
     const raw = String(c.atype || '').trim(); if (!raw) continue;
-    const k = hubCheckNorm(raw), label = canon[k] || raw, w = String(c.week || '').trim() || '—';
+    const k = hubCheckNorm(raw), label = canon[k] || raw, w = String(c.week || '').trim() || '—', n = cplanCronN(c, cronCol);
     if (!out.byType[k]) { out.byType[k] = { label, weeks: {}, hubs: {}, total: 0 }; out.types.push(label); }
     const hn = String(c.hub || '').trim() || '(no hub)'; if (!out.hubs.includes(hn)) out.hubs.push(hn);
-    out.byType[k].weeks[w] = (out.byType[k].weeks[w] || 0) + 1; out.byType[k].hubs[hn] = (out.byType[k].hubs[hn] || 0) + 1; out.byType[k].total++; if (!seenW.has(w)) { seenW.add(w); out.weeks.push(w); }
+    if (!n) continue;   // the type is still listed; it just adds no goal
+    out.byType[k].weeks[w] = (out.byType[k].weeks[w] || 0) + n; out.byType[k].hubs[hn] = (out.byType[k].hubs[hn] || 0) + n; out.byType[k].total += n; if (!seenW.has(w)) { seenW.add(w); out.weeks.push(w); }
     const h = hubPlanHub(c.hub); if (!h) { if (c.hub && !out.unresolved.includes(c.hub)) out.unresolved.push(c.hub); continue; }
-    const g = ((out.goals[h.slug] = out.goals[h.slug] || {})[k] = out.goals[h.slug][k] || { goal: 0, weeks: [] }); g.goal++; if (!g.weeks.includes(w)) g.weeks.push(w);
+    const g = ((out.goals[h.slug] = out.goals[h.slug] || {})[k] = out.goals[h.slug][k] || { goal: 0, weeks: [] }); g.goal += n; if (!g.weeks.includes(w)) g.weeks.push(w);
   }
   out.weeks.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   return out;
