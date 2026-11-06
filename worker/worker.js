@@ -9945,7 +9945,8 @@ async function contentPlanAction(env, body, external) {
       }
       if (why) { fail(why); continue; }
       const isNew = !row; if (isNew) row = { id: e.rowId && !external ? String(e.rowId).slice(0, 40) : "cp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), cells: {} };
-      const prev = row.cells; row.cells = cells; if (isNew) t.rows.push(row);
+      const prev = row.cells; row.cells = cells;
+      if (isNew) { const at = e.after && !external ? t.rows.findIndex(r => r.id === e.after) : -1; if (at >= 0) t.rows.splice(at + 1, 0, row); else t.rows.push(row); }   // after: dash duplicate lands under its original
       if (external && e.op !== "archive") { const v = cplanValidate(t, row); if (v) { if (isNew) t.rows.pop(); else row.cells = prev; fail(v); continue; } }
       applied.push({ op: e.op, rowId: row.id, before, after: { ...cells } });
     }

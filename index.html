@@ -4782,7 +4782,7 @@ function cplanPaint(name = 'content-plan-assets') {
     <button onclick="cplanSort(${q},'${c.id}',event)" title="Click: sort by this column (again flips) · Ctrl- or Shift-click: add it as a level (again flips, third time removes) · Alt-click: remove it" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (SL[si].dir === -1 ? '▼' : '▲') + (SL.length > 1 ? si + 1 : '') : '⇅'}</button></div>
     ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}${sizer(c.id)}</th>`; };
   // dynamic headings: one collapsible tier per heading level, nested; all collapsed unless opened
-  const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}<td style="padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;"><button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">×</button></td></tr>`;
+  const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}<td style="padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;white-space:nowrap;"><button onclick="cplanDupRow(${q},'${row.id}')" title="Duplicate this row (the copy goes right below it)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin-right:3px;">⧉</button><button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">×</button></td></tr>`;
   S._groups = [];
   const tier = (rs, d, path) => { if (d >= HL.length) return rs.map(rowHtml).join('');
     const s = HL[d], runs = []; rs.forEach(r => { const v = cv(r, s.col), last = runs[runs.length - 1]; if (last && cmp(last.v, v) === 0 && !last.v === !v) last.rs.push(r); else runs.push({ v, rs: [r] }); });
@@ -4791,7 +4791,7 @@ function cplanPaint(name = 'content-plan-assets') {
       const op = S.open.has(k), sz = [13, 12.5, 12, 11.5][Math.min(d, 3)];
       return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:${d ? 'var(--surface)' : 'var(--surface2)'};"><td colspan="${cols.length + 1}" style="padding:5px 8px 5px ${8 + d * 18}px;border-bottom:1px solid var(--border2);font-size:${sz}px;font-weight:700;"><span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span><span style="font-weight:400;color:var(--text3);">${esc(colName(s.col))}:</span> ${esc(g.v || '(blank)')} <span style="font-weight:400;color:var(--text3);">· ${g.rs.length} row${g.rs.length === 1 ? '' : 's'}</span></td></tr>${op ? tier(g.rs, d + 1, k) : ''}`; }).join(''); };
   const body = tier(rows, 0, ''); delete S.reveal;
-  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 30;   // + the delete column
+  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 60;   // + the duplicate / delete column
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
@@ -4803,7 +4803,7 @@ function cplanPaint(name = 'content-plan-assets') {
       <button style="${B}" onclick="cplanGroupAdd(${q})" title="A named, collapsible column heading — drag columns' ⋮⋮ onto it">＋ Column group</button>
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
-      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). Archive a row with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
       const opts = cur => T.columns.filter(c => S.arch || !c.hidden || c.id === cur).map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
       return `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:6px;">`
@@ -4814,7 +4814,7 @@ function cplanPaint(name = 'content-plan-assets') {
           + `<button style="${sb}" title="Move up" onclick="cplanSortMove(${q},${i},-1)">↑</button><button style="${sb}" title="Move down" onclick="cplanSortMove(${q},${i},1)">↓</button><button style="${sb}color:#f87171;" title="Remove this level" onclick="cplanSortDel(${q},${i})">×</button></div>`).join('')
         + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
         + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
-    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr>${cols.map(head).join('')}<th style="width:30px;border-bottom:1px solid var(--border2);"></th></tr></thead>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr>${cols.map(head).join('')}<th style="width:60px;border-bottom:1px solid var(--border2);"></th></tr></thead>
     <tbody>${body || `<tr><td colspan="${cols.length + 1}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
 function cplanEdit(name, rowId, colId, value) {
@@ -4835,6 +4835,11 @@ function cplanAddRow(name) {
 // Content Plan — All Assets saves ONLY what you changed: the cells you edited (updateContentPlan, merged into the stored table on the
 // worker) and, when you add / rename / archive a column, the columns (saveContentPlanColumns). Never the whole table from this tab's copy —
 // that overwrote cells written elsewhere (Buzz's portal) since this tab loaded (portal fix 2026-11-05).
+function cplanDupRow(name, rowId) {   // duplicate row (operator 2026-11-05): every cell copied, new id, placed right below the original
+  const S = cpS(name), T = S.t, i = T ? T.rows.findIndex(r => r.id === rowId) : -1; if (i < 0) return;
+  const id = 'p' + Date.now().toString(36); T.rows.splice(i + 1, 0, { id, cells: { ...T.rows[i].cells } }); S.newRows.add(id); S.reveal = id;
+  cplanPaint(name); cplanSave(name);
+}
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
   const label = [row.cells.hub, row.cells.init, row.cells.atype, row.cells.week && 'week ' + row.cells.week].filter(Boolean).join(' · ') || 'this empty row';
@@ -4852,7 +4857,7 @@ async function cplanSaveCells(name) {
   const S = cpS(name), T = S.t; let r = { ok: true };
   if (S.colsDirty) { S.colsDirty = false; r = await call('saveContentPlanColumns', { columns: T.columns }).catch(e => ({ error: e.message })); if (!r || r.error) { S.colsDirty = true; return r; } }
   const pend = S.pend, news = S.newRows; S.pend = {}; S.newRows = new Set();
-  const edits = [...news].map(id => ({ op: 'add', rowId: id, cells: { ...((T.rows.find(x => x.id === id) || {}).cells || {}) }, clear: true }))
+  const edits = [...news].map(id => { const i = T.rows.findIndex(x => x.id === id); return { op: 'add', rowId: id, cells: { ...((T.rows[i] || {}).cells || {}) }, clear: true, ...(i > 0 ? { after: T.rows[i - 1].id } : {}) }; })
     .concat(Object.keys(pend).filter(id => !news.has(id)).map(id => ({ op: 'edit', rowId: id, cells: pend[id], clear: true })));
   for (let i = 0; i < edits.length; i += 50) {
     r = await call('updateContentPlan', { edits: edits.slice(i, i + 50) }).catch(e => ({ error: e.message }));
