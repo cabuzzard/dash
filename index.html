@@ -4631,7 +4631,7 @@ const CPLAN_DEFS = {
   'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
     { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
-function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set(), pend: {}, newRows: new Set(), colsDirty: false }); }   // open = expanded headings (session only; all collapsed by default)
+function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set(), pend: {}, newRows: new Set(), colsDirty: false, sel: new Set() }); }   // open = expanded headings (session only; all collapsed by default)
 // View layout (operator 2026-11-05): column order, widths and column groups are this browser's view only (localStorage) —
 // never written into the table, so a layout change never saves the table or races a portal edit.
 function cpView(name) { try { return JSON.parse(localStorage.getItem('cplan:view:' + name)) || {}; } catch (e) { return {}; } }
@@ -4785,16 +4785,20 @@ function cplanPaint(name = 'content-plan-assets') {
     <button onclick="cplanSort(${q},'${c.id}',event)" title="Click: sort by this column (again flips) · Ctrl- or Shift-click: add it as a level (again flips, third time removes) · Alt-click: remove it" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (SL[si].dir === -1 ? '▼' : '▲') + (SL.length > 1 ? si + 1 : '') : '⇅'}</button></div>
     ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}${sizer(c.id)}</th>`; };
   // dynamic headings: one collapsible tier per heading level, nested; all collapsed unless opened
-  const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}">${cols.map(c => cell(row, c)).join('')}<td style="padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;white-space:nowrap;"><button onclick="cplanDupRow(${q},'${row.id}')" title="Duplicate this row (the copy goes right below it)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin-right:3px;">⧉</button><button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">×</button></td></tr>`;
-  S._groups = [];
+  const SEL = S.sel ||= new Set(); [...SEL].forEach(id => { if (!T.rows.some(r => r.id === id)) SEL.delete(id); });
+  const ck = (on, js, title, ind) => `<input type="checkbox" ${on ? 'checked' : ''} ${ind ? 'data-ind="1"' : ''} title="${title}" onclick="event.stopPropagation();${js}" style="cursor:pointer;margin:0 4px 0 0;vertical-align:middle;">`;
+  const rowHtml = row => `<tr data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}${SEL.has(row.id) ? 'background:rgba(96,165,250,.10);' : ''}"><td style="padding:6px 2px 4px 6px;border-bottom:1px solid var(--border);vertical-align:top;">${ck(SEL.has(row.id), `cplanSel(${q},'${row.id}',this.checked)`, 'Select this row')}</td>${cols.map(c => cell(row, c)).join('')}<td style="padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;white-space:nowrap;"><button onclick="cplanDupRow(${q},'${row.id}')" title="Duplicate this row (the copy goes right below it)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin-right:3px;">⧉</button><button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">×</button></td></tr>`;
+  S._groups = []; S._grpRows = [];
   const tier = (rs, d, path) => { if (d >= HL.length) return rs.map(rowHtml).join('');
     const s = HL[d], runs = []; rs.forEach(r => { const v = cv(r, s.col), last = runs[runs.length - 1]; if (last && cmp(last.v, v) === 0 && !last.v === !v) last.rs.push(r); else runs.push({ v, rs: [r] }); });
-    return runs.map(g => { const k = path + '\u0001' + g.v.toLowerCase(), i = S._groups.push(k) - 1;
+    return runs.map(g => { const k = path + '\u0001' + g.v.toLowerCase(), i = S._groups.push(k) - 1; S._grpRows[i] = g.rs.map(r => r.id); const nSel = g.rs.filter(r => SEL.has(r.id)).length;
       if (S.reveal && g.rs.some(r => r.id === S.reveal)) S.open.add(k);
       const op = S.open.has(k), sz = [13, 12.5, 12, 11.5][Math.min(d, 3)];
-      return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:${d ? 'var(--surface)' : 'var(--surface2)'};"><td colspan="${cols.length + 1}" style="padding:5px 8px 5px ${8 + d * 18}px;border-bottom:1px solid var(--border2);font-size:${sz}px;font-weight:700;"><span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span><span style="font-weight:400;color:var(--text3);">${esc(colName(s.col))}:</span> ${esc(g.v || '(blank)')} <span style="font-weight:400;color:var(--text3);">· ${g.rs.length} row${g.rs.length === 1 ? '' : 's'}</span></td></tr>${op ? tier(g.rs, d + 1, k) : ''}`; }).join(''); };
+      return `<tr onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:${d ? 'var(--surface)' : 'var(--surface2)'};"><td colspan="${cols.length + 2}" style="padding:5px 8px 5px ${8 + d * 18}px;border-bottom:1px solid var(--border2);font-size:${sz}px;font-weight:700;">${ck(nSel === g.rs.length, `cplanSelGrp(${q},${i},this.checked)`, 'Select every row under this heading', nSel && nSel < g.rs.length)}<span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span><span style="font-weight:400;color:var(--text3);">${esc(colName(s.col))}:</span> ${esc(g.v || '(blank)')} <span style="font-weight:400;color:var(--text3);">· ${g.rs.length} row${g.rs.length === 1 ? '' : 's'}${nSel ? ' · ' + nSel + ' selected' : ''}</span></td></tr>${op ? tier(g.rs, d + 1, k) : ''}`; }).join(''); };
   const body = tier(rows, 0, ''); delete S.reveal;
-  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 60;   // + the duplicate / delete column
+  setTimeout(() => el.querySelectorAll('input[data-ind]').forEach(x => { x.indeterminate = true; }), 0);
+  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 60 + 26;   // + the duplicate / delete column + the select column
+  S._shown = rows.map(r => r.id); const nShownSel = rows.filter(r => SEL.has(r.id)).length;
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
@@ -4808,6 +4812,15 @@ function cplanPaint(name = 'content-plan-assets') {
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="The Content Plan cron: each row's Cron number of Development assets per asset-type period, pillar first" onclick="cpcOpen()">⏰ Cron${CPC.on === true ? ': on' : CPC.on === false ? ': off' : ''}</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
       <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+    ${SEL.size ? (() => { const bc = S.bulkCol && T.columns.some(c => c.id === S.bulkCol) ? S.bulkCol : '', vals = bc ? [...new Set(T.rows.map(r => String(r.cells[bc] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
+      const opts2 = bc === 'status' ? cplanStatusOpts(name) : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
+      return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
+        <b>${SEL.size} row${SEL.size === 1 ? '' : 's'} selected</b>
+        <button style="${B}" onclick="cplanBulkDup(${q})" title="Copy every selected row; each copy goes right below its original">⧉ Duplicate</button>
+        <button style="${B}color:#f87171;" onclick="cplanBulkDel(${q})" title="Delete every selected row (asks first)">× Delete</button>
+        <span style="color:var(--text2);">✎ Set</span><select id="cpBulkCol${cpId(name)}" onchange="cpS(${q}).bulkCol=this.value;cplanPaint(${q})" style="font-size:12px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">column…</option>${T.columns.filter(c => !/^(created|changed)$/.test(c.id) && (S.arch || !c.hidden)).map(c => `<option value="${c.id}" ${c.id === bc ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+        ${bc ? `<span style="color:var(--text2);">to</span><input id="cpBulkVal${cpId(name)}" list="cpBulkList${cpId(name)}" placeholder="value (blank clears it)" style="font-size:12px;padding:4px 7px;min-width:220px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><datalist id="cpBulkList${cpId(name)}">${opts2.map(v => `<option value="${esc(v)}">`).join('')}</datalist><button style="${B}" onclick="cplanBulkEdit(${q})">Apply to ${SEL.size}</button>` : ''}
+        <button style="${B}margin-left:auto;" onclick="cplanSelClear(${q})">Clear selection</button></div>`; })() : ''}
     ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
       const opts = cur => T.columns.filter(c => S.arch || !c.hidden || c.id === cur).map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
       return `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:6px;">`
@@ -4818,8 +4831,8 @@ function cplanPaint(name = 'content-plan-assets') {
           + `<button style="${sb}" title="Move up" onclick="cplanSortMove(${q},${i},-1)">↑</button><button style="${sb}" title="Move down" onclick="cplanSortMove(${q},${i},1)">↓</button><button style="${sb}color:#f87171;" title="Remove this level" onclick="cplanSortDel(${q},${i})">×</button></div>`).join('')
         + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
         + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
-    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr>${cols.map(head).join('')}<th style="width:60px;border-bottom:1px solid var(--border2);"></th></tr></thead>
-    <tbody>${body || `<tr><td colspan="${cols.length + 1}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr><th style="width:26px;padding:4px 2px 4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;">${ck(rows.length && nShownSel === rows.length, `cplanSelAll(${q},this.checked)`, 'Select every row shown (under collapsed headings too)', nShownSel && nShownSel < rows.length)}</th>${cols.map(head).join('')}<th style="width:60px;border-bottom:1px solid var(--border2);"></th></tr></thead>
+    <tbody>${body || `<tr><td colspan="${cols.length + 2}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
 function cplanEdit(name, rowId, colId, value) {
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
@@ -4882,6 +4895,41 @@ function cpcPaint() {
     ${CPC.pv ? '<div style="font-weight:700;font-size:12.5px;margin:6px 0 4px;">Preview — what a run now would do (nothing written)</div>' + tbl(CPC.pv.rows || []) : ''}
     <div style="font-weight:700;font-size:12.5px;margin:12px 0 4px;">Held (${held.length}) — retried at the next daily queue</div>${tbl(held.map(([rowId, h]) => ({ ...h, held: h.reason })), true)}
     <div style="font-weight:700;font-size:12.5px;margin:12px 0 4px;">Recent runs</div>${tbl(S.log || [], true)}</div>`;
+}
+// Row selection + bulk actions (operator 2026-11-06): a checkbox per row, per heading (every row under it, collapsed or not) and for every
+// row shown; with a selection: ⧉ duplicate all, × delete all, ✎ set one column to one value on all. Saves through the same paths as one row.
+function cplanSel(name, id, on) { const S = cpS(name); on ? S.sel.add(id) : S.sel.delete(id); cplanPaint(name); }
+function cplanSelGrp(name, i, on) { const S = cpS(name); ((S._grpRows || [])[i] || []).forEach(id => on ? S.sel.add(id) : S.sel.delete(id)); cplanPaint(name); }
+function cplanSelAll(name, on) { const S = cpS(name); (S._shown || []).forEach(id => on ? S.sel.add(id) : S.sel.delete(id)); cplanPaint(name); }
+function cplanSelClear(name) { cpS(name).sel = new Set(); cplanPaint(name); }
+function cplanBulkDup(name) {
+  const S = cpS(name), T = S.t; if (!T || !S.sel.size) return;
+  const ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id), t0 = Date.now(); let k = 0;
+  for (const id of ids) { const i = T.rows.findIndex(r => r.id === id), cells = { ...T.rows[i].cells }; delete cells.created; delete cells.changed;
+    const nid = 'p' + (t0 + k++).toString(36); T.rows.splice(i + 1, 0, { id: nid, cells }); S.newRows.add(nid); }
+  S.sel = new Set(); cplanPaint(name); cplanSave(name);
+}
+async function cplanBulkDel(name) {
+  const S = cpS(name), T = S.t; if (!T || !S.sel.size) return;
+  const ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id);
+  if (!confirm('Delete ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '? This cannot be undone from the dash (the Content Plan keeps deleted rows in its change log).')) return;
+  T.rows = T.rows.filter(r => !S.sel.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); S.sel = new Set(); cplanPaint(name);
+  const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Deleting ' + ids.length + '…';
+  let r = { ok: true };
+  if (name !== HUBPLAN_TABLE) r = await call('saveInfoFlowTable', { name, table: T }).catch(e => ({ error: e.message }));
+  else for (let i = 0; i < saved.length && r && !r.error && !(r.failed && r.failed.length); i += 50)
+    r = await call('updateContentPlan', { edits: saved.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
+  const bad = !r || r.error || (r.failed && r.failed.length);
+  if (msg) { msg.style.color = bad ? '#f87171' : 'var(--text3)'; msg.textContent = bad ? 'Not all deleted: ' + ((r && (r.error || r.failed.map(f => f.reason).join(' · '))) || 'no response') : 'Deleted ' + ids.length; }
+  if (bad) return cplanLoad(true, name);   // show the stored table as it really is
+  if (name === HUBPLAN_TABLE && HD.plan) { HD.plan = T; hdRender(); }
+}
+function cplanBulkEdit(name) {
+  const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
+  const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id);
+  if (!confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '?')) return;
+  for (const id of ids) { const row = T.rows.find(r => r.id === id); row.cells[col] = v; (S.pend[id] ||= {})[col] = v; }
+  clearTimeout(S.timer); cplanPaint(name); cplanSave(name);
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
