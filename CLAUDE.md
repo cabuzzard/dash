@@ -557,5 +557,5 @@ type once per period — the period is that asset type's **Cadence in Current Me
 Twice monthly, Monthly, Quarterly). No period there (On demand / blank / unmatched) = never run; those types are handled upstream in the table.
 Sequence week/day/Sequence are sequencing aids for other platforms, never a trigger. Before creating, it writes the title's pillar if it has
 none (`writeTitlePillar`; never over existing pillar content). The row's Title must already exist in its hub — it never creates or picks a
-title (else held). Assets still in Development from an earlier period carry over and count. It never runs the asset writer, never changes a
+title (else held). It counts no assets: the Cron numbers in the table are the only count, created once per period (the goal stays on screen as the next run's amount). It never runs the asset writer, never changes a
 status. Creates go through `createAsset` (flow guards apply). A Notion rate limit switches it off. State: KV `cplan:cron:state`.

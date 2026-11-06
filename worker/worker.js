@@ -9970,8 +9970,8 @@ async function contentPlanAction(env, body, external) {
 // is the asset type's Cadence in the Current Methods worksheet (Weekly · Twice monthly · Monthly · Quarterly); a type with no period there
 // (On demand, blank, unmatched) is never run — those are handled upstream in the table. Sequence week / day / Sequence are sequencing aids for
 // other platforms, never a trigger. It never runs the asset writer, never changes a status, never picks or creates a title (the row's Title
-// must match a real title in the row's hub, else the row is held). Rollover carries: a row's asset still in Development from an earlier
-// period counts toward this period, so nothing new is made for it. Off until the operator switches it on (KV cplan:cron:on); creates go
+// must match a real title in the row's hub, else the row is held). It counts no assets: the Cron numbers in the table are the only count,
+// created once per period; the goal stays on screen as the next run's amount. Off until the operator switches it on (KV cplan:cron:on); creates go
 // through the normal createAsset / writeTitlePillar actions (flow + hierarchy guards apply); a Notion rate limit stops it and switches it off.
 const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
 const cpcNorm = s => String(s || "").trim().toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
@@ -10034,16 +10034,13 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   if (cands.length > 1) return hold(`${cands.length} titles named "${P.title}" in ${H.name} — name the Product in the row`);
   const T = cands[0], tid = hubAssetId(T.id), ps = T.properties?.["Pillar Status"]?.select?.name || "";
   Object.assign(res, { titleId: tid, pillarStatus: ps || "(none)" });
-  const R = S.rows[P.rowId] || { made: [] }, carried = [], thisP = [];
-  for (const m of R.made || []) {
-    if (m.period === P.period) { thisP.push(m.id); continue; }
-    const pg = await ivPage(m.id).catch(() => null);
-    if (pg && !pg.archived && !pg.in_trash && pg.properties?.["Asset Status"]?.select?.name === "Development") carried.push(m.id);
-  }
-  const create = Math.max(0, P.n - thisP.length - carried.length);
+  // the cron counts no assets (operator 2026-11-06): each period it creates the row's Cron number from the table, once. The only thing
+  // remembered is a run that broke part-way this period, so its retry makes the rest instead of starting over.
+  const R = S.rows[P.rowId] || {}, partial = R.partial && R.partial.period === P.period ? R.partial.ids : [];
+  const create = Math.max(0, P.n - partial.length);
   let writePillar = create > 0 && ps !== "Written" && ps !== "Out of Sync";   // only when something is being made; never over a pillar that exists
   if (writePillar && !ps && await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "")) writePillar = false;   // blank status but the pillar is there
-  Object.assign(res, { carried: carried.length, madeThisPeriod: thisP.length, create, writePillar });
+  Object.assign(res, { create, writePillar });
   if (dry) return res;
   if (res.writePillar) {
     const w = await invoke({ action: "writeTitlePillar", titleId: tid });
@@ -10054,13 +10051,11 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   for (let i = 0; i < create; i++) {
     const a = await invoke({ action: "createAsset", titleId: tid, campId: hubAssetId(H.campaignId), productId: ivRid(T.properties, "product") || undefined,
       assetTitle: `${hubRichText(T.properties?.Title?.title) || P.title} — ${type}`, assetType: type });
-    if (!a || a.error || !a.id) { R.made = [...carried.map(id => ({ id, period: "carried" })), ...(R.made || []).filter(m => m.period === P.period), ...made.map(id => ({ id, period: P.period }))]; S.rows[P.rowId] = R;
+    if (!a || a.error || !a.id) { R.partial = { period: P.period, ids: [...partial, ...made] }; S.rows[P.rowId] = R;
       return { ...hold(`asset ${i + 1} of ${create} not created: ${(a && a.error) || "no response"}`), made, rate: /rate.?limit|429/i.test((a && a.error) || "") }; }
     made.push(hubAssetId(a.id));
   }
-  // keep what still counts: this period's assets + carried ones still in Development (the rest have moved on)
-  R.made = [...carried.map(id => ({ id, period: "carried" })), ...thisP.map(id => ({ id, period: P.period })), ...made.map(id => ({ id, period: P.period }))];
-  R.doneP = P.period; R.n = P.n; S.rows[P.rowId] = R;
+  delete R.partial; R.doneP = P.period; S.rows[P.rowId] = R;
   return { ...res, made };
 }
 async function cpcSave(env, S) { S.log = (S.log || []).slice(-150); await env.TRADES.put(CPC_STATE, JSON.stringify(S)); }
@@ -10075,7 +10070,7 @@ async function contentPlanCronTick(env, invoke) {   // */4 cron: once a day queu
     if (S.scanned === today && !S.queue.length) return { idle: true };
     const { t } = await cplanLoad(env), plan = await cpcPlan(env, t), byId = Object.fromEntries(plan.map(P => [P.rowId, P]));
     if (S.scanned !== today) {
-      for (const P of plan) { if (P.skip) continue; const R = S.rows[P.rowId]; if (R && R.doneP === P.period && R.n >= P.n) continue; if (!S.queue.includes(P.rowId)) S.queue.push(P.rowId); }
+      for (const P of plan) { if (P.skip) continue; const R = S.rows[P.rowId]; if (R && R.doneP === P.period) continue; if (!S.queue.includes(P.rowId)) S.queue.push(P.rowId); }
       S.scanned = today; await cpcSave(env, S);
     }
     if (!S.queue.length) return { idle: true };
