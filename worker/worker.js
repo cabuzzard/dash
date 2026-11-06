@@ -9965,6 +9965,148 @@ async function contentPlanAction(env, body, external) {
 }
 // Actions an EXTERNAL_WORKER_KEY caller may run — images, run assets (≤10 per call, never published), run read-back,
 // and the Content Plan portal (add / edit / archive rows of Content Plan — All Assets only) + its goal read + its read-only row read.
+// ══ Content Plan cron (operator 2026-11-06) ══ The cron reads ONLY the Cron column of Content Plan — All Assets: a row with Cron = N gets N
+// Development assets of its Asset type once per that type's period, and its title's pillar written first when the title has none. The period
+// is the asset type's Cadence in the Current Methods worksheet (Weekly · Twice monthly · Monthly · Quarterly); a type with no period there
+// (On demand, blank, unmatched) is never run — those are handled upstream in the table. Sequence week / day / Sequence are sequencing aids for
+// other platforms, never a trigger. It never runs the asset writer, never changes a status, never picks or creates a title (the row's Title
+// must match a real title in the row's hub, else the row is held). Rollover carries: a row's asset still in Development from an earlier
+// period counts toward this period, so nothing new is made for it. Off until the operator switches it on (KV cplan:cron:on); creates go
+// through the normal createAsset / writeTitlePillar actions (flow + hierarchy guards apply); a Notion rate limit stops it and switches it off.
+const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
+const cpcNorm = s => String(s || "").trim().toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
+function cpcPeriodKey(cadence, now = new Date()) {   // first day of the current period (UTC), as Content Hubs 2 counts periods
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (cadence === "Weekly") d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 1) % 7);   // weeks run Saturday → Friday
+  else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
+  else if (cadence === "Monthly") d.setUTCDate(1);
+  else if (cadence === "Quarterly") d.setUTCMonth(Math.floor(d.getUTCMonth() / 3) * 3, 1);
+  else return "";
+  return d.toISOString().slice(0, 10);
+}
+async function cpcCadences(env) {   // Current Methods: row Name, then its Asset column → Cadence ("?" when two rows disagree)
+  const t = await env.TRADES.get("infoflow:table:currentmethods", "json").catch(() => null), byName = {}, byAsset = {};
+  const put = (m, k, v) => { if (!k || !v) return; m[k] = m[k] && m[k] !== v ? "?" : v; };
+  for (const r of (t && t.rows) || []) { const c = r.cells || {}, cad = String(c.ccad01 || "").trim(); put(byName, cpcNorm(c.cname01), cad); put(byAsset, cpcNorm(c.cmuzq36hb77sq), cad); }
+  return { byName, byAsset };
+}
+async function cpcPlan(env, t) {   // every row with a Cron number → runnable (cadence + period) or skip (why)
+  const cad = await cpcCadences(env), out = [];
+  for (const r of (t && t.rows) || []) {
+    const g = k => cplanCell(t, r, k), n = Number(g("Cron"));
+    if (!(isFinite(n) && n >= 1)) continue;
+    const P = { rowId: r.id, hub: g("hub"), atype: g("atype"), topic: g("Topic"), product: g("Product"), title: g("Title"), n: Math.floor(n) };
+    const c = cad.byName[cpcNorm(P.atype)] || cad.byAsset[cpcNorm(P.atype)] || "";
+    if (/^archived$/i.test(g("status"))) P.skip = "Archived";
+    else if (/^standalone$/i.test(g("Kind"))) P.skip = "Standalone — outside the cron";
+    else if (!c) P.skip = `no period — "${P.atype}" has no Cadence in Current Methods`;
+    else if (c === "?") P.skip = `no period — Current Methods has different Cadences for "${P.atype}"`;
+    else if (!CPC_CADENCES.includes(c)) P.skip = `period "${c}" — the cron only runs Weekly / Twice monthly / Monthly / Quarterly`;
+    else { P.cadence = c; P.period = cpcPeriodKey(c); }
+    out.push(P);
+  }
+  return out;
+}
+async function cpcTypeOptions() {
+  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }).then(r => r.json());
+  if (!db.properties) throw new Error("Assets DB: " + (db.message || "not readable"));
+  return (db.properties["Asset Type"]?.select?.options || []).map(o => o.name);
+}
+// One row: resolve hub → title → pillar → carried / made this period → what to create. dry = report only, no writes.
+async function cpcRow(env, invoke, P, S, types, dry) {
+  const res = { rowId: P.rowId, hub: P.hub, atype: P.atype, title: P.title, period: P.period, cadence: P.cadence, n: P.n, at: new Date().toISOString() };
+  const hold = reason => ({ ...res, held: reason });
+  const sl = cpcNorm(P.hub).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const H = HUB_SITES.find(h => h.campaignId && (cpcNorm(h.name) === cpcNorm(P.hub) || h.slug === sl));
+  if (!H) return hold(`hub "${P.hub}" is not a known hub`);
+  const type = types.find(x => cpcNorm(x) === cpcNorm(P.atype));
+  if (!type) return hold(`Asset type "${P.atype}" is not an Asset Type option in Notion`);
+  if (!P.title) return hold("the row has no Title — the cron never picks a title");
+  let cands = (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Title", title: { equals: P.title } } }))
+    .filter(x => !x.archived && !x.in_trash && ivRid(x.properties, "Campaign") === hubAssetId(H.campaignId));
+  if (cands.length > 1 && P.product) {
+    const named = [];
+    for (const x of cands) { const pid = ivRid(x.properties, "product"), pg = pid ? await ivPage(pid).catch(() => null) : null;
+      if (pg && cpcNorm(hubRichText(pg.properties?.Name?.title)) === cpcNorm(P.product)) named.push(x); }
+    cands = named;
+  }
+  if (!cands.length) return hold(`no title "${P.title}" in ${H.name}${P.product ? " under " + P.product : ""} — the cron never creates a title`);
+  if (cands.length > 1) return hold(`${cands.length} titles named "${P.title}" in ${H.name} — name the Product in the row`);
+  const T = cands[0], tid = hubAssetId(T.id), ps = T.properties?.["Pillar Status"]?.select?.name || "";
+  Object.assign(res, { titleId: tid, pillarStatus: ps || "(none)" });
+  const R = S.rows[P.rowId] || { made: [] }, carried = [], thisP = [];
+  for (const m of R.made || []) {
+    if (m.period === P.period) { thisP.push(m.id); continue; }
+    const pg = await ivPage(m.id).catch(() => null);
+    if (pg && !pg.archived && !pg.in_trash && pg.properties?.["Asset Status"]?.select?.name === "Development") carried.push(m.id);
+  }
+  const create = Math.max(0, P.n - thisP.length - carried.length);
+  let writePillar = create > 0 && ps !== "Written" && ps !== "Out of Sync";   // only when something is being made; never over a pillar that exists
+  if (writePillar && !ps && await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "")) writePillar = false;   // blank status but the pillar is there
+  Object.assign(res, { carried: carried.length, madeThisPeriod: thisP.length, create, writePillar });
+  if (dry) return res;
+  if (res.writePillar) {
+    const w = await invoke({ action: "writeTitlePillar", titleId: tid });
+    if (!w || w.error) return { ...hold("pillar not written: " + ((w && w.error) || "no response")), rate: /rate.?limit|429/i.test((w && w.error) || "") };
+    res.pillar = "written";
+  }
+  const made = [];
+  for (let i = 0; i < create; i++) {
+    const a = await invoke({ action: "createAsset", titleId: tid, campId: hubAssetId(H.campaignId), productId: ivRid(T.properties, "product") || undefined,
+      assetTitle: `${hubRichText(T.properties?.Title?.title) || P.title} — ${type}`, assetType: type });
+    if (!a || a.error || !a.id) { R.made = [...carried.map(id => ({ id, period: "carried" })), ...(R.made || []).filter(m => m.period === P.period), ...made.map(id => ({ id, period: P.period }))]; S.rows[P.rowId] = R;
+      return { ...hold(`asset ${i + 1} of ${create} not created: ${(a && a.error) || "no response"}`), made, rate: /rate.?limit|429/i.test((a && a.error) || "") }; }
+    made.push(hubAssetId(a.id));
+  }
+  // keep what still counts: this period's assets + carried ones still in Development (the rest have moved on)
+  R.made = [...carried.map(id => ({ id, period: "carried" })), ...thisP.map(id => ({ id, period: P.period })), ...made.map(id => ({ id, period: P.period }))];
+  R.doneP = P.period; R.n = P.n; S.rows[P.rowId] = R;
+  return { ...res, made };
+}
+async function cpcSave(env, S) { S.log = (S.log || []).slice(-150); await env.TRADES.put(CPC_STATE, JSON.stringify(S)); }
+async function contentPlanCronTick(env, invoke) {   // */4 cron: once a day queue the due rows, then work the queue (~200 s per tick)
+  if ((await env.TRADES.get(CPC_ON)) !== "1") return { idle: true };
+  if (await env.TRADES.get(CPC_LOCK)) return { busy: true };
+  await env.TRADES.put(CPC_LOCK, "1", { expirationTtl: 600 });
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  try {
+    const S = (await env.TRADES.get(CPC_STATE, "json")) || {}; S.rows ||= {}; S.queue ||= []; S.held ||= {};
+    const today = new Date().toISOString().slice(0, 10);
+    if (S.scanned === today && !S.queue.length) return { idle: true };
+    const { t } = await cplanLoad(env), plan = await cpcPlan(env, t), byId = Object.fromEntries(plan.map(P => [P.rowId, P]));
+    if (S.scanned !== today) {
+      for (const P of plan) { if (P.skip) continue; const R = S.rows[P.rowId]; if (R && R.doneP === P.period && R.n >= P.n) continue; if (!S.queue.includes(P.rowId)) S.queue.push(P.rowId); }
+      S.scanned = today; await cpcSave(env, S);
+    }
+    if (!S.queue.length) return { idle: true };
+    const types = await cpcTypeOptions(), t0 = Date.now(); let done = 0;
+    while (S.queue.length && Date.now() - t0 < 200000) {
+      const id = S.queue.shift(), P = byId[id];
+      if (!P || P.skip) { await cpcSave(env, S); continue; }
+      let r; try { r = await cpcRow(env, invoke, P, S, types, false); } catch (e) { r = { rowId: id, hub: P.hub, atype: P.atype, title: P.title, period: P.period, at: new Date().toISOString(), held: e.message, rate: /rate.?limit|429/i.test(e.message) }; }
+      if (r.held) S.held[id] = { reason: r.held, at: r.at, hub: P.hub, atype: P.atype, title: P.title }; else delete S.held[id];
+      S.log.push(r); done++;
+      if (r.rate) { S.stopped = { at: r.at, reason: "Notion rate limit — the cron switched itself off: " + r.held }; S.queue.unshift(id); await env.TRADES.delete(CPC_ON); await cpcSave(env, S); return { stopped: S.stopped.reason }; }
+      await cpcSave(env, S);
+    }
+    return { ok: true, done, left: S.queue.length };
+  } finally { await env.TRADES.delete(CPC_LOCK).catch(() => {}); }
+}
+async function contentPlanCronAction(env, body) {   // operator only: status · on · off · preview
+  const op = String(body.op || "status"), S = (await env.TRADES.get(CPC_STATE, "json")) || {};
+  if (op === "on") { S.scanned = ""; delete S.stopped; await env.TRADES.put(CPC_STATE, JSON.stringify(S)); await env.TRADES.put(CPC_ON, "1"); }
+  else if (op === "off") await env.TRADES.delete(CPC_ON);
+  else if (op === "preview") {
+    const { t } = await cplanLoad(env), plan = await cpcPlan(env, t), types = await cpcTypeOptions(), rows = [];
+    for (const P of plan) {
+      if (P.skip) { rows.push({ rowId: P.rowId, hub: P.hub, atype: P.atype, title: P.title, n: P.n, skip: P.skip }); continue; }
+      if (rows.length >= 80) { rows.push({ rowId: P.rowId, hub: P.hub, atype: P.atype, title: P.title, n: P.n, skip: "not previewed (80-row limit)" }); continue; }
+      try { rows.push(await cpcRow(env, null, P, { rows: JSON.parse(JSON.stringify(S.rows || {})) }, types, true)); } catch (e) { rows.push({ rowId: P.rowId, hub: P.hub, atype: P.atype, title: P.title, n: P.n, held: e.message }); }
+    }
+    return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", rows };
+  } else if (op !== "status") return { error: "op must be status | on | off | preview" };
+  return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
+}
 const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
 async function verifyToken(token, secret) {
   try {
@@ -18956,6 +19098,7 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
+    if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
     if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
@@ -57122,6 +57265,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
+      cw("contentPlanCronTick", (async () => { if ((await env.TRADES.get(CPC_ON)) !== "1") return;   // Content Plan cron — off unless switched on
+        const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const r = await contentPlanCronTick(env, invoke); if (r && !r.idle && !r.busy) console.log("contentPlanCron:", JSON.stringify(r).slice(0, 300)); })());
       cw("autoDigestRun", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };

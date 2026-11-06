@@ -549,3 +549,13 @@ a whole-table write from a stale KV read clobbered other edits (`prompts/claude-
 `updateContentPlan` (cells merged into the current stored row, seq compare-and-set, per-edit `failed[]`, empty Topic/Product/Title/Content
 suggestion needs `clear: true`) or `saveContentPlanColumns` (dash only, merged by column id). `getContentPlanRows` is the read-only
 check (EXTERNAL_WORKER_KEY too); `saveInfoFlowTable` refuses this table.
+
+**Content Plan cron (Nov 6, 2026)** — `contentPlanCronTick` on the `*/4` cron, **off unless switched on** (KV `cplan:cron:on`; dash: Content
+Plan — All Assets → ⏰ Cron, which also has a dry-run Preview, held rows and the run log; action `contentPlanCron {op: status|on|off|preview}`,
+operator only). It reads ONLY the **Cron** column: a row with Cron = N (not Archived / Standalone) gets N **Development** assets of its Asset
+type once per period — the period is that asset type's **Cadence in Current Methods** (row Name, else Asset column; Weekly = Sat→Fri,
+Twice monthly, Monthly, Quarterly). No period there (On demand / blank / unmatched) = never run; those types are handled upstream in the table.
+Sequence week/day/Sequence are sequencing aids for other platforms, never a trigger. Before creating, it writes the title's pillar if it has
+none (`writeTitlePillar`; never over existing pillar content). The row's Title must already exist in its hub — it never creates or picks a
+title (else held). Assets still in Development from an earlier period carry over and count. It never runs the asset writer, never changes a
+status. Creates go through `createAsset` (flow guards apply). A Notion rate limit switches it off. State: KV `cplan:cron:state`.

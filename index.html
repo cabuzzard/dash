@@ -4802,6 +4802,7 @@ function cplanPaint(name = 'content-plan-assets') {
       ${HL.length ? `<button style="${B}" onclick="cplanGrpAll(${q},1)">▼ Expand all</button><button style="${B}" onclick="cplanGrpAll(${q},0)">▶ Collapse all</button>` : ''}
       <button style="${B}" onclick="cplanGroupAdd(${q})" title="A named, collapsible column heading — drag columns' ⋮⋮ onto it">＋ Column group</button>
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
+      ${name === HUBPLAN_TABLE ? `<button style="${B}" title="The Content Plan cron: each row's Cron number of Development assets per asset-type period, pillar first" onclick="cpcOpen()">⏰ Cron${CPC.on === true ? ': on' : CPC.on === false ? ': off' : ''}</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
       <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
@@ -4839,6 +4840,45 @@ function cplanDupRow(name, rowId) {   // duplicate row (operator 2026-11-05): ev
   const S = cpS(name), T = S.t, i = T ? T.rows.findIndex(r => r.id === rowId) : -1; if (i < 0) return;
   const id = 'p' + Date.now().toString(36); T.rows.splice(i + 1, 0, { id, cells: { ...T.rows[i].cells } }); S.newRows.add(id); S.reveal = id;
   cplanPaint(name); cplanSave(name);
+}
+// ⏰ Content Plan cron panel (operator 2026-11-06): on / off, a dry-run preview of what the next run would do, held rows, recent runs.
+// The cron reads only the Cron column; the period is the asset type's Cadence in Current Methods; it writes the title's pillar and
+// creates Development assets — nothing else (no writer, no status changes, no titles).
+var CPC = { on: null, st: null, pv: null, busy: '' };
+async function cpcOpen() {
+  let el = document.getElementById('cpcModal');
+  if (!el) { el = document.createElement('div'); el.id = 'cpcModal'; el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;';
+    el.onclick = e => { if (e.target === el) el.remove(); }; document.body.appendChild(el); }
+  cpcPaint(); await cpcCall('status');
+}
+async function cpcCall(op) {
+  CPC.busy = op === 'preview' ? 'Previewing (reads Notion, writes nothing)…' : op === 'status' ? '' : 'Saving…'; cpcPaint();
+  try { const r = await call('contentPlanCron', { op }); if (r.error) throw new Error(r.error);
+    if (op === 'preview') CPC.pv = r; else CPC.st = r; CPC.on = !!r.on; CPC.busy = ''; if (op !== 'preview' && op !== 'status') await cpcCall('status'); }
+  catch (e) { CPC.busy = '✗ ' + e.message; }
+  cpcPaint(); if (typeof cplanPaint === 'function') cplanPaint(HUBPLAN_TABLE);
+}
+function cpcPaint() {
+  const el = document.getElementById('cpcModal'); if (!el) return;
+  const S = CPC.st || {}, B = 'font-size:12px;padding:4px 11px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;';
+  const th = 'text-align:left;padding:3px 6px;border-bottom:1px solid var(--border2);font-size:11px;color:var(--text3);', td = 'padding:3px 6px;border-bottom:1px solid var(--border);font-size:11.5px;vertical-align:top;';
+  const what = r => r.skip ? '<span style="color:var(--text3);">skipped — ' + esc(r.skip) + '</span>' : r.held ? '<span style="color:#f87171;">held — ' + esc(r.held) + '</span>'
+    : [r.writePillar || r.pillar ? (r.pillar ? 'pillar written' : 'write pillar') : 'pillar ok', (r.made ? r.made.length + ' created' : (r.create || 0) + ' to create'), r.carried ? r.carried + ' carried' : '', r.madeThisPeriod ? r.madeThisPeriod + ' already this period' : ''].filter(Boolean).join(' · ');
+  const tbl = (rows, when) => rows.length ? `<table style="border-collapse:collapse;width:100%;"><tr>${when ? '<th style="' + th + '">When</th>' : ''}<th style="${th}">Hub</th><th style="${th}">Asset type</th><th style="${th}">Title</th><th style="${th}">Cron</th><th style="${th}">Period</th><th style="${th}">Result</th></tr>`
+    + rows.map(r => `<tr>${when ? '<td style="' + td + 'white-space:nowrap;">' + esc(new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + '</td>' : ''}<td style="${td}">${esc(r.hub || '')}</td><td style="${td}">${esc(r.atype || '')}</td><td style="${td}">${esc(r.title || '—')}</td><td style="${td}">${r.n || ''}</td><td style="${td}">${esc(r.cadence ? r.cadence + ' from ' + r.period : '')}</td><td style="${td}">${what(r)}</td></tr>`).join('') + '</table>' : '<div style="font-size:12px;color:var(--text3);">None.</div>';
+  const held = Object.entries(S.held || {});
+  el.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:16px 18px;max-width:1000px;width:100%;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><b style="font-size:15px;">⏰ Content Plan cron</b>
+      <span style="font-size:12px;font-weight:700;color:${CPC.on ? '#4ade80' : 'var(--text3)'};">${CPC.on === null ? '…' : CPC.on ? 'ON' : 'OFF'}</span>
+      <button style="${B}" onclick="cpcCall('${CPC.on ? 'off' : 'on'}')">${CPC.on ? '⏸ Switch off' : '▶ Switch on'}</button>
+      <button style="${B}" onclick="cpcCall('preview')">👁 Preview next run</button>
+      <span style="font-size:12px;color:var(--text2);">${esc(CPC.busy)}</span>
+      <button style="${B}margin-left:auto;" onclick="document.getElementById('cpcModal').remove()">✕</button></div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;line-height:1.5;">Reads only the <b>Cron</b> column. Each row with Cron = N gets N <b>Development</b> assets of its Asset type once per period, after its title's pillar is written if the title has none. The period is the asset type's <b>Cadence in Current Methods</b> (Weekly weeks run Sat → Fri); types with no period there are never run. A row's asset still in Development from an earlier period carries over and counts. The row's Title must already exist in its hub — the cron never makes or picks a title. It never runs the writer and never changes a status. Checked every 4 min; rows are queued once a day.${S.scanned ? ' Last queued: ' + esc(S.scanned) + (S.queue && S.queue.length ? ' · ' + S.queue.length + ' waiting' : '') + '.' : ''}</div>
+    ${S.stopped ? '<div style="font-size:12px;color:#f87171;margin-bottom:8px;">⛔ ' + esc(S.stopped.reason) + ' (' + esc(new Date(S.stopped.at).toLocaleString()) + ')</div>' : ''}
+    ${CPC.pv ? '<div style="font-weight:700;font-size:12.5px;margin:6px 0 4px;">Preview — what a run now would do (nothing written)</div>' + tbl(CPC.pv.rows || []) : ''}
+    <div style="font-weight:700;font-size:12.5px;margin:12px 0 4px;">Held (${held.length}) — retried at the next daily queue</div>${tbl(held.map(([rowId, h]) => ({ ...h, held: h.reason })), true)}
+    <div style="font-weight:700;font-size:12.5px;margin:12px 0 4px;">Recent runs</div>${tbl(S.log || [], true)}</div>`;
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
@@ -25472,6 +25512,9 @@ const CRON_REGISTRY = [
   { fn: 'storyCronEnqueue', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC = Sunday night US (8:15 pm ET) · strategies put on the loop by Create (first 10) · ⏸ Stop in the modal', group: 'Content',
     what: 'single post story loop: for each scheduled strategy, the current title (first in its Titles order with a pillar and Open slots) gets the next 10 random Open slots queued. A title with a pillar and no slots yet gets the strategy grid copied first; a title with no pillar is skipped and logged.',
     io: 'Notion: 🎯 Strategy Slots (read; new slots for the next title) · KV: story:sched, story:queue' },
+  { fn: 'contentPlanCronTick', cron: '*/4 * * * *', when: 'Every 4 min · off unless switched on (Content Plan — All Assets → ⏰ Cron) · rows queued once a day', group: 'Content',
+    what: 'Content Plan cron: each row with a Cron number N (not Archived / Standalone) gets N Development assets of its Asset type once per that type\'s period (Cadence in Current Methods; types with no period are never run), after its title\'s pillar is written if it has none. Assets still in Development from an earlier period carry over and count. Never writes asset copy, changes a status, or makes / picks a title (no matching title = held). A Notion rate limit switches it off.',
+    io: 'D1: cplan_doc (read) · Notion: Content Strategy (read, pillar via writeTitlePillar), Assets (create via createAsset) · KV: cplan:cron:on, cplan:cron:state, cplan:cron:lock' },
   { fn: 'storyCronTick', cron: '*/4 * * * *', when: 'Every 4 min · no-op when the queue is empty', group: 'Content',
     what: 'Writes the next queued single post story slots (storyWrite → governed writeAsset, checked against the method\'s format + word budgets) → asset at Publish, slot Filled. Up to 3 per tick, so a batch of 10 lands in ~15 min.',
     io: 'Claude (1-2 writes) · Notion: Assets (create + write), Strategy Slots → Filled · KV: story:queue, story:log' },
