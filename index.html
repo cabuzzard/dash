@@ -4732,6 +4732,9 @@ function cplanHubTree(hubName, memo) {   // → [{ name, products: [{ name, titl
       .map(T => ({ name: T.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.filter(t => t.key !== '__none').map(t => t.name) })) })); }
   memo.set(hubName, out); return out;
 }
+// Created / Changed (operator 2026-11-06): stamped by the worker on every add / change — shown read-only, sortable (ISO text)
+function cplanWhen(v) { if (!v) return '<span style="color:var(--text3);font-size:11px;" title="From before dates were kept">—</span>'; const d = new Date(v);
+  return '<span title="' + esc(v) + '" style="font-size:11.5px;color:var(--text2);white-space:nowrap;">' + esc(d.toLocaleDateString([], { month: 'short', day: 'numeric', year: '2-digit' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '</span>'; }
 function cplanPick(name, rowId, colId, sel) {
   let v = sel.value;
   if (v === '__new') { const c = (cpS(name).t.columns || []).find(x => x.id === colId); v = String(prompt('New ' + ((c && c.name) || 'value') + ':') || '').trim(); if (!v) return cplanPaint(name); }
@@ -4770,7 +4773,7 @@ function cplanPaint(name = 'content-plan-assets') {
   };
   const pickSel = (row, c, kind) => { const cur = String(row.cells[c.id] || ''), list = pickList(row, kind), has = list.some(x => norm(x) === norm(cur));
     return `<select onchange="cplanPick(${q},'${row.id}','${c.id}',this)" title="${esc(cur)}" style="${IN}">${['', ...(cur && !has ? [cur] : []), ...list].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) && (o || !cur) ? 'selected' : ''}>${o ? esc(o) : '—'}</option>`).join('')}<option value="__new">＋ Add new…</option></select>`; };
-  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
+  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
     ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`; };
   const grip = k => `<span draggable="true" ondragstart="CP_DRAG='${k}';try{event.dataTransfer.setData('text/plain','${k}')}catch(e){}" title="Drag to move this column (onto a group heading: into the group)" style="cursor:grab;color:var(--text3);font-size:12px;user-select:none;padding:0 1px;">⋮⋮</span>`;
@@ -25530,7 +25533,7 @@ const CRON_REGISTRY = [
   { fn: 'hubRepublishTick', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Content',
     what: 'Refreshes changed routed assets, prunes assets outside the Keywords hierarchy or out of sync, and restores suspended routes when eligible. Failed updates are held; the last good page is preserved. Worker saves refresh immediately.',
     io: 'Notion: Assets and interviews · GitHub: hub pages and section manifests · KV: hub:republish:* · holds appear in the hub Digest panel' },
-  { fn: 'hubNewsCronTick', cron: '*/30 * * * *', when: 'Randomised per hub: every 3-10 h until a hub has 3, then twice a week · 7am-9pm Pacific', group: 'Links / content',
+  { fn: 'hubNewsCronTick', cron: '*/30 * * * *', when: '⛔ STOPPED 2026-11-06 — runs only when KV cron:on:hubnews is set · was: Randomised per hub: every 3-10 h until a hub has 3, then twice a week · 7am-9pm Pacific', group: 'Links / content',
     what: 'Hub news: every 2 days, one Blog - SEO - News post for each hub still under 3 published news posts — headline + grounded pillar off a rotating main product, article published to the hub blog (News section), Grok blog thumbnail. Each hub has its own random next-post time (never all at once, random minute), so posting does not look machine-timed. Once a hub has 3, it posts twice a week, 2.5-4.5 days apart.',
     io: 'Notion: Content Strategy + Assets · GitHub: web/hub/<slug>/blog/ · KV hubnews:sched / hubnews:log' },
   { fn: 'ivCronTick', cron: '*/30 * * * *', when: 'Every 30 min · up to 3 new titles per tick', group: 'Links / content',
@@ -25566,7 +25569,7 @@ const CRON_REGISTRY = [
   { fn: 'buildEcosystemGraph', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Dashboard',
     what: 'Rebuilds the 3D Ecosystem graph (nodes + edges across every core DB) and caches it for the Ecosystem tab.',
     io: 'KV: ecosystem_graph (48h TTL)' },
-  { fn: 'runListingRepostReminders', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Planner reminders',
+  { fn: 'runListingRepostReminders', cron: '0 0 * * *', when: '⛔ STOPPED 2026-11-06 — runs only when KV cron:on:listingrepost is set · was: Daily 00:00 UTC', group: 'Planner reminders',
     what: 'Makes sure exactly one 🗓️ Weekly Planner row exists per Published "listing" Asset (idempotent via the Source Asset relation). The Planner’s own weekly re-projection takes it from there.',
     io: 'Notion: 🗓️ Weekly Planner ← Assets' },
   { fn: 'runHubFrontReminders', cron: '0 0 * * *', when: '⏸ OFF since 2026-10-17 (KV cron:on:hubfronts = 1 turns it back on) · Daily 00:00 UTC', group: 'Planner reminders',

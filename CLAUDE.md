@@ -559,3 +559,11 @@ Sequence week/day/Sequence are sequencing aids for other platforms, never a trig
 none (`writeTitlePillar`; never over existing pillar content). The row's Title must already exist in its hub — it never creates or picks a
 title (else held). It counts no assets: the Cron numbers in the table are the only count, created once per period (the goal stays on screen as the next run's amount). It never runs the asset writer, never changes a
 status. Creates go through `createAsset` (flow guards apply). A Notion rate limit switches it off. State: KV `cplan:cron:state`.
+
+**Created / Changed columns (Nov 6, 2026)** — `updateContentPlan` stamps cells `created` (on add) and `changed` (on any add or real change;
+a no-op edit stamps nothing) as ISO times; values sent for them are ignored. Shown read-only in the dash. `backfillContentPlanDates`
+(operator, idempotent) added the two columns and dated older rows from their id (`p`/`cp` + base-36 Date.now()) and `contentplan:log`;
+the original seeded `ca###` rows have no known created date.
+
+**Crons stopped (Nov 6, 2026, operator: "stop any other cron creation")** — `hubNewsCronTick` (weekly News SEO article + newsletter draft
+per hub) and `runListingRepostReminders` (Weekly Planner rows) now run only when KV `cron:on:hubnews` / `cron:on:listingrepost` is set.

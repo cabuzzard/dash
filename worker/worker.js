@@ -9840,6 +9840,19 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
 // (strongly consistent) holds the master: every edit reads the CURRENT stored table, changes only the cells it names, and commits only if
 // nobody committed in between (seq compare-and-set; else it re-reads and re-applies). KV CPLAN_KEY stays the mirror the dash and crons read.
 let CPLAN_D1_READY = false;
+const CPLAN_STAMPS = ["created", "changed"];   // Created / Changed columns (operator 2026-11-06): ISO times the worker writes on every add / real change
+// rows from before the stamps: created from the row id (dash ids are "p" / "cp" + Date.now() in base 36) or the change log's add; changed from
+// the newest change-log entry for the row. The original seeded rows (ca###) have no known created date and stay blank.
+function cplanIdTime(id) { const m = String(id || "").match(/^c?p([0-9a-z]{8})/); if (!m) return ""; const n = parseInt(m[1], 36); return n > 1767225600000 && n < Date.now() + 864e5 ? new Date(n).toISOString() : ""; }
+async function cplanBackfillDates(env, t) {   // → number of rows given a date; adds the two columns if missing
+  const L = (await env.TRADES.get("contentplan:log", "json").catch(() => null)) || [], added = {}, last = {};
+  for (const x of L) for (const a of x.edits || []) { if (a.op === "add") added[a.rowId] = added[a.rowId] && added[a.rowId] < x.at ? added[a.rowId] : x.at; if (!last[a.rowId] || last[a.rowId] < x.at) last[a.rowId] = x.at; }
+  for (const [id, name] of [["created", "Created"], ["changed", "Changed"]]) if (!t.columns.some(c => c.id === id)) t.columns.push({ id, name });
+  let n = 0;
+  for (const r of t.rows || []) { const c = r.cells ||= {}, cr = c.created || added[r.id] || cplanIdTime(r.id), ch = c.changed || last[r.id] || cr;
+    if (cr && cr !== c.created) { c.created = cr; n++; } if (ch && ch !== c.changed) { c.changed = ch; n++; } }
+  return n;
+}
 const CPLAN_PROTECTED = ["topic", "product", "title", "content suggestion"];   // an empty value here needs clear: true on the edit
 async function cplanLoad(env) {   // → { seq, t } — the stored master (seeded once from KV)
   const db = env.KWDB;
@@ -9902,6 +9915,15 @@ async function contentPlanAction(env, body, external) {
     try { const h = (await env.TRADES.get("contentplan:held", "json")) || []; h.unshift({ at: new Date().toISOString(), external: !!external, reason, payload }); await env.TRADES.put("contentplan:held", JSON.stringify(h.slice(0, 100))); } catch (e) {}
   };
   // saveContentPlanColumns {columns} — dash only: add / rename / archive columns by id. Columns are merged by id, never dropped; rows untouched.
+  if (body.action === "backfillContentPlanDates") {   // operator only, one-time + idempotent: Created / Changed for rows from before the stamps
+    if (external) return { status: 403, out: { error: "operator only" } };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
+      const n = await cplanBackfillDates(env, t);
+      if (await cplanCommit(env, seq, t)) { const m = await cplanMirror(env); return { status: 200, out: { ok: true, stamped: n, rows: t.rows.length, blankCreated: t.rows.filter(r => !r.cells.created).length, mirror: m } }; }
+    }
+    return { status: 409, out: { error: "The table kept changing — try again" } };
+  }
   if (body.action === "saveContentPlanColumns") {
     if (external) return { status: 403, out: { error: "Columns are changed in the dash only" } };
     const inc = (Array.isArray(body.columns) ? body.columns : []).filter(c => c && c.id && String(c.name || "").trim()).slice(0, 120);
@@ -9939,6 +9961,7 @@ async function contentPlanAction(env, body, external) {
       if (e.op === "archive") cells[cplanColOf(t, "status").id] = "Archived";
       else for (const [k, v] of Object.entries(e.cells || {})) {
         const c = cplanColOf(t, k); if (!c) { why = `no column "${k}" (columns: ${t.columns.map(c => c.name).join(", ")})`; break; }
+        if (CPLAN_STAMPS.includes(c.id)) continue;   // Created / Changed are stamped here, never sent
         const s = String(v ?? "").trim(); if (s.length > 4000) { why = `"${k}" is over 4000 characters`; break; }
         if (!s && CPLAN_PROTECTED.includes(String(c.name).trim().toLowerCase()) && e.clear !== true) { why = `empty "${c.name}" refused — send clear: true on the edit to really clear it`; break; }
         if (s) cells[c.id] = s; else delete cells[c.id];
@@ -9948,6 +9971,7 @@ async function contentPlanAction(env, body, external) {
       const prev = row.cells; row.cells = cells;
       if (isNew) { const at = e.after && !external ? t.rows.findIndex(r => r.id === e.after) : -1; if (at >= 0) t.rows.splice(at + 1, 0, row); else t.rows.push(row); }   // after: dash duplicate lands under its original
       if (external && e.op !== "archive") { const v = cplanValidate(t, row); if (v) { if (isNew) t.rows.pop(); else row.cells = prev; fail(v); continue; } }
+      if (isNew || JSON.stringify(prev) !== JSON.stringify(cells)) { const now = new Date().toISOString(); if (isNew) cells.created = now; cells.changed = now; }   // Created / Changed (operator 2026-11-06)
       applied.push({ op: e.op, rowId: row.id, before, after: { ...cells } });
     }
     if (!applied.length) { await hold(failed.map(f => `edit ${f.edit}: ${f.reason}`).join(" · "), edits); return { status: 400, out: { error: "Refused — nothing saved", failed, held: true } }; }
@@ -19094,7 +19118,7 @@ export default {
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
-    if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
+    if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns", "backfillContentPlanDates"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
     if(body.action==='reconcileHubHierarchy') {
@@ -57235,7 +57259,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
       cw("ivCronTick", ivCronTick(env).then(r => { if (r && !r.idle) console.log("ivCronTick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('ivCronTick failed:', e.message)));   // 🎤 new titles → interviews
-      cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
+      // stopped 2026-11-06 (operator: "stop any other cron creation") — runs only when KV cron:on:hubnews is set
+      if (await env.TRADES.get("cron:on:hubnews")) cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
     if(event.cron==='0 0 * * *')cw('hubStructureNightly',hubStructureNightly(env));
@@ -57348,7 +57373,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
         .then(g => env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(g), { expirationTtl: 172800 }))
         .catch(e => console.error('buildEcosystemGraph failed:', e.message))
     );
-    cw("runListingRepostReminders", runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
+    // stopped 2026-11-06 (operator: "stop any other cron creation") — runs only when KV cron:on:listingrepost is set
+    if (await env.TRADES.get("cron:on:listingrepost")) cw("runListingRepostReminders", runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
     // OFF (operator 2026-10-17 — Hub Fronts UI removed 09-09) — re-enable with KV cron:on:hubfronts = 1
     if (await env.TRADES.get("cron:on:hubfronts")) cw("runHubFrontReminders", runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
     // OFF (operator 2026-10-17 — older Growth Strategy slots) — re-enable with KV cron:on:strategyseq = 1
