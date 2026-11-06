@@ -4715,12 +4715,13 @@ function cplanSortAdd(name) { const S = cplanSortLv(name).map(s => ({ ...s })), 
 function cplanSortDel(name, i) { const S = cplanSortLv(name).slice(); S.splice(i, 1); cplanSortPut(name, S); }
 function cplanSortMove(name, i, d) { const S = cplanSortLv(name).slice(), j = i + d; if (j < 0 || j >= S.length) return; [S[i], S[j]] = [S[j], S[i]]; cplanSortPut(name, S); }
 function cplanGroupBy(name, on) { const V = cpView(name); V.group = !!on; cpViewSet(name, V); cplanPaint(name); }
-// Pick lists for Hub / Topic / Product / Title (operator 2026-11-05): Hub → its topics → a topic's products → a product's titles, from the
+// Pick lists for Hub / Asset type / Topic / Product / Title (operator 2026-11-05): Hub → its topics → a topic's products → a product's titles, from the
 // values already in this table plus the hub's real topic → product → title tree (the dash's asset data, same tree as Hub Dashboard).
 // "＋ Add new…" types a value: it only sets this cell — nothing is created in Notion.
-let CPLAN_TREE = null, CPLAN_TREE_P = null;
+let CPLAN_TREE = null, CPLAN_TREE_P = null, CPLAN_ATYPES = null;   // + Asset type: every Asset Type option in the Notion Assets DB
 function cplanTreeLoad(name) {
   if (CPLAN_TREE || CPLAN_TREE_P || typeof devAssetsTable !== 'function') return;
+  if (!CPLAN_ATYPES) { CPLAN_ATYPES = []; call('getAssetTypes', { all: true }).then(r => { CPLAN_ATYPES = (r && r.types) || []; cplanPaint(name); }).catch(() => {}); }
   CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
 }
 function cplanHubTree(hubName, memo) {   // → [{ name, products: [{ name, titles: [name] }] }]
@@ -4753,11 +4754,12 @@ function cplanPaint(name = 'content-plan-assets') {
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const narrow = c => /^(week|day)$/.test(c.id);
   const pkCol = re => (T.columns.find(c => re.test(String(c.name || '').trim())) || {}).id, PK = { topic: pkCol(/^topic$/i), product: pkCol(/^product$/i), title: pkCol(/^title$/i) };
-  const pickOf = c => c.id === 'hub' ? 'hub' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
+  const pickOf = c => c.id === 'hub' ? 'hub' : c.id === 'atype' ? 'atype' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
   const memo = new Map(), norm = s => String(s || '').trim().toLowerCase(), uniq = a => [...new Map(a.map(s => String(s || '').trim()).filter(Boolean).map(s => [norm(s), s])).values()].sort((a, b) => a.localeCompare(b));
-  if (Object.values(PK).some(Boolean)) cplanTreeLoad(name);
+  cplanTreeLoad(name);
   const pickList = (row, kind) => {
     const c = row.cells, hub = String(c.hub || '').trim(), same = (r, k, v) => norm(r.cells[k]) === norm(v);
+    if (kind === 'atype') return uniq([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)]);
     if (kind === 'hub') return uniq([...T.rows.map(r => r.cells.hub), ...HUB_SITES.filter(s => s.campaignId).map(s => s.name)]);
     const tree = hub ? cplanHubTree(hub, memo) : [], mine = T.rows.filter(r => hub && same(r, 'hub', hub));
     if (kind === 'topic') return uniq([...tree.map(t => t.name), ...mine.map(r => r.cells[PK.topic])]);

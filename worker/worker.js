@@ -36435,7 +36435,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const resp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: dsHdr });
         const db = await resp.json();
         if (!resp.ok) return json({ error: db.message || "Schema fetch failed" }, resp.status);
-        const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean).filter(t => LIVE_ASSET_TYPES.includes(t));
+        const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean).filter(t => body.all || LIVE_ASSET_TYPES.includes(t));   // all: every Asset Type option (Content Plan pick list)
         return json({ types });
       }
 
