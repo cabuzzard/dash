@@ -9831,6 +9831,7 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
   if (kind === "Sequence" && g("Sequence") && !/^\d+ [a-z]+/i.test(g("Sequence"))) return `Sequence must start with the number of pieces, e.g. "4 pieces, offsets 0, 3, 7, 14", "7 pieces, Days 1-6" or "30 episodes, daily, offsets 0-29" (got "${g("Sequence")}")`;
   if (kind !== "Sequence" && g("Sequence")) return `Sequence is for Sequence rows only`;
   if (kind !== "Standalone" && cplanColOf(t, "Own periodicity") && g("Own periodicity")) return `Own periodicity is for Standalone rows only`;
+  if (g("Published") && !(isFinite(Number(g("Published"))) && Number(g("Published")) >= 0)) return `Published must be a number (got "${g("Published")}") — 1 per published piece`;
   if (g("Cron") && !(isFinite(Number(g("Cron"))) && Number(g("Cron")) >= 0)) return `Cron must be a number (got "${g("Cron")}") — the goal is the sum of Cron; blank or 0 adds nothing`;
   return "";
 }
@@ -9931,7 +9932,8 @@ async function contentPlanAction(env, body, external) {
       const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
       for (const c of inc) {
         const col = { id: String(c.id).slice(0, 40), name: String(c.name).trim().slice(0, 120), ...(Array.isArray(c.options) && c.options.length ? { options: c.options.slice(0, 60).map(o => String(o || "").slice(0, 120)).filter(Boolean) } : {}), ...(c.hidden ? { hidden: true } : {}) };
-        const i = t.columns.findIndex(x => x.id === col.id); if (i < 0) t.columns.push(col); else t.columns[i] = col;
+        const i = t.columns.findIndex(x => x.id === col.id), at = c.after ? t.columns.findIndex(x => x.id === c.after) : -1;
+        if (i >= 0) t.columns[i] = col; else if (at >= 0) t.columns.splice(at + 1, 0, col); else t.columns.push(col);   // after: a new column lands right after that one
       }
       if (await cplanCommit(env, seq, t)) { const m = await cplanMirror(env); return { status: 200, out: { ok: true, columns: t.columns, mirror: m } }; }
     }
