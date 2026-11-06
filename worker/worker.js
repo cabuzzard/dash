@@ -9927,7 +9927,10 @@ async function contentPlanAction(env, body, external) {
     const applied = [], failed = [];
     for (const [i, e] of edits.entries()) {
       const fail = reason => failed.push({ edit: i + 1, rowId: (e && e.rowId) || null, reason });
-      if (!["add", "edit", "archive"].includes(e && e.op)) { fail(`op must be add | edit | archive (got "${e && e.op}") — rows are never deleted`); continue; }
+      // delete (operator 2026-11-05): dash only — the portal still archives; the whole row goes to contentplan:log so it can be put back
+      if (e && e.op === "delete" && !external) { const at = t.rows.findIndex(r => r.id === e.rowId); if (at < 0) { fail(`no row "${e.rowId}"`); continue; }
+        const [gone] = t.rows.splice(at, 1); applied.push({ op: "delete", rowId: gone.id, before: { ...gone.cells }, after: null }); continue; }
+      if (!["add", "edit", "archive"].includes(e && e.op)) { fail(`op must be add | edit | archive (got "${e && e.op}")${external ? " — rows are archived, not deleted, from the portal" : ""}`); continue; }
       let row = e.op === "add" && !(e.rowId && !external) ? null : t.rows.find(r => r.id === e.rowId);
       if (e.op === "add" && e.rowId && !external && row) { fail(`row "${e.rowId}" already exists`); continue; }
       if (e.op !== "add" && !row) { fail(`no row "${e.rowId}"`); continue; }
@@ -9950,12 +9953,12 @@ async function contentPlanAction(env, body, external) {
     const ns = await cplanCommit(env, seq, t); if (!ns) continue;   // someone committed in between — re-read and re-apply on the fresh table
     // read back from the master: every applied row must hold exactly the merged cells
     const back = await cplanLoad(env), mism = [];
-    for (const a of applied) { const r = (back.t.rows || []).find(x => x.id === a.rowId); if (!r || JSON.stringify(r.cells) !== JSON.stringify(a.after)) mism.push(a.rowId); }
+    for (const a of applied) { const r = (back.t.rows || []).find(x => x.id === a.rowId); if (a.op === "delete") { if (r) mism.push(a.rowId); continue; } if (!r || JSON.stringify(r.cells) !== JSON.stringify(a.after)) mism.push(a.rowId); }
     if (mism.length) return { status: 500, out: { ok: false, verified: false, error: "Saved, but the read-back did not match for " + mism.join(", ") + " — check with getContentPlanRows", rowIds: mism } };
     const mirror = await cplanMirror(env);
     if (failed.length) await hold(failed.map(f => `edit ${f.edit} (${f.rowId || "new"}): ${f.reason}`).join(" · "), failed.map(f => edits[f.edit - 1]));
     try { const L = (await env.TRADES.get("contentplan:log", "json")) || []; L.unshift({ at: new Date().toISOString(), external: !!external, seq: ns, edits: applied }); await env.TRADES.put("contentplan:log", JSON.stringify(L.slice(0, 200))); } catch (e) {}
-    return { status: 200, out: { ok: !failed.length, verified: true, key: CPLAN_KEY, seq: ns, rows: applied.map(a => { const r = back.t.rows.find(x => x.id === a.rowId); return { rowId: r.id, cells: cplanNamed(back.t, r.cells) }; }), failed, mirror } };
+    return { status: 200, out: { ok: !failed.length, verified: true, key: CPLAN_KEY, seq: ns, deleted: applied.filter(a => a.op === "delete").map(a => a.rowId), rows: applied.filter(a => a.op !== "delete").map(a => { const r = back.t.rows.find(x => x.id === a.rowId); return { rowId: r.id, cells: cplanNamed(back.t, r.cells) }; }), failed, mirror } };
   }
   return { status: 409, out: { ok: false, error: "The table kept changing while saving — nothing from this call was saved; send it again", held: false } };
 }
