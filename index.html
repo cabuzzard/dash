@@ -4715,6 +4715,27 @@ function cplanSortAdd(name) { const S = cplanSortLv(name).map(s => ({ ...s })), 
 function cplanSortDel(name, i) { const S = cplanSortLv(name).slice(); S.splice(i, 1); cplanSortPut(name, S); }
 function cplanSortMove(name, i, d) { const S = cplanSortLv(name).slice(), j = i + d; if (j < 0 || j >= S.length) return; [S[i], S[j]] = [S[j], S[i]]; cplanSortPut(name, S); }
 function cplanGroupBy(name, on) { const V = cpView(name); V.group = !!on; cpViewSet(name, V); cplanPaint(name); }
+// Pick lists for Hub / Topic / Product / Title (operator 2026-11-05): Hub → its topics → a topic's products → a product's titles, from the
+// values already in this table plus the hub's real topic → product → title tree (the dash's asset data, same tree as Hub Dashboard).
+// "＋ Add new…" types a value: it only sets this cell — nothing is created in Notion.
+let CPLAN_TREE = null, CPLAN_TREE_P = null;
+function cplanTreeLoad(name) {
+  if (CPLAN_TREE || CPLAN_TREE_P || typeof devAssetsTable !== 'function') return;
+  CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
+}
+function cplanHubTree(hubName, memo) {   // → [{ name, products: [{ name, titles: [name] }] }]
+  if (memo.has(hubName)) return memo.get(hubName);
+  let out = []; const hb = hubPlanHub(hubName);
+  if (hb && CPLAN_TREE && CPLAN_TREE.length) { const c = hdNid(hb.campaignId), rows = CPLAN_TREE.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
+    out = hdTree(hb, rows, CPLAN_TREE).flatMap(C => C.topics).filter(T => T.key !== '__none' && T.key !== '__main')
+      .map(T => ({ name: T.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.filter(t => t.key !== '__none').map(t => t.name) })) })); }
+  memo.set(hubName, out); return out;
+}
+function cplanPick(name, rowId, colId, sel) {
+  let v = sel.value;
+  if (v === '__new') { const c = (cpS(name).t.columns || []).find(x => x.id === colId); v = String(prompt('New ' + ((c && c.name) || 'value') + ':') || '').trim(); if (!v) return cplanPaint(name); }
+  cplanEdit(name, rowId, colId, v); cplanPaint(name);   // the lists below it follow the new choice
+}
 function cplanPaint(name = 'content-plan-assets') {
   const S = cpS(name), T = S.t, el = document.getElementById('cplanBody' + cpId(name)); if (!el || !T) return;
   const q = "'" + name + "'";
@@ -4731,7 +4752,23 @@ function cplanPaint(name = 'content-plan-assets') {
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const narrow = c => /^(week|day)$/.test(c.id);
-  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${c.id === 'status'
+  const pkCol = re => (T.columns.find(c => re.test(String(c.name || '').trim())) || {}).id, PK = { topic: pkCol(/^topic$/i), product: pkCol(/^product$/i), title: pkCol(/^title$/i) };
+  const pickOf = c => c.id === 'hub' ? 'hub' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
+  const memo = new Map(), norm = s => String(s || '').trim().toLowerCase(), uniq = a => [...new Map(a.map(s => String(s || '').trim()).filter(Boolean).map(s => [norm(s), s])).values()].sort((a, b) => a.localeCompare(b));
+  if (Object.values(PK).some(Boolean)) cplanTreeLoad(name);
+  const pickList = (row, kind) => {
+    const c = row.cells, hub = String(c.hub || '').trim(), same = (r, k, v) => norm(r.cells[k]) === norm(v);
+    if (kind === 'hub') return uniq([...T.rows.map(r => r.cells.hub), ...HUB_SITES.filter(s => s.campaignId).map(s => s.name)]);
+    const tree = hub ? cplanHubTree(hub, memo) : [], mine = T.rows.filter(r => hub && same(r, 'hub', hub));
+    if (kind === 'topic') return uniq([...tree.map(t => t.name), ...mine.map(r => r.cells[PK.topic])]);
+    const topic = c[PK.topic], tt = tree.filter(t => !topic || norm(t.name) === norm(topic)), prods = (tt.length ? tt : tree).flatMap(t => t.products);
+    if (kind === 'product') return uniq([...prods.map(p => p.name), ...mine.filter(r => !topic || same(r, PK.topic, topic)).map(r => r.cells[PK.product])]);
+    const product = c[PK.product], pp = tree.flatMap(t => t.products).filter(p => !product || norm(p.name) === norm(product));
+    return uniq([...pp.flatMap(p => p.titles), ...mine.filter(r => !product || same(r, PK.product, product)).map(r => r.cells[PK.title])]);
+  };
+  const pickSel = (row, c, kind) => { const cur = String(row.cells[c.id] || ''), list = pickList(row, kind), has = list.some(x => norm(x) === norm(cur));
+    return `<select onchange="cplanPick(${q},'${row.id}','${c.id}',this)" title="${esc(cur)}" style="${IN}">${['', ...(cur && !has ? [cur] : []), ...list].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) && (o || !cur) ? 'selected' : ''}>${o ? esc(o) : '—'}</option>`).join('')}<option value="__new">＋ Add new…</option></select>`; };
+  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
     ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`; };
   const grip = k => `<span draggable="true" ondragstart="CP_DRAG='${k}';try{event.dataTransfer.setData('text/plain','${k}')}catch(e){}" title="Drag to move this column (onto a group heading: into the group)" style="cursor:grab;color:var(--text3);font-size:12px;user-select:none;padding:0 1px;">⋮⋮</span>`;
