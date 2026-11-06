@@ -569,8 +569,8 @@ the original seeded `ca###` rows have no known created date.
 per hub) and `runListingRepostReminders` (Weekly Planner rows) now run only when KV `cron:on:hubnews` / `cron:on:listingrepost` is set.
 
 **Content Plan cron is series-aware (Nov 6, 2026)** — a Series row (Asset type Series) never runs. When a row's title has a Series parent
-(asset with Pillar Type = Series), its assets are made THROUGH the series: Topical - SEO Post = the series' best unused idea as a child
-(`seriesUseIdea`, kind seo); a row whose **Asset detail** names a series run (a `RUN_TYPES` name like "FAQ run", or one of the series' saved
+(asset with Pillar Type = Series), its assets are made THROUGH the series: Topical - SEO Post = the best unused idea as a child
+(`seriesUseIdea`, kind seo) — of the run named in that row's Asset detail, or of the whole series when blank; a row whose **Asset detail** names a series run (a `RUN_TYPES` name like "FAQ run", or one of the series' saved
 Paste lists) = that run from its best unused ideas (`seriesRun`), skipped if that run was already made this period; a single post on a series
 with no run named is held; other types = a Development child linked to the Series parent. "Best" = `seriesRank` order (cached a day), then
 the Series modal's round-robin source order (`cpcSeriesBest`).

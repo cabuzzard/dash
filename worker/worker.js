@@ -10074,19 +10074,20 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   let mode = "plain", rt = null, list = null;
   if (sp) {
     res.seriesAssetId = hubAssetId(sp.id);
-    if (/^topical\s*-\s*seo post$/i.test(type)) mode = "seo";
-    else if (P.detail) {
+    if (P.detail) {   // the series run is named in THIS row's Asset detail (the Series row's own cells play no part)
       rt = RUN_TYPES.find(x => cpcNorm(x.name) === cpcNorm(P.detail) || x.id === cpcNorm(P.detail));
       if (!rt) { list = ((await env.TRADES.get("series:lists:" + tid, "json")) || []).find(l => cpcNorm(l.name) === cpcNorm(P.detail)); if (list) rt = PASTE_RUN; }
-      mode = rt ? "run" : "child";
-    } else mode = "child";
+    }
+    // Topical - SEO Post = one post from the best idea — of the named run's sources / Paste list, or of the whole series when none is named
+    if (/^topical\s*-\s*seo post$/i.test(type)) { if (P.detail && !rt) return hold(`Asset detail "${P.detail}" is not one of this series' runs (${RUN_TYPES.map(x => x.name).join(", ")}, or a saved Paste list) — leave it blank to use the series' best idea`); mode = "seo"; }
+    else mode = rt ? "run" : "child";
     if (/^single post$/i.test(type) && mode !== "run") return hold(`a single post on a series is made as a series run — name the run in Asset detail (${RUN_TYPES.map(x => x.name).join(", ")}, or one of the series' Paste lists)${P.detail ? ` — "${P.detail}" is not one` : ""}`);
     if (mode === "run") {   // already made this period (by hand or by the cron) → nothing new for that run
       const label = rt === PASTE_RUN ? "Run · Paste list" : "Run · " + rt.name;
       const had = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: ivDash(tid) } }, { property: "Asset Title", title: { starts_with: label } }, { timestamp: "created_time", created_time: { on_or_after: P.period } }] } })).filter(x => !x.archived && !x.in_trash).length;
       res.runThisPeriod = had; create = Math.max(0, create - had);
     }
-    res.series = mode === "run" ? (list ? "Paste list: " + list.name : rt.name) : mode === "seo" ? "best series idea → Topical - SEO Post" : "child of the Series parent";
+    res.series = mode === "run" ? (list ? "Paste list: " + list.name : rt.name) : mode === "seo" ? "best idea" + (rt ? " of " + (list ? "Paste list: " + list.name : rt.name) : " of the series") + " → Topical - SEO Post" : "child of the Series parent";
   }
   let writePillar = create > 0 && ps !== "Written" && ps !== "Out of Sync";   // only when something is being made; never over a pillar that exists
   if (writePillar && !ps && await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "")) writePillar = false;   // blank status but the pillar is there
@@ -10101,7 +10102,7 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   for (let i = 0; i < create; i++) {
     let a;
     if (mode === "seo" || mode === "run") {
-      const k = mode === "seo" ? 1 : rt === PASTE_RUN ? 25 : rt.posts, ideas = await cpcSeriesBest(env, tid, mode === "seo" ? null : rt, list, k);
+      const k = mode === "seo" ? 1 : rt === PASTE_RUN ? 25 : rt.posts, ideas = await cpcSeriesBest(env, tid, rt === PASTE_RUN ? null : rt, list, k);
       if (!ideas.length) { a = { error: `no unused ideas left for ${res.series} — refresh the series' sources or add lines` }; }
       else if (mode === "seo") { const x = ideas[0]; a = await invoke({ action: "seriesUseIdea", ...base, ideaId: x.id, idea: x.t, source: x.src, kind: "seo", assetType: type }); if (a && a.assetId) a.id = a.assetId; }
       else { a = await invoke({ action: "seriesRun", ...base, runType: rt.id, ideas, assetType: rt.shape === "carousel" ? (types.find(x => /^carousel$/i.test(x)) || "carousel") : type }); if (a && a.assetId) a.id = a.assetId; }
