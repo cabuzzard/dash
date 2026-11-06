@@ -9831,7 +9831,7 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
   if (kind === "Sequence" && g("Sequence") && !/^\d+ [a-z]+/i.test(g("Sequence"))) return `Sequence must start with the number of pieces, e.g. "4 pieces, offsets 0, 3, 7, 14", "7 pieces, Days 1-6" or "30 episodes, daily, offsets 0-29" (got "${g("Sequence")}")`;
   if (kind !== "Sequence" && g("Sequence")) return `Sequence is for Sequence rows only`;
   if (kind !== "Standalone" && cplanColOf(t, "Own periodicity") && g("Own periodicity")) return `Own periodicity is for Standalone rows only`;
-  if (g("Published") && !(isFinite(Number(g("Published"))) && Number(g("Published")) >= 0)) return `Published must be a number (got "${g("Published")}") — 1 per published piece`;
+  if (g("Published") && !CPLAN_ASSET_STATUSES.includes(g("Published"))) return `Published is an asset status: ${CPLAN_ASSET_STATUSES.join(" | ")} (got "${g("Published")}")`;
   if (g("Cron") && !(isFinite(Number(g("Cron"))) && Number(g("Cron")) >= 0)) return `Cron must be a number (got "${g("Cron")}") — the goal is the sum of Cron; blank or 0 adds nothing`;
   return "";
 }
@@ -9841,6 +9841,7 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
 // (strongly consistent) holds the master: every edit reads the CURRENT stored table, changes only the cells it names, and commits only if
 // nobody committed in between (seq compare-and-set; else it re-reads and re-applies). KV CPLAN_KEY stays the mirror the dash and crons read.
 let CPLAN_D1_READY = false;
+const CPLAN_ASSET_STATUSES = ["Planning", "Development", "Publish", "Published"];   // the Published column (operator 2026-11-06)
 const CPLAN_STAMPS = ["created", "changed"];   // Created / Changed columns (operator 2026-11-06): ISO times the worker writes on every add / real change
 // rows from before the stamps: created from the row id (dash ids are "p" / "cp" + Date.now() in base 36) or the change log's add; changed from
 // the newest change-log entry for the row. The original seeded rows (ca###) have no known created date and stay blank.
