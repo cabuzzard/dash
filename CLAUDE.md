@@ -540,3 +540,12 @@ Every format has prose instructions; thumbnail formats also carry focal-point, p
 Design research refresh: `designResearchPass {campaignId,dryRun?}` makes one text-only Grok search request (up to five tool calls, 12,000 output tokens), records provider usage, and writes only staged proposals plus `design:research:<cid>` evidence/stamp. Existing values become alternatives regardless of rank; g is untouched. Source URLs must come from provider search metadata. Failure holds the request and returned text for repair. No committed spec or Notion fields are written. The panel exposes completeness, instruction coverage, research timestamp and unreviewed staged changes.
 
 Copying a ChatGPT prompt is model-free. Reference analysis is explicit (`designSpec op:analyzeReferences`), one item per invocation. Unseen images use the permitted spec-building vision step; cached descriptions use text only. Tier and field evidence is cached on the library record and proposals stage for review. Normal prompt-writing and Grok rendering never attach these images.
+
+## Content Plan — All Assets storage (Nov 5, 2026)
+
+The master copy lives in **D1** (`KWDB`, table `cplan_doc`, one row `k = infoflow:table:content-plan-assets`, with `seq`). KV
+`infoflow:table:content-plan-assets` is only the mirror every reader uses (dash views, goal reads). Never write that KV key directly:
+a whole-table write from a stale KV read clobbered other edits (`prompts/claude-content-plan-portal-fix-2026-11-05.md`). Writes go through
+`updateContentPlan` (cells merged into the current stored row, seq compare-and-set, per-edit `failed[]`, empty Topic/Product/Title/Content
+suggestion needs `clear: true`) or `saveContentPlanColumns` (dash only, merged by column id). `getContentPlanRows` is the read-only
+check (EXTERNAL_WORKER_KEY too); `saveInfoFlowTable` refuses this table.
