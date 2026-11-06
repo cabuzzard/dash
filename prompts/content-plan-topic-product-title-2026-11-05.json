@@ -1,0 +1,362 @@
+[
+  {
+    "hub": "Surf Vacations",
+    "week": 1,
+    "initiative": "Surf Charters & Liveaboards",
+    "topic": "Surf Charter & Liveaboard Packages",
+    "product": "Surf Charter Matching & Quotes",
+    "title": "Find Your Dream Surf Charter \u2014 Explore the World's Best Surf Breaks by Boat",
+    "source": "Notion Titles DS (Development, Pillar Written) + Products DS + Keyword Clusters DB (Active, cluster Surf Charters & Liveaboards); hub registry",
+    "notes": "Title's product relation points to Surf Charter Matching & Quotes. Registry affiliate product BookSurfCamps \u2014 Surf Charters & Liveaboard Trips (Affiliate) is Archived in Notion; not used."
+  },
+  {
+    "hub": "Surf Vacations",
+    "week": 13,
+    "initiative": "Surf Camps",
+    "topic": "Surf Camp Packages",
+    "product": "Surf Camp Finder & Booking",
+    "title": "Find Your Perfect Surf Camp \u2014 Compare Destinations, Packages & Prices",
+    "source": "Notion Titles DS (Development, Pillar Written) + Products DS + Keyword Clusters DB (Active, cluster Surf Camps); hub registry",
+    "notes": ""
+  },
+  {
+    "hub": "Surf Vacations",
+    "week": 25,
+    "initiative": "Surf Resorts, with Surf Stories as supporting",
+    "topic": "Surf Resorts",
+    "product": "Surf Resort Finder & Booking",
+    "title": "Stay Where the Waves Are \u2014 Discover the Best Surf Resorts Worldwide",
+    "source": "Notion Titles DS (Development, Pillar Written) + Products DS + Keyword Clusters DB (Staged, cluster Surf Resorts); hub registry",
+    "notes": "Surf Stories is a supporting cluster (Keyword Clusters: Surf Adventure, Localism and Surf Culture, Surf Gear, Ocean Survival, Surf Guides), with no separate product/title for this initiative."
+  },
+  {
+    "hub": "Sunflower Acres",
+    "week": 2,
+    "initiative": "Dried cardoon flower series - 30 episodes, Etsy listing",
+    "topic": "Garden Plants, Flowers & Botanical Gifts",
+    "product": "Sunflower Acres Garden Shop \u2014 Plants, Flowers & Botanical Gifts",
+    "title": "Sunflower Acres Garden Shop \u2014 Plants, Flowers & Handmade Crafts",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Garden Products & Crafts); cardoon logs 2026-11-02/05",
+    "notes": "Cardoon run (30 single posts) runs off the Garden Shop title/product. Title name says 'Handmade Crafts', product name says 'Botanical Gifts' \u2014 both copied exactly as in Notion. The Etsy listing is an asset, not a product."
+  },
+  {
+    "hub": "Sunflower Acres",
+    "week": 14,
+    "initiative": "Garden Shop Offer Roundup - mulcher / mini-chainsaw affiliate picks",
+    "topic": "Garden Plants, Flowers & Botanical Gifts",
+    "product": "Sunflower Acres Garden Shop \u2014 Plants, Flowers & Botanical Gifts",
+    "title": "Sunflower Acres Garden Shop \u2014 Plants, Flowers & Handmade Crafts",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active); mulcher/chainsaw Offer Roundup record 2026-11-03",
+    "notes": "Offer Roundup asset runs off the Garden Shop title. Amazon picks are featured links inside the content, not product records."
+  },
+  {
+    "hub": "Sunflower Acres",
+    "week": 26,
+    "initiative": "Accessible Garden Fund - visits, fundraising, garden planner bundle",
+    "topic": "Accessible Garden Donations & Sponsorships",
+    "product": "Sunflower Acres Accessible Garden Fund \u2014 Give & Sponsor",
+    "title": "Sunflower Acres Accessible Garden Fund \u2014 Donations & Sponsorships",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Accessible Garden Fundraising)",
+    "notes": "Garden visits are a separate chain (product Sunflower Acres Garden Visits & Group Experiences); the Fund initiative uses the Fund title/product above."
+  },
+  {
+    "hub": "Build Watcher",
+    "week": 3,
+    "initiative": "Owner's Representative consulting for homebuilding",
+    "topic": "Residential Construction Project Management",
+    "product": "Build Watcher \u2014 Owner's Representative & Project Coordination",
+    "title": "Owner's Representative & Project Coordination",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Homebuilding Project Management)",
+    "notes": "Title and product verified by direct relation lookup. Registry product name 'Build Watcher \u2014 Homeowner's Representative Consultation & Project Review' has no matching Notion product record. Neighbouring topic 'Contractor Problems & Project Reviews' (cluster Owner's Representative Consulting) is a separate Keyword Cluster; the title record's Topic ID is the Residential Construction Project Management cluster."
+  },
+  {
+    "hub": "Build Watcher",
+    "week": 15,
+    "initiative": "Pre-construction planning reviews",
+    "topic": "Pre-Construction Planning & Advisory",
+    "product": "Build Watcher \u2014 Pre-Construction Project Review",
+    "title": "Pre-Construction Project Review \u2014 Know Before You Build",
+    "source": "Notion Titles DS (Development) + Products DS (Development) + Keyword Clusters DB (Active, cluster Pre-Construction Planning)",
+    "notes": "Flag: the title and product records carry Topic ID smv7icxoj1m2yg2, which has no matching Keyword Cluster record; the topic name above is from the Active Keyword Cluster in the Pre-Construction Planning cluster. Needs a registry check before treating it as settled."
+  },
+  {
+    "hub": "Build Watcher",
+    "week": 27,
+    "initiative": "Project health checks for troubled builds",
+    "topic": "Contractor Problems & Project Reviews",
+    "product": "Build Watcher \u2014 Construction Project Health Check",
+    "title": "Construction Project Health Check \u2014 Independent Review",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Owner's Representative Consulting)",
+    "notes": ""
+  },
+  {
+    "hub": "Home Services",
+    "week": 4,
+    "initiative": "Local Interest Engagement hub - External Parent on the East Bay Real Estate title, services and real estate as featured links",
+    "topic": "East Bay Real Estate Marketing",
+    "product": "East Bay Real Estate Digital Marketing Retainer",
+    "title": "Local Interest Engagement \u2014 East Bay Real Estate",
+    "source": "Notion Titles DS (Review, Topic ID smvuahl2i0p7a) + Products DS (Development) + Keyword Clusters DB (Staged, cluster Small Business Marketing); Nov 4-5 Local Interest logs",
+    "notes": "Current attachment per Evan's Nov 5 direction. The original Home Services product 'Local Interest Engagement \u2014 Home Services & Real Estate' and title 'Local Interest Engagement \u2014 Concord / East Bay Home Services & Real Estate' still exist, unattached. Note the tension: real estate marketing is isolated from AI Implementation, but this product's campaign is AI Implementation."
+  },
+  {
+    "hub": "Home Services",
+    "week": 16,
+    "initiative": "Resident Caretaker & Home Watch",
+    "topic": "Private Property & Estate Caretaking",
+    "product": "Resident Caretaker & Home Watch",
+    "title": "Resident Caretaker & Home Watch \u2014 Private Property Care",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Vacation Home Caretaking)",
+    "notes": ""
+  },
+  {
+    "hub": "Home Services",
+    "week": 28,
+    "initiative": "Rental Property Care & Owner Support, plus Live-In Property Caretaker",
+    "topic": "Rental Property Operations & Oversight",
+    "product": "Rental Property Care & Owner Support",
+    "title": "Rental Property Care & Owner Support \u2014 Local Oversight",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Rental Property Caretaking)",
+    "notes": "Supporting Live-In Property Caretaker chain: topic 'Live-In Caretaking & Work-Trade Arrangements', product 'Live-In Property Caretaker', title 'Live-In Property Caretaker \u2014 Work-Trade & Resident Care' (Published)."
+  },
+  {
+    "hub": "Creative Flow Guitar",
+    "week": 5,
+    "initiative": "Original guitar backing-track downloads",
+    "topic": "Guitar Backing Tracks & Jam Sessions",
+    "product": "The Tracks \u2014 Original Guitar Backing Tracks & Downloads",
+    "title": "Guitar Backing Tracks That Feel Like Real Songs",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Guitar Backing Tracks & Downloads); hub registry",
+    "notes": ""
+  },
+  {
+    "hub": "Creative Flow Guitar",
+    "week": 17,
+    "initiative": "Original music / session recordings",
+    "topic": "Original Guitar Music & Sessions",
+    "product": "The Sessions \u2014 Original Guitar Recordings & Downloads",
+    "title": "Real Guitar Sessions \u2014 Listen, Study & Download",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Music T-Shirts)",
+    "notes": "Cluster label in the Keyword Clusters DB is 'Music T-Shirts' for this topic record; the topic name itself is 'Original Guitar Music & Sessions'."
+  },
+  {
+    "hub": "Creative Flow Guitar",
+    "week": 29,
+    "initiative": "Guitar commentary newsletter, with YouTube commentary driving discovery",
+    "topic": "Guitar Newsletter, Commentary & Music Culture",
+    "product": "The Sessions \u2014 Original Guitar Recordings & Downloads",
+    "title": "Music commentary, reviews and band profiles \u2014 Consulting Call",
+    "source": "Notion Titles DS (Development) + Products DS (Development) + Keyword Clusters DB (Active, cluster Online Guitar Lessons)",
+    "notes": "No dedicated newsletter title record exists in Notion; this Development Consulting Call title is the only commentary title on The Sessions product. No YouTube-specific title record found."
+  },
+  {
+    "hub": "AI Implementation",
+    "week": 6,
+    "initiative": "Fiverr Gig 1 - Content OS build, $150 starting tier, live and able to take orders",
+    "topic": "Client Deliverables",
+    "product": "Notion AI Content OS \u2014 Done-For-You Build (Fiverr)",
+    "title": "Done-For-You Notion AI Content System \u2014 Fiverr Gigs",
+    "source": "Notion Titles DS (Development) + Products DS (Development, Topic ID smvpo6owv0avi) + Keyword Clusters DB (Staged, cluster Client Deliverables)",
+    "notes": "Product's Topic ID is the Client Deliverables cluster key. Live Fiverr gig URL is still missing \u2014 never invented."
+  },
+  {
+    "hub": "AI Implementation",
+    "week": 18,
+    "initiative": "Fractional AI Operations & Marketing, plus Managed Content & Revenue Engine",
+    "topic": "Fractional AI Operations & Content Automation",
+    "product": "Fractional AI Automation & Content Operations",
+    "title": "Fractional AI Operations: Get an AI Systems Partner Without Hiring Full-Time",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Fractional AI Operations & Marketing)",
+    "notes": "'Managed Content & Revenue Engine' is a separate Planning product with no topic on record; it is not the title's product, so it is not listed as the product."
+  },
+  {
+    "hub": "AI Implementation",
+    "week": 30,
+    "initiative": "Client Deliverables as a supporting shelf, plus AI Implementation Consulting. Real estate marketing stays isolated from this hub",
+    "topic": "Client Deliverables",
+    "product": "",
+    "title": "",
+    "source": "Keyword Clusters DB (Staged, cluster Client Deliverables; also an Active Client Deliverables cluster record with a page-id key); Notion Titles/Products DS",
+    "notes": "Supporting shelf, not a single product/title: individual deliverables (micro apps, Content OS Landing Page, Hiring Profile, Lead Tracker, Booking System, etc.) each have their own title/product records under topic Client Deliverables. No single product or title record for the shelf itself. AI Implementation Consulting is a separate Active topic (product AI Workflow Audit & Roadmap, title 'How to Implement AI in Your Business Without Wasting Money')."
+  },
+  {
+    "hub": "Mountainwize",
+    "week": 7,
+    "initiative": "Natural Paradigms newsletter - free essays, paid usable practices, in 4-component sequence",
+    "topic": "Personal Growth - Deep Wilderness",
+    "product": "Nature Connected Coaching",
+    "title": "NAtural Paradigms",
+    "source": "Notion Titles DS (Development) + Products DS (Planning) + Keyword Clusters DB (Staged, cluster Mindset & Self-Leadership Coaching)",
+    "notes": "Title spelling 'NAtural Paradigms' is as in Notion (known typo, not corrected here). Topic is the title record's Topic ID (smvnzh1620jao)."
+  },
+  {
+    "hub": "Mountainwize",
+    "week": 19,
+    "initiative": "Energy Sessions on Zoom first, then wilderness retreats to session clients only",
+    "topic": "Self-Leadership, Discipline & Personal Direction",
+    "product": "The Energy Session",
+    "title": "Self-Awareness Coaching: Recognizing Blind Spots and Developing Personal Mastery",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Mindset & Self-Leadership Coaching)",
+    "notes": "No title record literally named Energy Session exists; this Published title is on The Energy Session product with the same topic."
+  },
+  {
+    "hub": "Mountainwize",
+    "week": 31,
+    "initiative": "Self-Leadership / Somatic Control coaching",
+    "topic": "Deep Transformation Wilderness",
+    "product": "The Chi Nado\u2122 \u2014 A Real-Life Chi Manifestation Circle",
+    "title": "Deep Transformation",
+    "source": "Notion Titles DS (Review) + Products DS (Development) + Keyword Clusters DB (Staged, cluster Mindset & Self-Leadership Coaching); chi-nado logs 2026-11-05",
+    "notes": "Per Evan's Nov 5 direction: dedicated Deep Transformation Wilderness topic and umbrella title 'Deep Transformation', Chi Nado product. No price, date, venue, capacity or booking link on record. Somatic Control Training product exists only as Idea (topic Trending); not used."
+  },
+  {
+    "hub": "The Care Gap",
+    "week": 8,
+    "initiative": "Caregiver services, guidance and community resources",
+    "topic": "Caregiver Support & Community Resources",
+    "product": "Caregiver Support Community",
+    "title": "Finding Support When Caregiving Becomes Unsustainable",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Caregiver Support)",
+    "notes": ""
+  },
+  {
+    "hub": "The Care Gap",
+    "week": 20,
+    "initiative": "Caregiver Housing Assistance & Stability",
+    "topic": "Caregiver Housing Assistance & Stability",
+    "product": "Keeping caregivers housed",
+    "title": "Why Housing Stability Is Essential to Keeping Caregivers in the Workforce",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Caregiver Housing)",
+    "notes": ""
+  },
+  {
+    "hub": "The Care Gap",
+    "week": 32,
+    "initiative": "Donor / foundation fundraising to fund direct caregiver assistance",
+    "topic": "Nonprofit Fundraising for Caregiver Housing & Support",
+    "product": "Donate to Help House a Caregiver",
+    "title": "How to Fund Caregiver Housing and Make a Measurable Difference",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster nonprofit fundraising)",
+    "notes": ""
+  },
+  {
+    "hub": "Sustainable Aquarium",
+    "week": 9,
+    "initiative": "Natural planted home aquariums - fish pictures, sustainable art, educational materials",
+    "topic": "Natural Aquariums for the Home",
+    "product": "Natural Aquarium Starter System & Consultation",
+    "title": "How to Create a Beautiful, Low-Maintenance Natural Aquarium at Home",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Self-Sustaining Aquarium)",
+    "notes": ""
+  },
+  {
+    "hub": "Sustainable Aquarium",
+    "week": 21,
+    "initiative": "Commercial & Corporate Aquarium Installations",
+    "topic": "Commercial & Corporate Aquarium Installations",
+    "product": "Corporate Aquarium Design & Installation",
+    "title": "Living Aquariums for Offices, Hospitality, and Commercial Spaces",
+    "source": "Notion Titles DS (Development) + Products DS (Development) + Keyword Clusters DB (Active, cluster Commercial & Corporate Aquarium Installations)",
+    "notes": ""
+  },
+  {
+    "hub": "Sustainable Aquarium",
+    "week": 33,
+    "initiative": "Biogenerative ecological installations, scoped feasibility only",
+    "topic": "Biogenerative Systems & Ecological Installations",
+    "product": "Biogenerative Installation Feasibility & Design",
+    "title": "From Natural Aquariums to Functional Living Infrastructure",
+    "source": "Notion Titles DS (Development) + Products DS (Development) + Keyword Clusters DB (Active, cluster Biogenerative Systems & Ecological Installations)",
+    "notes": "Feasibility only \u2014 no build/engineering/regulatory record on file."
+  },
+  {
+    "hub": "Multifamily Acquisitions",
+    "week": 10,
+    "initiative": "Source, analyze and package multifamily deals for qualified buyers",
+    "topic": "Multifamily Investment Opportunities & Off-Market Deals",
+    "product": "Packaged Acquisition Opportunities",
+    "title": "Multifamily Investment Opportunities \u2014 Analyzed, Packaged Deals for Qualified Buyers",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Multifamily Investment Opportunities)",
+    "notes": ""
+  },
+  {
+    "hub": "Multifamily Acquisitions",
+    "week": 22,
+    "initiative": "Standalone acquisition screening, research and underwriting support",
+    "topic": "Multifamily Underwriting & Acquisition Analysis",
+    "product": "Acquisition Analysis Services",
+    "title": "Multifamily Acquisition Analysis \u2014 Underwriting & Due Diligence Support for Investors",
+    "source": "Notion Titles DS (Published) + Products DS + Keyword Clusters DB (Active, cluster Multifamily Acquisition Analysis)",
+    "notes": "'Standalone' here is the initiative's own word, not a Standalone Kind row."
+  },
+  {
+    "hub": "Multifamily Acquisitions",
+    "week": 34,
+    "initiative": "Published case studies for SEO / credibility, via targeted direct outreach",
+    "topic": "",
+    "product": "",
+    "title": "",
+    "source": "Notion Titles DS + Products DS + Keyword Clusters DB searched 2026-11-05 (no 'Case Study' title or product found in the Multifamily Acquisitions campaign)",
+    "notes": "UNKNOWN \u2014 no case-study title or product record exists in Notion for this initiative. Closest existing chain is week 10's (topic 'Multifamily Investment Opportunities & Off-Market Deals', product 'Packaged Acquisition Opportunities'), but no case-study record runs off it, so all three fields are left empty rather than inferred."
+  },
+  {
+    "hub": "Construction Project Management",
+    "week": 11,
+    "initiative": "Fractional construction project management",
+    "topic": "Fractional Construction Project Management Services",
+    "product": "Fractional Construction PM + AI Tools",
+    "title": "Fractional Construction Project Management + AI Tools \u2014 Without a Full-Time Hire",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Construction Project Management Companies)",
+    "notes": ""
+  },
+  {
+    "hub": "Construction Project Management",
+    "week": 23,
+    "initiative": "Project controls & reporting",
+    "topic": "Construction Project Controls & Reporting",
+    "product": "Construction Project Intelligence",
+    "title": "Construction Project Intelligence: Spot Budget, Schedule and Risk Problems Before They Cost You",
+    "source": "Notion Titles DS (Development) + Products DS (Development) + Keyword Clusters DB (Staged, cluster Construction Project Controls & Reporting)",
+    "notes": ""
+  },
+  {
+    "hub": "Construction Project Management",
+    "week": 35,
+    "initiative": "Pre-construction / owner-builder advisory",
+    "topic": "",
+    "product": "",
+    "title": "",
+    "source": "Notion Titles DS + Products DS searched 2026-11-05 in the Construction Project Management campaign",
+    "notes": "UNKNOWN \u2014 no live pre-construction / owner-builder advisory record in this hub. 'Preconstruction Package' is Archived in Products. Pre-construction records live in Build Watcher (product 'Build Watcher \u2014 Pre-Construction Project Review', title 'Pre-Construction Project Review \u2014 Know Before You Build'), a different hub \u2014 not copied across."
+  },
+  {
+    "hub": "Medicare Services Consulting",
+    "week": 12,
+    "initiative": "Medicare Clarity consultations - qualified leads and paid consultations",
+    "topic": "Medicare Guidance & Plan Clarity",
+    "product": "Medicare Clarity Consultation",
+    "title": "Medicare Clarity Consulting",
+    "source": "Notion Titles DS (Published) + Products DS (Development) + Keyword Clusters DB (Active, cluster Medicare Clarity Consulting)",
+    "notes": ""
+  },
+  {
+    "hub": "Medicare Services Consulting",
+    "week": 24,
+    "initiative": "Medicare Plan Review & Guidance, plus Care Coordination / Family Support",
+    "topic": "Medicare Plan Review & Guidance",
+    "product": "Medicare Plan Review & Guidance",
+    "title": "Medicare Plan Review & Guidance",
+    "source": "Notion Titles DS (Published) + Products DS (Planning) + Keyword Clusters DB (Active, cluster Medicare Plan Review)",
+    "notes": "Supporting Care Coordination / Family Support: product 'Care Management' exists (Planning) but its Topic ID is the Trending cluster key and no 'Care Coordination' Keyword Cluster record was found, so it is not listed as the chain."
+  },
+  {
+    "hub": "Medicare Services Consulting",
+    "week": 36,
+    "initiative": "YouTube educational content toward Partner Program revenue, with an opt-in Medicare newsletter for retention",
+    "topic": "",
+    "product": "",
+    "title": "",
+    "source": "Notion Titles DS + Products DS searched 2026-11-05 in the Medicare Services Consulting campaign (no YouTube / Partner Program title or product found)",
+    "notes": "UNKNOWN \u2014 no YouTube education or Partner Program title/product record exists in Notion for this initiative. Closest existing chain is week 12's Medicare Clarity (topic 'Medicare Guidance & Plan Clarity', product 'Medicare Clarity Consultation'), but no YouTube/Partner Program record runs off it, so all three fields are left empty rather than inferred."
+  }
+]
