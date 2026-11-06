@@ -4631,7 +4631,7 @@ const CPLAN_DEFS = {
   'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
     { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
-function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set() }); }   // open = expanded headings (session only; all collapsed by default)
+function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set(), pend: {}, newRows: new Set(), colsDirty: false }); }   // open = expanded headings (session only; all collapsed by default)
 // View layout (operator 2026-11-05): column order, widths and column groups are this browser's view only (localStorage) —
 // never written into the table, so a layout change never saves the table or races a portal edit.
 function cpView(name) { try { return JSON.parse(localStorage.getItem('cplan:view:' + name)) || {}; } catch (e) { return {}; } }
@@ -4688,7 +4688,8 @@ function cplanResetView(name) { try { localStorage.removeItem('cplan:view:' + na
 function cpId(name) { return name === 'content-plan' ? '' : '-' + name; }
 async function cplanLoad(force, name = 'content-plan-assets') {
   const S = cpS(name); if (S.t && !force) return cplanPaint(name);
-  const r = await call('getInfoFlowTable', { name }).catch(e => ({ error: e.message }));
+  const r = name === HUBPLAN_TABLE ? await call('getContentPlanRows', { raw: true }).then(x => x && x.table ? { table: x.table } : x).catch(e => ({ error: e.message }))
+    : await call('getInfoFlowTable', { name }).catch(e => ({ error: e.message }));
   const el = document.getElementById('cplanBody' + cpId(name)); if (!el) return;
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc((r && r.error) || 'no response')}</div>`; return; }
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
@@ -4779,22 +4780,41 @@ function cplanPaint(name = 'content-plan-assets') {
 }
 function cplanEdit(name, rowId, colId, value) {
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
-  row.cells[colId] = value; clearTimeout(S.timer); S.timer = setTimeout(() => cplanSave(name), 700);
+  row.cells[colId] = value; (S.pend[rowId] ||= {})[colId] = value; clearTimeout(S.timer); S.timer = setTimeout(() => cplanSave(name), 700);
   if (colId === 'status') cplanPaint(name);
 }
-function cplanRename(name, colId, val) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c || !String(val).trim()) return cplanPaint(name); c.name = String(val).trim(); cplanSave(name); }
-function cplanHideCol(name, colId) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c) return; c.hidden = !c.hidden; if (!c.hidden) delete c.hidden; cplanPaint(name); cplanSave(name); }
+function cplanRename(name, colId, val) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c || !String(val).trim()) return cplanPaint(name); c.name = String(val).trim(); cpS(name).colsDirty = true; cplanSave(name); }
+function cplanHideCol(name, colId) { const T = cpS(name).t, c = T && T.columns.find(x => x.id === colId); if (!c) return; c.hidden = !c.hidden; if (!c.hidden) delete c.hidden; cpS(name).colsDirty = true; cplanPaint(name); cplanSave(name); }
 function cplanAddCol(name) {
   const T = cpS(name).t, inp = document.getElementById('cplanNewCol' + cpId(name)), v = String((inp && inp.value) || '').trim(); if (!v || !T) return;
-  T.columns.push({ id: 'x' + Date.now().toString(36), name: v }); cplanPaint(name); cplanSave(name);
+  T.columns.push({ id: 'x' + Date.now().toString(36), name: v }); cpS(name).colsDirty = true; cplanPaint(name); cplanSave(name);
 }
 function cplanAddRow(name) {
-  const S = cpS(name); if (!S.t) return; const id = 'p' + Date.now().toString(36); S.t.rows.push({ id, cells: { status: 'Review' } }); S.reveal = id; cplanPaint(name); cplanSave(name);
+  const S = cpS(name); if (!S.t) return; const id = 'p' + Date.now().toString(36); S.t.rows.push({ id, cells: { status: 'Review' } }); S.newRows.add(id); S.reveal = id; cplanPaint(name); cplanSave(name);
   const tas = document.querySelectorAll('#cplanBody' + cpId(name) + ' tr[data-row="' + id + '"] textarea'); if (tas[0]) tas[0].focus();
+}
+// Content Plan — All Assets saves ONLY what you changed: the cells you edited (updateContentPlan, merged into the stored table on the
+// worker) and, when you add / rename / archive a column, the columns (saveContentPlanColumns). Never the whole table from this tab's copy —
+// that overwrote cells written elsewhere (Buzz's portal) since this tab loaded (portal fix 2026-11-05).
+async function cplanSaveCells(name) {
+  const S = cpS(name), T = S.t; let r = { ok: true };
+  if (S.colsDirty) { S.colsDirty = false; r = await call('saveContentPlanColumns', { columns: T.columns }).catch(e => ({ error: e.message })); if (!r || r.error) { S.colsDirty = true; return r; } }
+  const pend = S.pend, news = S.newRows; S.pend = {}; S.newRows = new Set();
+  const edits = [...news].map(id => ({ op: 'add', rowId: id, cells: { ...((T.rows.find(x => x.id === id) || {}).cells || {}) }, clear: true }))
+    .concat(Object.keys(pend).filter(id => !news.has(id)).map(id => ({ op: 'edit', rowId: id, cells: pend[id], clear: true })));
+  for (let i = 0; i < edits.length; i += 50) {
+    r = await call('updateContentPlan', { edits: edits.slice(i, i + 50) }).catch(e => ({ error: e.message }));
+    const failed = (r && r.failed) || [];
+    if (!r || r.error || failed.length) {   // keep what didn't save so the next save retries it
+      edits.slice(i).forEach(e => { if (r && !r.error && !failed.some(f => f.rowId === e.rowId)) return; if (e.op === 'add') S.newRows.add(e.rowId); else S.pend[e.rowId] = { ...e.cells, ...(S.pend[e.rowId] || {}) }; });
+      return r && !r.error ? { error: failed.map(f => (f.rowId || '') + ': ' + f.reason).join(' · ') } : r;
+    }
+  }
+  return r;
 }
 async function cplanSave(name = 'content-plan-assets') {
   const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Saving…';
-  const r = await call('saveInfoFlowTable', { name, table: cpS(name).t }).catch(e => ({ error: e.message }));
+  const r = name === HUBPLAN_TABLE ? await cplanSaveCells(name) : await call('saveInfoFlowTable', { name, table: cpS(name).t }).catch(e => ({ error: e.message }));
   if (msg) { msg.style.color = r && !r.error ? 'var(--text3)' : '#f87171'; msg.textContent = r && !r.error ? 'Saved' : 'Not saved: ' + ((r && r.error) || 'no response'); }
   if (name === HUBPLAN_TABLE && r && !r.error && HUBCHECK_GOALS) { HUBCHECK_GOALS = { table: cpS(name).t, at: Date.now() }; renderHubChecklist(); }
   if (name === HUBPLAN_TABLE && r && !r.error && HD.plan) { HD.plan = cpS(name).t; hdRender(); }

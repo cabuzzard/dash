@@ -9833,11 +9833,55 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
   if (kind !== "Standalone" && cplanColOf(t, "Own periodicity") && g("Own periodicity")) return `Own periodicity is for Standalone rows only`;
   return "";
 }
+// Master copy (fix 2026-11-05, prompts/claude-content-plan-portal-fix-2026-11-05.md): edits used to read the whole table from KV, change it and
+// write it all back. KV is eventually consistent (a read can be a minute or more stale, per location), so an edit could rewrite an older
+// copy over cells another edit had just saved — and the read-back, served from the writer's own location, still said verified. Now D1
+// (strongly consistent) holds the master: every edit reads the CURRENT stored table, changes only the cells it names, and commits only if
+// nobody committed in between (seq compare-and-set; else it re-reads and re-applies). KV CPLAN_KEY stays the mirror the dash and crons read.
+let CPLAN_D1_READY = false;
+const CPLAN_PROTECTED = ["topic", "product", "title", "content suggestion"];   // an empty value here needs clear: true on the edit
+async function cplanLoad(env) {   // → { seq, t } — the stored master (seeded once from KV)
+  const db = env.KWDB;
+  if (!CPLAN_D1_READY) { await db.prepare("CREATE TABLE IF NOT EXISTS cplan_doc (k TEXT PRIMARY KEY, seq INTEGER NOT NULL, doc TEXT NOT NULL, at INTEGER NOT NULL)").run(); CPLAN_D1_READY = true; }
+  let r = await db.prepare("SELECT seq, doc FROM cplan_doc WHERE k = ?").bind(CPLAN_KEY).first();
+  if (!r) {
+    const kv = await env.TRADES.get(CPLAN_KEY, "json");
+    if (!kv || !Array.isArray(kv.columns)) return { seq: 0, t: null };
+    await db.prepare("INSERT OR IGNORE INTO cplan_doc (k, seq, doc, at) VALUES (?, 1, ?, ?)").bind(CPLAN_KEY, JSON.stringify(kv), Date.now()).run();
+    r = await db.prepare("SELECT seq, doc FROM cplan_doc WHERE k = ?").bind(CPLAN_KEY).first();
+  }
+  return { seq: r.seq, t: JSON.parse(r.doc) };
+}
+async function cplanCommit(env, seq, t) {   // → new seq, or 0 when someone else committed since `seq` was read
+  t.at = Date.now();
+  const r = await env.KWDB.prepare("UPDATE cplan_doc SET doc = ?, seq = seq + 1, at = ? WHERE k = ? AND seq = ?").bind(JSON.stringify(t), t.at, CPLAN_KEY, seq).run();
+  return r.meta && r.meta.changes === 1 ? seq + 1 : 0;
+}
+async function cplanMirror(env) {   // KV ← the newest master; re-checks so a slower mirror never leaves an older copy in KV
+  let last = -1;
+  for (let i = 0; i < 4; i++) {
+    const cur = await env.KWDB.prepare("SELECT seq, doc FROM cplan_doc WHERE k = ?").bind(CPLAN_KEY).first();
+    if (!cur || cur.seq === last) return { ok: true, seq: last };
+    try { await env.TRADES.put(CPLAN_KEY, cur.doc); }
+    catch (e) { await new Promise(res => setTimeout(res, 1100)); try { await env.TRADES.put(CPLAN_KEY, cur.doc); } catch (e2) { return { ok: false, error: "KV mirror: " + e2.message }; } }   // KV allows ~1 write/s per key
+    last = cur.seq;
+  }
+  return { ok: true, seq: last };
+}
+const cplanNamed = (t, cells) => Object.fromEntries(Object.entries(cells || {}).map(([k, v]) => [((t.columns || []).find(c => c.id === k) || {}).name || k, v]));
 async function contentPlanAction(env, body, external) {
-  const t = (await env.TRADES.get(CPLAN_KEY, "json")) || null;
-  if (!t || !Array.isArray(t.columns)) return { status: 404, out: { error: "Content Plan — All Assets table not found at " + CPLAN_KEY } };
+  const { seq: seq0, t: t0 } = await cplanLoad(env);
+  if (!t0 || !Array.isArray(t0.columns)) return { status: 404, out: { error: "Content Plan — All Assets table not found at " + CPLAN_KEY } };
+  // getContentPlanRows {rowIds?, hub?, raw?} — READ ONLY: the stored cells, nothing written (use this to verify, never an edit as a probe)
+  if (body.action === "getContentPlanRows") {
+    const want = Array.isArray(body.rowIds) && body.rowIds.length ? new Set(body.rowIds.map(String)) : null;
+    if (body.raw && !external) return { status: 200, out: { ok: true, key: CPLAN_KEY, seq: seq0, table: t0 } };   // the dash loads the master this way
+    const rows = (t0.rows || []).filter(r => (!want || want.has(r.id)) && (!body.hub || cplanCell(t0, r, "hub") === body.hub)).map(r => ({ rowId: r.id, cells: cplanNamed(t0, r.cells) }));
+    const missing = want ? [...want].filter(id => !rows.some(r => r.rowId === id)) : [];
+    return { status: 200, out: { ok: true, key: CPLAN_KEY, seq: seq0, at: t0.at || null, columns: t0.columns.map(c => c.name), rows, missing } };
+  }
   if (body.action === "getContentPlanGoals") {
-    const goals = {}, skipped = [];
+    const t = t0, goals = {}, skipped = [];
     for (const r of t.rows || []) {
       const st = cplanCell(t, r, "status"), kind = cplanCell(t, r, "Kind"), hub = cplanCell(t, r, "hub"), atype = cplanCell(t, r, "atype");
       if (/^archived$/i.test(st) || !atype) continue;
@@ -9852,45 +9896,70 @@ async function contentPlanAction(env, body, external) {
     const list = Object.values(goals).map(g => ({ ...g, weeks: g.weeks.sort((a, b) => a - b) }));
     return { status: 200, out: { ok: true, key: CPLAN_KEY, at: t.at || null, goals: list, total: list.reduce((n, g) => n + g.goal, 0), skippedStandalone: skipped } };
   }
-  // updateContentPlan — edits: [{ op: "add" | "edit" | "archive", rowId?, cells?: { <column name or id>: value } }] (≤ 50), all or nothing
-  const edits = Array.isArray(body.edits) ? body.edits : body.op ? [{ op: body.op, rowId: body.rowId, cells: body.cells }] : [];
-  const hold = async reason => {
-    try { const h = (await env.TRADES.get("contentplan:held", "json")) || []; h.unshift({ at: new Date().toISOString(), external: !!external, reason, payload: edits }); await env.TRADES.put("contentplan:held", JSON.stringify(h.slice(0, 100))); } catch (e) {}
-    return { status: 400, out: { error: "Refused — nothing saved: " + reason, reason, payload: edits, held: true } };
+  const hold = async (reason, payload) => {
+    try { const h = (await env.TRADES.get("contentplan:held", "json")) || []; h.unshift({ at: new Date().toISOString(), external: !!external, reason, payload }); await env.TRADES.put("contentplan:held", JSON.stringify(h.slice(0, 100))); } catch (e) {}
   };
-  if (!edits.length || edits.length > 50) return hold("send 1–50 edits as edits: [{ op, rowId, cells }]");
-  const next = JSON.parse(JSON.stringify(t)), log = [];
-  for (const [i, e] of edits.entries()) {
-    const at = `edit ${i + 1}: `;
-    if (!["add", "edit", "archive"].includes(e && e.op)) return hold(at + `op must be add | edit | archive (got "${e && e.op}") — rows are never deleted`);
-    let row = e.op === "add" ? null : next.rows.find(r => r.id === e.rowId);
-    if (e.op !== "add" && !row) return hold(at + `no row "${e.rowId}"`);
-    const before = row ? { ...row.cells } : null;
-    if (e.op === "add") { row = { id: "cp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), cells: {} }; next.rows.push(row); }
-    if (e.op === "archive") row.cells[cplanColOf(next, "status").id] = "Archived";
-    else for (const [k, v] of Object.entries(e.cells || {})) {
-      const c = cplanColOf(next, k); if (!c) return hold(at + `no column "${k}" (columns: ${next.columns.map(c => c.name).join(", ")})`);
-      const s = String(v ?? "").trim(); if (s.length > 4000) return hold(at + `"${k}" is over 4000 characters`);
-      if (s) row.cells[c.id] = s; else delete row.cells[c.id];
+  // saveContentPlanColumns {columns} — dash only: add / rename / archive columns by id. Columns are merged by id, never dropped; rows untouched.
+  if (body.action === "saveContentPlanColumns") {
+    if (external) return { status: 403, out: { error: "Columns are changed in the dash only" } };
+    const inc = (Array.isArray(body.columns) ? body.columns : []).filter(c => c && c.id && String(c.name || "").trim()).slice(0, 120);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
+      for (const c of inc) {
+        const col = { id: String(c.id).slice(0, 40), name: String(c.name).trim().slice(0, 120), ...(Array.isArray(c.options) && c.options.length ? { options: c.options.slice(0, 60).map(o => String(o || "").slice(0, 120)).filter(Boolean) } : {}), ...(c.hidden ? { hidden: true } : {}) };
+        const i = t.columns.findIndex(x => x.id === col.id); if (i < 0) t.columns.push(col); else t.columns[i] = col;
+      }
+      if (await cplanCommit(env, seq, t)) { const m = await cplanMirror(env); return { status: 200, out: { ok: true, columns: t.columns, mirror: m } }; }
     }
-    if (e.op !== "archive") { const why = cplanValidate(next, row); if (why) return hold(at + why); }
-    log.push({ op: e.op, rowId: row.id, before, after: { ...row.cells } });
+    return { status: 409, out: { error: "The table kept changing while saving the columns — try again" } };
   }
-  next.at = Date.now();
-  await env.TRADES.put(CPLAN_KEY, JSON.stringify(next));
-  // read back: every edited row must hold exactly what was written
-  const back = (await env.TRADES.get(CPLAN_KEY, "json")) || {}, rows = [];
-  for (const l of log) {
-    const r = (back.rows || []).find(x => x.id === l.rowId);
-    if (!r || JSON.stringify(r.cells) !== JSON.stringify(l.after)) return { status: 500, out: { error: "Saved, but the read-back of row " + l.rowId + " did not match — check the table", rowId: l.rowId } };
-    rows.push({ rowId: r.id, cells: Object.fromEntries(Object.entries(r.cells).map(([k, v]) => [(back.columns.find(c => c.id === k) || {}).name || k, v])) });
+  // updateContentPlan — edits: [{ op: "add" | "edit" | "archive", rowId?, cells?: { <column name or id>: value }, clear?: true }] (≤ 50).
+  // Each edit changes ONLY the cells it names. Edits apply in order on the current stored table; an edit that is refused is reported
+  // (failed[], held with its reason) and the others are still saved. An empty value for Topic / Product / Title / Content suggestion is
+  // refused unless that edit carries clear: true.
+  const edits = Array.isArray(body.edits) ? body.edits : body.op ? [{ op: body.op, rowId: body.rowId, cells: body.cells, clear: body.clear }] : [];
+  if (!edits.length || edits.length > 50) { await hold("send 1–50 edits as edits: [{ op, rowId, cells }]", edits); return { status: 400, out: { error: "Refused — nothing saved: send 1–50 edits as edits: [{ op, rowId, cells }]", held: true } }; }
+  for (let attempt = 0; attempt < 15; attempt++) {
+    if (attempt) await new Promise(res => setTimeout(res, 20 + Math.random() * 60 * Math.min(attempt, 8)));   // back off with jitter before re-reading
+    const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
+    const applied = [], failed = [];
+    for (const [i, e] of edits.entries()) {
+      const fail = reason => failed.push({ edit: i + 1, rowId: (e && e.rowId) || null, reason });
+      if (!["add", "edit", "archive"].includes(e && e.op)) { fail(`op must be add | edit | archive (got "${e && e.op}") — rows are never deleted`); continue; }
+      let row = e.op === "add" && !(e.rowId && !external) ? null : t.rows.find(r => r.id === e.rowId);
+      if (e.op === "add" && e.rowId && !external && row) { fail(`row "${e.rowId}" already exists`); continue; }
+      if (e.op !== "add" && !row) { fail(`no row "${e.rowId}"`); continue; }
+      const before = row ? { ...row.cells } : null, cells = { ...(before || {}) };
+      let why = "";
+      if (e.op === "archive") cells[cplanColOf(t, "status").id] = "Archived";
+      else for (const [k, v] of Object.entries(e.cells || {})) {
+        const c = cplanColOf(t, k); if (!c) { why = `no column "${k}" (columns: ${t.columns.map(c => c.name).join(", ")})`; break; }
+        const s = String(v ?? "").trim(); if (s.length > 4000) { why = `"${k}" is over 4000 characters`; break; }
+        if (!s && CPLAN_PROTECTED.includes(String(c.name).trim().toLowerCase()) && e.clear !== true) { why = `empty "${c.name}" refused — send clear: true on the edit to really clear it`; break; }
+        if (s) cells[c.id] = s; else delete cells[c.id];
+      }
+      if (why) { fail(why); continue; }
+      const isNew = !row; if (isNew) row = { id: e.rowId && !external ? String(e.rowId).slice(0, 40) : "cp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), cells: {} };
+      const prev = row.cells; row.cells = cells; if (isNew) t.rows.push(row);
+      if (external && e.op !== "archive") { const v = cplanValidate(t, row); if (v) { if (isNew) t.rows.pop(); else row.cells = prev; fail(v); continue; } }
+      applied.push({ op: e.op, rowId: row.id, before, after: { ...cells } });
+    }
+    if (!applied.length) { await hold(failed.map(f => `edit ${f.edit}: ${f.reason}`).join(" · "), edits); return { status: 400, out: { error: "Refused — nothing saved", failed, held: true } }; }
+    const ns = await cplanCommit(env, seq, t); if (!ns) continue;   // someone committed in between — re-read and re-apply on the fresh table
+    // read back from the master: every applied row must hold exactly the merged cells
+    const back = await cplanLoad(env), mism = [];
+    for (const a of applied) { const r = (back.t.rows || []).find(x => x.id === a.rowId); if (!r || JSON.stringify(r.cells) !== JSON.stringify(a.after)) mism.push(a.rowId); }
+    if (mism.length) return { status: 500, out: { ok: false, verified: false, error: "Saved, but the read-back did not match for " + mism.join(", ") + " — check with getContentPlanRows", rowIds: mism } };
+    const mirror = await cplanMirror(env);
+    if (failed.length) await hold(failed.map(f => `edit ${f.edit} (${f.rowId || "new"}): ${f.reason}`).join(" · "), failed.map(f => edits[f.edit - 1]));
+    try { const L = (await env.TRADES.get("contentplan:log", "json")) || []; L.unshift({ at: new Date().toISOString(), external: !!external, seq: ns, edits: applied }); await env.TRADES.put("contentplan:log", JSON.stringify(L.slice(0, 200))); } catch (e) {}
+    return { status: 200, out: { ok: !failed.length, verified: true, key: CPLAN_KEY, seq: ns, rows: applied.map(a => { const r = back.t.rows.find(x => x.id === a.rowId); return { rowId: r.id, cells: cplanNamed(back.t, r.cells) }; }), failed, mirror } };
   }
-  try { const L = (await env.TRADES.get("contentplan:log", "json")) || []; L.unshift({ at: new Date().toISOString(), external: !!external, edits: log }); await env.TRADES.put("contentplan:log", JSON.stringify(L.slice(0, 200))); } catch (e) {}
-  return { status: 200, out: { ok: true, key: CPLAN_KEY, verified: true, rows } };
+  return { status: 409, out: { ok: false, error: "The table kept changing while saving — nothing from this call was saved; send it again", held: false } };
 }
 // Actions an EXTERNAL_WORKER_KEY caller may run — images, run assets (≤10 per call, never published), run read-back,
-// and the Content Plan portal (add / edit / archive rows of Content Plan — All Assets only) + its goal read.
-const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals"]);
+// and the Content Plan portal (add / edit / archive rows of Content Plan — All Assets only) + its goal read + its read-only row read.
+const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -18881,7 +18950,7 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
-    if (body.action === "updateContentPlan" || body.action === "getContentPlanGoals") { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
+    if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
     if(body.action==='reconcileHubHierarchy') {
@@ -27198,6 +27267,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       if (body.action === "saveInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const governanceKey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
+        if (governanceKey === CPLAN_KEY) return json({ error: "Content Plan — All Assets saves cell by cell now (updateContentPlan) — reload the dash tab", reason: "use_updateContentPlan" }, 409);
         if (GOVERNANCE_TABLES.has(governanceKey) && !await governanceValid(env, body.governanceUnlock)) {
           await governanceHold(env,governanceKey,body.table);
           return json({error:'Unlock governance before saving this table.',reason:'governance_locked'},403);
