@@ -9971,8 +9971,7 @@ async function contentPlanAction(env, body, external) {
 // (On demand, blank, unmatched) is never run — those are handled upstream in the table. Sequence week / day / Sequence are sequencing aids for
 // other platforms, never a trigger. It never runs the asset writer, never changes a status, never picks or creates a title (the row's Title
 // must match a real title in the row's hub, else the row is held). Rollover carries: a row's asset still in Development from an earlier
-// period counts toward this period, so nothing new is made for it. Counted from Notion (title + asset type), so an asset the operator made
-// this period — before the cron got to it — counts too. Off until the operator switches it on (KV cplan:cron:on); creates go
+// period counts toward this period, so nothing new is made for it. Off until the operator switches it on (KV cplan:cron:on); creates go
 // through the normal createAsset / writeTitlePillar actions (flow + hierarchy guards apply); a Notion rate limit stops it and switches it off.
 const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
 const cpcNorm = s => String(s || "").trim().toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
@@ -10035,13 +10034,12 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   if (cands.length > 1) return hold(`${cands.length} titles named "${P.title}" in ${H.name} — name the Product in the row`);
   const T = cands[0], tid = hubAssetId(T.id), ps = T.properties?.["Pillar Status"]?.select?.name || "";
   Object.assign(res, { titleId: tid, pillarStatus: ps || "(none)" });
-  // count what already exists in Notion for this title + asset type, whoever made it (the operator may create one before the cron does):
-  // created this period (any status) takes one off; an older one still in Development carries over and takes one off
   const R = S.rows[P.rowId] || { made: [] }, carried = [], thisP = [];
-  const have = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: ivDash(tid) } }, { property: "Asset Type", select: { equals: type } }] } });
-  for (const x of have) { if (x.archived || x.in_trash) continue;
-    if (String(x.created_time || "").slice(0, 10) >= P.period) thisP.push(hubAssetId(x.id));
-    else if (x.properties?.["Asset Status"]?.select?.name === "Development") carried.push(hubAssetId(x.id)); }
+  for (const m of R.made || []) {
+    if (m.period === P.period) { thisP.push(m.id); continue; }
+    const pg = await ivPage(m.id).catch(() => null);
+    if (pg && !pg.archived && !pg.in_trash && pg.properties?.["Asset Status"]?.select?.name === "Development") carried.push(m.id);
+  }
   const create = Math.max(0, P.n - thisP.length - carried.length);
   let writePillar = create > 0 && ps !== "Written" && ps !== "Out of Sync";   // only when something is being made; never over a pillar that exists
   if (writePillar && !ps && await extractPillarContent(ivHdr(), ivDash(tid)).catch(() => "")) writePillar = false;   // blank status but the pillar is there
