@@ -16,7 +16,8 @@ except Exception:
 IS_START, IS_END = "2005-01-01", "2016-12-31"
 VAL_START, VAL_END = "2017-01-01", "2022-12-31"
 HO_START = "2023-01-01"
-FAMILIES = ["momentum", "meanrev", "meanrev_vix"]
+FAMILIES = ["momentum", "meanrev", "meanrev_vix",
+            "trend", "dualmom", "volmom", "lowvol", "dip_rsi", "dip_ibs", "dip_down"]   # round 2 registered 2026-11-07
 RES = os.path.join(bt.HERE, "results")
 
 

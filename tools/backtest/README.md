@@ -31,6 +31,42 @@ python tools/backtest/run.py --refresh   # re-download the price cache first
   {VIX ≥ 1.10 × its 20-day SMA ("spike"), VIX > 20 ("level")}; exit SMA 5,
   5 slots. Compared against `meanrev` to see whether the filter adds value.
 
+### Round 2 (registered 2026-11-07, before any round-2 result was seen)
+
+Operator asked for more trend/rotation ideas and more dip buys, with a 200 EMA
+as well as SMA trend filters. Same periods, costs, criteria and holdout rules.
+Seven more families means more chances of a lucky pass — the untouched
+holdout is the guard against that.
+
+Trend / rotation:
+- **trend** — hold each asset of the universe (1/N weight) while its close is
+  above its moving average, else that slot is cash. Grid: MA type {sma, ema} ×
+  length {100, 200} × check every {5, 20} days × universe {multi, sectors}.
+- **dualmom** — every 20 days hold the single best risk asset by N-day return
+  if that return > 0, else the defensive leg. Grid: lookback {63, 126, 252} ×
+  risk set {SPY+EFA, SPY+QQQ+IWM+EFA+EEM} × defensive {IEF, cash}.
+- **volmom** — momentum ranked by return ÷ 63-day volatility, top K with a
+  positive return, equal weight, every 20 days, multi universe. Grid:
+  lookback {63, 126, 252} × top K {2, 3, 4}.
+- **lowvol** — every 20 days hold the K sectors with the lowest N-day
+  volatility, each only while above its 200 SMA (else cash). Grid: vol window
+  {63, 126} × top K {3, 4, 5}.
+
+Dip buys (long only, signal at close, fill next open, ≤ 20-day hold, one
+equal slot per symbol in the universe):
+- **dip_rsi** — RSI(2) < threshold while above the trend MA; exit when close >
+  SMA5. Grid: threshold {5, 10, 15} × trend MA {sma200, ema200} × universe
+  {SPY, indices = SPY QQQ IWM DIA}.
+- **dip_ibs** — internal bar strength (close − low)/(high − low) < threshold,
+  with the trend MA; exit when close > the prior day's high. Grid: threshold
+  {0.1, 0.2, 0.3} × trend {sma200, ema200} × universe {SPY, indices}.
+- **dip_down** — N consecutive lower closes with the trend MA; exit on the
+  first higher close. Grid: N {2, 3, 4} × trend {sma200, ema200} × universe
+  {SPY, indices}.
+
+Categorical parameters (MA type, universe, risk set, defensive leg, trend)
+are not "steps" for criterion 5; only numeric neighbours count.
+
 ## Protocol — fixed BEFORE any results were seen
 
 | Period | Dates | Use |

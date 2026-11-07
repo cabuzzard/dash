@@ -1,1 +1,17 @@
-[]
+[
+  {
+    "family": "volmom",
+    "params": {
+      "lookback": 63,
+      "top_k": 4
+    }
+  },
+  {
+    "family": "dip_ibs",
+    "params": {
+      "ibs_th": 0.1,
+      "trend": "sma200",
+      "universe": "SPY"
+    }
+  }
+]
