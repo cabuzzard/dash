@@ -81,7 +81,7 @@
     const lanes=new Map();out.nodes.forEach(n=>{const r=rank.get(n.id)||0,y=lanes.get(r)||0;lanes.set(r,y+1);n.x=70+r*330;n.y=70+y*150;});return out;
   }
   // Asset Flow starter draft (operator prompt 2026-11-07): lifecycle + the 10 core-cluster nodes of the East Bay master cluster. A draft, not doctrine.
-  function assetSeed(){
+  function assetSeed(types=[]){
     const U='Unspecified',L='Lifecycle',C='Core cluster',n=(id,label,role,layer)=>({id,label,role,interview:U,layer,x:0,y:0,notes:''});
     const g={version:1,layers:[{id:'layer-lifecycle',name:L},{id:'layer-cluster',name:C}],nodes:[
       n('idea','Idea','node',L),n('title','Title (pillar)','title',L),
@@ -95,6 +95,12 @@
     ['subpage','reel','offer'].forEach(t=>e('extparent',t,'generates'));
     ['extparent','subpage','digest','newsfree','series','anchor','topicalrun','singlepost','reel','offer'].forEach(s=>e(s,'review','requires completion'));
     e('review','published','publishes');e('published','deployed','syncs with','weekly goals count');
+    // one unconnected node per Weekly Goals asset type, by its exact name; a type whose name is already a seed node is noted there instead
+    const W='Weekly Goals asset types',used=new Set();(g.layers.push({id:'layer-weeklygoals',name:W}));
+    for(const ty of types){const k=String(ty).trim().toLowerCase(),hit=g.nodes.find(x=>x.label.toLowerCase()===k);
+      if(hit){hit.notes='Weekly Goals asset type: '+ty;continue;}
+      let id='wg-'+k.replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,36);while(used.has(id))id+='x';used.add(id);
+      g.nodes.push({...n(id,String(ty).trim(),'node',W),notes:'Weekly Goals asset type (live Content Plan when this draft was seeded). Not connected yet.'});}
     return arrange(g);
   }
   if(typeof module!=='undefined'&&module.exports)module.exports={validate,pack,unpack,seed,arrange,isSync,assetSeed};
@@ -200,5 +206,8 @@
     intro:'Sandbox: build the asset flow here. It governs nothing yet — no worker check, writer or cron reads it; Information Flow stays the only governing graph. Same editor, views and save as Information Flow.',
     exportName:'asset-flow-draft.json',loadingMsg:'Loading the saved Asset Flow draft…',
     seededMsg:'Starter draft (asset lifecycle + the East Bay core cluster). Every node and connection is editable — reshape it, then Save draft.',
-    seed:async()=>assetSeed()});
+    // + one node per asset type Weekly Goals shows right now (operator 2026-11-07) — the same rule (hubPlanGoals) over the live Content Plan
+    seed:async()=>{const r=await call('getInfoFlowTable',{name:'content-plan-assets'});if(r.error)throw Error(r.error);
+      const t=r.table||{},types=typeof hubPlanGoals==='function'?hubPlanGoals(t,[]).types:[...new Set((t.rows||[]).filter(x=>!/^archived$/i.test(x.cells?.status||'')).map(x=>String(x.cells?.atype||'').trim()).filter(Boolean))];
+      return assetSeed(types);}});
 })(typeof window==='undefined'?globalThis:window);
