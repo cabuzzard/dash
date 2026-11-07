@@ -25613,7 +25613,7 @@ const CRON_REGISTRY = [
   { fn: 'runAutoTradeScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Trading',
     what: 'Stock screener auto-scan over the saved watchlist ∪ Yahoo top-100 most-actives; records qualifying setups.',
     io: 'KV: screener:* · Notion: 📈 Trades' },
-  { fn: 'runTwitterCallScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC (~20:00 ET, after the close)', group: 'Trading',
+  { fn: 'runTwitterCallScan', cron: '0 0 * * *', when: '⏸ PAUSED 2026-11-07 (0 for 31 on paper; KV cron:on:twittercalls = 1 turns it back on) · was: Daily 00:00 UTC (~20:00 ET, after the close)', group: 'Trading',
     what: 'Twitter call scanner — sweeps the watchlisted @handles’ last 36h of tweets (Apify), Claude judges each fresh tweet for a genuine swing-style directional call (scalps rejected), then auto-creates a trade off the live option chain. Every processed tweet is logged (created/skipped/error). Shares this cron bucket (no free cron-trigger slots left) rather than a dedicated one.',
     io: 'KV: twittercalls:* · Notion: 📈 Trades' },
   { fn: 'runOrbMissScoring', cron: '0 0 * * *', when: 'Daily 00:00 UTC (~20:00 ET, after the close)', group: 'Trading',

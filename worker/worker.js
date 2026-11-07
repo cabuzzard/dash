@@ -57391,7 +57391,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     // Workers Free plan caps cron triggers at 5, already spoken for; every
     // other job here is on the same shared arrangement. Fires ~20:00 ET,
     // after the close, so a full trading day's tweets are captured.
-    cw("runTwitterCallScan", runTwitterCallScan(env)
+    // paused 2026-11-07 (operator: 0 for 31 on paper) — runs only when KV cron:on:twittercalls is set; Run now still works
+    if (await env.TRADES.get("cron:on:twittercalls")) cw("runTwitterCallScan", runTwitterCallScan(env)
         .then(r => console.log(`twitterCallScan: ${r.created || 0} created, ${r.notCalls || 0} skipped, ${r.fresh || 0}/${r.fetched || 0} fresh tweets`))
         .catch(e => console.error('runTwitterCallScan failed:', e.message))
     );
