@@ -764,6 +764,7 @@
     <div class="tab" onclick="switchTab('keywords')">Keywords</div>
     <div class="tab" onclick="switchTab('globals')">Globals</div>
     <div class="tab" onclick="switchTab('informationFlow')">Information Flow</div>
+    <div class="tab" onclick="switchTab('assetFlow')" title="Sandbox graph — governs nothing yet">Asset Flow</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -1669,6 +1670,7 @@
        tab; the getKnowledgeGraph worker action is still there, pending a
        links/knowledge revisit. -->
   <div class="tab-panel" id="tabInformationFlow"></div>
+  <div class="tab-panel" id="tabAssetFlow"></div>
   <template id="informationFlowTableTemplate">
     <div class="oc-sec" data-ock="flow"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Flow</h2>
@@ -4328,7 +4330,7 @@
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script src="shared/governance.js?v=2026102202"></script>
-<script src="shared/information-flow.js?v=2026102008"></script>
+<script src="shared/information-flow.js?v=2026110701"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -8107,6 +8109,7 @@ function loadTabContentNow(name) {
   if (name === 'dev2') { restoreAllOutputTables(); }   // the review / interview flag strips were removed (2026-10-22) — interview flagging moves into the hub assets table
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
+  if (name === 'assetFlow') window.AssetFlow.load();   // sandbox graph (2026-11-07) — KV infoflow:table:assetflowgraph, read by nothing else
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
     startTradesAutoRefresh();
