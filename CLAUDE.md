@@ -481,6 +481,10 @@ Per operator direction: images are built in ChatGPT (the raw image API doesn't m
 - GitHub repo should be private (pending)
 - Rotate Notion integration token if ever exposed (pending)
 
+## Asset Type renames (Nov 8, 2026)
+
+Notion Asset Type options are being renamed to the Asset Flow graph's names, one type at a time (option rename keeps the id). The code keeps its **legacy names as keys**: `ASSET_TYPE_RENAMES` (worker.js, top) maps legacy → graph name, and the module `fetch` wrapper (`hierarchyFetch`) translates for every type listed in KV `assettype:applied:v1` — page writes to Assets and Assets query filters go out with the graph name; Assets pages and the Assets schema come back with the legacy key. Add a type to that KV list when its Notion option is renamed; remove it (and rename back) to undo. CP AA rows may hold either name (`cplanCell` maps `atype` to the key); `renameContentPlanType` renames a type in CP AA and logs each run in KV `cplan:typerename:log`. The dash and microsites still display legacy names until display labels are added.
+
 ## Governing information flow (ratified Oct 20, 2026)
 
 The graph in the dash's **Information Flow tab** is the governing document for how information is created and saved in this tool. Its storage is the worker KV table `infoflow:table:informationflowgraph` — what the operator sees and edits in the tab is the authority.

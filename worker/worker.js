@@ -92,7 +92,68 @@ async function reconcileHierarchy(env, campaignId, apply=false) {
   }
   return {hub:hub.slug,campaignId:hierarchyId(campaignId),applied:apply,records};
 }
-async function hierarchyFetch(url, options={}) {
+// ── Asset Type renames (operator 2026-11-08: "live names bend to the graph") ──
+// Notion's Asset Type options are renamed to the Asset Flow graph's names one at a time. The code keeps speaking the
+// legacy names (its "keys"): at this boundary, writes and Assets query filters turn a legacy name into the graph name,
+// and Assets pages / the Assets schema coming back turn the graph name into the legacy one. Only types listed in
+// KV assettype:applied:v1 (legacy names, set when that Notion option is renamed) are translated, so a type is switched
+// on — and back off — without a deploy. Renaming an option keeps its id, so every page follows.
+const ASSET_TYPE_RENAMES = {
+  "Topical - SEO Post": "Topical SEO Post", "Blog - SEO - News": "News SEO · Blog", "Newsletter paid": "Newsletter Premium",
+  "Offer – Content Hub": "Offer Blog Post", "Offer Roundup": "Offer Round Up", "sub page": "Sub Page", "carousel": "Single Post Carousel",
+  "YouTube Longform": "Youtube Long Form", "resume": "Resume", "listing": "Listing", "Client Studio": "Client App",
+  "single post": "Single Post Run", "social reel informative": "Single Post Video Short", "Product": "Digital Product", "Landing Page": "Offer Sales Page",
+};
+const ASSET_TYPE_KEYS = Object.fromEntries(Object.entries(ASSET_TYPE_RENAMES).map(([k, g]) => [g, k]));   // graph name → the legacy key the code uses
+const ASSETS_DS_ID = "40a47fc945504a71b0f7f2afb8e45f63";   // the Assets data source (collection://40a47fc9-…)
+let assetTypeCache = { at: 0, toGraph: {}, toKey: {} };
+async function assetTypeMaps(env) {
+  if (Date.now() - assetTypeCache.at < 10000) return assetTypeCache;
+  let applied = [];
+  try { applied = (await env.TRADES.get("assettype:applied:v1", "json")) || []; } catch (e) { console.error("assettype:applied read", e.message); return assetTypeCache; }
+  const toGraph = {}, toKey = {};
+  applied.filter(k => ASSET_TYPE_RENAMES[k]).forEach(k => { toGraph[k] = ASSET_TYPE_RENAMES[k]; toKey[ASSET_TYPE_RENAMES[k]] = k; });
+  return assetTypeCache = { at: Date.now(), toGraph, toKey };
+}
+const assetsParent = parent => [ASSETS_DB, ASSETS_DS_ID].includes(hierarchyId(parent?.database_id || parent?.data_source_id));
+function assetTypeFilter(f, toGraph) {   // Assets query filters: {property:"Asset Type", select:{equals|does_not_equal}} anywhere in and/or
+  if (Array.isArray(f)) return f.forEach(x => assetTypeFilter(x, toGraph));
+  if (!f || typeof f !== "object") return;
+  if (f.property === "Asset Type" && f.select) for (const k of ["equals", "does_not_equal"]) if (toGraph[f.select[k]]) f.select[k] = toGraph[f.select[k]];
+  Object.values(f).forEach(x => typeof x === "object" && assetTypeFilter(x, toGraph));
+}
+function assetTypePageToKey(page, toKey) {
+  const sel = page?.object === "page" && assetsParent(page.parent) && page.properties?.["Asset Type"]?.select;
+  if (sel && toKey[sel.name]) sel.name = toKey[sel.name];
+}
+async function hierarchyFetch(url, options = {}) {
+  const address = String(url), method = String(options.method || "GET").toUpperCase();
+  if (!hierarchyEnv || !address.startsWith("https://api.notion.com/v1/")) return hierarchyFetchInner(url, options);
+  const { toGraph, toKey } = await assetTypeMaps(hierarchyEnv);
+  if (!Object.keys(toGraph).length) return hierarchyFetchInner(url, options);
+  const path = address.slice(26).split("?")[0], assetsQuery = new RegExp("^(databases|data_sources)/(" + ASSETS_DB + "|" + ASSETS_DS_ID + ")/query$").test(path.replace(/-/g, ""));
+  if (typeof options.body === "string" && ["POST", "PATCH"].includes(method) && /Asset Type/.test(options.body)) {
+    const payload = JSON.parse(options.body), sel = payload.properties?.["Asset Type"]?.select;
+    let changed = false;
+    if (sel && toGraph[sel.name] && /^pages(\/[^/]+)?$/.test(path)) {
+      let ours = method === "POST" ? assetsParent(payload.parent) : false;
+      if (method === "PATCH") { const r = await globalThis.fetch(address, { headers: options.headers }); ours = r.ok && assetsParent((await r.json()).parent); }
+      if (ours) { sel.name = toGraph[sel.name]; changed = true; }
+    }
+    if (assetsQuery && payload.filter) { const before = JSON.stringify(payload.filter); assetTypeFilter(payload.filter, toGraph); changed ||= before !== JSON.stringify(payload.filter); }
+    if (changed) options = { ...options, body: JSON.stringify(payload) };
+  }
+  const response = await hierarchyFetchInner(url, options);
+  if (!/^(pages|databases|data_sources)(\/|$)/.test(path) || !/json/i.test(response.headers.get("content-type") || "")) return response;
+  const text = await response.text(), headers = new Headers(response.headers), init = { status: response.status, statusText: response.statusText, headers };
+  headers.delete("content-length"); headers.delete("content-encoding");
+  if (!text.includes("Asset Type")) return new Response(text, init);
+  let data; try { data = JSON.parse(text); } catch { return new Response(text, init); }
+  (data.object === "list" ? data.results || [] : [data]).forEach(p => assetTypePageToKey(p, toKey));
+  if (["database", "data_source"].includes(data.object) && [ASSETS_DB, ASSETS_DS_ID].includes(hierarchyId(data.id))) (data.properties?.["Asset Type"]?.select?.options || []).forEach(o => { if (toKey[o.name]) o.name = toKey[o.name]; });
+  return new Response(JSON.stringify(data), init);
+}
+async function hierarchyFetchInner(url, options={}) {
   const address=String(url), method=String(options.method || 'GET').toUpperCase();
   if(hierarchyEnv && /^https:\/\/api\.notion\.com\/v1\/pages(?:\/[^/?]+)?$/.test(address) && ['PATCH','POST'].includes(method) && typeof options.body==='string') {
     const payload=JSON.parse(options.body), props=payload.properties || {};
@@ -9808,7 +9869,7 @@ async function signToken(secret, ttlMs = 8 * 3600 * 1000) {
 const CPLAN_KEY = "infoflow:table:content-plan-assets";
 const CPLAN_KINDS = ["Sequence", "Periodic", "Standalone"];
 function cplanColOf(t, ref) { const r = String(ref || "").trim().toLowerCase(); return (t.columns || []).find(c => c.id === ref) || (t.columns || []).find(c => String(c.name || "").trim().toLowerCase() === r) || null; }
-function cplanCell(t, row, name) { const c = cplanColOf(t, name); return c ? String((row.cells || {})[c.id] || "").trim() : ""; }
+function cplanCell(t, row, name) { const c = cplanColOf(t, name), v = c ? String((row.cells || {})[c.id] || "").trim() : ""; return name === "atype" && ASSET_TYPE_KEYS[v] ? ASSET_TYPE_KEYS[v] : v; }   // a row may use the graph name of a renamed type; the code reads its legacy key
 function cplanValidate(t, row) {   // → reason string, or "" when the row is valid
   const live = (t.rows || []).filter(r => r.id !== row.id);
   const hubs = new Set(live.map(r => cplanCell(t, r, "hub")).filter(Boolean)), types = new Set(live.map(r => cplanCell(t, r, "atype")).filter(Boolean));
@@ -9923,6 +9984,32 @@ async function contentPlanAction(env, body, external) {
       const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
       const n = await cplanBackfillDates(env, t);
       if (await cplanCommit(env, seq, t)) { const m = await cplanMirror(env); return { status: 200, out: { ok: true, stamped: n, rows: t.rows.length, blankCreated: t.rows.filter(r => !r.cells.created).length, mirror: m } }; }
+    }
+    return { status: 409, out: { error: "The table kept changing — try again" } };
+  }
+  // renameContentPlanType {from, to, rowIds?, dryRun?} — operator only: one Asset type renamed on every row (or only rowIds, for an undo)
+  // and in the column's options. Each run is logged (rows changed, before/after) in KV cplan:typerename:log so it can be reversed.
+  if (body.action === "renameContentPlanType") {
+    if (external) return { status: 403, out: { error: "operator only" } };
+    const from = String(body.from || "").trim(), to = String(body.to || "").trim(), only = Array.isArray(body.rowIds) ? new Set(body.rowIds.map(String)) : null;
+    if (!from || !to || from === to) return { status: 400, out: { error: "from and to are required and must differ" } };
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { seq, t } = attempt ? await cplanLoad(env) : { seq: seq0, t: JSON.parse(JSON.stringify(t0)) };
+      const col = cplanColOf(t, "atype");
+      if (!col) return { status: 404, out: { error: "no Asset type column" } };
+      const rows = (t.rows || []).filter(r => String((r.cells || {})[col.id] || "").trim() === from && (!only || only.has(r.id)));
+      const optHit = Array.isArray(col.options) && col.options.includes(from);
+      if (body.dryRun) return { status: 200, out: { ok: true, dryRun: true, from, to, rows: rows.length, rowIds: rows.map(r => r.id), columnOption: optHit } };
+      rows.forEach(r => { r.cells[col.id] = to; });
+      if (optHit) col.options = [...new Set(col.options.map(o => o === from ? to : o))];
+      if (!rows.length && !optHit) return { status: 200, out: { ok: true, from, to, rows: 0, note: "nothing to rename" } };
+      const next = await cplanCommit(env, seq, t);
+      if (!next) continue;
+      const entry = { at: new Date().toISOString(), from, to, seqBefore: seq, seqAfter: next, rowIds: rows.map(r => r.id), columnOption: optHit };
+      const log = (await env.TRADES.get("cplan:typerename:log", "json")) || [];
+      await env.TRADES.put("cplan:typerename:log", JSON.stringify([...log, entry].slice(-200)));
+      const m = await cplanMirror(env);
+      return { status: 200, out: { ok: true, ...entry, rows: rows.length, mirror: m } };
     }
     return { status: 409, out: { error: "The table kept changing — try again" } };
   }
@@ -19168,7 +19255,7 @@ export default {
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
-    if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns", "backfillContentPlanDates"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
+    if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns", "backfillContentPlanDates", "renameContentPlanType"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.
     if(body.action==='reconcileHubHierarchy') {
