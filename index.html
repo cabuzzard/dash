@@ -5454,7 +5454,7 @@ function amClose() {
 }
 async function amOpen(assetId, tab) {
   amEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
-  AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false, pwText: null, pwPrompt: '', pwInfo: '', pwBusy: '' };
+  AM = { id: kwNid(assetId), tab: tab || (AM && AM.tab) || 'fields', data: null, busy: 'Loading…', log: '', dirty: {}, changed: false, pwText: null, pwPrompt: '', pwInfo: '', pwBusy: '', ctx: null };
   amDraw(); await amLoad();
 }
 async function amLoad() {
@@ -5462,7 +5462,7 @@ async function amLoad() {
   const r = await call('assetModal', { assetId: id }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return;
   AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } }
-  amDraw();
+  amDraw(); if (AM && AM.data && !AM.ctx && !AM.ctxBusy) amCtxLoad();
 }
 function amTab(t) { if (!AM) return; AM.tab = t; amDraw(); }
 function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
@@ -5476,16 +5476,17 @@ function amDraw() {
   if (!AM.data) { P.innerHTML = `<div class="amf-hd"><b>Asset</b><button style="${B()}margin-left:auto;" onclick="amClose()">✕</button></div><div style="padding:18px;font-size:13px;color:${AM.log ? '#f87171' : 'var(--text3)'};">${esc(AM.busy || AM.log)}</div>`; return; }
   const a = AM.data.asset, d = AM.data.dry || {}, unmapped = !!d.error;
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
-  const pubBtn = a.status === 'Published' || !amIsHubAsset() ? '' : `<button onclick="amPublishHub(this)" title="Publish to the hub — writes the live page (a Sub Page also joins the hub top nav) and sets the status to Published. Needs: its writing rules pass, a hub section, placement in the hub Keywords hierarchy." style="font-size:11.5px;padding:2px 9px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;">📤 Publish to hub</button>`;
+  const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['research', '🔬 Research'], ['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}${amPlatformsChip()}
           ${chip(d.rules ? '📏 ' + d.rules.row : unmapped ? '📏 no writing rules' : '', unmapped ? d.reason : 'Writing-rules row (Current Methods)', unmapped ? '#f59e0b' : '')}
           ${a.platformName ? chip(a.platformName, 'Platform Name') : ''}${a.parentTitle ? chip('↑ ' + a.parentTitle, 'Parent Asset') : ''}
           ${a.contentHub ? chip(a.contentHub, 'Content Hub') : ''}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Notion ↗</a></div></div>
       <button style="${B()}align-self:flex-start;" onclick="amClose()" title="Close (Esc)">✕</button></div>
+    ${AM.platEdit ? amPlatformsEditHtml() : ''}
     <div class="amf-tabs">${tabs.map(([k, l]) => `<button onclick="amTab('${k}')" class="${AM.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     ${AM.log ? `<div style="margin:8px 16px 0;font-size:12px;color:${/^✗/.test(AM.log) ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;">${esc(AM.log)}</div>` : ''}`;
   const sec = { preview: 'preview', rules: 'rules', flow: 'flow' }[AM.tab] || 'fields', schema = AM.tab === 'schema', seriesTab = AM.tab === 'series' && amIsSeries();
@@ -5494,8 +5495,141 @@ function amDraw() {
     + `<button style="font-size:12.5px;padding:6px 14px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" ${dirtyN ? '' : 'disabled'} onclick="amFootSave(this)">💾 Save</button>`
     + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & 📤 Publish to hub' : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
+  if (AM.tab === 'pillar' || AM.tab === 'research') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : amResearchHtml()}</div>` + foot; return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
+}
+// ── Writer modal: Pillar · Research tabs, per-field writing, the type's Platforms (operator 2026-11-08) ──
+// Pillar = the linked title's pillar (read from the title, never an asset field) + the parent asset; ↻ Rewrite with guidance and weighted inputs.
+// Research = the upstream research (title · product · campaign) with run buttons. Fields: ✍ per field and ↻ Rewrite all run the governed
+// writer (writeAssetFields) on chosen sources. Platforms = the type's Writing Specs header (every platform the type writes for).
+const AM_SOURCES = [['pillar', 'Pillar'], ['parent', 'Parent asset'], ['titleResearch', 'Title research'], ['productResearch', 'Product research'], ['campaignResearch', 'Campaign research'], ['interview', 'Interview']];
+const AM_PILLAR_WEIGHTS = [['titleResearch', 'Title research'], ['productResearch', 'Product research'], ['campaignResearch', 'Campaign research'], ['notes', 'Title notes'], ['web', 'Live web grounding']];
+const AM_WEIGHT_WORDS = ['ignore', 'light', 'normal', 'heavy'];
+async function amCtxLoad() {
+  const id = AM && AM.id; if (!id) return; AM.ctxBusy = true;
+  const r = await call('writerContext', { assetId: id }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.ctxBusy = false; AM.ctx = r && !r.error ? r : { error: (r && r.error) || 'no response' }; amDraw();
+}
+const AMB = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12px;padding:5px 11px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
+const AM_LBL = 'font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:10px 0 3px;';
+const AM_TA = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
+const amBox = t => `<div style="font-size:12.5px;line-height:1.55;white-space:pre-wrap;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);max-height:420px;overflow:auto;">${t ? esc(t) : '<span style="color:var(--text3);">empty</span>'}</div>`;
+function amCtxWait() { const c = AM.ctx; return !c ? '<div style="font-size:12.5px;color:var(--text3);">Loading…</div>' : c.error ? `<div style="font-size:12.5px;color:#f87171;">✗ ${esc(c.error)} <button style="${AMB()}" onclick="AM.ctx=null;amCtxLoad()">↻ Retry</button></div>` : ''; }
+function amPillarHtml() {
+  const w = amCtxWait(); if (w) return w; const c = AM.ctx, t = c.title, R = AM.pr || (AM.pr = { guidance: '', weights: { titleResearch: 2, productResearch: 2, campaignResearch: 1, notes: 2, web: 2 } });
+  if (!t) return '<div style="font-size:12.5px;color:#f59e0b;">This asset has no linked title, so it has no pillar. Link it to a title in Notion (Content Strategy).</div>';
+  const par = c.parent;
+  return `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:14px;">${esc(t.name || '(untitled)')}</b><span style="font-size:11px;color:var(--text3);">title · ${esc(t.status || 'no status')}</span>
+      <a href="https://www.notion.so/${esc(kwNid(t.id))}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Notion ↗</a></div>
+    <div style="${AM_LBL}">Pillar — from the title</div>${amBox(t.pillar)}
+    <div style="margin-top:12px;padding:10px;border:1px solid var(--border2);border-radius:8px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px;">↻ Rewrite the pillar</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Rewrites the TITLE's pillar (every asset of this title reads it). A title at Planning moves to Development, as Write Pillar always does.</div>
+      <div style="${AM_LBL}">Guidance</div><textarea rows="3" style="${AM_TA}" oninput="AM.pr.guidance=this.value" placeholder="Angle, audience, what to keep or cut…">${esc(R.guidance)}</textarea>
+      <div style="${AM_LBL}">Input weighting</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px;">${AM_PILLAR_WEIGHTS.map(([k, l]) => `<label style="font-size:12px;display:flex;gap:6px;align-items:center;">
+        <span style="flex:1;">${l}</span><input type="range" min="0" max="3" step="1" value="${R.weights[k]}" oninput="AM.pr.weights['${k}']=+this.value;this.nextElementSibling.textContent=AM_WEIGHT_WORDS[+this.value]" style="width:90px;"><span style="width:46px;color:var(--text2);">${AM_WEIGHT_WORDS[R.weights[k]]}</span></label>`).join('')}</div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;"><button style="${AMB('#c084fc', '#c084fc')}" ${AM.prBusy ? 'disabled' : ''} onclick="amPillarRewrite(this)">${AM.prBusy ? '⏳ Rewriting… (1–3 min)' : '↻ Rewrite pillar'}</button></div></div>
+    ${par ? `<div style="${AM_LBL}">Parent asset — ${esc(par.type || '')} · ${esc(par.status || '')}</div>
+      <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">${esc(par.title || par.error || '')} <a href="#" onclick="event.preventDefault();amOpen('${esc(kwNid(par.id))}')" style="font-size:11px;color:var(--accent);">open ↗</a></div>
+      ${amBox([...Object.entries(par.fields || {}).map(([k, v]) => k + ':\n' + v), par.page ? 'Page:\n' + par.page : ''].filter(Boolean).join('\n\n'))}` : '<div style="font-size:11.5px;color:var(--text3);margin-top:10px;">No parent asset.</div>'}`;
+}
+async function amPillarRewrite(btn) {
+  const t = AM.ctx && AM.ctx.title; if (!t) return; if (!confirm('Rewrite the pillar of the title “' + (t.name || '') + '”? It replaces the current pillar for every asset of this title.')) return;
+  const R = AM.pr, words = AM_PILLAR_WEIGHTS.map(([k, l]) => l + ': ' + AM_WEIGHT_WORDS[R.weights[k]]).join(' · ');
+  const styleGuidance = (R.guidance.trim() ? R.guidance.trim() + '\n\n' : '') + 'INPUT WEIGHTING (operator): ' + words + '. Lean on the heavy inputs, use light ones sparingly, leave out ignored ones.';
+  const id = AM.id; AM.prBusy = true; AM.log = '⏳ Rewriting the pillar…'; amDraw();
+  const r = await call('writeTitlePillar', { titleId: t.id, styleGuidance, useGrounding: R.weights.web > 0, ...(R.weights.notes === 0 ? { researchOverride: ' ' } : {}) }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.prBusy = false;
+  AM.log = r && !r.error ? '✓ Pillar rewritten' + (r.wordCount ? ' — ' + r.wordCount + ' words' : '') + (r.newStatus && r.newStatus !== t.status ? ' · title → ' + r.newStatus : '') : '✗ Pillar not rewritten: ' + ((r && r.error) || 'no response');
+  AM.ctx = null; amDraw(); amCtxLoad();
+}
+function amResearchHtml() {
+  const w = amCtxWait(); if (w) return w; const c = AM.ctx, RS = AM.rs || (AM.rs = { tGuide: '', pGuide: '', pStage: {}, busy: '' });
+  const fieldRows = (obj, extra) => Object.entries(obj || {}).map(([k, v], i) => `<div style="margin:6px 0;"><div style="display:flex;gap:6px;align-items:baseline;"><span style="${AM_LBL}margin:0;">${esc(k)}</span>${extra ? extra(k, i) : ''}</div>
+    <div style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;">${String(v || '').trim() ? esc(v) : '<span style="color:var(--text3);">empty</span>'}</div>${RS.pStage[k] !== undefined && extra ? `<div style="margin-top:4px;padding:6px 8px;border:1px dashed #c084fc;border-radius:6px;font-size:12.5px;white-space:pre-wrap;">${esc(RS.pStage[k])}
+      <div style="margin-top:4px;display:flex;gap:6px;"><button style="${AMB('#4ade80', '#4ade80')}" onclick="amProdSave(${i})">💾 Save</button><button style="${AMB()}" onclick="delete AM.rs.pStage[Object.keys(AM.ctx.product.research)[${i}]];amDraw()">✕ Discard</button></div></div>` : ''}</div>`).join('');
+  const sec = (title, body) => `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--border2);border-radius:8px;"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">${title}</div>${body}</div>`;
+  const t = c.title, pr = c.product, cr = c.campaign;
+  return `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">The upstream research this asset is written from (Information Flow: campaign → product → title). ✍ in Fields chooses which of these a write uses.${RS.busy ? ' <b style="color:#c084fc;">' + esc(RS.busy) + '</b>' : ''}</div>`
+    + sec('Title research' + (t ? ' — ' + esc(t.name || '') : ''), !t ? '<span style="font-size:12px;color:var(--text3);">No linked title.</span>' : fieldRows(t.research)
+      + `<div style="${AM_LBL}">Guidance for this run</div><textarea rows="2" style="${AM_TA}" oninput="AM.rs.tGuide=this.value">${esc(RS.tGuide)}</textarea>
+        <button style="${AMB('#8ab4f8', '#8ab4f8')}margin-top:6px;" ${RS.busy ? 'disabled' : ''} onclick="amTitleResRun()">↻ Run title research</button>`)
+    + sec('Product research' + (pr ? ' — ' + esc(pr.name || '') : ''), !pr ? '<span style="font-size:12px;color:var(--text3);">No product on this asset or its title.</span>'
+      : `<div style="${AM_LBL}">Guidance for ↻ field runs</div><textarea rows="2" style="${AM_TA}" oninput="AM.rs.pGuide=this.value">${esc(RS.pGuide)}</textarea>`
+        + fieldRows(pr.research, (k, i) => `<button style="font-size:10.5px;padding:0 6px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;line-height:16px;" ${RS.busy ? 'disabled' : ''} onclick="amProdRun(${i})" title="Run research for this field — you review it before it is saved">↻</button>`)
+        + (pr.researchId ? `<a href="https://www.notion.so/${esc(pr.researchId)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Product Research record ↗</a>` : ''))
+    + sec('Campaign research', !cr || !cr.id ? `<span style="font-size:12px;color:var(--text3);">${cr && cr.error ? esc(cr.error) : 'No Research record for this campaign.'}</span>`
+      : fieldRows(cr.fields) + `<div style="font-size:11px;color:var(--text3);margin-top:6px;">Campaign research is run from the campaign's microsite. <a href="https://www.notion.so/${esc(cr.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Research record ↗</a></div>`);
+}
+async function amTitleResRun() {
+  const t = AM.ctx.title, id = AM.id; AM.rs.busy = 'Running title research…'; amDraw();
+  const r = await call('generateTitleResearch', { titleId: t.id, force: true, guidance: AM.rs.tGuide || '' }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.rs.busy = ''; AM.log = r && !r.error ? '✓ Title research updated' : '✗ Title research: ' + ((r && r.error) || 'no response'); AM.ctx = null; amDraw(); amCtxLoad();
+}
+async function amProdRun(i) {
+  const pr = AM.ctx.product, field = Object.keys(pr.research)[i], id = AM.id; AM.rs.busy = 'Researching ' + field + '…'; amDraw();
+  const r = await call('regenerateStrategyField', { productId: pr.id, campaignId: AM.ctx.campaignId || undefined, field, ...(AM.rs.pGuide.trim() ? { instructions: AM.rs.pGuide.trim() } : {}) }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.rs.busy = '';
+  if (r && !r.error && r.text) AM.rs.pStage[field] = r.text; else AM.log = '✗ ' + field + ': ' + ((r && r.error) || 'no text');
+  amDraw();
+}
+async function amProdSave(i) {
+  const pr = AM.ctx.product, field = Object.keys(pr.research)[i], text = AM.rs.pStage[field], id = AM.id; if (text === undefined) return;
+  const r = await call('updateProductStrategyField', { productId: pr.id, field, value: text }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return;
+  if (r && !r.error) { pr.research[field] = text; delete AM.rs.pStage[field]; AM.log = '✓ ' + field + ' saved'; } else AM.log = '✗ ' + field + ' not saved: ' + ((r && r.error) || 'no response');
+  amDraw();
+}
+// ✍ per field / ↻ Rewrite all: one panel at the top of Fields — sources (all, or chosen) + guidance for this run
+function amFwOpen(i) { const C = amContract(); AM.fw = { field: i >= 0 && C[i] ? C[i].name : null, all: true, chosen: new Set(AM_SOURCES.map(x => x[0])), guidance: '' }; AM.tab = 'fields'; amDraw(); }
+function amFwHtml() {
+  const F = AM.fw; if (!F) return '';
+  return `<div style="margin-bottom:14px;padding:10px;border:1px solid #8ab4f8;border-radius:8px;">
+    <div style="font-size:13px;font-weight:700;margin-bottom:6px;">${F.field ? '✍ Write “' + esc(F.field) + '”' : '↻ Rewrite all fields'}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;"><label><input type="radio" name="amFwAll" ${F.all ? 'checked' : ''} onchange="AM.fw.all=true;amDraw()"> All sources</label><label><input type="radio" name="amFwAll" ${F.all ? '' : 'checked'} onchange="AM.fw.all=false;amDraw()"> Choose sources</label></div>
+    ${F.all ? '' : `<div style="display:flex;gap:6px 14px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;">${AM_SOURCES.map(([k, l]) => `<label><input type="checkbox" ${F.chosen.has(k) ? 'checked' : ''} onchange="this.checked?AM.fw.chosen.add('${k}'):AM.fw.chosen.delete('${k}')"> ${l}</label>`).join('')}</div>`}
+    <div style="${AM_LBL}">Guidance for this run</div><textarea rows="2" style="${AM_TA}" oninput="AM.fw.guidance=this.value">${esc(F.guidance)}</textarea>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Uses the method's contract rule${F.field ? ' for this field' : 's'}, the hub voice and the sources above. Saves the written field${F.field ? '' : 's'} on the asset; never changes status.</div>
+    <div style="margin-top:6px;display:flex;gap:8px;"><button style="${AMB('#8ab4f8', '#8ab4f8')}" ${AM.fwBusy ? 'disabled' : ''} onclick="amFwRun()">${AM.fwBusy ? '⏳ Writing… (1–3 min)' : '✍ Write'}</button><button style="${AMB()}" onclick="AM.fw=null;amDraw()">Cancel</button></div></div>`;
+}
+async function amFwRun() {
+  const F = AM.fw; if (!F) return; if (Object.keys(AM.dirty).length && !confirm('Writing replaces ' + (F.field ? 'this field' : 'the fields') + ' — your unsaved edits will be lost. Write anyway?')) return;
+  const sources = F.all ? AM_SOURCES.map(x => x[0]) : [...F.chosen], id = AM.id; AM.fwBusy = true; AM.log = '⏳ Writing ' + (F.field ? '“' + F.field + '”' : 'all fields') + '…'; amDraw();
+  const r = await call('writeAssetFields', { assetId: id, ...(F.field ? { fields: [F.field] } : {}), sources, guidance: F.guidance || '' }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.fwBusy = false;
+  if (!r || r.error || r.needsInterview) { AM.log = '✗ Not written: ' + ((r && (r.reason || r.error)) || (r && r.needsInterview ? 'its interview must be answered first' : 'no response')); return amDraw(); }
+  AM.log = '✓ Written: ' + (r.fields || []).join(', ') + (r.violations && r.violations.length ? ' · ✗ ' + r.violations.join(' · ') : ' · all rules pass');
+  AM.fw = null; AM.dirty = {}; AM.changed = true; await amLoad();
+}
+// the type's Platforms (🧭 Writing Specs, Kind = Type) — every platform this type publishes to and writes for
+function amPlatformsChip() {
+  const c = AM.ctx; if (!c || c.error) return ''; const names = (c.platforms || []).map(x => x.name);
+  return `<button onclick="AM.platEdit=!AM.platEdit;AM.platSel=new Set((AM.ctx.platforms||[]).map(x=>x.id));amDraw()" title="The platforms this asset type publishes to and writes for (Writing Specs${c.typeSpec ? ': ' + esc(c.typeSpec.name) : ' — no row yet'})" style="font-size:11px;padding:2px 8px;border:1px dashed var(--border2);border-radius:10px;background:transparent;color:var(--text2);cursor:pointer;">🌐 ${names.length ? esc(names.join(' · ')) : 'no platforms'} ✎</button>`;
+}
+function amPlatformsEditHtml() {
+  const c = AM.ctx; if (!c || c.error) return ''; const S = AM.platSel || new Set();
+  return `<div style="margin:8px 16px 0;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;"><div style="font-size:12px;font-weight:700;">Platforms for every “${esc(c.type || '')}” asset</div>
+    <div style="font-size:11px;color:var(--text3);margin:2px 0 6px;">Saved on the type's Writing Specs row${c.typeSpec ? '' : ' (created as a Draft header for this type)'} — applies to the whole type, not just this asset.</div>
+    <div style="display:flex;gap:4px 14px;flex-wrap:wrap;font-size:12px;max-height:160px;overflow:auto;">${(c.allPlatforms || []).map((x, i) => `<label title="${esc((x.characterLimit ? x.characterLimit + ' characters · ' : '') + (x.rules || ''))}"><input type="checkbox" ${S.has(x.id) ? 'checked' : ''} onchange="this.checked?AM.platSel.add(AM.ctx.allPlatforms[${i}].id):AM.platSel.delete(AM.ctx.allPlatforms[${i}].id)"> ${esc(x.name)}${x.status && x.status !== 'Active' ? ' <span style="color:var(--text3);">(' + esc(x.status) + ')</span>' : ''}</label>`).join('')}</div>
+    <div style="margin-top:6px;display:flex;gap:8px;"><button style="${AMB('#4ade80', '#4ade80')}" onclick="amPlatformsSave(this)">💾 Save platforms</button><button style="${AMB()}" onclick="AM.platEdit=false;amDraw()">Cancel</button></div></div>`;
+}
+async function amPlatformsSave(btn) {
+  const c = AM.ctx, id = AM.id; btn.disabled = true; btn.textContent = 'Saving…';
+  const r = await call('writerTypePlatforms', { assetType: c.type, platformIds: [...(AM.platSel || [])] }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return;
+  AM.log = r && !r.error ? '✓ Platforms saved for every “' + c.type + '” asset' + (r.created ? ' (new Writing Specs row, Draft)' : '') + (r.verified ? '' : ' — ⚠ read-back differs') : '✗ Platforms not saved: ' + ((r && r.error) || 'no response');
+  if (r && !r.error) { AM.platEdit = false; AM.ctx = null; amCtxLoad(); } amDraw();
+}
+// 📤 On hub toggle: tick = Publish to hub (the same path as the Publish button); untick = status back to Publish (off the hub), confirmed
+async function amHubToggle(el) {
+  const a = AM && AM.data && AM.data.asset; if (!a) return;
+  if (el.checked) { el.checked = false; return amPublishHub(el); }
+  if (!confirm('Take this asset off the hub? Its status goes back to Publish.')) { el.checked = true; return; }
+  el.disabled = true; const r = await call('updateAssetStatus', { assetId: AM.id, status: 'Publish', statusOnly: true }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Status not changed: ' + ((r && r.error) || 'no response'); el.checked = true; el.disabled = false; return amDraw(); }
+  a.status = 'Publish'; AM.changed = true; AM.log = '✓ Status → Publish'; amDraw();
 }
 // ── Spec block at the top of each Asset modal tab (operator 2026-10-30): guidance → ✨ Send to Claude → a STAGED draft beside the live
 // text → ✓ Commit (writes the asset's Current Methods row) or ✕ Discard. Worker assetSpec. rules = contract · flow = inputs ·
@@ -5703,12 +5837,13 @@ function amFieldsHtml() {
   const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
   if (d.error) return `<div style="font-size:13px;line-height:1.6;"><b style="color:#f59e0b;">No writing rules apply to this asset yet.</b><br>${esc(d.reason || d.error)}<br><span style="color:var(--text3);">The writer needs a Current Methods row for this asset's method / type with a contract, inputs and mapped = yes (Information Flow → Current Methods).</span></div>`;
   const rows = C.map(f => { const v = amFieldVal(f.name), viol = amViol(f.name), big = /^(body|offer page|page|faq|pricing tiers|description|story areas)$/i.test(f.name) || String(v).length > 160;
-    return `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><label style="font-size:12px;font-weight:700;">${esc(f.name)}</label>
+    return `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><label style="font-size:12px;font-weight:700;">${esc(f.name)}</label><button onclick="amFwOpen(${C.indexOf(f)})" title="Write just this field — choose its sources and guidance" style="font-size:10.5px;padding:0 6px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;line-height:16px;">✍</button>
         <span style="font-size:11px;color:${viol.length ? '#f87171' : '#4ade80'};">${viol.length ? '✗ ' + esc(viol.join(' · ')) : (String(v).trim() ? '✓' : '')}</span>${f.name in AM.dirty ? '<span style="font-size:10.5px;color:#f59e0b;">● unsaved</span>' : ''}</div>
       <div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">${esc(f.rule)}</div>
       ${big ? `<textarea rows="${/^body$|^offer page$|^page$/i.test(f.name) ? 16 : 5}" style="${IN}resize:vertical;" oninput="amEdit('${esc(f.name)}', this.value)">${esc(v)}</textarea>`
         : `<input style="${IN}" value="${esc(v)}" oninput="amEdit('${esc(f.name)}', this.value)">`}</div>`; }).join('');
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+  return amFwHtml() + `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+      <button style="${B('#c084fc')}" onclick="amFwOpen(-1)" title="Rewrite every field — choose the sources and give guidance for this run">↻ Rewrite all…</button>
       <button id="amSaveBtn" style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
       <button style="${B('#8ab4f8')}" onclick="amWrite(this)" title="Run the writer for this asset — it reads the Information flow tab's packet and follows the Writing rules tab (one model call, plus one corrective pass when a rule fails)">✍ Write${String(amFieldVal('Body') || '').trim() ? ' (rewrite)' : ''}</button>
       <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${C.every(f => !String(amFieldVal(f.name) || '').trim()) ? 'not written yet — ✍ Write fills them' + (AM.data.prewrite ? ' (it starts from your pre-write)' : '') : (AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;

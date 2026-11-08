@@ -2371,11 +2371,15 @@ async function writeContractAsset(env,assetId,opts={}) {
   const page=await ivPage(assetId);if(!page?.properties||page.archived||page.in_trash)throw new Error('Asset unavailable');
   if(/^newsletter (paid|free)$/i.test(page.properties?.['Asset Type']?.select?.name||''))return {error:'newsletter_requires_disseminate',reason:'Newsletter issues are written only by Disseminate on their Digest parent.'};
   const mapping=await writingMethod(env,page);if(mapping.reason)return {error:'unmapped',reason:mapping.reason,...(opts.dryRun?{rowName:mapping.row?.name||'',methodName:mapping.name||''}:{})};
-  const {contract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
+  // opts.fields = write only these contract fields (the rest stay as context) · opts.sources = which upstream sources the packet carries
+  // (pillar, parent, titleResearch, productResearch, campaignResearch, interview; absent = the standard packet) · opts.guidance = this run only.
+  const {contract:fullContract,methodId,method,row,name}=mapping,p=page.properties,titleId=ivRid(p,'Content Strategy'),title=titleId?await ivPage(titleId):null,tp=title?.properties||{};
   const cid=ivRid(p,'Campaign')||ivRid(tp,'Campaign'),pid=ivRid(p,'Product')||ivRid(tp,'product')||ivRid(tp,'Product');
   // The packet carries only what a text writer needs (operator 2026-10-22: "it's supposed to read spec"). The hub's
   // image-design brief is sent only when the row's inputs ask for design; title/product send their facts, not every
   // property; currentFields is just this contract's fields.
+  const only=Array.isArray(opts.fields)&&opts.fields.length?new Set(opts.fields.map(String)):null,contract=only?fullContract.filter(f=>only.has(f.name)):fullContract;
+  if(only&&!contract.length)return {error:'no_such_field',reason:'None of these are contract fields of this asset: '+[...only].join(', ')};
   const wantsDesign=/\b(design|image spec|visual)\b/i.test(row.inputs||'');
   const [recipe,pillar,research,voice,audience,product,design,interview]=await Promise.all([
     methodId?extractBlocksTextRecursive(ivHdr(),ivDash(methodId)):'',titleId?extractPillarContent(ivHdr(),ivDash(titleId)):'',titleId?titleResearchBlock(env,titleId):'',
@@ -2385,7 +2389,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   ]);
   const pick=(props,keys)=>{const v=writingFieldValues(props||{});return Object.fromEntries(keys.filter(k=>String(v[k]||'').trim()).map(k=>[k,v[k]]));};
   const PRODUCT_FACTS=['Name','Description','Price','Offer Structure','Transformation','Unique Angle','Product Tier','Type','Keywords'];
-  const cur=writingFieldValues(p),currentFields=Object.fromEntries(contract.map(f=>[f.name,cur[f.name]||'']));
+  const cur=writingFieldValues(p),currentFields=Object.fromEntries(fullContract.map(f=>[f.name,cur[f.name]||'']));
   // operator 2026-10-23: the writer must see what THIS asset is about — its own blurb and the Series idea noted on its page (with the
   // ranking's type / stage) — not just the shared title's pillar. Topical posts also get the hub's published posts for related links.
   // The note is a callout, which extractBlocksTextRecursive skips — read the blocks directly so a Run's whole plan arrives (2026-10-29).
@@ -2399,11 +2403,19 @@ async function writeContractAsset(env,assetId,opts={}) {
     contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
     product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
     platform:cur['Platform Name']||cur.Platform||'',subject,...(hubPosts.length?{hubPosts}:{}),currentFields};
+  if(Array.isArray(opts.sources)){const want=new Set(opts.sources.map(String));
+    if(!want.has('pillar'))packet.title.pillar='';if(!want.has('titleResearch'))packet.research='';if(!want.has('productResearch'))packet.product.research='';if(!want.has('interview'))packet.interview='';
+    if(want.has('parent')){const parentId=ivRid(p,'Parent Asset');if(parentId){const par=await ivPage(parentId).catch(()=>null);if(par?.properties){const pv=writingFieldValues(par.properties);
+      packet.parent={title:hubRichText(par.properties['Asset Title']?.title),type:par.properties['Asset Type']?.select?.name||'',fields:Object.fromEntries(Object.entries(pv).filter(([,v])=>String(v||'').trim()).map(([k,v])=>[k,String(v).slice(0,6000)])),
+        page:(await extractBlocksTextRecursive(ivHdr(),ivDash(parentId)).catch(()=>'')).slice(0,12000)};}}}
+    if(want.has('campaignResearch')&&cid)packet.campaignResearch=await writerCampaignResearch(cid).catch(()=>({}));
+    packet.sourcesChosen=[...want];}
   const instruction='Method instructs; the process executes. AI is a filter, not a source. Use only the packet sources. Produce exactly the contract fields, following the method recipe, as string values. Return no other fields or commentary. Never invent missing facts; leave unsupported fields empty so advisory validation reports them.';
   // tool-schema keys must match ^[a-zA-Z0-9_.-]{1,64}$ — contract field names ("Platform Title") map to safe keys and back
   const keyOf=contract.map((f,i)=>(f.name.replace(/[^a-zA-Z0-9_.-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,56)||'field')+'_'+i);
   const schema={type:'object',properties:Object.fromEntries(contract.map((f,i)=>[keyOf[i],{type:'string',description:f.name+' — '+f.rule}])),required:keyOf,additionalProperties:false};
   const style=writeStyleOf(page,row),answersOnly=ivAnswersOnly(interview?.text||''),styleText=writeStyleBlock(style,!!answersOnly.trim())+ivOutlineBlock(hubRichText(p.Outline?.rich_text),style.keep);
+  if(style.keep==='Q&A'&&!opts.dryRun&&only)return {error:'qa_whole_asset',reason:'This asset is written in Q&A mode (answered questions printed) — use Rewrite all, not a single field.'};
   if(style.keep==='Q&A'&&!opts.dryRun)return writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,hubPosts:packet.hubPosts||[],keywords:kwSplit(String(packet.product?.properties?.Keywords||'')),title:cur['Platform Title']||hubRichText(p['Asset Title']?.title)});   // Q&A: answered questions printed, grammar only
   // 2026-10-24: the SEO keywords the check scores are handed to the writer, and the ONE corrective pass covers every problem the checks
   // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
@@ -2411,7 +2423,10 @@ async function writeContractAsset(env,assetId,opts={}) {
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
   const pre=await env.TRADES.get('prewrite:'+hubAssetId(page.id),'json').catch(()=>null);   // the asset's PRE-WRITE (external LLM draft, pasted in the Asset modal)
   if(pre&&String(pre.text||'').trim())packet.prewrite=String(pre.text).slice(0,14000);
-  const styleFull=styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
+  const runScope=(only?'\n\nTHIS RUN WRITES ONLY these contract fields: '+contract.map(f=>f.name).join(', ')+'. The packet\'s currentFields show the asset\'s other fields — keep consistent with them, do not rewrite them.':'')
+    +(Array.isArray(opts.sources)?'\n\nSOURCES FOR THIS RUN (operator choice): '+(packet.sourcesChosen.join(', ')||'none beyond the method, voice and hub')+'. Write from these only.':'')
+    +(String(opts.guidance||'').trim()?'\n\nOPERATOR GUIDANCE FOR THIS RUN (follow it within the contract):\n'+String(opts.guidance).trim().slice(0,4000):'');
+  const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
     +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
@@ -2421,7 +2436,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
   const band=WRITE_KEEP[style.keep].band,mainOf=f=>f.Body||f['Offer Page']||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
-  const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=kept!==null&&(kept<band[0]-15||kept>band[1]+15);
+  const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=!only&&seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=!only&&kept!==null&&(kept<band[0]-15||kept>band[1]+15);
     const problems=[...violations,...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
     return {kept,seo,violations,problems,score:violations.length*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
   let fields=fieldsOf(generated),c=check(fields),corrected=false;
@@ -2444,13 +2459,26 @@ async function writeContractAsset(env,assetId,opts={}) {
   for(const [key,value] of Object.entries(fields)){const type=db.properties?.[key]?.type||'rich_text';if(value.length>190000)throw new Error(`${key}: exceeds Notion text capacity`);properties[key]=type==='select'?{select:value?{name:value}:null}:{[type]:ivRt(value)};}
   try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){console.error('write style props:',e.message);}
   // a write that used the interview answers brings the asset back In Sync (clears ↻ rewrite due / 'written without interview') — 2026-10-24
-  if(answersOnly.trim()){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
+  if(answersOnly.trim()&&!only){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
   await saveExistingAssetWriting(page,properties,[]);
-  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString()};
+  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{})};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
-  return {ok:true,fields:Object.keys(fields),violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo}};
+  return {ok:true,fields:Object.keys(fields),values:only?fields:undefined,violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo}};
 }
 
+// Campaign Research (the IF graph's campaign-level research) for the writer: the richest Research record of the campaign, its filled text fields.
+async function writerCampaignResearch(cid) {
+  const recs=await notionQuery(RESEARCH_DB,{filter:{property:'Campaign',relation:{contains:ivDash(cid)}}});
+  const text=r=>Object.fromEntries(Object.entries(r.properties||{}).filter(([,v])=>['rich_text','title'].includes(v.type)).map(([k,v])=>[k,hubRichText(v[v.type])]).filter(([,v])=>v.trim()));
+  const best=recs.map(r=>({r,f:text(r)})).sort((a,b)=>Object.keys(b.f).length-Object.keys(a.f).length)[0];
+  return best?{id:hubAssetId(best.r.id),fields:Object.fromEntries(Object.entries(best.f).map(([k,v])=>[k,v.slice(0,3000)]))}:{};
+}
+// The asset type's spec header in 🧭 Writing Specs (Kind = Type), matched by Name or Aliases — legacy or graph name of a renamed type.
+async function writerTypeRow(assetType) {
+  const t=String(assetType||'').trim(),names=new Set([t,ASSET_TYPE_RENAMES[t],ASSET_TYPE_KEYS[t]].filter(Boolean).map(x=>x.toLowerCase()));
+  const rows=await notionQuery(WRITING_SPECS_DB,{filter:{property:'Kind',select:{equals:'Type'}}});
+  return rows.find(r=>!r.archived&&!r.in_trash&&[hubRichText(r.properties?.Name?.title),...hubRichText(r.properties?.Aliases?.rich_text).split(';')].some(n=>names.has(n.trim().toLowerCase())))||null;
+}
 async function assetWriterInfo(env,page) {
   const mapping=await writingMethod(env,page);
   if(/^newsletter (paid|free)$/i.test(page.properties?.['Asset Type']?.select?.name||''))return {writer:'',methodId:mapping.methodId,methodName:mapping.name,type:page.properties['Asset Type'].select.name,writerAvailable:false,writerError:'Written only by Disseminate on the Digest parent',mapping};
@@ -56481,6 +56509,64 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const aid = hubAssetId(body.assetId || ""), since = String(body.since || ""), log = (await env.TRADES.get("writeasset:log", "json").catch(() => null)) || [];
         const run = log.find(r => hubAssetId(r.assetId || "") === aid && (!since || String(r.timestamp || "") > since)) || null;
         return json({ ok: true, run });
+      }
+      // ── Writer modal (operator 2026-11-08): Pillar · Research · Fields tabs ──
+      // writerContext {assetId} — the linked title's pillar, the parent asset, the upstream research (title · product · campaign) and the
+      // type's Writing Specs header with its Platforms (and every platform to pick from, with its rules). Read only.
+      if (body.action === "writerContext") {
+        const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
+        const page = await ivPage(aid), p = page.properties || {}, type = p["Asset Type"]?.select?.name || "";
+        const titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};
+        const cid = ivRid(p, "Campaign") || ivRid(tp, "Campaign"), pid = ivRid(p, "Product") || ivRid(tp, "product") || ivRid(tp, "Product"), parentId = ivRid(p, "Parent Asset");
+        const plain = props => Object.fromEntries(STRATEGY_FIELDS.map(f => [f, hubRichText(props?.[f]?.rich_text)]));
+        const [pillar, parent, prodRec, product, campaign, typeRow, platforms] = await Promise.all([
+          titleId ? extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "") : "",
+          parentId ? ivPage(parentId).then(async par => { const pv = writingFieldValues(par.properties || {});
+            return { id: parentId, title: hubRichText(par.properties?.["Asset Title"]?.title), type: par.properties?.["Asset Type"]?.select?.name || "", status: par.properties?.["Asset Status"]?.select?.name || "",
+              fields: Object.fromEntries(Object.entries(pv).filter(([, v]) => String(v || "").trim()).map(([k, v]) => [k, String(v).slice(0, 4000)])),
+              page: (await extractBlocksTextRecursive(ivHdr(), ivDash(parentId)).catch(() => "")).slice(0, 8000) }; }).catch(e => ({ id: parentId, error: e.message })) : null,
+          pid ? findBestProductResearchRecord(ivHdr(), pid).catch(() => null) : null,
+          pid ? ivPage(pid).catch(() => null) : null,
+          cid ? writerCampaignResearch(cid).catch(e => ({ error: e.message })) : null,
+          writerTypeRow(type).catch(() => null),
+          notionQuery(PLATFORMS_DB, {}).catch(() => [])
+        ]);
+        const plat = x => ({ id: hubAssetId(x.id), name: hubRichText(x.properties?.Name?.title), status: x.properties?.Status?.select?.name || "",
+          characterLimit: x.properties?.["Character Limit"]?.number ?? null, rules: hubRichText(x.properties?.["Content Rules"]?.rich_text).slice(0, 2000) });
+        const allPlatforms = platforms.filter(x => !x.archived && !x.in_trash).map(plat).sort((a, b) => a.name.localeCompare(b.name));
+        const chosen = new Set((typeRow?.properties?.Platforms?.relation || []).map(r => hubAssetId(r.id)));
+        return json({ ok: true, type,
+          title: titleId ? { id: titleId, name: hubRichText(tp.Title?.title || tp.Name?.title), status: tp.Status?.select?.name || "", pillar,
+            research: Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)])) } : null,
+          parent, campaignId: cid || "",
+          product: pid ? { id: pid, name: hubRichText(product?.properties?.Name?.title), researchId: prodRec ? hubAssetId(prodRec.id) : "", research: plain(prodRec?.properties) } : null,
+          campaign, typeSpec: typeRow ? { id: hubAssetId(typeRow.id), name: hubRichText(typeRow.properties?.Name?.title), status: typeRow.properties?.Status?.select?.name || "" } : null,
+          platforms: allPlatforms.filter(x => chosen.has(x.id)), allPlatforms });
+      }
+      // writerTypePlatforms {assetType, platformIds} — set the type's Platforms (Writing Specs, Kind = Type). A type with no header row gets one
+      // (Draft, Aliases = the type) — never Committed from here.
+      if (body.action === "writerTypePlatforms") {
+        const type = String(body.assetType || "").trim(); if (!type) return json({ error: "assetType required" }, 400);
+        const ids = [...new Set((Array.isArray(body.platformIds) ? body.platformIds : []).map(x => hubAssetId(x)).filter(x => /^[a-f0-9]{32}$/i.test(x)))].slice(0, 60);
+        let row = await writerTypeRow(type), created = false;
+        const props = { Platforms: { relation: ids.map(id => ({ id: ivDash(id) })) } };
+        const r = row ? await fetch("https://api.notion.com/v1/pages/" + row.id, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) })
+          : await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: ivHdr(), body: JSON.stringify({ parent: { database_id: WRITING_SPECS_DB }, properties: { ...props,
+              Name: { title: ivRt(type) }, Kind: { select: { name: "Type" } }, Status: { select: { name: "Draft" } }, Aliases: { rich_text: ivRt(type) },
+              Notes: { rich_text: ivRt("Created from the writer modal (operator 2026-11-08) to hold this type's Platforms. Draft — the type's spec is recorded when it is deployed.") } } }) });
+        const d = await r.json(); if (!r.ok) return json({ error: d.message || "Notion error" }, 502); created = !row;
+        const back = await ivPage(d.id), got = (back.properties?.Platforms?.relation || []).map(x => hubAssetId(x.id)).sort();
+        return json({ ok: true, created, rowId: hubAssetId(d.id), platformIds: got, verified: JSON.stringify(got) === JSON.stringify([...ids].sort()) });
+      }
+      // writeAssetFields {assetId, fields?, sources?, guidance?} — the writer modal's ✍ per field and ↻ Rewrite all: the same governed contract writer,
+      // limited to these fields / these sources, with this run's guidance. Never changes status or publishes.
+      if (body.action === "writeAssetFields") {
+        if (!body.assetId) return json({ error: "assetId required" }, 400);
+        const opts = { ...(Array.isArray(body.fields) && body.fields.length ? { fields: body.fields.slice(0, 60) } : {}), ...(Array.isArray(body.sources) ? { sources: body.sources.slice(0, 12) } : {}),
+          ...(String(body.guidance || "").trim() ? { guidance: String(body.guidance).slice(0, 4000) } : {}) };
+        const result = await writeContractAsset(env, body.assetId, opts).catch(e => ({ error: e.message }));
+        if (result.needsInterview) { const { error, ...gate } = result; return json(gate); }
+        return json(result, result.error && !result.reason ? 502 : 200);
       }
       if (body.action === "writeAsset") {
         if(!body.assetId)return json({error:'assetId required'},400);
