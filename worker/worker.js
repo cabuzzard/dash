@@ -19255,6 +19255,33 @@ export default {
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
+    // CP AA → asset trace (operator 2026-11-08: "a strong trace from cpaa to actual asset records whose type reflects what is stored in cpaa").
+    // cplanFindAssets {name, campaignId?} — Assets whose title is the name (exact first, else contains), newest first, ≤ 20.
+    // cplanTraceAssets {assetIds} — each linked asset's title, type, status and campaign, so a row can show whether its type matches.
+    // Both read only. Types come back as the code's legacy keys; keys maps graph names to them so a row may use either name.
+    if (body.action === "cplanFindAssets" || body.action === "cplanTraceAssets") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const brief = p => ({ id: p.id.replace(/-/g, ""), title: hierarchyText(p.properties?.["Asset Title"]?.title), type: p.properties?.["Asset Type"]?.select?.name || "",
+        status: p.properties?.["Asset Status"]?.select?.name || "", campaignIds: (p.properties?.Campaign?.relation || []).map(r => r.id.replace(/-/g, "")),
+        gone: !!(p.archived || p.in_trash), created: p.created_time });
+      if (body.action === "cplanFindAssets") {
+        const name = String(body.name || "").trim(); if (!name) return json({ error: "name is required" }, 400);
+        const camp = body.campaignId ? [{ property: "Campaign", relation: { contains: kwDashId(String(body.campaignId).replace(/-/g, "")) } }] : [];
+        const q = async how => { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB + "/query", { method: "POST", headers: ivHdr(),
+          body: JSON.stringify({ page_size: 20, sorts: [{ timestamp: "created_time", direction: "descending" }], filter: { and: [{ property: "Asset Title", title: { [how]: name } }, ...camp] } }) });
+          const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error"); return d.results || []; };
+        try { let res = await q("equals"), exact = true; if (!res.length) { res = await q("contains"); exact = false; }
+          return json({ ok: true, exact, assets: res.map(brief), keys: ASSET_TYPE_KEYS }); } catch (e) { return json({ error: e.message }, 502); }
+      }
+      const ids = [...new Set((Array.isArray(body.assetIds) ? body.assetIds : []).map(x => String(x || "").replace(/-/g, "")).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 200);
+      const out = {}, todo = [...ids];
+      await Promise.all(Array.from({ length: 4 }, async () => { for (let id; (id = todo.shift());) {
+        for (let tries = 0; tries < 4; tries++) { const r = await fetch("https://api.notion.com/v1/pages/" + id, { headers: ivHdr() });
+          if (r.status === 429) { await new Promise(res => setTimeout(res, 1000 * (tries + 1))); continue; }
+          const d = await r.json(); out[id] = r.ok ? brief(d) : { id, error: d.message || "not found" }; break; } } }));
+      return json({ ok: true, assets: out, keys: ASSET_TYPE_KEYS });
+    }
     if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns", "backfillContentPlanDates", "renameContentPlanType"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.
     // Authenticated audit is read-only unless apply is explicitly true.

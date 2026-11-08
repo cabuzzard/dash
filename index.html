@@ -4697,8 +4697,61 @@ async function cplanLoad(force, name = 'content-plan-assets') {
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc((r && r.error) || 'no response')}</div>`; return; }
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
   S.t = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_DEFS[name].map(c => ({ ...c })), rows: [] };   // not saved until you edit
+  if (ours && name === HUBPLAN_TABLE && cplanTraceCols(S.t)) { S.colsDirty = true; cplanSave(name); }
+  S.traceAsked = new Set();
   cplanPaint(name);
 }
+// ── CP AA → asset trace (operator 2026-11-08): "Asset name" names the row's asset; "Asset id" holds the Notion record it is linked to.
+// 🔗 finds the asset by name (in the row's hub), ✍ opens it in the Asset (writer) modal. Each linked row shows whether the record's
+// Asset Type matches the row's Asset type (graph and legacy names of a renamed type count as the same). Nothing is ever retyped here.
+function cplanTraceCols(T) {   // → true when the two columns had to be added (after Title)
+  const has = re => T.columns.some(c => re.test(String(c.name || '').trim())); if (has(/^asset name$/i) && has(/^asset id$/i)) return false;
+  const tc = (T.columns.find(c => /^title$/i.test(String(c.name || '').trim())) || {}).id, at = T.columns.findIndex(c => c.id === tc), add = [];
+  if (!has(/^asset name$/i)) add.push({ id: 'aname', name: 'Asset name', ...(tc ? { after: tc } : {}) });
+  if (!has(/^asset id$/i)) add.push({ id: 'aid', name: 'Asset id', after: add.length ? 'aname' : ((T.columns.find(c => /^asset name$/i.test(String(c.name || '').trim())) || {}).id || tc) });
+  T.columns.splice(at >= 0 ? at + 1 : T.columns.length, 0, ...add); return true;
+}
+function cplanTraceIds(T) { const col = re => ((T && T.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id; return { an: col(/^asset name$/i), ai: col(/^asset id$/i) }; }
+async function cplanTraceLoad(name) {
+  const S = cpS(name), T = S.t; if (!T || name !== HUBPLAN_TABLE) return; const { ai } = cplanTraceIds(T); if (!ai) return;
+  S.traceAsked = S.traceAsked || new Set();
+  const ids = [...new Set(T.rows.map(r => kwNid(String(r.cells[ai] || '').trim())).filter(id => /^[0-9a-f]{32}$/i.test(id) && !S.traceAsked.has(id)))]; if (!ids.length) return;
+  ids.forEach(id => S.traceAsked.add(id));
+  for (let i = 0; i < ids.length; i += 200) { const r = await call('cplanTraceAssets', { assetIds: ids.slice(i, i + 200) }).catch(e => ({ error: e.message }));
+    if (!r || r.error) { ids.slice(i).forEach(id => S.traceAsked.delete(id)); return; } S.trace = { ...(S.trace || {}), ...r.assets }; S.keys = r.keys || S.keys || {}; }
+  cplanPaint(name);
+}
+function cplanTypeOk(S, rowType, assetType) { const k = t => { const v = String(t || '').trim(); return ((S.keys || {})[v] || v).toLowerCase(); }; return !!String(rowType || '').trim() && k(rowType) === k(assetType); }
+function cplanTraceHtml(name, row) {   // the trace line under a row's Asset name
+  const S = cpS(name), I = cplanTraceIds(S.t), id = kwNid(String(row.cells[I.ai] || '').trim()), rt = String(row.cells.atype || '').trim();
+  if (!id) return '<span style="color:var(--text3);">not linked</span>';
+  const a = (S.trace || {})[id]; if (!a) return '<span style="color:var(--text3);">checking…</span>';
+  if (a.error) return `<span style="color:#f87171;">✗ linked record not found (${esc(a.error)})</span>`;
+  const ok = cplanTypeOk(S, rt, a.type), nm = String(row.cells[I.an] || '').trim();
+  return (a.gone ? '<span style="color:#f87171;">✗ archived · </span>' : '') + (ok ? `<span style="color:#4ade80;">✓ ${esc(a.type)}</span>` : `<span style="color:#f87171;" title="The row says ${esc(rt || '(blank)')}; the asset record is ${esc(a.type || '(no type)')}">✗ asset is ${esc(a.type || 'untyped')}, row says ${esc(rt || '(blank)')}</span>`)
+    + ` · ${esc(a.status || 'no status')}` + (nm && nm !== a.title ? ` · <span style="color:#f59e0b;" title="The linked record's title">titled “${esc(a.title)}”</span>` : '');
+}
+async function cplanLink(name, rowId, open) {   // find the row's asset by name and link it; open = then open the writer
+  const S = cpS(name), T = S.t, row = T && T.rows.find(r => r.id === rowId); if (!row) return; const { an, ai } = cplanTraceIds(T);
+  const nm = String(row.cells[an] || '').trim(); if (!nm) return showToast('Type the asset name first', 'error');
+  const hub = HUB_SITES.find(h => String(h.name || '').trim().toLowerCase() === String(row.cells.hub || '').trim().toLowerCase());
+  showToast('Finding “' + nm + '”…', 'success');
+  const r = await call('cplanFindAssets', { name: nm, ...(hub && hub.campaignId ? { campaignId: hub.campaignId } : {}) }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Not found: ' + ((r && r.error) || 'no response'), 'error');
+  S.keys = r.keys || S.keys || {}; const list = (r.assets || []).filter(a => !a.gone);
+  if (!list.length) return showToast('No asset named “' + nm + '”' + (hub ? ' in ' + hub.name : ''), 'error');
+  if (r.exact && list.length === 1) return cplanLinkTake(name, rowId, list[0], open);
+  const rt = String(row.cells.atype || '').trim();
+  window._cpPick = { name, rowId, open, list };
+  hcModal(`<h3 style="margin:0 0 4px;">Link “${esc(nm)}”</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">${r.exact ? 'Several assets have this exact name' : 'No exact match — assets whose name contains it'}${hub ? ' in ' + esc(hub.name) : ''}. The row's Asset type is <b>${esc(rt || '(blank)')}</b>.</div>`
+    + list.map((a, i) => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;"><div style="flex:1;min-width:0;"><div style="font-weight:600;">${esc(a.title || '(untitled)')}</div>
+      <div style="font-size:11px;color:var(--text3);">${cplanTypeOk(S, rt, a.type) ? '<span style="color:#4ade80;">✓ ' + esc(a.type) + '</span>' : '<span style="color:#f87171;">✗ ' + esc(a.type || 'untyped') + '</span>'} · ${esc(a.status || '')} · ${esc(String(a.created || '').slice(0, 10))}</div></div>
+      <button onclick="cplanLinkPick(${i})" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">Link</button></div>`).join(''));
+}
+function cplanLinkTake(name, rowId, a, open) { const S = cpS(name); S.trace = { ...(S.trace || {}), [a.id]: a }; cplanEdit(name, rowId, cplanTraceIds(S.t).ai, a.id); cplanPaint(name); if (open) amOpen(a.id); }
+function cplanLinkPick(i) { const P = window._cpPick; if (!P || !P.list[i]) return; const m = document.getElementById('hcModal'); if (m) m.classList.remove('open'); cplanLinkTake(P.name, P.rowId, P.list[i], P.open); }
+function cplanWriter(name, rowId) { const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return; const id = kwNid(String(row.cells[cplanTraceIds(S.t).ai] || '').trim());
+  if (id) return amOpen(id); cplanLink(name, rowId, true); }
 function cplanStatusOpts(name) { const c = (cpS(name).t.columns || []).find(x => x.id === 'status'); return (c && c.options) || CPLAN_STATUS; }
 // Multi-level sort with dynamic headings (operator 2026-11-05, like AO2): up to 7 levels; with Group by sort on, every level with
 // Heading ticked is a collapsible heading tier (default: Hub). Kept in this browser's view (localStorage), never in the table.
@@ -4762,7 +4815,7 @@ function cplanPaint(name = 'content-plan-assets') {
   const pkCol = re => (T.columns.find(c => re.test(String(c.name || '').trim())) || {}).id, PK = { topic: pkCol(/^topic$/i), product: pkCol(/^product$/i), title: pkCol(/^title$/i) };
   const pickOf = c => c.id === 'hub' ? 'hub' : c.id === 'atype' ? 'atype' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
   const memo = new Map(), norm = s => String(s || '').trim().toLowerCase(), uniq = a => [...new Map(a.map(s => String(s || '').trim()).filter(Boolean).map(s => [norm(s), s])).values()].sort((a, b) => a.localeCompare(b));
-  cplanTreeLoad(name);
+  cplanTreeLoad(name); cplanTraceLoad(name);
   const pickList = (row, kind) => {
     const c = row.cells, hub = String(c.hub || '').trim(), same = (r, k, v) => norm(r.cells[k]) === norm(v);
     if (kind === 'atype') return uniq([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)]);
@@ -4776,7 +4829,12 @@ function cplanPaint(name = 'content-plan-assets') {
   };
   const pickSel = (row, c, kind) => { const cur = String(row.cells[c.id] || ''), list = pickList(row, kind), has = list.some(x => norm(x) === norm(cur));
     return `<select onchange="cplanPick(${q},'${row.id}','${c.id}',this)" title="${esc(cur)}" style="${IN}">${['', ...(cur && !has ? [cur] : []), ...list].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) && (o || !cur) ? 'selected' : ''}>${o ? esc(o) : '—'}</option>`).join('')}<option value="__new">＋ Add new…</option></select>`; };
-  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
+  const TR = name === HUBPLAN_TABLE ? cplanTraceIds(T) : {}, SB = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const traceCell = (row, c) => c.id === TR.an ? `<div style="display:flex;gap:4px;align-items:flex-start;"><textarea rows="2" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;flex:1;">${esc(row.cells[c.id] || '')}</textarea>
+      <div style="display:flex;flex-direction:column;gap:3px;"><button style="${SB}" title="Open this asset in the writer (finds it by name first when it isn't linked yet)" onclick="cplanWriter(${q},'${row.id}')">✍</button><button style="${SB}" title="Find the asset by this name in the row's hub and link it" onclick="cplanLink(${q},'${row.id}')">🔗</button></div></div>
+      <div style="font-size:10.5px;margin-top:2px;line-height:1.35;">${cplanTraceHtml(name, row)}</div>`
+    : `<input value="${esc(row.cells[c.id] || '')}" onchange="cplanEdit(${q},'${row.id}','${c.id}',kwNid(this.value.trim()));cplanTraceLoad(${q})" title="The linked Notion asset record (set by 🔗)" style="${IN}font-family:monospace;font-size:10.5px;">`;
+  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : c.id && (c.id === TR.an || c.id === TR.ai) ? traceCell(row, c) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
     ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : c.id === pubCol ? `<select onchange="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${['', ...CPLAN_PUB].map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`; };
