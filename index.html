@@ -19528,6 +19528,51 @@ async function hub2ViewPublish(slug,section,assetId){
   finally{_hub2ViewBusy[key]=false;hub2ViewPaint(slug);}
 }
 
+// Preview → CP AA (operator 2026-11-08: "from a published blog post or sub page, open its record on CP AA … specific to the post in the
+// preview"). The preview is same-origin, so its path names the page: blog/<slug>/ or offers/<slug>/ → posts.json / offers.json, a top-level
+// <slug>/ → pages.json (Sub pages). Those manifests carry the assetId. The button follows the preview as you click around in it.
+const _hub2CpaaAt = {};
+async function hub2PreviewAsset(slug) {
+  const f = document.getElementById('hub2Frame-' + slug); let path = '';
+  try { path = f && f.contentWindow ? f.contentWindow.location.pathname : ''; } catch (e) { return null; }
+  const root = '/dash/web/hub/' + slug + '/'; if (!path.startsWith(root)) return null;
+  const rest = path.slice(root.length).replace(/index\.html$/, '').replace(/\/$/, ''); if (!rest) return null;
+  const get = async u => { try { const r = await fetch(location.origin + root + u + '?v=' + Date.now(), { cache: 'no-store' }); const d = r.ok ? await r.json() : []; return Array.isArray(d) ? d : []; } catch (e) { return []; } };
+  const hit = (L, sl) => L.find(x => x && x.assetId && (x.slug === sl || String(x.url || '').replace(/\/$/, '').split('/').pop() === sl));
+  let m = /^(blog|offers)\/([^/]+)$/.exec(rest), x = null;
+  if (m) x = hit(await get('blog/posts.json'), m[2]) || hit(await get('offers/offers.json'), m[2]);
+  else if (!rest.includes('/')) x = hit(await get('pages.json'), rest);
+  return x ? { id: hdNid(x.assetId), title: x.title || x.name || x.label || rest } : null;
+}
+async function hub2CpaaLabel(slug) {
+  const b = document.getElementById('hub2Cpaa-' + slug); if (!b) return; const at = _hub2CpaaAt[slug] = Date.now();
+  const a = await hub2PreviewAsset(slug); if (_hub2CpaaAt[slug] !== at) return;
+  b.dataset.assetId = a ? a.id : ''; b.disabled = !a; b.style.color = a ? 'var(--accent)' : 'var(--text3)'; b.style.borderColor = a ? 'var(--accent)' : 'var(--border2)';
+  b.textContent = a ? '📋 Open in CP AA: ' + (a.title.length > 60 ? a.title.slice(0, 58) + '…' : a.title) : '📋 CP AA — open a post or sub page in the preview';
+}
+async function hub2OpenCpaa(slug) { const b = document.getElementById('hub2Cpaa-' + slug), id = b && b.dataset.assetId; if (id) return cplanOpenAsset(id); }
+// Open CP AA on one asset's row: Dev2 tab → Production → Content Plan — All Assets, every heading above the row opened, scrolled to and flashed.
+async function cplanOpenAsset(assetId) {
+  const id = hdNid(assetId), N = HUBPLAN_TABLE, S = cpS(N);
+  const tab = document.querySelector(`.tab[onclick="switchTab('dev2')"]`); if (tab && !tab.classList.contains('active')) tab.click();
+  ['production', 'cplana'].forEach(k => { const sec = document.querySelector(`.oc-sec[data-ock="${k}"]`); if (!sec) return; const bd = sec.querySelector('.oc-bd');
+    if (bd && bd.style.display === 'none') { bd.style.display = ''; const ch = sec.querySelector('.oc-chev'); if (ch) ch.textContent = '▼'; } });
+  showToast('Opening the asset in CP AA…', 'success');
+  await cplanLoad(false, N);
+  let row = null;
+  for (let i = 0; i < 80 && !row; i++) {   // the asset index arrives after the table (up to ~40 s)
+    const idx = cplanAssetIdx(); if (idx && idx.size) { cplanSync(N); const I = S.t && cplanTraceIds(S.t);
+      row = (S.t && I && I.ai && S.t.rows.find(r => kwNid(String(r.cells[I.ai] || '').trim()) === id)) || (S.vrows || []).find(r => r.id === 'a' + id) || null;
+      if (!row) break; }
+    else await new Promise(r => setTimeout(r, 500));
+  }
+  if (!row) return showToast('This asset has no row in CP AA (not loaded yet, removed, or not Planning–Published)', 'error');
+  if (/^archived$/i.test(row.cells.status || '')) S.arch = true;
+  S.reveal = row.id; cplanPaint(N);
+  setTimeout(() => { const tr = document.querySelector('#cplanBody' + cpId(N) + ' tr[data-row="' + row.id + '"]'); if (!tr) return;
+    tr.scrollIntoView({ behavior: 'smooth', block: 'center' }); tr.style.outline = '2px solid var(--accent)'; setTimeout(() => { tr.style.outline = ''; }, 4000); }, 120);
+}
+
 function renderHubs2() {
   const el = document.getElementById('hubs2TabContent'); if (!el) return;
   hubSitesExtraLoad(); if (!HUB_SITES.length) { el.innerHTML = '<div class="empty">No hubs found.</div>'; return; }
@@ -19585,6 +19630,7 @@ function renderHubs2() {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px;padding:10px 13px;border:1px solid var(--accent);border-radius:8px;background:var(--surface);">
           <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--accent);white-space:nowrap;">LIVE HUB URL</span>
           <a href="${esc(liveUrl)}" target="_blank" rel="noopener" title="Open ${esc(h.name)} live hub" style="font-size:14px;font-weight:650;color:var(--text);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;overflow-wrap:anywhere;">${esc(liveUrl.replace(/^https?:\/\//, '').replace(/\/$/, ''))} <span style="color:var(--accent);">↗</span></a>
+          <button id="hub2Cpaa-${slug}" disabled onclick="hub2OpenCpaa('${slug}')" title="Open the post or sub page shown in the preview below in Content Plan — All Assets" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text3);cursor:pointer;">📋 CP AA — open a post or sub page in the preview</button>
           <span style="margin-left:auto;font-size:10px;color:var(--text3);">${h.routing === 'ok' && h.domain ? 'Custom domain' : 'GitHub Pages'}</span>
         </div>
         <div class="hub-rail-frame" id="hub2Wrap-${slug}" style="height:600px;">
@@ -21548,7 +21594,7 @@ async function hub2CodexHero(kind, withNote) {
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 function hub2PreviewLoaded(slug) {
-  hub2PreviewPaint(slug);
+  hub2PreviewPaint(slug); hub2CpaaLabel(slug);
   if (HUB2_EDIT[slug] !== false) { _hpiTry[slug] = 0; setTimeout(() => wireHubPreview(slug), 350); }
   hub2PreviewSectionLabels(slug);
   hub2PreviewFit(slug);
