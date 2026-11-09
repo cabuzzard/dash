@@ -2399,10 +2399,16 @@ async function writeContractAsset(env,assetId,opts={}) {
   const subject={description:String(cur.Description||'').slice(0,600),note:pageNote,...(keywordSeed?{keywordSeed}:{})};
   let hubPosts=[];if(/topical/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
     if(hub)hubPosts=(await hubBlogManifest(env,hub)).filter(x=>x&&x.slug&&hubAssetId(x.assetId||'')!==hubAssetId(page.id)).slice(0,25).map(x=>({title:x.title,url:'../'+x.slug+'/'}));}catch(e){}}
+  // operator 2026-11-08 (Offer Roundup): "take the existing images from the single posts on this title" — when the row's inputs name single
+  // posts, the packet carries the title's single-post assets that have an image: the image URL plus that post's own copy, in title order.
+  let titleImages=[];if(titleId&&/single posts?/i.test(row.inputs||'')){const sp=await notionQuery(ASSETS_DB,{filter:{property:'Content Strategy',relation:{contains:ivDash(titleId)}}}).catch(e=>{console.error('titleImages',e.message);return [];});
+    titleImages=sp.filter(x=>!x.archived&&!x.in_trash&&/single post/i.test(x.properties?.['Asset Type']?.select?.name||'')&&x.properties?.['Post Image']?.url&&hubAssetId(x.id)!==hubAssetId(page.id)).sort((a,b)=>String(a.created_time).localeCompare(String(b.created_time))).slice(0,20)
+      .map(x=>{const v=writingFieldValues(x.properties);return {assetId:hubAssetId(x.id),imageUrl:x.properties['Post Image'].url,title:hubRichText(x.properties['Asset Title']?.title),
+        copy:Object.fromEntries(['Platform Title','Body','Post Caption','Alt Text','Description'].filter(k=>String(v[k]||'').trim()).map(k=>[k,String(v[k]).slice(0,1500)]))};});}
   const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method?.properties?.Notes?.rich_text),page:recipe},
     contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
     product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
-    platform:cur['Platform Name']||cur.Platform||'',subject,...(hubPosts.length?{hubPosts}:{}),currentFields};
+    platform:cur['Platform Name']||cur.Platform||'',subject,...(hubPosts.length?{hubPosts}:{}),...(titleImages.length?{titleImages}:{}),currentFields};
   if(Array.isArray(opts.sources)){const want=new Set(opts.sources.map(String));
     if(!want.has('pillar'))packet.title.pillar='';if(!want.has('titleResearch'))packet.research='';if(!want.has('productResearch'))packet.product.research='';if(!want.has('interview'))packet.interview='';
     if(want.has('parent')){const parentId=ivRid(p,'Parent Asset');if(parentId){const par=await ivPage(parentId).catch(()=>null);if(par?.properties){const pv=writingFieldValues(par.properties);
@@ -2949,6 +2955,7 @@ async function pubContext(env, assetId, writeAs) {
       hubLive: p["Deployment Status"]?.select?.name === "Deployed" && !/^(unlisted|email)$/i.test(hubSection),   // live with no section yet still counts as live contentUrl: p["Content URL"]?.url || "",
       hubLast: (await env.TRADES.get("hub:lastsection:" + aid).catch(() => "")) || "",
       postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "", thumbnail: p.Thumbnail?.url || "", videoUrl: p["Video URL"]?.url || "",
+      thumbnailSource: p["Thumbnail Source"]?.url || "", postImageSource: p["Post Image Source"]?.url || "", igBackgroundSource: p["Instagram Background Source"]?.url || "",   // the wordless plates (text on image starts from these)
       videoSpec: v["Video Spec"] || "", videoRender: v["Video Render"] || "", offer: /\boffer\b/i.test(type), youtube: /youtube/i.test(type + platform) },
     fields, catalog, values: Object.fromEntries([...new Set([...catalog, "Image Direction"])].map(f => [f, v[f] || ""])), video, platform, writerType: wt ? wt.name : "", fromWriter,
     specType, spec: { type: spec.type, fields: spec.fields, drafts: spec.drafts, rules: spec.rules || [] }, ruleOf, parent, children, allTypes,
@@ -6690,11 +6697,13 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // body text: escaped, then Markdown **bold** → <strong> (contract-written pages are Markdown; was shown as literal asterisks)
   const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/)[^)\s]*)\)/g, '<a href="$2">$1</a>');   // [text](url) → a link (relative ../slug/ for related posts)
+    .replace(/!\[([^\]\n]*)\]\((https:\/\/[^)\s]+)\)/g, '<img src="$2" alt="$1" loading="lazy" style="display:block;max-width:100%;height:auto;border-radius:8px;margin:0 auto;">')   // ![alt](https://…) → an image (Offer Roundup: the title's single-post images, 2026-11-08)
+    .replace(/(^|[^!])\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/)[^)\s]*)\)/g, '$1<a href="$3">$2</a>');   // [text](url) → a link (relative ../slug/ for related posts)
   // a paragraph block: all "- " lines → a list; "### " → a sub-heading; else a paragraph (operator 2026-10-23, Topical Post format v2)
   const para = raw => { const t = String(raw || '').trim(), ls = t.split('\n').map(l => l.trim()).filter(Boolean);
     if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')) + '</li>').join('') + '</ul>';
     if (/^###\s+/.test(t)) { const [h, ...rest] = t.split('\n'); return '<h3>' + md(h.replace(/^###\s+/, '')) + '</h3>' + (rest.join('\n').trim() ? para(rest.join('\n')) : ''); }
+    if (/^!\[[^\]\n]*\]\(https:\/\/[^)\s]+\)$/.test(t)) return '<figure style="margin:1.4em 0;">' + md(t) + '</figure>';
     return '<p>' + md(t) + '</p>'; };
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
   const fontsImport = s.fontQuery
@@ -56647,7 +56656,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};
         const cid = ivRid(p, "Campaign") || ivRid(tp, "Campaign"), pid = ivRid(p, "Product") || ivRid(tp, "product") || ivRid(tp, "Product"), parentId = ivRid(p, "Parent Asset");
         const plain = props => Object.fromEntries(STRATEGY_FIELDS.map(f => [f, hubRichText(props?.[f]?.rich_text)]));
-        const [pillar, parent, prodRec, product, campaign, typeRow, platforms, siblings] = await Promise.all([
+        const methodId = ivRid(p, "Method") || await resolveMethodIdByName(ASSET_TYPE_METHOD_ALIAS[type.toLowerCase()] || type).catch(() => null);   // Visuals: method + type + platform decide the sections
+        const [pillar, parent, prodRec, product, campaign, typeRow, platforms, siblings, methodPg, dspec] = await Promise.all([
           titleId ? extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "") : "",
           parentId ? ivPage(parentId).then(async par => { const pv = writingFieldValues(par.properties || {});
             return { id: parentId, title: hubRichText(par.properties?.["Asset Title"]?.title), type: par.properties?.["Asset Type"]?.select?.name || "", status: par.properties?.["Asset Status"]?.select?.name || "",
@@ -56658,8 +56668,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
           cid ? writerCampaignResearch(cid).catch(e => ({ error: e.message })) : null,
           writerTypeRow(type).catch(() => null),
           notionQuery(PLATFORMS_DB, {}).catch(() => []),
-          titleId ? notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(titleId) } } }).catch(() => []) : []   // the title's other assets: the Parent asset picker
+          titleId ? notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(titleId) } } }).catch(() => []) : [],   // the title's other assets: the Parent asset picker
+          methodId ? ivPage(methodId).catch(() => null) : null,
+          cid ? env.TRADES.get("design:spec:" + cid, "json").catch(() => null) : null   // the hub's committed design spec (Visuals → Style)
         ]);
+        const mp = methodPg?.properties || {}, dsv = (dspec && dspec.spec) || {};
         const plat = x => ({ id: hubAssetId(x.id), name: hubRichText(x.properties?.Name?.title), status: x.properties?.Status?.select?.name || "",
           characterLimit: x.properties?.["Character Limit"]?.number ?? null, rules: hubRichText(x.properties?.["Content Rules"]?.rich_text).slice(0, 2000) });
         const allPlatforms = platforms.filter(x => !x.archived && !x.in_trash).map(plat).sort((a, b) => a.name.localeCompare(b.name));
@@ -56667,6 +56680,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ ok: true, type,
           title: titleId ? { id: titleId, name: hubRichText(tp.Title?.title || tp.Name?.title), status: tp.Status?.select?.name || "", pillar,
             research: Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)])) } : null,
+          method: methodPg ? { id: hubAssetId(methodPg.id), name: hubRichText(mp.Name?.title), type: mp.Type?.select?.name || "", category: (mp.Category?.multi_select || []).map(x => x.name), status: mp.Status?.select?.name || "" } : null,
+          platformName: p["Platform Name"]?.select?.name || "",
+          design: Object.fromEntries(Object.entries(dsv).filter(([k, v]) => /^(asset|type|color|img)\./.test(k) && v && (String(v.v || "").trim() || String(v.g || "").trim())).map(([k, v]) => [k, { v: String(v.v || "").slice(0, 600), g: String(v.g || "").slice(0, 600) }])),
+          designAt: (dspec && dspec.at) || null,
           parent, parentId: parentId || "", siblings: siblings.filter(x => !x.archived && !x.in_trash && hubAssetId(x.id) !== aid).map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.["Asset Title"]?.title),
             type: x.properties?.["Asset Type"]?.select?.name || "", status: x.properties?.["Asset Status"]?.select?.name || "" })).sort((a, b) => a.type.localeCompare(b.type) || a.title.localeCompare(b.title)),
           campaignId: cid || "",
