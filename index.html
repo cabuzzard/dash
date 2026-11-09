@@ -5664,7 +5664,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['research', '🔬 Research'], ['fields', '✎ Fields'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['research', '🔬 Research'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}${amPlatformsChip()}
@@ -5681,7 +5681,7 @@ function amDraw() {
     + `<button style="font-size:12.5px;padding:6px 14px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" ${dirtyN ? '' : 'disabled'} onclick="amFootSave(this)">💾 Save</button>`
     + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & 📤 Publish to hub' : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
-  if (AM.tab === 'pillar' || AM.tab === 'research') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : amResearchHtml()}</div>` + foot; return; }
+  if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : amVisualsHtml()}</div>` + foot; return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
 }
@@ -6039,18 +6039,81 @@ function amFieldsHtml() {
   const B = c => `font-size:12.5px;padding:6px 13px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
   const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
   if (d.error) return `<div style="font-size:13px;line-height:1.6;"><b style="color:#f59e0b;">No writing rules apply to this asset yet.</b><br>${esc(d.reason || d.error)}<br><span style="color:var(--text3);">The writer needs a Current Methods row for this asset's method / type with a contract, inputs and mapped = yes (Information Flow → Current Methods).</span></div>`;
-  const rows = C.map(f => { const v = amFieldVal(f.name), viol = amViol(f.name), big = /^(body|offer page|page|faq|pricing tiers|description|story areas)$/i.test(f.name) || String(v).length > 160;
-    return `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><label style="font-size:12px;font-weight:700;">${esc(f.name)}</label><button onclick="amFwOpen(${C.indexOf(f)})" title="Write just this field — choose its sources and guidance" style="font-size:10.5px;padding:0 6px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;line-height:16px;">✍</button>
-        <span style="font-size:11px;color:${viol.length ? '#f87171' : '#4ade80'};">${viol.length ? '✗ ' + esc(viol.join(' · ')) : (String(v).trim() ? '✓' : '')}</span>${f.name in AM.dirty ? '<span style="font-size:10.5px;color:#f59e0b;">● unsaved</span>' : ''}</div>
-      <div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">${esc(f.rule)}</div>
-      ${big ? `<textarea rows="${/^body$|^offer page$|^page$/i.test(f.name) ? 16 : 5}" style="${IN}resize:vertical;" oninput="amEdit('${esc(f.name)}', this.value)">${esc(v)}</textarea>`
-        : `<input style="${IN}" value="${esc(v)}" oninput="amEdit('${esc(f.name)}', this.value)">`}</div>`; }).join('');
+  const rows = C.filter(f => !amIsImgField(f.name)).map(f => amFieldRow(f, C)).join('');
   return amFwHtml() + `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
       <button style="${B('#c084fc')}" onclick="amFwOpen(-1)" title="Rewrite every field — choose the sources and give guidance for this run">↻ Rewrite all…</button>
       <button id="amSaveBtn" style="${B('#4ade80')}" ${dirtyN ? '' : 'disabled'} onclick="amSaveFields(this)">💾 Save ${dirtyN ? dirtyN + ' field' + (dirtyN === 1 ? '' : 's') : ''}</button>
       <button style="${B('#8ab4f8')}" onclick="amWrite(this)" title="Run the writer for this asset — it reads the Information flow tab's packet and follows the Writing rules tab (one model call, plus one corrective pass when a rule fails)">✍ Write${String(amFieldVal('Body') || '').trim() ? ' (rewrite)' : ''}</button>
       <span style="font-size:11px;color:var(--text3);">${C.length} contract field${C.length === 1 ? '' : 's'} · ${C.every(f => !String(amFieldVal(f.name) || '').trim()) ? 'not written yet — ✍ Write fills them' + (AM.data.prewrite ? ' (it starts from your pre-write)' : '') : (AM.data.asset.violations || []).length ? (AM.data.asset.violations || []).length + ' rule' + ((AM.data.asset.violations || []).length === 1 ? '' : 's') + ' failing' : 'all rules pass'}</span></div>` + rows;
 }
+// Visuals tab (operator 2026-11-08: "make the image fields go on a visuals tab"): the contract's image fields (Alt Text, image direction,
+// briefs) plus the asset's images — Thumbnail, Post Image, and Instagram background for offers — with the Publish modal's own generate /
+// upload / URL actions (pubContext + generateOfferImage / generateBlogPostThumbnail / generateSocialBackgroundForAsset + saveOfferImage).
+const amIsImgField = n => /\b(alt text|image|images|visual|thumbnail|photo|photos)\b/i.test(String(n || ''));
+function amFieldRow(f, C) {
+  const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
+ const v = amFieldVal(f.name), viol = amViol(f.name), big = /^(body|offer page|page|faq|pricing tiers|description|story areas)$/i.test(f.name) || String(v).length > 160;
+    return `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><label style="font-size:12px;font-weight:700;">${esc(f.name)}</label><button onclick="amFwOpen(${C.indexOf(f)})" title="Write just this field — choose its sources and guidance" style="font-size:10.5px;padding:0 6px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;line-height:16px;">✍</button>
+        <span style="font-size:11px;color:${viol.length ? '#f87171' : '#4ade80'};">${viol.length ? '✗ ' + esc(viol.join(' · ')) : (String(v).trim() ? '✓' : '')}</span>${f.name in AM.dirty ? '<span style="font-size:10.5px;color:#f59e0b;">● unsaved</span>' : ''}</div>
+      <div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">${esc(f.rule)}</div>
+      ${big ? `<textarea rows="${/^body$|^offer page$|^page$/i.test(f.name) ? 16 : 5}" style="${IN}resize:vertical;" oninput="amEdit('${esc(f.name)}', this.value)">${esc(v)}</textarea>`
+        : `<input style="${IN}" value="${esc(v)}" oninput="amEdit('${esc(f.name)}', this.value)">`}</div>`; }
+const AM_IMG = { 'blog-thumbnail': { label: 'Thumbnail', prop: 'thumbnail', tip: 'The hub-front thumbnail link' }, 'post-image': { label: 'Post image', prop: 'postImage', tip: 'The social / background image' }, 'ig-background': { label: 'Instagram background', prop: 'igBackground', tip: 'Offers: the 3:4 Instagram plate' } };
+async function amVisLoad() {
+  const id = AM && AM.id; if (!id) return; AM.visBusy = true;
+  const r = await call('pubContext', { assetId: id }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; AM.visBusy = false; AM.vis = r && !r.error ? r : { error: (r && r.error) || 'no response' }; amDraw();
+}
+function amVisualsHtml() {
+  if (!AM.vis) { if (!AM.visBusy) amVisLoad(); return '<div style="font-size:12.5px;color:var(--text3);">Loading the images…</div>'; }
+  if (AM.vis.error) return `<div style="font-size:12.5px;color:#f87171;">✗ ${esc(AM.vis.error)} <button style="${AMB()}" onclick="AM.vis=null;amDraw()">↻ Retry</button></div>`;
+  const A = AM.vis.asset || {}, C = amContract(), d = AM.data.dry || {}, rg = AM.rg || (AM.rg = {}), busy = AM.imgBusy || {};
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;';
+  const kinds = ['blog-thumbnail', 'post-image', ...(A.offer ? ['ig-background'] : [])];
+  const slot = k => { const url = A[AM_IMG[k].prop], b = busy[k];
+    return `<div style="border:1px solid var(--border2);border-radius:10px;padding:10px;flex:1;min-width:230px;" title="${esc(AM_IMG[k].tip)}"><b style="font-size:12.5px;">${AM_IMG[k].label}</b>
+      ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" style="display:block;width:100%;max-height:260px;object-fit:contain;border-radius:6px;margin:6px 0;background:#0003;"></a>` : '<div style="font-size:11.5px;color:var(--text3);margin:8px 0;">none yet</div>'}
+      <input style="${IN}font-size:11.5px;" placeholder="Guidance for this render only (not saved)" value="${esc(rg[k] || '')}" oninput="AM.rg['${k}']=this.value">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;"><button style="${AMB('#c084fc', '#c084fc')}" ${b ? 'disabled' : ''} onclick="amImgGen('${k}')">${b === 'gen' ? '⏳ Rendering…' : url ? '✨ Regenerate' : '✨ Generate'}</button>
+        <label style="${AMB()}">⬆ Upload<input type="file" accept="image/*" style="display:none;" onchange="amImgUpload('${k}',this)"></label><button style="${AMB()}" onclick="amImgUrl('${k}')">🔗 URL</button></div></div>`; };
+  const imgRows = d.error ? '' : C.filter(f => amIsImgField(f.name)).map(f => amFieldRow(f, C)).join('');
+  const dir = AM.imgDir != null ? AM.imgDir : ((AM.vis.values || {})['Image Direction'] || '');
+  return amFwHtml() + `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">Images render from the hub's committed design spec plus this asset's saved Image Direction; the guidance under each image is for that one render only.</div>`
+    + (imgRows ? `<div style="font-size:12px;font-weight:700;margin-bottom:6px;">Image fields</div>` + imgRows : '')
+    + `<div style="margin-bottom:14px;"><div style="display:flex;gap:8px;align-items:baseline;"><label style="font-size:12px;font-weight:700;">Image Direction</label><span style="font-size:11px;color:var(--text3);">saved on this asset — every render of it reads this</span></div>
+      <textarea rows="3" style="${IN}resize:vertical;margin-top:4px;" oninput="AM.imgDir=this.value;document.getElementById('amImgDirSave').style.display=''">${esc(dir)}</textarea>
+      <button id="amImgDirSave" style="${AMB('#4ade80', '#4ade80')}display:none;margin-top:5px;" onclick="amImgDirSave(this)">💾 Save Image Direction</button></div>`
+    + `<div style="display:flex;gap:10px;flex-wrap:wrap;">${kinds.map(slot).join('')}</div>`
+    + (AM.lastPrompt ? `<details style="margin-top:8px;font-size:11.5px;"><summary style="cursor:pointer;color:var(--text3);">Last render prompt</summary><div style="white-space:pre-wrap;margin-top:4px;">${esc(AM.lastPrompt)}</div></details>` : '');
+}
+async function amImgDirSave(btn) {
+  if (!AM) return; btn.disabled = true; btn.textContent = 'Saving…';
+  const r = await call('pubFieldSave', { assetId: AM.id, field: 'Image Direction', value: AM.imgDir || '' }).catch(e => ({ error: e.message }));
+  if (!AM) return; if (!r || r.error) { AM.log = '✗ Image Direction not saved: ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.vis.values = { ...(AM.vis.values || {}), 'Image Direction': AM.imgDir || '' }; AM.imgDir = null; AM.changed = true; AM.log = '✓ Image Direction saved'; amDraw();
+}
+async function amImgGen(kind) {
+  if (!AM || !AM.vis) return; const A = AM.vis.asset || {}; if (!confirm('Generate the ' + AM_IMG[kind].label.toLowerCase() + ' now? One Grok render.')) return;
+  (AM.imgBusy ||= {})[kind] = 'gen'; amDraw(); const id = AM.id, rg = (AM.rg || {})[kind] || '';
+  const r = kind === 'post-image' ? await call('generateSocialBackgroundForAsset', { assetId: id, runGuidance: rg, save: true }).catch(e => ({ error: e.message }))
+    : kind === 'ig-background' ? await call('generateOfferImage', { assetId: id, kind, runGuidance: rg, save: true }).catch(e => ({ error: e.message }))
+    : await call(A.offer ? 'generateOfferImage' : A.youtube ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', { assetId: id, kind, runGuidance: rg, save: true }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; delete AM.imgBusy[kind];
+  if (!r || r.error || !r.saved) AM.log = '✗ Image not made: ' + ((r && (r.error || r.saveError)) || 'no response'); else { A[AM_IMG[kind].prop] = r.url; AM.changed = true; AM.log = '✓ ' + AM_IMG[kind].label + ' saved'; if (r.prompt) AM.lastPrompt = r.prompt; }
+  amDraw();
+}
+async function amImgSet(kind, payload) {
+  if (!AM || !AM.vis) return; (AM.imgBusy ||= {})[kind] = 'save'; amDraw(); const id = AM.id;
+  const r = await call('saveOfferImage', { assetId: id, kind, background: true, ...payload }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; delete AM.imgBusy[kind];
+  if (!r || r.error || !r.url) AM.log = '✗ Not saved: ' + ((r && r.error) || 'no response'); else { AM.vis.asset[AM_IMG[kind].prop] = r.url; AM.changed = true; AM.log = '✓ ' + AM_IMG[kind].label + ' saved'; }
+  amDraw();
+}
+function amImgUpload(kind, inp) {
+  const f = inp.files && inp.files[0]; if (!f) return; if (f.size > 8 * 1024 * 1024) { AM.log = '✗ Image too large (max 8 MB)'; return amDraw(); }
+  const rd = new FileReader(); rd.onload = e => amImgSet(kind, { fileData: String(e.target.result).split(',')[1], fileName: f.name, contentType: f.type || 'image/png' }); rd.readAsDataURL(f);
+}
+function amImgUrl(kind) { const u = (prompt('Paste the image URL (https):') || '').trim(); if (/^https:\/\//.test(u)) amImgSet(kind, { imageUrl: u }); }
 function amEdit(name, v) { if (!AM) return; AM.dirty[name] = v; const b = document.getElementById('amSaveBtn'); if (b) { const n = Object.keys(AM.dirty).length; b.disabled = !n; b.textContent = '💾 Save ' + n + ' field' + (n === 1 ? '' : 's'); } }
 async function amSaveFields(btn) {
   if (!AM || !Object.keys(AM.dirty).length) return; btn.disabled = true; btn.textContent = 'Saving…';
