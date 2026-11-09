@@ -7049,6 +7049,14 @@ function hdPlan(h) {
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim())) || !cplanCronN(c, cc)) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
     .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
+// Every UNBUILT plan row of a hub — goal or not (no Cron, Standalone, no Asset type included); archived rows left out (operator 2026-11-09:
+// "reachable is best"). The initiative rows' Plan count opens exactly these in CP AA.
+function hdPlanRowsAll(h) {
+  const t = HD.plan; if (!t) return [];
+  const ai = ((t.columns || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id;
+  return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (ai && String(c[ai] || '').trim())) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
+    .map(r => ({ rowId: r.id, init: String((r.cells || {}).init || '').trim() }));
+}
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
   const n = hubCheckNorm;
   for (const r of plan) {
@@ -7134,7 +7142,7 @@ function hdRender() {
   // its own Initiative; a title / product shows under each initiative its assets are in ("No initiative" also keeps the ones with no assets).
   const ik = v => String(v || '').trim().toLowerCase() || '__none', assetsH = mine.filter(x => x.kind === 'asset'), planAll = hdPlan(h);
   const inits = new Map(); const addI = v => { const k = ik(v); if (!inits.has(k)) inits.set(k, { key: k, name: k === '__none' ? 'No initiative' : String(v).trim(), assets: [], newest: '' }); return inits.get(k); };
-  assetsH.forEach(a => { const I = addI(a.initiative); I.assets.push(a); const d = hdDate(a); if (d > I.newest) I.newest = d; }); planAll.forEach(r => addI(r.init));
+  assetsH.forEach(a => { const I = addI(a.initiative); I.assets.push(a); const d = hdDate(a); if (d > I.newest) I.newest = d; }); planAll.forEach(r => addI(r.init)); const planRowsAll = hdPlanRowsAll(h); planRowsAll.forEach(r => addI(r.init));
   const initList = [...inits.values()].sort((a, b) => (a.key === '__none') - (b.key === '__none') || a.name.localeCompare(b.name));
   const P = HD.path = (HD.path || []).slice(0, 4), nodes = [];
   const In = P.length ? inits.get(P[0]) : null; if (P.length && !In) P.length = 0; if (In) nodes.push(In);
@@ -7159,10 +7167,13 @@ function hdRender() {
   HD._keys = []; HD._sets = [];
   const where = [h.name, ...nodes.map(n => n.name)].join(' › ');
   const box = (head, inner) => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;"><div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">${head}</span><span style="display:inline-flex;gap:4px;"><span style="min-width:44px;text-align:right;">Goal</span><span style="min-width:44px;text-align:right;">Dev</span><span style="min-width:44px;text-align:right;">Pub</span></span></div>${inner}</div>`;
-  const row = (key, name, sub, c, link) => { const i = HD._keys.push(key) - 1;
+  const row = (key, name, sub, c, link, pre) => { const i = HD._keys.push(key) - 1;
     return `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);">
       <div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b> ${link || ''}<span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
-      ${hdChips(c, noGoal, where + ' › ' + name)}<span style="color:var(--text3);">›</span></div>`; };
+      ${pre || ''}${hdChips(c, noGoal, where + ' › ' + name)}<span style="color:var(--text3);">›</span></div>`; };
+  const planChip = (ids, label) => { if (!ids.length) return `<span title="No unbuilt plan rows" onclick="event.stopPropagation()" style="display:inline-block;min-width:52px;text-align:right;font-size:11.5px;color:var(--text3);cursor:default;"><span style="font-size:9.5px;">Plan</span> 0</span>`;
+    const n = (HD._sets = HD._sets || []).push({ label, ids: [], rowIds: ids }) - 1;
+    return `<a href="#" title="Every unbuilt plan row in it (goal or not) — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:inline-block;min-width:52px;text-align:right;font-size:11.5px;color:#eab308;text-decoration:none;"><span style="font-size:9.5px;color:var(--text3);">Plan</span> <span style="text-decoration:underline;text-underline-offset:2px;">${ids.length}</span></a>`; };
   // the summary for where you are: total + per asset type
   const here = depth === 0 ? hdCount(assetsH, plan) : depth === 1 ? hdCount(cur.assets, plan) : hdCount(hdAssetsOf(cur), under(P.slice(1)));
   const hubOnly = depth === 0 ? plan.filter(r => !r.path).length : 0;
@@ -7175,7 +7186,7 @@ function hdRender() {
   const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
-    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), ''); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), '', planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan')); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
   else if (depth === 1) body = box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
