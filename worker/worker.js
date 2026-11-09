@@ -19408,6 +19408,49 @@ export default {
     // initiativeNames {op, name?} (operator 2026-11-09: "allow delete and add of new initiative names and removal of old ones. from the bulk
     // select") — the Initiative names CP AA offers, KV initiative:names. add = a new name; remove = only once no asset carries it (CP AA
     // clears those assets first, one at a time, each logged), then the name leaves the list. Every add / remove is logged (KV initiative:names:log).
+    // cplanAssetBulkEdit {field: "initiative" | "type" | "directions", items: [{assetId, value}] (≤ 25)} (operator 2026-11-09: "still getting
+    // notion rate limit") — the bulk ✎ Set / remove / carry-over in one request per batch: one asset at a time, ~0.35 s apart; a Notion 429
+    // waits once (Retry-After, ≤ 3 s) and retries, a second 429 or any failure STOPS the batch (the rest comes back for ▶ Continue).
+    // The before / after of the whole batch is logged in ONE write (KV allows ~1 write a second per key — the per-asset log write was the
+    // "too many requests"). Returns {done: [{assetId, before, after}], stopped?: {assetId, error, rate}}.
+    if (body.action === "cplanAssetBulkEdit") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const field = String(body.field || ""), items = (Array.isArray(body.items) ? body.items : []).slice(0, 25).map(x => ({ assetId: hubAssetId(String(x.assetId || "")), value: String(x.value ?? "").trim() }));
+      if (!["initiative", "type", "directions"].includes(field)) return json({ error: "field must be initiative | type | directions" }, 400);
+      if (!items.length || items.some(x => !/^[0-9a-f]{32}$/i.test(x.assetId))) return json({ error: "items [{assetId, value}] required" }, 400);
+      try {
+        if (field === "initiative") { const bad = items.map(x => x.value && initiativeNameBad(x.value)).find(Boolean); if (bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
+        if (field === "directions") { if (items.some(x => x.value.length > WRITER_DIRECTIONS_MAX)) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
+        if (field === "type" && items.some(x => !x.value)) return json({ error: "An asset always keeps an Asset Type" }, 400);
+        const types = field === "type" ? await cpcTypeOptions() : null;
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: hubRichText(q.Initiative?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join("").trim() });
+        const nf = async (url, opt) => { for (let t = 0; ; t++) { const r = await fetch(url, { ...opt, headers: ivHdr() }); if (r.status !== 429 || t) return r;
+          await new Promise(res => setTimeout(res, Math.min(3000, 1000 * (+r.headers.get("retry-after") || 1.2)))); } };
+        const done = []; let stopped = null;
+        for (const [i, x] of items.entries()) {
+          if (i) await new Promise(res => setTimeout(res, 350));
+          let props, check;
+          if (field === "type") { const want = ASSET_TYPE_KEYS[x.value] || x.value, t = types.find(y => cpcNorm(y) === cpcNorm(want)) || types.find(y => cpcNorm(y) === cpcNorm(x.value));
+            if (!t) { stopped = { assetId: x.assetId, error: `"${x.value}" is not an Asset Type option in Notion` }; break; }
+            props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t); }
+          else if (field === "initiative") { props = { Initiative: { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.initiative === x.value; }
+          else { props = { "Writer Directions": { rich_text: richChunks(x.value) } }; check = q => q.directions === x.value; }
+          const g = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), {}), pg = await g.json().catch(() => ({}));
+          if (!g.ok) { stopped = { assetId: x.assetId, error: (g.status === 429 ? "Notion rate limit — " : "") + (pg.message || "Notion error " + g.status), rate: g.status === 429 }; break; }
+          if (pg.archived || pg.in_trash) { stopped = { assetId: x.assetId, error: "The asset is in the trash" }; break; }
+          const r = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), { method: "PATCH", body: JSON.stringify({ properties: props }) }), saved = await r.json().catch(() => ({}));
+          if (!r.ok) { stopped = { assetId: x.assetId, error: (r.status === 429 ? "Notion rate limit — " : "Not saved: ") + (saved.message || "Notion error " + r.status), rate: r.status === 429 }; break; }
+          const after = snap(saved.properties || {});
+          if (!check(after)) { stopped = { assetId: x.assetId, error: "Notion did not confirm the change — read back: " + JSON.stringify(after) }; break; }
+          done.push({ assetId: x.assetId, before: snap(pg.properties || {}), after });
+        }
+        if (done.length) { const at = new Date().toISOString(), L = (await env.TRADES.get("cplan:assetedit:log", "json")) || [];
+          L.unshift(...done.map(d => ({ at, assetId: d.assetId, field, value: d.after[field === "type" ? "type" : field], before: d.before, bulk: true })));
+          await env.TRADES.put("cplan:assetedit:log", JSON.stringify(L.slice(0, 2000))); }
+        return json({ ok: true, done, ...(stopped ? { stopped } : {}) });
+      } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, 500); }
+    }
     if (body.action === "initiativeNames") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -19509,7 +19552,7 @@ export default {
           const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
             Initiative: { rich_text: init ? [{ type: "text", text: { content: init } }] : [] }, "Writer Directions": { rich_text: richChunks(dir) } } }) });
           const entry = { at: new Date().toISOString(), assetId: id, title: assetTitle, type, titleId: tid, campaignId: cid, initiative: init, parentAssetId: body.parentAssetId ? hubAssetId(body.parentAssetId) : "", pillar: !!body.asPillar, stamped: r.ok };
-          try { const L = (await env.TRADES.get("initiative:build:log", "json")) || []; L.unshift(entry); await env.TRADES.put("initiative:build:log", JSON.stringify(L.slice(0, 500))); } catch (e) {}
+          await env.TRADES.put("initiative:build:log:" + Date.now().toString(36) + "-" + id, JSON.stringify(entry), { expirationTtl: 60 * 60 * 24 * 365 });   // one key per asset — no hot key
           if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ ok: true, ...entry, warning: "Made, but its Initiative / directions were not saved: " + (d.message || r.status) }); }
           return json({ ok: true, ...entry, ...(a.flowWarnings ? { flowWarnings: a.flowWarnings } : {}) });
         }

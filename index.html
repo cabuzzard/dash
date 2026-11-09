@@ -4805,26 +4805,33 @@ async function cplanAssetStatus(name, rowId, sel) {   // the writer's own status
 // (CPLAN_WRITE_GAP) to stay under Notion's rate limit. A failure — a rate limit above all — STOPS the run; the rest is kept and ▶ Continue
 // (toolbar) picks up from that asset when you say so. jobs = [{ go: () => call(...), ok: r => {...} }]; done = after the last one.
 const CPLAN_WRITE_GAP = 450;
-async function cplanWrites(name, label, jobs, done, base = 0, total = jobs.length) {
+async function cplanWrites(name, label, jobs, done, base = 0, total = jobs.reduce((a, j) => a + (j.n || 1), 0)) {
   const S = cpS(name), m = document.getElementById('cplanMsg' + cpId(name)); S.resume = null; let n = base;
   for (let i = 0; i < jobs.length; i++) {
-    const r = await jobs[i].go().catch(e => ({ error: e.message }));
-    if (!r || r.error) { const err = (r && r.error) || 'no response', rate = (r && r.rate) || /rate.?limit|429|too many/i.test(err);
+    let r = await jobs[i].go().catch(e => ({ error: e.message }));
+    if (r && !r.error && r.stopped) { const k = jobs[i].ok(r) || 0; n += k; const rest = jobs[i].rest(r); r = { error: r.stopped.error, rate: r.stopped.rate }; jobs = [...jobs.slice(0, i), rest, ...jobs.slice(i + 1)].filter(Boolean); }
+    if (!r || r.error) { const err = (r && r.error) || 'no response', rate = (r && r.rate) || /rate.?limit|429/i.test(err);
       S.resume = { label, jobs: jobs.slice(i), done, base: n, total, rate };
       showToast(rate ? `Notion rate limit — paused at ${n} of ${total}. Give it a minute, then ▶ Continue` : `Stopped at ${n} of ${total}: ${err} — ▶ Continue retries from there`, 'error');
+      S.resume.left = S.resume.jobs.reduce((a, j) => a + (j.n || 1), 0);
       if (m) { m.style.color = '#f59e0b'; m.textContent = '⏸ ' + label + ': ' + n + ' / ' + total; } cplanPaint(name); return false; }
-    jobs[i].ok(r); n++; if (m && total > 1) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + label + ': ' + n + ' / ' + total; }
+    n += jobs[i].ok(r) || (jobs[i].n || 1); if (m && total > 1) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + label + ': ' + n + ' / ' + total; }
     if (i < jobs.length - 1) await new Promise(res => setTimeout(res, CPLAN_WRITE_GAP));
   }
   if (done) await done(n); if (m && total > 1) m.textContent = '✓ ' + label + ': ' + n + ' / ' + total; cplanPaint(name); return true;
 }
+// items [{ax, value}] → jobs of 20 assets each through cplanAssetBulkEdit; apply(ax, after) updates the row in place
+function cplanBulkJobs(field, items, apply) {
+  const mk = list => ({ n: list.length, go: () => call('cplanAssetBulkEdit', { field, items: list.map(x => ({ assetId: hdNid(x.ax.assetId), value: x.value })) }),
+    ok: r => { (r.done || []).forEach(d => { const x = list.find(y => hdNid(y.ax.assetId) === d.assetId); if (x) apply(x.ax, d.after); }); return (r.done || []).length; },
+    rest: r => { const left = list.filter(x => !(r.done || []).some(d => d.assetId === hdNid(x.ax.assetId))); return left.length ? mk(left) : null; } });
+  const out = []; for (let i = 0; i < items.length; i += 20) out.push(mk(items.slice(i, i + 20))); return out;
+}
 function cplanResume(name) { const R = cpS(name).resume; return R ? cplanWrites(name, R.label, R.jobs, R.done, R.base, R.total) : null; }
 async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows
-  const S = cpS(name), jobs = [];
-  for (const row of rows) { const ax = cplanAssetOf(S, row); if (!ax) continue;
-    if (field === 'initiative' && (ax.initiative || '') === v) continue;   // already there — no write
-    jobs.push({ go: () => field === 'status' ? call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }) : call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: field === 'initiative' ? 'initiative' : 'type', value: v }),
-      ok: r => { if (field === 'status') ax.assetStatus = v; else if (field === 'initiative') ax.initiative = (r.after && r.after.initiative) || ''; else ax.rawAssetType = (r.after && r.after.type) || v; } }); }
+  const S = cpS(name), axs = rows.map(row => cplanAssetOf(S, row)).filter(Boolean).filter(ax => !(field === 'initiative' && (ax.initiative || '') === v));   // already there — no write
+  const jobs = field === 'status' ? axs.map(ax => ({ go: () => call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }), ok: () => { ax.assetStatus = v; } }))
+    : cplanBulkJobs(field === 'initiative' ? 'initiative' : 'type', axs.map(ax => ({ ax, value: v })), (ax, a) => { if (field === 'initiative') ax.initiative = a.initiative || ''; else ax.rawAssetType = a.type || v; });
   if (!jobs.length) { showToast('Nothing to change — they already have that value', 'success'); return cplanPaint(name); }
   await cplanWrites(name, field === 'initiative' ? (v ? 'Initiative → ' + v : 'Out of initiative') : field === 'status' ? 'Status → ' + v : 'Asset type → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'));
 }
@@ -4873,7 +4880,7 @@ async function cplanInitRemove(name, i) {
   const S = cpS(name), T = S.t, v = cplanInitNames(T)[i]; if (v == null) return; const nm = s => String(s || '').trim().toLowerCase();
   const assets = (CPLAN_TREE || []).filter(x => x.kind === 'asset' && nm(x.initiative) === nm(v)), plan = T.rows.filter(r => !cplanAssetOf(S, r) && nm(r.cells.init) === nm(v));
   if (!confirm(`Remove the initiative “${v}”?\n\n${assets.length} asset${assets.length === 1 ? '' : 's'} come out of it (each written to its Notion record, one at a time, logged with the old value; it stops at the first failure) and ${plan.length} plan row${plan.length === 1 ? '' : 's'} have it cleared. Then the name is removed from the list.`)) return;
-  const jobs = assets.map(ax => ({ go: () => call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'initiative', value: '' }), ok: () => { ax.initiative = ''; } }));
+  const jobs = cplanBulkJobs('initiative', assets.map(ax => ({ ax, value: '' })), ax => { ax.initiative = ''; });
   await cplanWrites(name, 'Remove “' + v + '”', jobs, async n => {   // the name goes only once every asset is out of it
     if (plan.length) { plan.forEach(r => cplanEdit(name, r.id, 'init', '')); clearTimeout(S.timer); await cplanSave(name); }
     const r = await call('initiativeNames', { op: 'remove', name: v }).catch(e => ({ error: e.message }));
@@ -4892,7 +4899,7 @@ async function cplanInitCarry(name) {
   const txt = Object.entries(by).map(([v, a]) => `${v} — ${a.length} asset${a.length === 1 ? '' : 's'}: ${a.slice(0, 4).join(', ')}${a.length > 4 ? ', …' : ''}`).join('\n');
   if (!confirm(`Write the sheet's Initiative onto ${L.length} asset${L.length === 1 ? '' : 's'}?\n\n${txt}\n\nOnly assets with no Initiative yet. One at a time, each logged with the old value; it stops at the first failure.`)) return;
   for (const v of Object.keys(by)) if (!await cplanInitAdd(name, v, true)) return;
-  const jobs = L.map(x => ({ go: () => call('cplanAssetEdit', { assetId: hdNid(x.ax.assetId), field: 'initiative', value: x.v }), ok: r => { x.ax.initiative = (r.after && r.after.initiative) || x.v; } }));
+  const jobs = cplanBulkJobs('initiative', L.map(x => ({ ax: x.ax, value: x.v })), (ax, a) => { ax.initiative = a.initiative || ''; });
   await cplanWrites(name, 'Carry over', jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} carry their Initiative now`, 'success'));
 }
 function cplanAssetsReload(name) { CPLAN_TREE = null; CPLAN_AIDX = null; _devTblLast = null; const S = cpS(name); S.traceAsked = new Set(); cplanTreeLoad(name); cplanPaint(name); }
@@ -5182,7 +5189,7 @@ function cplanPaint(name = 'content-plan-assets') {
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length + (pubC0 ? (S.vrows || []).filter(r => /^archived$/i.test(r.cells[pubC0] || '')).length : 0), nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<style>.cp-tr:hover > td { background: rgba(96,165,250,.16) !important; }</style><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       ${S.only ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #c084fc;border-radius:6px;background:rgba(192,132,252,.10);">Showing ${rows.length} of the ${S.only.ids.size} in <b>${esc(S.only.label)}</b><button style="${SB}" title="Show every row again" onclick="cpS(${q}).only=null;cplanPaint(${q})">✕</button></span>` : ''}
-      ${S.resume ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,.10);">⏸ ${esc(S.resume.label)} — ${S.resume.base} of ${S.resume.total} done${S.resume.rate ? ' (Notion rate limit)' : ''}<button style="${SB}border-color:#4ade80;color:#4ade80;" title="Carry on from where it stopped" onclick="cplanResume(${q})">▶ Continue (${S.resume.jobs.length} left)</button><button style="${SB}" title="Drop the rest of this run" onclick="cpS(${q}).resume=null;cplanPaint(${q})">✕</button></span>` : ''}
+      ${S.resume ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,.10);">⏸ ${esc(S.resume.label)} — ${S.resume.base} of ${S.resume.total} done${S.resume.rate ? ' (Notion rate limit)' : ''}<button style="${SB}border-color:#4ade80;color:#4ade80;" title="Carry on from where it stopped" onclick="cplanResume(${q})">▶ Continue (${S.resume.left || S.resume.jobs.length} left)</button><button style="${SB}" title="Drop the rest of this run" onclick="cpS(${q}).resume=null;cplanPaint(${q})">✕</button></span>` : ''}
       ${name === HUBPLAN_TABLE && IDX ? (() => { const n = cplanInitCarryRows(name).length; return n ? `<button style="${B}border-color:#c084fc;" title="Saved rows that hold an Initiative their asset doesn't carry yet — review the list, then write it onto the assets" onclick="cplanInitCarry(${q})">⇪ Carry over Initiatives (${n})</button>` : ''; })() : ''}
       <button style="${B}" onclick="cplanAddRow(${q})" title="${name === HUBPLAN_TABLE ? 'A plan row — an asset that is not built yet (⚒ creates it)' : 'Add a row'}">＋ Add row</button>
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="Read the asset records again (new, changed or removed assets)" onclick="cplanAssetsReload(${q})">↻ Assets</button><button style="${B}" title="Plan rows whose Hub, Title and Asset type match exactly one unlinked asset — review the list, then link them" onclick="cplanMatch(${q})">🔗 Match plan rows…</button><button style="${B}" title="Records removed here — restore them" onclick="cplanRemovedOpen(${q})">🗑 Removed</button>
