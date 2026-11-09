@@ -5092,7 +5092,7 @@ function cplanPaint(name = 'content-plan-assets') {
   if (name === HUBPLAN_TABLE) cplanSync(name);
   const pubC0 = name === HUBPLAN_TABLE ? cplanColRe(T, /^published$/i) || 'published' : '';
   let rows = T.rows.concat(S.vrows || []).filter(r => S.arch || (!/^archived$/i.test(r.cells.status || '') && !(pubC0 && /^archived$/i.test(r.cells[pubC0] || '') && cplanAssetOf(S, r))));
-  if (S.only && name === HUBPLAN_TABLE) { const ai = cplanTraceIds(T).ai; rows = rows.filter(r => ai && S.only.ids.has(kwNid(String(r.cells[ai] || '').trim()))); }
+  if (S.only && name === HUBPLAN_TABLE) { const ai = cplanTraceIds(T).ai; rows = rows.filter(r => (S.only.rowIds && S.only.rowIds.has(r.id)) || (ai && S.only.ids.has(kwNid(String(r.cells[ai] || '').trim()))));  }
   // stable multi-level sort; heading levels first (in their order) so each heading's rows sit together, then the rest
   const order = [...HL, ...SL.filter(s => !HL.includes(s) && s.col !== '__rows')];
   if (order.length) rows = rows.map((r, i) => [r, i]).sort((x, y) => { for (const s of order) { const a = cv(x[0], s.col), b = cv(y[0], s.col);
@@ -5188,7 +5188,7 @@ function cplanPaint(name = 'content-plan-assets') {
   S._shown = rows.map(r => r.id); const nShownSel = rows.filter(r => SEL.has(r.id)).length, nAsset = IDX ? rows.filter(r => AX(r)).length : 0;
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length + (pubC0 ? (S.vrows || []).filter(r => /^archived$/i.test(r.cells[pubC0] || '')).length : 0), nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<style>.cp-tr:hover > td { background: rgba(96,165,250,.16) !important; }</style><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
-      ${S.only ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #c084fc;border-radius:6px;background:rgba(192,132,252,.10);">Showing ${rows.length} of the ${S.only.ids.size} in <b>${esc(S.only.label)}</b><button style="${SB}" title="Show every row again" onclick="cpS(${q}).only=null;cplanPaint(${q})">✕</button></span>` : ''}
+      ${S.only ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #c084fc;border-radius:6px;background:rgba(192,132,252,.10);">Showing ${rows.length} of the ${S.only.ids.size + (S.only.rowIds ? S.only.rowIds.size : 0)} in <b>${esc(S.only.label)}</b><button style="${SB}" title="Show every row again" onclick="cpS(${q}).only=null;cplanPaint(${q})">✕</button></span>` : ''}
       ${S.resume ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,.10);">⏸ ${esc(S.resume.label)} — ${S.resume.base} of ${S.resume.total} done${S.resume.rate ? ' (Notion rate limit)' : ''}<button style="${SB}border-color:#4ade80;color:#4ade80;" title="Carry on from where it stopped" onclick="cplanResume(${q})">▶ Continue (${S.resume.left || S.resume.jobs.length} left)</button><button style="${SB}" title="Drop the rest of this run" onclick="cpS(${q}).resume=null;cplanPaint(${q})">✕</button></span>` : ''}
       ${name === HUBPLAN_TABLE && IDX ? (() => { const n = cplanInitCarryRows(name).length; return n ? `<button style="${B}border-color:#c084fc;" title="Saved rows that hold an Initiative their asset doesn't carry yet — review the list, then write it onto the assets" onclick="cplanInitCarry(${q})">⇪ Carry over Initiatives (${n})</button>` : ''; })() : ''}
       <button style="${B}" onclick="cplanAddRow(${q})" title="${name === HUBPLAN_TABLE ? 'A plan row — an asset that is not built yet (⚒ creates it)' : 'Add a row'}">＋ Add row</button>
@@ -7043,7 +7043,7 @@ function hdPlan(h) {
   const t = HD.plan; if (!t) return [];
   const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i), cc = cplanCronCol(t);
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim())) || !cplanCronN(c, cc)) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { init: String(c.init || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
+    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
   const n = hubCheckNorm;
@@ -7056,21 +7056,21 @@ function hdPlace(plan, topics) {   // most specific match wins: title, then prod
 }
 const hdAssetsOf = n => n.assets ? n.assets : n.titles ? n.titles.flatMap(hdAssetsOf) : n.products ? n.products.flatMap(hdAssetsOf) : [];
 function hdCount(assets, planRows) {   // per asset type → { label, goal, dev, pub }, plus the total
-  const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [] }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
-  planRows.forEach(r => { if (!m.has(r.k)) m.set(r.k, { label: r.label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], fromPlan: true }); m.get(r.k).goal += r.n || 0; });
+  const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], goalIds: [] }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
+  planRows.forEach(r => { if (!m.has(r.k)) m.set(r.k, { label: r.label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], goalIds: [], fromPlan: true }); const o = m.get(r.k); o.goal += r.n || 0; if (r.rowId) o.goalIds.push(r.rowId); });
   assets.forEach(a => { const t = String(a.rawAssetType || a.assetType || '').trim() || '(no type)', s = hdSt(a).trim(), o = get(hubCheckNorm(t), t);
     if (/^(development|review)$/i.test(s)) { o.dev++; o.devIds.push(a.assetId); } else if (/^(publish|published)$/i.test(s)) { o.pub++; o.pubIds.push(a.assetId); } });
   const types = [...m.values()].filter(o => o.goal || o.dev || o.pub).sort((a, b) => b.goal - a.goal || (b.dev + b.pub) - (a.dev + a.pub) || a.label.localeCompare(b.label));
-  return { types, goal: types.reduce((s, o) => s + o.goal, 0), dev: types.reduce((s, o) => s + o.dev, 0), pub: types.reduce((s, o) => s + o.pub, 0), devIds: types.flatMap(o => o.devIds), pubIds: types.flatMap(o => o.pubIds) };
+  return { types, goal: types.reduce((s, o) => s + o.goal, 0), dev: types.reduce((s, o) => s + o.dev, 0), pub: types.reduce((s, o) => s + o.pub, 0), devIds: types.flatMap(o => o.devIds), pubIds: types.flatMap(o => o.pubIds), goalIds: types.flatMap(o => o.goalIds || []) };
 }
 // a Dev / Pub count opens CP AA filtered to exactly the assets it counted (operator 2026-11-05; CP AA instead of All Output 2 since 2026-11-09)
-function hdLink(v, ids, label, col) {
-  if (!v || !ids || !ids.length) return `<span style="color:${col};">${v}</span>`;
-  const n = (HD._sets = HD._sets || []).push({ label, ids }) - 1;
-  return `<a href="#" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" title="Open these ${ids.length} in CP AA" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${v}</a>`;
+function hdLink(v, ids, label, col, rowIds) {   // ids = asset ids, rowIds = CP AA plan (goal) row ids
+  const k = (ids || []).length + (rowIds || []).length; if (!v || !k) return `<span style="color:${col};">${v}</span>`;
+  const n = (HD._sets = HD._sets || []).push({ label, ids: ids || [], rowIds: rowIds || [] }) - 1;
+  return `<a href="#" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" title="Open ${rowIds && rowIds.length ? 'these ' + rowIds.length + ' goal row' + (rowIds.length === 1 ? '' : 's') : 'these ' + k} in CP AA" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${v}</a>`;
 }
 function hdTabClick(name) { const t = [...document.querySelectorAll('.tab')].find(x => (x.getAttribute('onclick') || '').includes("switchTab('" + name + "')")); if (t) t.click(); }
-function hdCp(n) { const s = (HD._sets || [])[n]; if (s) cplanOpenSet(s.label, s.ids); }
+function hdCp(n) { const s = (HD._sets || [])[n]; if (s) cplanOpenSet(s.label, s.ids, s.rowIds); }
 function hdAo2(n) {
   const s = (HD._sets || [])[n]; if (!s) return;
   AO2_DRILL = { label: s.label, ids: new Set(s.ids.map(hdNid)) };
@@ -7079,16 +7079,21 @@ function hdAo2(n) {
 }
 const hdGoalCol = (goal, pub) => !goal ? 'var(--text3)' : pub >= goal ? '#4ade80' : '#facc15';
 function hdChips(c, noGoal, label) {   // compact Goal · Dev · Pub, fixed widths so rows line up on a phone
-  const cell = (lab, v, col, tip) => `<span title="${tip}" style="display:inline-block;min-width:44px;text-align:right;font-size:11.5px;font-variant-numeric:tabular-nums;color:${col};"><span style="font-size:9.5px;color:var(--text3);">${lab}</span> ${v}</span>`;
-  return `<span style="display:inline-flex;gap:4px;flex:0 0 auto;margin-left:auto;">${cell('G', noGoal ? '—' : c.goal, noGoal ? 'var(--text3)' : hdGoalCol(c.goal, c.pub), 'Goal — Content Plan — All Assets')}${cell('D', hdLink(c.dev, c.devIds, (label || '') + ' · Dev', '#ff7a00'), '#ff7a00', 'Development + Review — click to open them in CP AA')}${cell('P', hdLink(c.pub, c.pubIds, (label || '') + ' · Pub', '#4ade80'), '#4ade80', 'Publish + Published (meets the goal) — click to open them in CP AA')}</span>`;
+  // the whole chip opens CP AA on what it counts (operator 2026-11-09: "I would rather they open the rows in cp aa. including goal count");
+  // a click on a chip never opens the row below it
+  const cell = (lab, v, col, tip, ids, rowIds, setLabel) => { const k = (ids || []).length + (rowIds || []).length, st = `display:inline-block;min-width:44px;text-align:right;font-size:11.5px;font-variant-numeric:tabular-nums;color:${col};`;
+    if (!v || !k) return `<span title="${tip}" onclick="event.stopPropagation()" style="${st}cursor:default;"><span style="font-size:9.5px;color:var(--text3);">${lab}</span> ${v}</span>`;
+    const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids: ids || [], rowIds: rowIds || [] }) - 1;
+    return `<a href="#" title="${tip}" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="${st}text-decoration:none;"><span style="font-size:9.5px;color:var(--text3);">${lab}</span> <span style="text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; };
+  return `<span style="display:inline-flex;gap:4px;flex:0 0 auto;margin-left:auto;">${cell('G', noGoal ? '—' : c.goal, noGoal ? 'var(--text3)' : hdGoalCol(c.goal, c.pub), 'Goal — click to open its goal rows in CP AA', [], noGoal ? [] : c.goalIds, (label || '') + ' · Goal')}${cell('D', c.dev, '#ff7a00', 'Development + Review — click to open them in CP AA', c.devIds, [], (label || '') + ' · Dev')}${cell('P', c.pub, '#4ade80', 'Publish + Published (meets the goal) — click to open them in CP AA', c.pubIds, [], (label || '') + ' · Pub')}</span>`;
 }
 function hdTypeTable(c, noGoal, label) {   // the per-asset-type breakdown; one narrow table, wraps the type name instead of scrolling
   if (!c.types.length) return '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">No goals or assets yet</div>';
   const th = 'padding:5px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;', td = 'padding:5px 8px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums;';
-  const row = (o, b) => `<tr${b ? ' style="font-weight:700;"' : ''}><td style="${td}overflow-wrap:anywhere;">${esc(o.label)}</td><td style="${td}text-align:right;color:${noGoal ? 'var(--text3)' : hdGoalCol(o.goal, o.pub)};">${noGoal ? '—' : o.goal}</td><td style="${td}text-align:right;color:#ff7a00;">${hdLink(o.dev, o.devIds, label + (b ? '' : ' · ' + o.label) + ' · Dev', '#ff7a00')}</td><td style="${td}text-align:right;color:#4ade80;">${hdLink(o.pub, o.pubIds, label + (b ? '' : ' · ' + o.label) + ' · Pub', '#4ade80')}</td></tr>`;
+  const row = (o, b) => `<tr${b ? ' style="font-weight:700;"' : ''}><td style="${td}overflow-wrap:anywhere;">${esc(o.label)}</td><td style="${td}text-align:right;color:${noGoal ? 'var(--text3)' : hdGoalCol(o.goal, o.pub)};">${noGoal ? '—' : hdLink(o.goal, [], label + (b ? '' : ' · ' + o.label) + ' · Goal', noGoal ? 'var(--text3)' : hdGoalCol(o.goal, o.pub), o.goalIds)}</td><td style="${td}text-align:right;color:#ff7a00;">${hdLink(o.dev, o.devIds, label + (b ? '' : ' · ' + o.label) + ' · Dev', '#ff7a00')}</td><td style="${td}text-align:right;color:#4ade80;">${hdLink(o.pub, o.pubIds, label + (b ? '' : ' · ' + o.label) + ' · Pub', '#4ade80')}</td></tr>`;
   return `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;"><colgroup><col><col style="width:52px"><col style="width:46px"><col style="width:46px"></colgroup>
     <thead><tr><th style="${th}text-align:left;">Asset type</th><th style="${th}text-align:right;">Goal</th><th style="${th}text-align:right;">Dev</th><th style="${th}text-align:right;">Pub</th></tr></thead>
-    <tbody>${c.types.map(o => row(o)).join('')}${c.types.length > 1 ? row({ label: 'Total', goal: c.goal, dev: c.dev, pub: c.pub, devIds: c.devIds, pubIds: c.pubIds }, true) : ''}</tbody></table>`;
+    <tbody>${c.types.map(o => row(o)).join('')}${c.types.length > 1 ? row({ label: 'Total', goal: c.goal, dev: c.dev, pub: c.pub, devIds: c.devIds, pubIds: c.pubIds, goalIds: c.goalIds }, true) : ''}</tbody></table>`;
 }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
@@ -19825,10 +19830,10 @@ async function cplanGoto(N) {   // Dev2 tab → Production → Content Plan — 
   return false;
 }
 // the hub dashboard's Dev / Pub counts (operator 2026-11-09: "the links will go to cp aa rows instead of all output 2") — CP AA shows only those assets
-async function cplanOpenSet(label, ids) {
+async function cplanOpenSet(label, ids, rowIds) {
   const N = HUBPLAN_TABLE, S = cpS(N); showToast('Opening ' + ids.length + ' asset' + (ids.length === 1 ? '' : 's') + ' in CP AA…', 'success');
   if (!await cplanGoto(N)) return showToast('The asset records did not load — try ↻ Assets in CP AA', 'error');
-  S.only = { label, ids: new Set(ids.map(hdNid)) }; cplanPaint(N); cplanGrpAll(N, 1);
+  S.only = { label, ids: new Set((ids || []).map(hdNid)), rowIds: new Set(rowIds || []) }; ids = [...(ids || []), ...(rowIds || [])]; cplanPaint(N); cplanGrpAll(N, 1);
   const el = document.getElementById('cplanBody' + cpId(N)); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   const shown = (S._shown || []).length; if (shown < ids.length) showToast(`${ids.length - shown} of ${ids.length} have no row in CP AA (Archived assets show with Show archived)`, 'error');
 }
