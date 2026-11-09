@@ -10197,7 +10197,8 @@ async function contentPlanAction(env, body, external) {
 // must match a real title in the row's hub, else the row is held). It counts no assets: the Cron numbers in the table are the only count,
 // created once per period; the goal stays on screen as the next run's amount. Off until the operator switches it on (KV cplan:cron:on); creates go
 // through the normal createAsset / writeTitlePillar actions (flow + hierarchy guards apply); a Notion rate limit stops it and switches it off.
-const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
+// CPC_START (operator 2026-11-09: "set the first cron run to next sunday") — an ISO time; while it is in the future the cron stays idle even when on.
+const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_START = "cplan:cron:start", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
 const cpcNorm = s => String(s || "").trim().toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
 function cpcPeriodKey(cadence, now = new Date()) {   // first day of the current period (UTC), as Content Hubs 2 counts periods
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -10333,6 +10334,7 @@ async function cpcSeriesBest(env, tid, rt, list, k) {
 async function cpcSave(env, S) { S.log = (S.log || []).slice(-150); await env.TRADES.put(CPC_STATE, JSON.stringify(S)); }
 async function contentPlanCronTick(env, invoke) {   // */4 cron: once a day queue the due rows, then work the queue (~200 s per tick)
   if ((await env.TRADES.get(CPC_ON)) !== "1") return { idle: true };
+  const startAt = await env.TRADES.get(CPC_START); if (startAt && Date.now() < Date.parse(startAt)) return { idle: true, waiting: startAt };   // first run not yet due
   if (await env.TRADES.get(CPC_LOCK)) return { busy: true };
   await env.TRADES.put(CPC_LOCK, "1", { expirationTtl: 600 });
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -10363,6 +10365,7 @@ async function contentPlanCronAction(env, body) {   // operator only: status · 
   const op = String(body.op || "status"), S = (await env.TRADES.get(CPC_STATE, "json")) || {};
   if (op === "on") { S.scanned = ""; delete S.stopped; await env.TRADES.put(CPC_STATE, JSON.stringify(S)); await env.TRADES.put(CPC_ON, "1"); }
   else if (op === "off") await env.TRADES.delete(CPC_ON);
+  else if (op === "start") { const v = String(body.start || "").trim(); if (v && isNaN(Date.parse(v))) return { error: "start must be a date and time" }; if (v) await env.TRADES.put(CPC_START, new Date(v).toISOString()); else await env.TRADES.delete(CPC_START); }
   else if (op === "preview") {
     const { t } = await cplanLoad(env), plan = await cpcPlan(env, t), types = await cpcTypeOptions(), rows = [];
     for (const P of plan) {
@@ -10371,8 +10374,8 @@ async function contentPlanCronAction(env, body) {   // operator only: status · 
       try { rows.push(await cpcRow(env, null, P, { rows: JSON.parse(JSON.stringify(S.rows || {})) }, types, true)); } catch (e) { rows.push({ rowId: P.rowId, hub: P.hub, atype: P.atype, title: P.title, n: P.n, held: e.message }); }
     }
     return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", rows };
-  } else if (op !== "status") return { error: "op must be status | on | off | preview" };
-  return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
+  } else if (op !== "status") return { error: "op must be status | on | off | start | preview" };
+  return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", start: (await env.TRADES.get(CPC_START)) || "", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
 }
 const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
 async function verifyToken(token, secret) {

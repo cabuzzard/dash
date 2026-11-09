@@ -5279,9 +5279,9 @@ async function cpcOpen() {
     el.onclick = e => { if (e.target === el) el.remove(); }; document.body.appendChild(el); }
   cpcPaint(); await cpcCall('status');
 }
-async function cpcCall(op) {
+async function cpcCall(op, extra) {
   CPC.busy = op === 'preview' ? 'Previewing (reads Notion, writes nothing)…' : op === 'status' ? '' : 'Saving…'; cpcPaint();
-  try { const r = await call('contentPlanCron', { op }); if (r.error) throw new Error(r.error);
+  try { const r = await call('contentPlanCron', { op, ...(extra || {}) }); if (r.error) throw new Error(r.error);
     if (op === 'preview') CPC.pv = r; else CPC.st = r; CPC.on = !!r.on; CPC.busy = ''; if (op !== 'preview' && op !== 'status') await cpcCall('status'); }
   catch (e) { CPC.busy = '✗ ' + e.message; }
   cpcPaint(); if (typeof cplanPaint === 'function') cplanPaint(HUBPLAN_TABLE);
@@ -5300,6 +5300,10 @@ function cpcPaint() {
       <span style="font-size:12px;font-weight:700;color:${CPC.on ? '#4ade80' : 'var(--text3)'};">${CPC.on === null ? '…' : CPC.on ? 'ON' : 'OFF'}</span>
       <button style="${B}" onclick="cpcCall('${CPC.on ? 'off' : 'on'}')">${CPC.on ? '⏸ Switch off' : '▶ Switch on'}</button>
       <button style="${B}" onclick="cpcCall('preview')">👁 Preview next run</button>
+      <span style="font-size:12px;color:var(--text2);" title="The cron does nothing before this moment, even when switched on (your local time; blank = no wait)">First run
+        <input type="datetime-local" id="cpcStart" value="${S.start ? (d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16))(new Date(S.start)) : ''}" style="font-size:12px;padding:2px 5px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:5px;">
+        <button style="${B}" onclick="const v=document.getElementById('cpcStart').value;cpcCall('start',{start:v?new Date(v).toISOString():''})">Save</button>
+        ${S.start && Date.parse(S.start) > Date.now() ? '<b style="color:#facc15;">waits until ' + esc(new Date(S.start).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + '</b>' : ''}</span>
       <span style="font-size:12px;color:var(--text2);">${esc(CPC.busy)}</span>
       <button style="${B}margin-left:auto;" onclick="document.getElementById('cpcModal').remove()">✕</button></div>
     <div style="font-size:11.5px;color:var(--text2);margin-bottom:10px;line-height:1.5;">Reads only the <b>Cron</b> column. Each row with Cron = N gets N <b>Development</b> assets of its Asset type once per period, after its title's pillar is written if the title has none. The period is the asset type's <b>Cadence in Current Methods</b> (Weekly weeks run Sat → Fri); types with no period there are never run. It counts no assets — the Cron numbers in the table are the count; the goal stays on screen as the next run's amount. The row's Title must already exist in its hub — the cron never makes or picks a title. It never runs the writer and never changes a status. Checked every 4 min; rows are queued once a day.${S.scanned ? ' Last queued: ' + esc(S.scanned) + (S.queue && S.queue.length ? ' · ' + S.queue.length + ' waiting' : '') + '.' : ''}</div>
