@@ -9989,7 +9989,7 @@ async function contentPlanAction(env, body, external) {
     const t = t0, goals = {}, skipped = [];
     for (const r of t.rows || []) {
       const st = cplanCell(t, r, "status"), kind = cplanCell(t, r, "Kind"), hub = cplanCell(t, r, "hub"), atype = cplanCell(t, r, "atype");
-      if (/^archived$/i.test(st) || !atype) continue;
+      if (/^archived$/i.test(st) || !atype || cplanCell(t, r, "Asset id")) continue;   // a row linked to its asset is built — not a goal
       if (kind === "Standalone") { skipped.push({ rowId: r.id, hub, atype, init: cplanCell(t, r, "init"), ownPeriodicity: cplanCell(t, r, "Own periodicity") }); continue; }
       if ((body.hub && body.hub !== hub) || (body.atype && body.atype !== atype)) continue;
       const n = Number(cplanCell(t, r, "Cron")); if (!(isFinite(n) && n > 0)) continue;   // goal = the sum of the Cron column (operator 2026-11-05)
@@ -10139,7 +10139,8 @@ async function cpcPlan(env, t) {   // every row with a Cron number → runnable 
     if (!(isFinite(n) && n >= 1)) continue;
     const P = { rowId: r.id, hub: g("hub"), atype: g("atype"), topic: g("Topic"), product: g("Product"), title: g("Title"), detail: g("detail"), n: Math.floor(n) };
     const c = cad.byName[cpcNorm(P.atype)] || cad.byAsset[cpcNorm(P.atype)] || "";
-    if (/^series$/i.test(P.atype)) P.skip = "a Series row never runs — the cron makes assets through the series from the rows of the types it feeds";
+    if (g("Asset id")) P.skip = "built — the row is linked to its asset (CP AA: an asset row is never a goal)";
+    else if (/^series$/i.test(P.atype)) P.skip = "a Series row never runs — the cron makes assets through the series from the rows of the types it feeds";
     else if (/^archived$/i.test(g("status"))) P.skip = "Archived";
     else if (/^standalone$/i.test(g("Kind"))) P.skip = "Standalone — outside the cron";
     else if (!c) P.skip = `no period — "${P.atype}" has no Cadence in Current Methods`;
@@ -19309,6 +19310,86 @@ export default {
           if (r.status === 429) { await new Promise(res => setTimeout(res, 1000 * (tries + 1))); continue; }
           const d = await r.json(); out[id] = r.ok ? brief(d) : { id, error: d.message || "not found" }; break; } } }));
       return json({ ok: true, assets: out, keys: ASSET_TYPE_KEYS });
+    }
+    // CP AA is all assets (operator 2026-11-08): the tab lists every asset at Planning / Development / Publish / Published, plus plan rows
+    // (rows with no asset yet). cplanCreateAsset {rowId} — ⚒ Create asset: the plan row's hub, Asset type, Title (and Product) become ONE
+    // Development asset under that title (under the title's Series parent when it has one, as the cron does), named by the row's Asset
+    // name; then the row is linked to it (Asset id). Never creates a title, never a new Asset Type option, never writes content or status.
+    // cplanRemoveAsset {assetId, rowId?} — 🗑 Remove record: the asset goes to Notion's trash (restorable 30 days) and the row is deleted
+    // (kept in the change log). Published assets are refused. Every removal is logged first (KV cplan:removed:log, with the row's cells),
+    // and cplanRestoreAsset {assetId} takes it back out of the trash and puts the row back.
+    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+      const RLOG = "cplan:removed:log", getPage = async id => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
+      try {
+        if (body.action === "cplanRemovedLog") return json({ ok: true, log: (await env.TRADES.get(RLOG, "json")) || [] });
+        if (body.action === "cplanCreateAsset") {
+          const { t } = await cplanLoad(env), row = t && (t.rows || []).find(r => r.id === String(body.rowId || ""));
+          if (!row) return json({ error: "no CP AA row " + body.rowId }, 404);
+          const g = k => cplanCell(t, row, k);
+          if (g("Asset id")) return json({ error: "This row is already linked to an asset (" + g("Asset id") + ")" }, 409);
+          const hub = g("hub"), sl = cpcNorm(hub).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+          const H = HUB_SITES.find(h => h.campaignId && (cpcNorm(h.name) === cpcNorm(hub) || h.slug === sl || cpcNorm(h.campaign || "") === cpcNorm(hub)));
+          if (!H) return json({ error: `Hub "${hub || "(blank)"}" is not a known hub — pick the row's Hub first` }, 400);
+          const types = await cpcTypeOptions(), type = types.find(x => cpcNorm(x) === cpcNorm(g("atype")));
+          if (!type) return json({ error: `Asset type "${g("atype") || "(blank)"}" is not an Asset Type option in Notion — pick one from the row's list (a new type is never made here)` }, 400);
+          const title = g("Title"), product = g("Product");
+          if (!title) return json({ error: "The row has no Title — pick the title the asset belongs to (a title is never made here)" }, 400);
+          let cands = (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Title", title: { equals: title } } })).filter(x => !x.archived && !x.in_trash && ivRid(x.properties, "Campaign") === hubAssetId(H.campaignId));
+          if (cands.length > 1 && product) { const named = [];
+            for (const x of cands) { const pid = ivRid(x.properties, "product"), pg = pid ? await ivPage(pid).catch(() => null) : null; if (pg && cpcNorm(hubRichText(pg.properties?.Name?.title)) === cpcNorm(product)) named.push(x); }
+            cands = named; }
+          if (!cands.length) return json({ error: `No title "${title}" in ${H.name}${product ? " under " + product : ""} — make or pick the title first` }, 400);
+          if (cands.length > 1) return json({ error: `${cands.length} titles are named "${title}" in ${H.name} — set the row's Product to say which` }, 400);
+          const T = cands[0], tid = hubAssetId(T.id), titleName = hubRichText(T.properties?.Title?.title) || title, productId = ivRid(T.properties, "product") || undefined;
+          const sp = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Pillar Type", select: { equals: "Series" } }, { property: "Content Strategy", relation: { contains: ivDash(tid) } }] } })).find(x => !x.archived && !x.in_trash);
+          const assetTitle = (g("Asset name") || `${titleName} — ${type}`).slice(0, 300);
+          const a = await invoke({ action: "createAsset", titleId: tid, campId: hubAssetId(H.campaignId), productId, parentAssetId: sp && !/^series$/i.test(type) ? hubAssetId(sp.id) : undefined, assetTitle, assetType: type });
+          if (!a || a.error || !a.id) return json({ error: "Not created: " + ((a && a.error) || "no response") }, 502);
+          const id = hubAssetId(a.id), back = await getPage(id).catch(() => null);
+          const link = await contentPlanAction(env, { action: "updateContentPlan", edits: [{ op: "edit", rowId: row.id, cells: { "Asset id": id, ...(g("Asset name") ? {} : { "Asset name": assetTitle }) } }] }, false);
+          const entry = { at: new Date().toISOString(), rowId: row.id, assetId: id, title: assetTitle, type, hub: H.name, titleId: tid, parentAssetId: sp ? hubAssetId(sp.id) : "", linked: !!(link.out && link.out.ok) };
+          try { const L = (await env.TRADES.get("cplan:created:log", "json")) || []; L.unshift(entry); await env.TRADES.put("cplan:created:log", JSON.stringify(L.slice(0, 300))); } catch (e) {}
+          return json({ ok: true, ...entry, status: back?.properties?.["Asset Status"]?.select?.name || "", verified: !!back && !back.archived && !back.in_trash,
+            ...(entry.linked ? {} : { warning: "The asset was made but the row could not be linked: " + ((link.out && (link.out.error || (link.out.failed || []).map(f => f.reason).join(" · "))) || "no response") + " — link it with 🔗" }) });
+        }
+        if (body.action === "cplanRemoveAsset") {
+          const id = hubAssetId(String(body.assetId || "")); if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
+          const pg = await getPage(id), pp = pg.properties || {}, status = pp["Asset Status"]?.select?.name || "";
+          if (status === "Published" && !(pg.archived || pg.in_trash)) return json({ error: "A Published asset is never removed here — take it off the hub / unpublish it first", reason: "published" }, 409);
+          let row = null; if (body.rowId) { const { t } = await cplanLoad(env); row = t && (t.rows || []).find(r => r.id === String(body.rowId)) || null;
+            if (row && hubAssetId(cplanCell(t, row, "Asset id")) !== id) return json({ error: "That row is linked to a different asset" }, 409); }
+          const kids = (await notionQuery(ASSETS_DB, { filter: { property: "Parent Asset", relation: { contains: ivDash(id) } } }).catch(() => [])).filter(x => !x.archived && !x.in_trash)
+            .map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.["Asset Title"]?.title), type: x.properties?.["Asset Type"]?.select?.name || "" }));
+          const entry = { at: new Date().toISOString(), assetId: id, title: hubRichText(pp["Asset Title"]?.title), type: pp["Asset Type"]?.select?.name || "", status,
+            titleId: ivRid(pp, "Content Strategy") || "", campaignId: ivRid(pp, "Campaign") || "", children: kids, rowId: row ? row.id : "", row: row ? { ...row.cells } : null, after: "" };
+          if (row) { const { t } = await cplanLoad(env), i = t.rows.findIndex(r => r.id === row.id); entry.after = i > 0 ? t.rows[i - 1].id : ""; }
+          const L = (await env.TRADES.get(RLOG, "json")) || []; L.unshift(entry); await env.TRADES.put(RLOG, JSON.stringify(L.slice(0, 300)));   // logged before anything changes
+          if (!(pg.archived || pg.in_trash)) {
+            const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) });
+            if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ error: "Not removed: " + (d.message || "Notion error " + r.status) }, 502); }
+          }
+          const back = await getPage(id).catch(() => null), trashed = !!(back && (back.archived || back.in_trash));
+          if (!trashed) return json({ error: "Notion did not confirm the asset is in the trash — nothing else was changed" }, 502);
+          let rowDeleted = false;
+          if (row) { const d = await contentPlanAction(env, { action: "updateContentPlan", edits: [{ op: "delete", rowId: row.id }] }, false); rowDeleted = !!(d.out && d.out.ok); }
+          return json({ ok: true, assetId: id, trashed, rowDeleted, children: kids });
+        }
+        // cplanRestoreAsset {assetId}: out of the trash, and the row back where it was (same id and cells)
+        const id = hubAssetId(String(body.assetId || "")), L = (await env.TRADES.get(RLOG, "json")) || [], e = L.find(x => x.assetId === id && !x.restoredAt);
+        if (!e) return json({ error: "No removal of that asset in the log" }, 404);
+        const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: false }) });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ error: "Not restored: " + (d.message || "Notion error " + r.status) }, 502); }
+        let rowBack = false;
+        if (e.row && e.rowId) { const { t } = await cplanLoad(env);
+          if (t.rows.some(x => x.id === e.rowId)) rowBack = true;
+          else { const cells = Object.fromEntries(Object.entries(e.row).filter(([k]) => !CPLAN_STAMPS.includes(k)));
+            const d = await contentPlanAction(env, { action: "updateContentPlan", edits: [{ op: "add", rowId: e.rowId, cells, clear: true, ...(e.after ? { after: e.after } : {}) }] }, false); rowBack = !!(d.out && d.out.ok); } }
+        e.restoredAt = new Date().toISOString(); await env.TRADES.put(RLOG, JSON.stringify(L));
+        return json({ ok: true, assetId: id, restored: true, rowBack });
+      } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
     }
     if (["updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "saveContentPlanColumns", "backfillContentPlanDates", "renameContentPlanType"].includes(body.action)) { const r = await contentPlanAction(env, body, externalCaller); return json(r.out, r.status); }
     // ── Cleanup watcher hook (Oct 20, 2026): log calls to candidate dead actions. Never throws.

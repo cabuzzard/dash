@@ -4711,11 +4711,131 @@ function cplanTraceCols(T) {   // → true when the two columns had to be added 
   if (!has(/^asset id$/i)) add.push({ id: 'aid', name: 'Asset id', after: add.length ? 'aname' : ((T.columns.find(c => /^asset name$/i.test(String(c.name || '').trim())) || {}).id || tc) });
   T.columns.splice(at >= 0 ? at + 1 : T.columns.length, 0, ...add); return true;
 }
+// ── CP AA is all assets (operator 2026-11-08: "put all assets of planning, development, publish and published status — fill the existing
+// columns with actual asset records … add row … unbuilt planning assets … a create asset button … a remove record button").
+// Every asset at Planning / Development / Publish / Published is a row, read from the asset records (the All Output load the pick lists
+// already use — no extra Notion reads). A row linked to an asset (Asset id) shows that asset's own hub, Asset type, topic, product, title,
+// name, status and dates — read only here, ✍ opens the asset. An asset no row is linked to gets a row of its own, held in memory until you
+// type in one of its plan cells (week, day, note …), when it is saved as a linked row. Plan rows have no asset yet: ＋ Add row makes one,
+// ⚒ turns it into ONE Development asset (cplanCreateAsset). 🗑 removes an asset row: the asset goes to Notion's trash and the row is deleted
+// (Published refused; 🗑 Removed restores). A row linked to an asset is built — it never adds to the Cron goal.
+let CPLAN_AIDX = null, CPLAN_AIDX_SRC = null;
+function cplanAssetIdx() {   // assetId → its All Output row, for the four statuses; null until the load is in
+  if (!CPLAN_TREE) return null; if (CPLAN_AIDX && CPLAN_AIDX_SRC === CPLAN_TREE) return CPLAN_AIDX;
+  const m = new Map(); for (const x of CPLAN_TREE) { if (x.kind !== 'asset' || !x.assetId || !CPLAN_PUB.includes(x.assetStatus)) continue; const id = hdNid(x.assetId); if (!m.has(id)) m.set(id, x); }
+  CPLAN_AIDX = m; CPLAN_AIDX_SRC = CPLAN_TREE; return m;
+}
+function cplanColRe(T, re) { return (((T && T.columns) || []).find(c => re.test(String(c.name || '').trim())) || {}).id; }
+function cplanDerivedCols(T) {   // the columns an asset row takes from its asset
+  const I = cplanTraceIds(T); return new Set(['hub', 'atype', cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
+}
+function cplanAssetCells(T, x, hubLabel) {
+  const I = cplanTraceIds(T), out = {}, put = (id, v) => { if (id) out[id] = String(v || ''); };
+  put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
+  put(cplanColRe(T, /^product$/i), x.product && x.product !== 'No Product' ? x.product : ''); put(cplanColRe(T, /^title$/i), x.title || '');
+  put(I.an, x.assetName || ''); put(I.ai, hdNid(x.assetId)); put(cplanColRe(T, /^published$/i) || 'published', x.assetStatus || ''); put('created', x.dateCreated || ''); put('changed', x.dateEdited || '');
+  return out;
+}
+function cplanAssetOf(S, row) { const idx = cplanAssetIdx(), ai = S.t && cplanTraceIds(S.t).ai, id = ai && kwNid(String(row.cells[ai] || '').trim()); return idx && id && !(S.removed && S.removed.has(id)) ? idx.get(id) || null : null; }
+function cplanRowOf(S, id) { return (S.t && S.t.rows.find(r => r.id === id)) || (S.vrows || []).find(r => r.id === id) || null; }
+function cplanSync(name) {   // linked rows take their asset's cells; every unlinked asset gets an in-memory row
+  const S = cpS(name), T = S.t, idx = name === HUBPLAN_TABLE ? cplanAssetIdx() : null; S.vrows = S.vrows || []; if (!T || !idx) return;
+  const I = cplanTraceIds(T); if (!I.ai) return;
+  const bySlug = {}; T.rows.forEach(r => { const h = r.cells.hub && hubPlanHub(r.cells.hub); if (h && !bySlug[h.slug]) bySlug[h.slug] = String(r.cells.hub).trim(); });
+  const hubLabel = x => { const cids = [...(x.hubCids || []), x.campId].filter(Boolean).map(hdNid), h = HUB_SITES.find(z => z.campaignId && cids.includes(hdNid(z.campaignId)));
+    return h ? (bySlug[h.slug] || h.name) : (x.campaign && x.campaign !== '?' ? x.campaign : ''); };
+  const linked = new Set(), gone = S.removed || new Set();
+  T.rows.forEach(r => { const id = kwNid(String(r.cells[I.ai] || '').trim()); if (!id) return; linked.add(id); const x = idx.get(id); if (x && !gone.has(id)) Object.assign(r.cells, cplanAssetCells(T, x, hubLabel)); });
+  S.vrows = [...idx.values()].filter(x => !linked.has(hdNid(x.assetId)) && !gone.has(hdNid(x.assetId))).map(x => ({ id: 'a' + hdNid(x.assetId), virt: true, cells: cplanAssetCells(T, x, hubLabel) }));
+}
+function cplanPlanCopy(T, cells) {   // a copy is always a plan row: no asset link, no stamps
+  const I = cplanTraceIds(T), c = { ...cells }, had = I.ai && String(c[I.ai] || '').trim(); [I.ai, I.an, 'created', 'changed'].forEach(k => { if (k) delete c[k]; });
+  if (had) c[cplanColRe(T, /^published$/i) || 'published'] = 'Planning'; return c;
+}
+function cplanAssetsReload(name) { CPLAN_TREE = null; CPLAN_AIDX = null; _devTblLast = null; const S = cpS(name); S.traceAsked = new Set(); cplanTreeLoad(name); cplanPaint(name); }
+async function cplanCreate(name, rowId) {   // ⚒ Create asset
+  const S = cpS(name), T = S.t, row = T && T.rows.find(r => r.id === rowId); if (!row) return;
+  const I = cplanTraceIds(T), g = id => String((id && row.cells[id]) || '').trim(), title = g(cplanColRe(T, /^title$/i)), type = g('atype'), hub = g('hub');
+  if (!hub || !type || !title) return showToast('The row needs a Hub, an Asset type and a Title first', 'error');
+  const nm = g(I.an) || title + ' — ' + type;
+  if (!confirm(`Create a Development asset from this row?\n\n“${nm}”\n${type} · ${hub}\nTitle: ${title}\n\nIt is made under that title (under its Series parent when it has one) and this row becomes its asset row. No content is written and no status is changed.`)) return;
+  if (S.newRows.size || Object.keys(S.pend).length) { clearTimeout(S.timer); await cplanSave(name); if (S.newRows.has(rowId) || S.pend[rowId]) return showToast('This row did not save — try again', 'error'); }
+  showToast('Creating…', 'success');
+  const r = await call('cplanCreateAsset', { rowId }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Not created: ' + ((r && r.error) || 'no response'), 'error');
+  if (I.ai) row.cells[I.ai] = r.assetId; if (I.an && !g(I.an)) row.cells[I.an] = r.title;
+  showToast(r.warning ? '⚠ ' + r.warning : '✓ Created “' + r.title + '” — ' + (r.status || 'Development'), r.warning ? 'error' : 'success');
+  cplanAssetsReload(name);
+}
+async function cplanRemove(name, rowId) {   // 🗑 Remove record
+  const S = cpS(name), T = S.t, row = cplanRowOf(S, rowId); if (!row || !T) return;
+  const I = cplanTraceIds(T), x = cplanAssetOf(S, row); if (!x) return; const id = hdNid(x.assetId);
+  if (x.assetStatus === 'Published') return showToast('A Published asset is never removed here — take it off the hub / unpublish it first', 'error');
+  const kids = (CPLAN_TREE || []).filter(k => k.kind === 'asset' && k.parentAssetId && hdNid(k.parentAssetId) === id);
+  if (!confirm(`Remove this record?\n\n“${x.assetName || '(untitled)'}”\n${x.rawAssetType || '(no type)'} · ${x.assetStatus}\n\nThe asset goes to Notion's trash (Notion keeps it 30 days; 🗑 Removed here restores it) and ${row.virt ? 'its row goes away' : 'this row is deleted (kept in the change log)'}.`
+    + (kids.length ? `\n\nIt has ${kids.length} child asset${kids.length === 1 ? '' : 's'}: ${kids.slice(0, 5).map(k => k.assetName || '(untitled)').join(', ')}${kids.length > 5 ? ', …' : ''}. They are NOT removed — they only lose their parent.` : ''))) return;
+  const unsaved = !row.virt && S.newRows.has(rowId);
+  const r = await call('cplanRemoveAsset', { assetId: id, ...(row.virt || unsaved ? {} : { rowId }) }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Not removed: ' + ((r && r.error) || 'no response'), 'error');
+  (S.removed ||= new Set()).add(id); S.sel.delete(rowId);
+  if (!row.virt) { T.rows = T.rows.filter(z => z.id !== rowId); delete S.pend[rowId]; S.newRows.delete(rowId); }
+  const ok = row.virt || unsaved || r.rowDeleted;
+  showToast(ok ? '✓ Removed — the asset is in Notion\'s trash' : '⚠ The asset is in the trash, but the row was not deleted — reload the table', ok ? 'success' : 'error');
+  cplanPaint(name); if (HD.plan) { HD.plan = T; hdRender(); }
+}
+async function cplanRemovedOpen(name) {
+  const r = await call('cplanRemovedLog', {}).catch(e => ({ error: e.message })); if (!r || r.error) return showToast((r && r.error) || 'no response', 'error');
+  window._cpRm = name; const L = r.log || [];
+  hcModal(`<h3 style="margin:0 0 4px;">🗑 Removed records</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">Records removed from Content Plan — All Assets. Each asset is in Notion's trash (Notion keeps it 30 days). ↺ Restore takes it out of the trash and puts its row back where it was.</div>`
+    + (L.length ? L.map(e => `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;"><div style="flex:1;min-width:0;"><div style="font-weight:600;">${esc(e.title || '(untitled)')}</div>
+      <div style="font-size:11px;color:var(--text3);">${esc(e.type || '')} · was ${esc(e.status || '')} · removed ${esc(new Date(e.at).toLocaleString())}${e.restoredAt ? ' · <span style="color:#4ade80;">restored ' + esc(new Date(e.restoredAt).toLocaleString()) + '</span>' : ''}</div></div>
+      ${e.restoredAt ? '' : `<button onclick="cplanRestore('${esc(e.assetId)}',this)" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">↺ Restore</button>`}</div>`).join('')
+      : '<div style="font-size:12px;color:var(--text3);">Nothing removed yet.</div>'));
+}
+async function cplanRestore(assetId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Restoring…'; }
+  const r = await call('cplanRestoreAsset', { assetId }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { if (btn) { btn.disabled = false; btn.textContent = '↺ Restore'; } return showToast('Not restored: ' + ((r && r.error) || 'no response'), 'error'); }
+  const name = window._cpRm || HUBPLAN_TABLE, S = cpS(name); if (S.removed) S.removed.delete(hdNid(assetId));
+  if (btn) btn.outerHTML = '<span style="color:#4ade80;font-size:11.5px;">✓ restored' + (r.rowBack ? '' : ' (no row to put back)') + '</span>';
+  await cplanLoad(true, name); cplanAssetsReload(name);
+}
+// 🔗 Match plan rows: a plan row whose hub, Title and Asset type are the same as exactly one unlinked asset's (several: the Asset name
+// decides) is proposed; nothing links until you press Link. Links save like any cell (logged, and an Asset id can be cleared again).
+async function cplanMatch(name) {
+  const S = cpS(name), T = S.t, idx = cplanAssetIdx(); if (!T || !idx) return showToast('Still reading the asset records — try again in a moment', 'error');
+  if (!S.keys) { const k = await call('cplanTraceAssets', { assetIds: [] }).catch(() => null); S.keys = (k && k.keys) || {}; }
+  cplanSync(name);
+  const I = cplanTraceIds(T), TI = cplanColRe(T, /^title$/i), n = v => String(v || '').trim().toLowerCase(), tk = t => { const v = String(t || '').trim(); return n((S.keys || {})[v] || v); };
+  const key = c => [n((hubPlanHub(c.hub) || {}).slug || c.hub), n(c[TI]), tk(c.atype)].join('|'), rowsBy = new Map(), assetsBy = new Map(), push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+  T.rows.filter(r => !/^archived$/i.test(r.cells.status || '') && !kwNid(String(r.cells[I.ai] || '').trim()) && r.cells.hub && r.cells[TI] && r.cells.atype).forEach(r => push(rowsBy, key(r.cells), r));
+  (S.vrows || []).forEach(v => push(assetsBy, key(v.cells), v));
+  const pairs = [], amb = [];
+  for (const [k, rs] of rowsBy) { const as = assetsBy.get(k) || []; if (!as.length) continue;
+    if (rs.length === 1 && as.length === 1) { pairs.push([rs[0], as[0]]); continue; }
+    const left = []; rs.forEach(r => { const nm = n(r.cells[I.an]), hit = nm ? as.filter(a => n(a.cells[I.an]) === nm && !pairs.some(p => p[1] === a)) : []; if (hit.length === 1) pairs.push([r, hit[0]]); else left.push(r); });
+    if (left.length) amb.push({ rows: left.length, assets: as.filter(a => !pairs.some(p => p[1] === a)).length, label: [left[0].cells[TI], left[0].cells.atype, left[0].cells.hub].join(' · ') }); }
+  window._cpMatch = { name, pairs: pairs.map(([r, a]) => [r.id, a.cells[I.ai]]) };
+  const B = 'font-size:12px;padding:5px 12px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  hcModal(`<h3 style="margin:0 0 4px;">🔗 Match plan rows to their assets</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">A plan row is matched when its hub, Title and Asset type are the same as exactly one asset that no row is linked to yet (when several are, the row's Asset name decides). Nothing changes until you press Link. A link only fills the row's Asset id — it is logged like any edit and can be cleared again.</div>`
+    + (pairs.length ? `<div style="margin-bottom:8px;"><button style="${B}border-color:#4ade80;" onclick="cplanMatchApply()">Link ${pairs.length} row${pairs.length === 1 ? '' : 's'}</button></div>`
+      + pairs.map(([r, a]) => `<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11.5px;"><b>${esc(r.cells[TI] || '')}</b> · ${esc(r.cells.atype || '')} · ${esc(r.cells.hub || '')}${r.cells.week ? ' · week ' + esc(r.cells.week) : ''}${r.cells.day ? ' · ' + esc(r.cells.day) : ''}<div style="color:var(--text3);">→ “${esc(a.cells[I.an] || '(untitled)')}” · ${esc(a.cells[cplanColRe(T, /^published$/i) || 'published'] || '')}</div></div>`).join('')
+      : '<div style="font-size:12px;color:var(--text3);">No plan row has exactly one matching asset.</div>')
+    + (amb.length ? `<div style="font-weight:700;font-size:12px;margin:12px 0 4px;">Not matched — several rows and assets look alike (${amb.reduce((a, x) => a + x.rows, 0)} rows). Give each row its asset's exact Asset name and run this again, or link them one by one with 🔗.</div>`
+      + amb.slice(0, 60).map(x => `<div style="font-size:11px;color:var(--text2);padding:2px 0;">${esc(x.label)} — ${x.rows} row${x.rows === 1 ? '' : 's'}, ${x.assets} asset${x.assets === 1 ? '' : 's'}</div>`).join('') : ''));
+}
+function cplanMatchApply() {
+  const M = window._cpMatch; if (!M || !M.pairs.length) return; const S = cpS(M.name), I = cplanTraceIds(S.t);
+  M.pairs.forEach(([rid, aid]) => { const row = S.t.rows.find(r => r.id === rid); if (row && !String(row.cells[I.ai] || '').trim()) { row.cells[I.ai] = aid; (S.pend[rid] ||= {})[I.ai] = aid; } });
+  const m = document.getElementById('hcModal'); if (m) m.classList.remove('open');
+  window._cpMatch = null; clearTimeout(S.timer); cplanPaint(M.name); cplanSave(M.name); showToast('Linking ' + M.pairs.length + ' rows…', 'success');
+}
 function cplanTraceIds(T) { const col = re => ((T && T.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id; return { an: col(/^asset name$/i), ai: col(/^asset id$/i) }; }
 async function cplanTraceLoad(name) {
   const S = cpS(name), T = S.t; if (!T || name !== HUBPLAN_TABLE) return; const { ai } = cplanTraceIds(T); if (!ai) return;
+  const idx = cplanAssetIdx(); if (!idx) return;   // linked rows of the four statuses come from the asset load; only the rest are traced
   S.traceAsked = S.traceAsked || new Set();
-  const ids = [...new Set(T.rows.map(r => kwNid(String(r.cells[ai] || '').trim())).filter(id => /^[0-9a-f]{32}$/i.test(id) && !S.traceAsked.has(id)))]; if (!ids.length) return;
+  const ids = [...new Set(T.rows.map(r => kwNid(String(r.cells[ai] || '').trim())).filter(id => /^[0-9a-f]{32}$/i.test(id) && !idx.has(id) && !S.traceAsked.has(id)))]; if (!ids.length) return;
   ids.forEach(id => S.traceAsked.add(id));
   for (let i = 0; i < ids.length; i += 200) { const r = await call('cplanTraceAssets', { assetIds: ids.slice(i, i + 200) }).catch(e => ({ error: e.message }));
     if (!r || r.error) { ids.slice(i).forEach(id => S.traceAsked.delete(id)); return; } S.trace = { ...(S.trace || {}), ...r.assets }; S.keys = r.keys || S.keys || {}; }
@@ -4750,7 +4870,7 @@ async function cplanLink(name, rowId, open) {   // find the row's asset by name 
 }
 function cplanLinkTake(name, rowId, a, open) { const S = cpS(name); S.trace = { ...(S.trace || {}), [a.id]: a }; cplanEdit(name, rowId, cplanTraceIds(S.t).ai, a.id); cplanPaint(name); if (open) amOpen(a.id); }
 function cplanLinkPick(i) { const P = window._cpPick; if (!P || !P.list[i]) return; const m = document.getElementById('hcModal'); if (m) m.classList.remove('open'); cplanLinkTake(P.name, P.rowId, P.list[i], P.open); }
-function cplanWriter(name, rowId) { const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return; const id = kwNid(String(row.cells[cplanTraceIds(S.t).ai] || '').trim());
+function cplanWriter(name, rowId) { const S = cpS(name), row = cplanRowOf(S, rowId); if (!row) return; const id = kwNid(String(row.cells[cplanTraceIds(S.t).ai] || '').trim());
   if (id) return amOpen(id); cplanLink(name, rowId, true); }
 function cplanStatusOpts(name) { const c = (cpS(name).t.columns || []).find(x => x.id === 'status'); return (c && c.options) || CPLAN_STATUS; }
 // Multi-level sort with dynamic headings (operator 2026-11-05, like AO2): up to 7 levels; with Group by sort on, every level with
@@ -4803,7 +4923,8 @@ function cplanPaint(name = 'content-plan-assets') {
   const colName = id => ((T.columns.find(c => c.id === id) || {}).name || id);
   const SL = cplanSortLv(name).filter(s => T.columns.some(c => c.id === s.col)), HL = grpOn ? SL.filter(s => s.head !== false) : [];
   const cv = (r, k) => String(r.cells[k] || '').trim(), cmp = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-  let rows = T.rows.filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
+  if (name === HUBPLAN_TABLE) cplanSync(name);
+  let rows = T.rows.concat(S.vrows || []).filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
   // stable multi-level sort; heading levels first (in their order) so each heading's rows sit together, then the rest
   const order = [...HL, ...SL.filter(s => !HL.includes(s))];
   if (order.length) rows = rows.map((r, i) => [r, i]).sort((x, y) => { for (const s of order) { const a = cv(x[0], s.col), b = cv(y[0], s.col);
@@ -4834,7 +4955,21 @@ function cplanPaint(name = 'content-plan-assets') {
       <div style="display:flex;flex-direction:column;gap:3px;"><button style="${SB}" title="Open this asset in the writer (finds it by name first when it isn't linked yet)" onclick="cplanWriter(${q},'${row.id}')">✍</button><button style="${SB}" title="Find the asset by this name in the row's hub and link it" onclick="cplanLink(${q},'${row.id}')">🔗</button></div></div>
       <div style="font-size:10.5px;margin-top:2px;line-height:1.35;">${cplanTraceHtml(name, row)}</div>`
     : `<input value="${esc(row.cells[c.id] || '')}" onchange="cplanEdit(${q},'${row.id}','${c.id}',kwNid(this.value.trim()));cplanTraceLoad(${q})" title="The linked Notion asset record (set by 🔗)" style="${IN}font-family:monospace;font-size:10.5px;">`;
-  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : c.id && (c.id === TR.an || c.id === TR.ai) ? traceCell(row, c) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
+  const IDX = name === HUBPLAN_TABLE ? cplanAssetIdx() : null, AX = row => IDX ? cplanAssetOf(S, row) : null, AD = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
+  const roCell = (row, c, ax) => { const v = String(row.cells[c.id] || '');
+    const inner = /^(created|changed)$/.test(c.id) ? cplanWhen(v) : c.id === pubCol ? `<b style="font-size:12px;color:${CPLAN_PUB_COLORS[v] || 'var(--text)'};">${esc(v)}</b>`
+      : c.id === TR.an ? `<a href="#" onclick="event.preventDefault();amOpen('${hdNid(ax.assetId)}')" title="Open this asset in the writer" style="font-size:12px;font-weight:600;color:var(--text);text-decoration:none;">${esc(v || '(untitled asset)')}</a>`
+      : c.id === TR.ai ? `<a href="https://www.notion.so/${esc(v)}" target="_blank" title="The asset record in Notion" style="font-family:monospace;font-size:10.5px;color:var(--text3);">${esc(v)}</a>`
+      : `<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</div>`;
+    return `<td title="From the asset record — change it on the asset (✍)" style="padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;background:rgba(74,222,128,.045);${c.hidden ? 'opacity:.55;' : ''}">${inner}</td>`; };
+  const AB = 'font-size:11px;padding:1px 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin:0 1px 2px 0;';
+  const acts = row => { const ax = AX(row), td = 'padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;';
+    const dup = t => `<button onclick="cplanDupRow(${q},'${row.id}')" title="${t}" style="${AB}">⧉</button>`, del = `<button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="${AB}color:#f87171;">×</button>`;
+    if (ax) { const pub = ax.assetStatus === 'Published';
+      return `<td style="${td}"><button onclick="amOpen('${hdNid(ax.assetId)}')" title="Open this asset in the writer" style="${AB}">✍</button>${dup('Copy as a new plan row (no asset yet), right below')}<button onclick="cplanRemove(${q},'${row.id}')" ${pub ? 'disabled' : ''} title="${pub ? 'A Published asset is never removed here — take it off the hub / unpublish it first' : 'Remove record: deletes this row and moves the asset to Notion’s trash (asks first; 🗑 Removed restores it)'}" style="${AB}color:#f87171;${pub ? 'opacity:.35;cursor:not-allowed;' : ''}">🗑</button></td>`; }
+    if (TR.ai && String(row.cells[TR.ai] || '').trim()) return `<td style="${td}"><button onclick="cplanWriter(${q},'${row.id}')" title="Open the linked asset in the writer" style="${AB}">✍</button>${dup('Duplicate this row (the copy is a plan row), right below')}${del}</td>`;
+    return `<td style="${td}">${name === HUBPLAN_TABLE ? `<button onclick="cplanCreate(${q},'${row.id}')" title="Create asset: this row's Hub, Asset type, Title (and Product, Asset name) become one Development asset — asks first" style="${AB}color:#4ade80;">⚒</button>` : ''}${dup('Duplicate this row (the copy goes right below it)')}${del}</td>`; };
+  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; const ax = AD.has(c.id) ? AX(row) : null; if (ax) return roCell(row, c, ax); return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : c.id && (c.id === TR.an || c.id === TR.ai) ? traceCell(row, c) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
     ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : c.id === pubCol ? `<select onchange="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${['', ...CPLAN_PUB].map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`; };
@@ -4847,11 +4982,11 @@ function cplanPaint(name = 'content-plan-assets') {
     <button onclick="cplanSort(${q},'${c.id}',event)" title="Click: sort by this column (again flips) · Ctrl- or Shift-click: add it as a level (again flips, third time removes) · Alt-click: remove it" style="font-size:11px;padding:1px 5px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? '#fff' : 'var(--text3)'};cursor:pointer;">${on ? (SL[si].dir === -1 ? '▼' : '▲') + (SL.length > 1 ? si + 1 : '') : '⇅'}</button></div>
     ${CPLAN_DEFS[name].some(x => x.id === c.id) ? '' : `<a href="#" onclick="event.preventDefault();cplanHideCol(${q},'${c.id}')" style="font-size:10.5px;color:var(--text3);">${c.hidden ? 'restore' : 'archive column'}</a>`}${sizer(c.id)}</th>`; };
   // dynamic headings: one collapsible tier per heading level, nested; all collapsed unless opened
-  const SEL = S.sel ||= new Set(); [...SEL].forEach(id => { if (!T.rows.some(r => r.id === id)) SEL.delete(id); });
+  const SEL = S.sel ||= new Set(); [...SEL].forEach(id => { if (!cplanRowOf(S, id)) SEL.delete(id); });
   const ck = (on, js, title, ind) => `<input type="checkbox" ${on ? 'checked' : ''} ${ind ? 'data-ind="1"' : ''} title="${title}" onclick="event.stopPropagation();${js}" style="cursor:pointer;margin:0 4px 0 0;vertical-align:middle;">`;
-  const rowHtml = row => `<tr class="cp-tr" data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}${SEL.has(row.id) ? 'background:rgba(96,165,250,.10);' : ''}"><td style="padding:6px 2px 4px 6px;border-bottom:1px solid var(--border);vertical-align:top;">${ck(SEL.has(row.id), `cplanSel(${q},'${row.id}',this.checked)`, 'Select this row')}</td>${cols.map(c => cell(row, c)).join('')}<td style="padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;white-space:nowrap;"><button onclick="cplanDupRow(${q},'${row.id}')" title="Duplicate this row (the copy goes right below it)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin-right:3px;">⧉</button><button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:#f87171;cursor:pointer;">×</button></td></tr>`;
+  const rowHtml = row => `<tr class="cp-tr" data-row="${row.id}" style="${/^archived$/i.test(row.cells.status || '') ? 'opacity:.55;' : ''}${name !== HUBPLAN_TABLE ? '' : AX(row) ? 'box-shadow:inset 3px 0 0 #4ade80;' : TR.ai && String(row.cells[TR.ai] || '').trim() ? 'box-shadow:inset 3px 0 0 #64748b;' : 'box-shadow:inset 3px 0 0 #eab308;'}${SEL.has(row.id) ? 'background:rgba(96,165,250,.10);' : ''}"><td style="padding:6px 2px 4px 6px;border-bottom:1px solid var(--border);vertical-align:top;">${ck(SEL.has(row.id), `cplanSel(${q},'${row.id}',this.checked)`, 'Select this row')}</td>${cols.map(c => cell(row, c)).join('')}${acts(row)}</tr>`;
   S._groups = []; S._grpRows = []; const cronId = typeof cplanCronCol === 'function' ? cplanCronCol(T) : '', pubId = pubCol;
-  const sumOf = (rs, id) => id ? rs.reduce((a, r) => a + (/^archived$/i.test(r.cells.status || '') ? 0 : cplanCronN(r.cells, id)), 0) : 0;
+  const sumOf = (rs, id) => id ? rs.reduce((a, r) => a + (/^archived$/i.test(r.cells.status || '') || (TR.ai && String(r.cells[TR.ai] || '').trim()) ? 0 : cplanCronN(r.cells, id)), 0) : 0;
   const cntAt = cols.findIndex(L => L.c && (L.c.id === cronId || L.c.id === pubId));   // first count column drawn (-1: none shown)
   const pubCounts = rs => { const live = rs.filter(r => !/^archived$/i.test(r.cells.status || ''));
     return CPLAN_PUB.map((s, i) => { const n = live.filter(r => r.cells[pubId] === s).length; return n ? `<span title="${s}" style="color:${CPLAN_PUB_COLORS[s]};">${n}</span>` : ""; }).join('<span style="color:var(--text3);">.</span>'); };
@@ -4866,11 +5001,13 @@ function cplanPaint(name = 'content-plan-assets') {
       return `<tr class="cp-tr" onclick="cplanGrp(${q},${i})" style="cursor:pointer;background:${d ? 'var(--surface)' : 'var(--surface2)'};"><td colspan="${cntAt >= 0 ? cntAt + 1 : cols.length + 2}" style="padding:5px 8px 5px ${8 + d * 18}px;border-bottom:1px solid var(--border2);font-size:${sz}px;font-weight:700;white-space:nowrap;">${ck(nSel === g.rs.length, `cplanSelGrp(${q},${i},this.checked)`, 'Select every row under this heading', nSel && nSel < g.rs.length)}<span style="display:inline-block;width:14px;color:var(--text3);">${op ? '▼' : '▶'}</span><span style="font-weight:400;color:var(--text3);">${esc(colName(s.col))}:</span> ${esc(g.v || '(blank)')} <span style="font-weight:400;color:var(--text3);">· ${g.rs.length} row${g.rs.length === 1 ? '' : 's'}${nSel ? ' · ' + nSel + ' selected' : ''}</span></td>${cntAt >= 0 ? cols.slice(cntAt).map(L => op && d < HL.length - 1 ? '<td style="border-bottom:1px solid var(--border2);"></td>' : cntTd(L, g.rs, bg)).join('') + '<td style="border-bottom:1px solid var(--border2);"></td>' : ''}</tr>${op ? tier(g.rs, d + 1, k) : ''}`; }).join(''); };
   const body = tier(rows, 0, ''); delete S.reveal;
   setTimeout(() => el.querySelectorAll('input[data-ind]').forEach(x => { x.indeterminate = true; }), 0);
-  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 60 + 26;   // + the duplicate / delete column + the select column
-  S._shown = rows.map(r => r.id); const nShownSel = rows.filter(r => SEL.has(r.id)).length;
+  const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 84 + 26;   // + the duplicate / delete column + the select column
+  S._shown = rows.map(r => r.id); const nShownSel = rows.filter(r => SEL.has(r.id)).length, nAsset = IDX ? rows.filter(r => AX(r)).length : 0;
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<style>.cp-tr:hover > td { background: rgba(96,165,250,.16) !important; }</style><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
-      <button style="${B}" onclick="cplanAddRow(${q})">＋ Add row</button>
+      <button style="${B}" onclick="cplanAddRow(${q})" title="${name === HUBPLAN_TABLE ? 'A plan row — an asset that is not built yet (⚒ creates it)' : 'Add a row'}">＋ Add row</button>
+      ${name === HUBPLAN_TABLE ? `<button style="${B}" title="Read the asset records again (new, changed or removed assets)" onclick="cplanAssetsReload(${q})">↻ Assets</button><button style="${B}" title="Plan rows whose Hub, Title and Asset type match exactly one unlinked asset — review the list, then link them" onclick="cplanMatch(${q})">🔗 Match plan rows…</button><button style="${B}" title="Records removed here — restore them" onclick="cplanRemovedOpen(${q})">🗑 Removed</button>
+        <span style="color:var(--text2);">${IDX ? `<b style="color:#4ade80;">${nAsset}</b> asset row${nAsset === 1 ? '' : 's'} · <b style="color:#eab308;">${rows.length - nAsset}</b> plan row${rows.length - nAsset === 1 ? '' : 's'}` : '⏳ reading the asset records…'}</span>` : ''}
       <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
       <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
       <button style="${B}" onclick="cpS(${q}).panel=!cpS(${q}).panel;cplanPaint(${q})">⚲ Sort${SL.length ? ' (' + SL.length + ')' : ''}</button>
@@ -4880,7 +5017,7 @@ function cplanPaint(name = 'content-plan-assets') {
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="The Content Plan cron: each row's Cron number of Development assets per asset-type period, pillar first" onclick="cpcOpen()">⏰ Cron${CPC.on === true ? ': on' : CPC.on === false ? ': off' : ''}</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
-      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}Every cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}${name === HUBPLAN_TABLE ? 'Green edge = an asset (Planning / Development / Publish / Published): its hub, type, topic, product, title, name, status and dates come from the asset — ✍ opens it, 🗑 removes the record. Yellow edge = a plan row, not built yet — ⚒ creates its Development asset. Grey edge = linked to an asset in another status. ' : ''}Every other cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     ${SEL.size ? (() => { const bc = S.bulkCol && T.columns.some(c => c.id === S.bulkCol) ? S.bulkCol : '', vals = bc ? [...new Set(T.rows.map(r => String(r.cells[bc] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
       const opts2 = bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
       return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
@@ -4906,13 +5043,15 @@ function cplanPaint(name = 'content-plan-assets') {
           + `<button style="${sb}" title="Move up" onclick="cplanSortMove(${q},${i},-1)">↑</button><button style="${sb}" title="Move down" onclick="cplanSortMove(${q},${i},1)">↓</button><button style="${sb}color:#f87171;" title="Remove this level" onclick="cplanSortDel(${q},${i})">×</button></div>`).join('')
         + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
         + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
-    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr><th style="width:26px;padding:4px 2px 4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;">${ck(rows.length && nShownSel === rows.length, `cplanSelAll(${q},this.checked)`, 'Select every row shown (under collapsed headings too)', nShownSel && nShownSel < rows.length)}</th>${cols.map(head).join('')}<th style="width:60px;border-bottom:1px solid var(--border2);"></th></tr></thead>
+    <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr><th style="width:26px;padding:4px 2px 4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;">${ck(rows.length && nShownSel === rows.length, `cplanSelAll(${q},this.checked)`, 'Select every row shown (under collapsed headings too)', nShownSel && nShownSel < rows.length)}</th>${cols.map(head).join('')}<th style="width:84px;border-bottom:1px solid var(--border2);"></th></tr></thead>
     <tbody>${body || `<tr><td colspan="${cols.length + 2}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
 // Published column (operator 2026-11-06): the row's asset status — heading rows count each as planning.dev.publish.published
 const CPLAN_PUB = ['Planning', 'Development', 'Publish', 'Published'], CPLAN_PUB_COLORS = { Planning: '#eab308', Development: '#ff7a00', Publish: '#16a34a', Published: '#16a34a' };
 function cplanEdit(name, rowId, colId, value) {
-  const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
+  const S = cpS(name); let row = S.t && S.t.rows.find(r => r.id === rowId);
+  if (!row) { const v = (S.vrows || []).find(r => r.id === rowId); if (!v || !S.t) return;   // an asset's row: saved as a linked row on its first edit
+    row = { id: v.id, cells: { ...v.cells } }; S.t.rows.push(row); S.vrows = S.vrows.filter(r => r !== v); S.newRows.add(row.id); }
   row.cells[colId] = value; (S.pend[rowId] ||= {})[colId] = value; clearTimeout(S.timer); S.timer = setTimeout(() => cplanSave(name), 700);
   if (colId === 'status' || colId === 'published') cplanPaint(name);
 }
@@ -4930,8 +5069,8 @@ function cplanAddRow(name) {
 // worker) and, when you add / rename / archive a column, the columns (saveContentPlanColumns). Never the whole table from this tab's copy —
 // that overwrote cells written elsewhere (Buzz's portal) since this tab loaded (portal fix 2026-11-05).
 function cplanDupRow(name, rowId) {   // duplicate row (operator 2026-11-05): every cell copied, new id, placed right below the original
-  const S = cpS(name), T = S.t, i = T ? T.rows.findIndex(r => r.id === rowId) : -1; if (i < 0) return;
-  const id = 'p' + Date.now().toString(36); T.rows.splice(i + 1, 0, { id, cells: { ...T.rows[i].cells } }); S.newRows.add(id); S.reveal = id;
+  const S = cpS(name), T = S.t, i = T ? T.rows.findIndex(r => r.id === rowId) : -1, src = T && (i >= 0 ? T.rows[i] : (S.vrows || []).find(r => r.id === rowId)); if (!src) return;
+  const id = 'p' + Date.now().toString(36); T.rows.splice(i >= 0 ? i + 1 : T.rows.length, 0, { id, cells: cplanPlanCopy(T, src.cells) }); S.newRows.add(id); S.reveal = id;
   cplanPaint(name); cplanSave(name);
 }
 // ⏰ Content Plan cron panel (operator 2026-11-06): on / off, a dry-run preview of what the next run would do, held rows, recent runs.
@@ -4988,17 +5127,19 @@ function cplanBulkDup(name) {
   let tagCol = colOf(/^tag$/i);
   if (tag && !tagCol) { const at = T.columns.findIndex(c => c.id === titleCol); tagCol = 'tag';
     T.columns.splice(at >= 0 ? at + 1 : T.columns.length, 0, { id: tagCol, name: 'Tag', ...(titleCol ? { after: titleCol } : {}) }); S.colsDirty = true; }
-  const ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id), t0 = Date.now(), made = new Set(); let k = 0;
-  for (const id of ids) { const i = T.rows.findIndex(r => r.id === id), cells = { ...T.rows[i].cells }; delete cells.created; delete cells.changed;
+  const srcs = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)), t0 = Date.now(), made = new Set(); let k = 0;
+  for (const src of srcs) { const i = T.rows.indexOf(src), cells = cplanPlanCopy(T, src.cells);
     if (title && titleCol) cells[titleCol] = title; if (tag) cells[tagCol] = tag;
-    const nid = 'p' + (t0 + k++).toString(36); T.rows.splice(i + 1, 0, { id: nid, cells }); S.newRows.add(nid); made.add(nid); }
+    const nid = 'p' + (t0 + k++).toString(36); T.rows.splice(i >= 0 ? i + 1 : T.rows.length, 0, { id: nid, cells }); S.newRows.add(nid); made.add(nid); }
   S.sel = made; S.dupOpen = false; cplanPaint(name); cplanSave(name);
 }
 async function cplanBulkDel(name) {
   const S = cpS(name), T = S.t; if (!T || !S.sel.size) return;
-  const ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id);
-  if (!confirm('Delete ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '? This cannot be undone from the dash (the Content Plan keeps deleted rows in its change log).')) return;
-  T.rows = T.rows.filter(r => !S.sel.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); S.sel = new Set(); cplanPaint(name);
+  const ai = name === HUBPLAN_TABLE ? cplanTraceIds(T).ai : '', isA = r => !!(ai && String(r.cells[ai] || '').trim());   // asset rows go one by one with 🗑, never in bulk
+  const ids = T.rows.filter(r => S.sel.has(r.id) && !isA(r)).map(r => r.id), nA = [...S.sel].filter(id => { const r = cplanRowOf(S, id); return r && (r.virt || isA(r)); }).length;
+  if (!ids.length) return showToast('Only asset rows are selected — remove those one by one with 🗑', 'error');
+  if (!confirm('Delete ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?' + (nA ? ' (' + nA + ' selected asset row' + (nA === 1 ? ' is' : 's are') + ' left alone — remove an asset with its 🗑.)' : '') + ' This cannot be undone from the dash (the Content Plan keeps deleted rows in its change log).')) return;
+  const del = new Set(ids); T.rows = T.rows.filter(r => !del.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); S.sel = new Set(); cplanPaint(name);
   const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Deleting ' + ids.length + '…';
   let r = { ok: true };
   if (name !== HUBPLAN_TABLE) r = await call('saveInfoFlowTable', { name, table: T }).catch(e => ({ error: e.message }));
@@ -5011,9 +5152,11 @@ async function cplanBulkDel(name) {
 }
 function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
-  const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), ids = T.rows.filter(r => S.sel.has(r.id)).map(r => r.id);
-  if (!confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '?')) return;
-  for (const id of ids) { const row = T.rows.find(r => r.id === id); row.cells[col] = v; (S.pend[id] ||= {})[col] = v; }
+  const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
+  const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)), ids = all.filter(r => !(D.has(col) && cplanAssetOf(S, r))).map(r => r.id), skip = all.length - ids.length;   // an asset's own cells are changed on the asset
+  if (!ids.length) return showToast(c.name + ' comes from the asset on every selected row — change it on the asset (✍)', 'error');
+  if (!confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '?' + (skip ? ' (' + skip + ' asset row' + (skip === 1 ? '' : 's') + ' skipped — ' + c.name + ' comes from the asset.)' : ''))) return;
+  for (const id of ids) cplanEdit(name, id, col, v);
   clearTimeout(S.timer); cplanPaint(name); cplanSave(name);
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
@@ -14773,14 +14916,14 @@ function hubPlanGoals(table, realTypes) {
   const out = { goals: {}, types: [], weeks: [], hubs: [], byType: {}, unresolved: [] }, seenW = new Set(), canon = {};
   (realTypes || []).forEach(t => { canon[hubCheckNorm(t)] = t; });   // show a worksheet type in its Notion spelling when one exists
   const kindCol = (((table && table.columns) || []).find(c => /^kind$/i.test(String(c.name || '').trim())) || {}).id;   // Standalone = outside the goal flow
-  const cronCol = cplanCronCol(table);
+  const cronCol = cplanCronCol(table), aidCol = (((table && table.columns) || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id;   // a linked row is built — no goal
   for (const r of ((table && table.rows) || [])) {
     const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (kindCol && /^standalone$/i.test(String(c[kindCol] || '').trim()))) continue;
     const raw = String(c.atype || '').trim(); if (!raw) continue;
     const k = hubCheckNorm(raw), label = canon[k] || raw, w = String(c.week || '').trim() || '—', n = cplanCronN(c, cronCol);
     if (!out.byType[k]) { out.byType[k] = { label, weeks: {}, hubs: {}, total: 0 }; out.types.push(label); }
     const hn = String(c.hub || '').trim() || '(no hub)'; if (!out.hubs.includes(hn)) out.hubs.push(hn);
-    if (!n) continue;   // the type is still listed; it just adds no goal
+    if (!n || (aidCol && String(c[aidCol] || '').trim())) continue;   // the type is still listed; it just adds no goal
     out.byType[k].weeks[w] = (out.byType[k].weeks[w] || 0) + n; out.byType[k].hubs[hn] = (out.byType[k].hubs[hn] || 0) + n; out.byType[k].total += n; if (!seenW.has(w)) { seenW.add(w); out.weeks.push(w); }
     const h = hubPlanHub(c.hub); if (!h) { if (c.hub && !out.unresolved.includes(c.hub)) out.unresolved.push(c.hub); continue; }
     const g = ((out.goals[h.slug] = out.goals[h.slug] || {})[k] = out.goals[h.slug][k] || { goal: 0, weeks: [] }); g.goal += n; if (!g.weeks.includes(w)) g.weeks.push(w);

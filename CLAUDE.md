@@ -481,6 +481,10 @@ Per operator direction: images are built in ChatGPT (the raw image API doesn't m
 - GitHub repo should be private (pending)
 - Rotate Notion integration token if ever exposed (pending)
 
+## CP AA is all assets (Nov 8, 2026)
+
+Content Plan — All Assets lists every asset at Planning / Development / Publish / Published as a row (from the `getDevAssetsTable` load the tab already makes — no extra Notion reads), plus **plan rows** (no asset yet). A row linked by `Asset id` shows the asset's own hub, Asset type, topic, product, title, name, status and dates, read only; an unlinked asset's row lives in memory until a plan cell is typed in, then saves as a linked row. ⚒ `cplanCreateAsset {rowId}` turns a plan row into ONE Development asset under its title (under the title's Series parent when it has one; never makes a title or a new Asset Type option) and links the row. 🗑 `cplanRemoveAsset {assetId,rowId?}` moves the asset to Notion's trash and deletes the row — Published refused, logged first to KV `cplan:removed:log`, undone by `cplanRestoreAsset`. A row linked to an asset is built: the cron skips it and it adds no goal.
+
 ## Asset Type renames (Nov 8, 2026)
 
 Notion Asset Type options are being renamed to the Asset Flow graph's names, one type at a time (option rename keeps the id). The code keeps its **legacy names as keys**: `ASSET_TYPE_RENAMES` (worker.js, top) maps legacy → graph name, and the module `fetch` wrapper (`hierarchyFetch`) translates for every type listed in KV `assettype:applied:v1` — page writes to Assets and Assets query filters go out with the graph name; Assets pages and the Assets schema come back with the legacy key. Add a type to that KV list when its Notion option is renamed; remove it (and rename back) to undo. CP AA rows may hold either name (`cplanCell` maps `atype` to the key); `renameContentPlanType` renames a type in CP AA and logs each run in KV `cplan:typerename:log`. The dash and microsites still display legacy names until display labels are added.
