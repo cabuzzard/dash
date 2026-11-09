@@ -5057,12 +5057,12 @@ function cplanGroupBy(name, on) { const V = cpView(name); V.group = !!on; cpView
 // Pick lists for Hub / Asset type / Topic / Product / Title (operator 2026-11-05): Hub → its topics → a topic's products → a product's titles, from the
 // values already in this table plus the hub's real topic → product → title tree (the dash's asset data, same tree as Hub Dashboard).
 // "＋ Add new…" types a value: it only sets this cell — nothing is created in Notion.
-let CPLAN_TREE = null, CPLAN_TREE_P = null, CPLAN_ATYPES = null;   // + Asset type: every Asset Type option in the Notion Assets DB
+let CPLAN_TREE = null, CPLAN_TREE_P = null, CPLAN_ATYPES = null, CPLAN_TREE_INFO = null;   // INFO: when the asset records were read, and how long it took   // + Asset type: every Asset Type option in the Notion Assets DB
 function cplanTreeLoad(name) {
   if (CPLAN_TREE || CPLAN_TREE_P || typeof devAssetsTable !== 'function') return;
   if (!CPLAN_INITS) cplanInitsLoad(name);
   if (!CPLAN_ATYPES) { CPLAN_ATYPES = []; call('getAssetTypes', { all: true }).then(r => { CPLAN_ATYPES = (r && r.types) || []; cplanStatusesFrom(r && r.statuses); cplanPaint(name); }).catch(() => {}); }
-  CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
+  const t0 = Date.now(); CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; CPLAN_TREE_INFO = { at: new Date(), ms: Date.now() - t0, server: d && d.timing }; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
 }
 function cplanHubTree(hubName, memo) {   // → [{ name, cluster, products: [{ name, titles: [name] }] }]
   if (memo.has(hubName)) return memo.get(hubName);
@@ -5193,7 +5193,7 @@ function cplanPaint(name = 'content-plan-assets') {
       ${name === HUBPLAN_TABLE && IDX ? (() => { const n = cplanInitCarryRows(name).length; return n ? `<button style="${B}border-color:#c084fc;" title="Saved rows that hold an Initiative their asset doesn't carry yet — review the list, then write it onto the assets" onclick="cplanInitCarry(${q})">⇪ Carry over Initiatives (${n})</button>` : ''; })() : ''}
       <button style="${B}" onclick="cplanAddRow(${q})" title="${name === HUBPLAN_TABLE ? 'A plan row — an asset that is not built yet (⚒ creates it)' : 'Add a row'}">＋ Add row</button>
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="Read the asset records again (new, changed or removed assets)" onclick="cplanAssetsReload(${q})">↻ Assets</button><button style="${B}" title="Plan rows whose Hub, Title and Asset type match exactly one unlinked asset — review the list, then link them" onclick="cplanMatch(${q})">🔗 Match plan rows…</button><button style="${B}" title="Records removed here — restore them" onclick="cplanRemovedOpen(${q})">🗑 Removed</button>
-        <span style="color:var(--text2);">${IDX ? `<b style="color:#4ade80;">${nAsset}</b> asset row${nAsset === 1 ? '' : 's'} · <b style="color:#eab308;">${rows.length - nAsset}</b> plan row${rows.length - nAsset === 1 ? '' : 's'}` : '⏳ reading the asset records…'}</span>` : ''}
+        <span style="color:var(--text2);">${IDX ? `<b style="color:#4ade80;">${nAsset}</b> asset row${nAsset === 1 ? '' : 's'} · <b style="color:#eab308;">${rows.length - nAsset}</b> plan row${rows.length - nAsset === 1 ? '' : 's'}${CPLAN_TREE_INFO ? ` · <span title="${esc(CPLAN_TREE_INFO.server ? 'Worker: ' + Object.entries(CPLAN_TREE_INFO.server.q || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ' ' + (v / 1000).toFixed(1) + 's (' + ((CPLAN_TREE_INFO.server.n || {})[k] || 0) + ')').join(', ') + ' · total ' + ((CPLAN_TREE_INFO.server.total || 0) / 1000).toFixed(1) + 's' : '')}" style="color:var(--text3);">assets read ${CPLAN_TREE_INFO.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })} in ${(CPLAN_TREE_INFO.ms / 1000).toFixed(1)}s</span>` : ''}` : '⏳ reading the asset records…'}</span>` : ''}
       <input id="cplanNewCol${cpId(name)}" placeholder="New column name" style="font-size:12px;padding:4px 7px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanAddCol(${q})">＋ Add column</button>
       <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${S.arch ? 'checked' : ''} onchange="cpS(${q}).arch=this.checked;cplanPaint(${q})"> Show archived (${nArchR} row${nArchR === 1 ? '' : 's'}, ${nArchC} column${nArchC === 1 ? '' : 's'})</label>
       <button style="${B}" onclick="cpS(${q}).panel=!cpS(${q}).panel;cplanPaint(${q})">⚲ Sort${SL.length ? ' (' + SL.length + ')' : ''}</button>

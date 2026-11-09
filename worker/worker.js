@@ -22229,19 +22229,23 @@ Return: {
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
       if (body.action === "getDevAssetsTable") {
+        // Load timing (operator 2026-11-09: "the load of the table seems slow") — every stage is timed, returned as `timing` and kept in
+        // KV devtbl:timing (last 20 loads) so the slow part is measured before anything is cut. Nothing here changes what is returned.
+        const T0 = Date.now(), TM = { q: {}, n: {} }, tq = (k, p) => { const s = Date.now(); return p.then(r => { TM.q[k] = Date.now() - s; TM.n[k] = (r || []).length; return r; }); }, mark = k => { TM[k] = Date.now() - T0; };
         const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows, slotRows, strategyRows, tdRows, topicRows] = await Promise.all([
-          notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
-          notionQuery(PRODUCTS_DB, {}),
-          notionQuery(CONTENT_STRATEGY_DB, {}),
-          notionQuery(ASSETS_DB, {}),
-          ivList(null).catch(() => []),   // 🎤 interviews — their own rows under the title (Flagged / Finished)
-          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
-          notionQuery(RESEARCH_DB, {}).catch(() => []),
-          notionQuery(STRATEGY_SLOTS_DB, {}).catch(() => []),
-          notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []),
-          notionQuery(MAIN_TD_DB, { filter: { property: "Strategy Slot", relation: { is_not_empty: true } } }).catch(() => []),
-          notionQuery(SEO_KEYWORD_CLUSTERS_DB, {}).catch(() => []),
+          tq('campaigns', notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } })),
+          tq('products', notionQuery(PRODUCTS_DB, {})),
+          tq('titles', notionQuery(CONTENT_STRATEGY_DB, {})),
+          tq('assets', notionQuery(ASSETS_DB, {})),
+          tq('interviews', ivList(null).catch(() => [])),
+          tq('productResearch', notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => [])),
+          tq('research', notionQuery(RESEARCH_DB, {}).catch(() => [])),
+          tq('slots', notionQuery(STRATEGY_SLOTS_DB, {}).catch(() => [])),
+          tq('strategies', notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => [])),
+          tq('tasks', notionQuery(MAIN_TD_DB, { filter: { property: "Strategy Slot", relation: { is_not_empty: true } } }).catch(() => [])),
+          tq('keywordClusters', notionQuery(SEO_KEYWORD_CLUSTERS_DB, {}).catch(() => [])),
         ]);
+        mark("queries");
         const ivByTitle = {}, ivByProduct = {};
         ivRows.forEach(iv => { if (iv.scope === "Product" && iv.productId) (ivByProduct[iv.productId] ||= []).push(iv); else if (iv.titleId) (ivByTitle[iv.titleId] ||= []).push(iv); });
         const dropDash = raw => String(raw || "").replace(/-/g, "");
@@ -22365,12 +22369,14 @@ Return: {
         const rows = [];
         const usedProducts = new Set();
         const scheduleFields = slotId => { const m = slotMeta[dropDash(slotId || "")]; return m ? { schedule: m.schedule, scheduleGroup: m.grouping, cadence: m.cadence, progress: m.progress, nextDue: m.nextDue, scheduleStatus: m.status } : { schedule: "", scheduleGroup: "", cadence: "", progress: "", nextDue: "", scheduleStatus: "" }; };
+        mark("methodNames");
         const listedByAsset = new Map(), hierarchyByHub = new Map();
         await Promise.all(HUB_SITES.map(async h=>hierarchyByHub.set(h.slug,await hierarchyForHub(env,h.campaignId,{topics:topicRows,products:productRows,titles:titleRows}))));
         await Promise.all(HUB_SITES.filter(h=>assetRows.some(a=>a.properties?.['Asset Status']?.select?.name==='Published' && HUB_FEED_SECTIONS.has(hubSectionOf(a.properties)) && (a.properties?.Campaign?.relation||[]).some(c=>hubAssetId(c.id)===hubAssetId(h.campaignId)))).map(async hub=>{
           try {for(const entry of await hubFeedEntries(assetRows,await hubBlogManifest(env,hub),hub,env,hierarchyByHub.get(hub.slug))) listedByAsset.set(entry.id,entry);}
           catch(e){console.error('Hub listing verification:',hub.slug,e.message);}
         }));
+        mark("hubListings");
         const hubPublishFields = (a,campId) => { const slug=hubSlugByCampId[campId]||'', model=hierarchyByHub.get(slug); const page=assetRows.find(r=>hubAssetId(r.id)===hubAssetId(a?.id)); return hubRoutedState({...a,hierarchyPlaced:model&&page?model.asset(page.properties||{}):undefined},slug,listedByAsset.get(a?.id)); };
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
@@ -22588,7 +22594,9 @@ Return: {
             return { kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "", productStack: prod.stack || "No Stack", product: prod.name, productId: pid,
               title: "", titleId: null, productStatus: prod.status || "", productCreated: prod.created || "", productEdited: prod.edited || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null }; }),
           interviews: ivRows.map(iv => ({ id: iv.id, name: iv.title || "", angle: iv.angle || "", status: iv.status || "", scope: iv.scope || "", titleId: iv.titleId || "", productId: iv.productId || "", campId: iv.cid || "", created: iv.created || "", assetIds: iv.assetIds || [] })) };
-        return json({ rows, ao2Extra, productStats: hubProductAssetStats(productRows, titleRows, assetRows), apps: await studioApps(env).catch(() => ({})) });
+        const apps = await studioApps(env).catch(() => ({})); mark("total"); TM.at = new Date().toISOString(); TM.rows = rows.length;
+        try { const L = (await env.TRADES.get("devtbl:timing", "json")) || []; L.unshift(TM); await env.TRADES.put("devtbl:timing", JSON.stringify(L.slice(0, 20))); } catch (e) {}
+        return json({ rows, ao2Extra, productStats: hubProductAssetStats(productRows, titleRows, assetRows), apps, timing: TM });
       }
 
       // Output bulk delete is deliberately a soft delete: Assets remain in
