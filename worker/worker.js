@@ -2365,6 +2365,46 @@ async function writeQaAsset(env,page,{titleId,contract,cur,style,name,methodId,h
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
   return {ok:true,fields:[main.name],violations:[],written:true,style:{keep:'Q&A',purpose:style.purpose,keptPct,band:WRITE_KEEP['Q&A'].band,questions:qa.length,duplicatesDropped:dropped,seoHeadings:seo&&heads.some((h,i)=>h!==qa[i][0]),intro:!!intro,keepReading:more.length,grammarFixed:cleaned}};
 }
+// ── Images in written pages (operator 2026-11-08, Offer Roundup: "no images … look for stock photos or generate images for the product links").
+// [[imgN]] alone on a line → that title image as Markdown; any other Markdown image that isn't one of the packet's image URLs is dropped
+// (a page link or an invented URL never renders as a picture). Product images are added by the worker, never written by the model.
+const PRODUCT_IMG_RE=/\/images\/products\//;
+function writeImgResolve(fields,titleImages){
+  const byRef=new Map((titleImages||[]).map(x=>[x.ref.toLowerCase(),x])),ok=new Set((titleImages||[]).map(x=>x.imageUrl)),alt=x=>String(x.alt||x.title||'').replace(/[\[\]\n]/g,' ').trim().slice(0,160);
+  const out={};for(const [k,v] of Object.entries(fields)){if(typeof v!=='string'||!/\[\[img\d+\]\]|!\[/i.test(v)){out[k]=v;continue;}
+    out[k]=v.replace(/\[\[(img\d+)\]\]/gi,(m,r)=>{const x=byRef.get(r.toLowerCase());return x?'!['+alt(x)+']('+x.imageUrl+')':'';})
+      .replace(/!\[([^\]\n]*)\]\(([^)\s]*)\)/g,(m,a,u)=>ok.has(u)||PRODUCT_IMG_RE.test(u)?m:'').replace(/\n{3,}/g,'\n\n');}
+  return out;
+}
+// "- **Product** — why — [Find it on Amazon](…)" bullets get "![Product](url) " at the front. One picture per product name, kept in KV
+// (prodimg:v1:<name>) and reused by every page. Stock photo first (Pexels, when PEXELS_API_KEY is set), else one Grok render from the hub's
+// committed design spec (held without one, like every image engine). Up to 8 per page, in parallel; a failure leaves that bullet as it was.
+async function writeProductImages(env,text,{campaignId,assetId,topic}){
+  const lines=String(text||'').split('\n'),hits=[];
+  lines.forEach((l,i)=>{const m=/^(\s*[-*•]\s+)(?!!\[)\*\*([^*\n]{2,80})\*\*.*\]\(https:\/\/www\.amazon\.[a-z.]+\/s\?k=[^)\s]+\)/.exec(l);if(m)hits.push({i,lead:m[1],name:m[2].trim()});});
+  if(!hits.length)return {text,placed:0,made:0,failed:[]};
+  const base=String(env.MEDIA_PUBLIC_BASE||'').replace(/\/$/,''),slug=n=>n.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'product';
+  const putR2=async(bytes,ct,name)=>{const ext=/jpe?g/i.test(ct)?'jpg':/webp/i.test(ct)?'webp':'png',key='images/products/'+slug(name)+'-'+Date.now().toString(36)+'.'+ext;
+    await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:ct,cacheControl:'public, max-age=31536000, immutable'}});return base+'/'+key;};
+  let specP=null;const spec=()=>specP||(specP=(async()=>{const brief=await assembleImageBrief(env,{campaignId,assetId});const held=await holdImageWithoutSpec(env,brief,{action:'writeProductImages',assetId});return {brief,held};})());
+  const one=async h=>{const key='prodimg:v1:'+slug(h.name),cached=await env.TRADES.get(key,'json').catch(()=>null);if(cached&&cached.url)return {url:cached.url,made:false};
+    if(!env.MEDIA)throw new Error('no media bucket');let url='',source='';
+    const px=String(env.PEXELS_API_KEY||'').trim();
+    if(px){const r=await fetch('https://api.pexels.com/v1/search?per_page=1&orientation=square&query='+encodeURIComponent(h.name),{headers:{Authorization:px}});const d=await r.json().catch(()=>({}));const ph=(d.photos||[])[0];
+      if(r.ok&&ph&&ph.src&&ph.src.medium){const img=await fetch(ph.src.medium);if(img.ok){url=await putR2(new Uint8Array(await img.arrayBuffer()),(img.headers.get('content-type')||'image/jpeg').split(';')[0],h.name);source='pexels:'+(ph.url||ph.id);}}}
+    if(!url){if(!String(env.XAI_API_KEY||'').trim())throw new Error('XAI_API_KEY not configured');const {brief,held}=await spec();if(held)throw new Error(held.reason||'no committed design spec');
+      const prompt=('A simple, realistic product photograph of '+h.name+' (for: '+String(topic||'').slice(0,120)+'), on its own, centered, plain light background, soft natural light, square framing. '
+        +'Keep the hub look and its "Never" rules from this spec:\n'+String(brief.storedSpec||'').slice(0,1800)+'\nNo text, no letters, no logos, no brand names, no labels, no watermarks.').slice(0,5000);
+      const xr=await grokImageFetch(env,{campaignId,assetId},{method:'POST',headers:{Authorization:'Bearer '+String(env.XAI_API_KEY).trim(),'content-type':'application/json'},
+        body:JSON.stringify({model:'grok-imagine-image-2.0',quality:'medium',prompt,n:1,aspect_ratio:'1:1',resolution:'1k'})});
+      const xd=await xr.json().catch(()=>({})),gurl=xd.data&&xd.data[0]&&xd.data[0].url;if(!xr.ok||!gurl)throw new Error((xd.error&&(xd.error.message||xd.error))||('xAI image error '+xr.status));
+      const img=await fetch(gurl);if(!img.ok)throw new Error('could not fetch the render');url=await putR2(new Uint8Array(await img.arrayBuffer()),(img.headers.get('content-type')||'image/png').split(';')[0],h.name);source='grok';}
+    await env.TRADES.put(key,JSON.stringify({url,name:h.name,source,at:Date.now()}));return {url,made:true};};
+  const res=await Promise.all(hits.slice(0,8).map(h=>one(h).then(r=>({h,...r}),e=>({h,error:e.message}))));
+  let placed=0,made=0;const failed=[];
+  for(const r of res){if(r.error){failed.push(r.h.name+': '+r.error);continue;}const l=lines[r.h.i];lines[r.h.i]=r.h.lead+'!['+r.h.name.replace(/[\[\]]/g,'')+']('+r.url+') '+l.slice(r.h.lead.length);placed++;if(r.made)made++;}
+  return {text:lines.join('\n'),placed,made,failed};
+}
 async function writeContractAsset(env,assetId,opts={}) {
   if(!/^[a-f0-9]{32}$/i.test(hubAssetId(assetId)))throw new Error('Invalid asset id');
   await governingFlow(env);
@@ -2402,9 +2442,12 @@ async function writeContractAsset(env,assetId,opts={}) {
   // operator 2026-11-08 (Offer Roundup): "take the existing images from the single posts on this title" — when the row's inputs name single
   // posts, the packet carries the title's single-post assets that have an image: the image URL plus that post's own copy, in title order.
   let titleImages=[];if(titleId&&/single posts?/i.test(row.inputs||'')){const sp=await notionQuery(ASSETS_DB,{filter:{property:'Content Strategy',relation:{contains:ivDash(titleId)}}}).catch(e=>{console.error('titleImages',e.message);return [];});
-    titleImages=sp.filter(x=>!x.archived&&!x.in_trash&&/single post/i.test(x.properties?.['Asset Type']?.select?.name||'')&&x.properties?.['Post Image']?.url&&hubAssetId(x.id)!==hubAssetId(page.id)).sort((a,b)=>String(a.created_time).localeCompare(String(b.created_time))).slice(0,20)
-      .map(x=>{const v=writingFieldValues(x.properties);return {assetId:hubAssetId(x.id),imageUrl:x.properties['Post Image'].url,title:hubRichText(x.properties['Asset Title']?.title),
-        copy:Object.fromEntries(['Platform Title','Body','Post Caption','Alt Text','Description'].filter(k=>String(v[k]||'').trim()).map(k=>[k,String(v[k]).slice(0,1500)]))};});}
+    // 2026-11-08: the writer places an image by its ref ([[img3]] alone on a line) — the worker swaps in the real URL (writeImgResolve), so a
+    // page link or an invented URL can never become an image. One entry per distinct image, in title order.
+    const seen=new Set();titleImages=sp.filter(x=>!x.archived&&!x.in_trash&&/\bsingle post\b/i.test(x.properties?.['Asset Type']?.select?.name||'')&&x.properties?.['Post Image']?.url&&hubAssetId(x.id)!==hubAssetId(page.id))
+      .sort((a,b)=>String(a.created_time).localeCompare(String(b.created_time))).filter(x=>{const u=x.properties['Post Image'].url;if(seen.has(u))return false;seen.add(u);return true;}).slice(0,30)
+      .map((x,n)=>{const v=writingFieldValues(x.properties);return {ref:'img'+(n+1),title:hubRichText(x.properties['Asset Title']?.title),alt:String(v['Alt Text']||'').slice(0,160),imageUrl:x.properties['Post Image'].url,
+        copy:Object.fromEntries(['Platform Title','Body','Post Caption','Description'].filter(k=>String(v[k]||'').trim()).map(k=>[k,String(v[k]).slice(0,600)]))};});}
   const packet={version:1,assetId:hubAssetId(page.id),method:{id:methodId,name,notes:hubRichText(method?.properties?.Notes?.rich_text),page:recipe},
     contract:row.contractText,inputs:row.inputs,title:{properties:pick(tp,['Title','Notes']),pillar},research,voice,hub:design?{audience,design}:{audience},
     product:{properties:pid?pick((await ivPage(pid)).properties,PRODUCT_FACTS):{},research:product},interview:interview?.text||'',
@@ -2440,11 +2483,12 @@ async function writeContractAsset(env,assetId,opts={}) {
     styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
     process:{model:'claude-sonnet-4-6',maxTokens:8000,tool:'write_contract_fields (one string per contract field, all required)',correction:'one corrective pass when a contract rule fails, a keyword is not placed or the kept % is outside the band ±15 — kept only if it scores better',trim:'a field over its ≤ N characters rule (and under 600 chars) is trimmed at a sentence, else word, boundary',protected:['Status','Asset Status','Hub Section','Content Hub','Publishing Date','Deployment Status','Site URL','Content URL','Method'],saves:'only the contract fields + Method (+ Interview Kept %, and Interview Sync = In Sync when interview answers were used); never status or publishing',enforcement:'advisory — violations reported, fields still saved; written = no violations',log:'writeasset:log (last 200 runs)'}};
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
-  const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
+  const fieldsOf=g=>writeImgResolve(Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];})),titleImages);
   const band=WRITE_KEEP[style.keep].band,mainOf=f=>f['Offer Page']||f.Body||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
   const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=!only&&seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=!only&&kept!==null&&(kept<band[0]-15||kept>band[1]+15);
-    const problems=[...violations,...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
-    return {kept,seo,violations,problems,score:violations.length*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
+    const placed=titleImages.length?(mainOf(f).match(/^!\[[^\]\n]*\]\(https:\/\/[^)\s]+\)$/gm)||[]).length:0,need=Math.min(4,titleImages.length);
+    const problems=[...violations,...(placed<need?['only '+placed+' of the titleImages are placed — place at least '+need+', each as its ref alone on its own line, e.g. [[img1]] (the worker inserts the picture)']:[]),...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
+    return {kept,seo,violations,problems,score:violations.length*2+Math.max(0,need-placed)*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
   let fields=fieldsOf(generated),c=check(fields),corrected=false;
   if(c.problems.length){
     const again=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nYOUR PREVIOUS DRAFT has these problems — fix exactly these, changing nothing else:\n- '+c.problems.join('\n- ')+'\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
@@ -2455,6 +2499,8 @@ async function writeContractAsset(env,assetId,opts={}) {
     const lim=+m[1],cut=v.slice(0,lim),sent=cut.match(/^[\s\S]*[.!?](?=\s|$)/);fields[fn]=sent&&sent[0].length>=lim*0.6?sent[0].trim():cut.replace(/\s+\S*$/,'').replace(/[\s,;:—–-]+$/,'')+'.';if(Array.from(fields[fn]).length>lim)fields[fn]=Array.from(fields[fn]).slice(0,lim).join('');trimmed=true;}
   if(trimmed)c=check(fields);
   const keptPct=c.kept,seo=c.seo,violations=c.violations;
+  let productImages=null;if(/product images?/i.test(row.inputs||'')&&!opts.dryRun){const fk=Object.keys(fields).find(k=>fields[k]&&fields[k]===mainOf(fields));
+    if(fk){productImages=await writeProductImages(env,fields[fk],{campaignId:cid,assetId:hubAssetId(page.id),topic:cur['Platform Title']||hubRichText(p['Asset Title']?.title)}).catch(e=>({error:e.message}));if(productImages&&productImages.text)fields[fk]=productImages.text;}}
   // Only contract properties and Method can be saved; operational metadata is never a writing field.
   const protectedFields=new Set(['status','asset status','hub section','content hub','publishing date','deployment status','site url','content url','method']);
   if(contract.some(f=>protectedFields.has(ivNorm(f.name))))throw new Error('Contract contains protected status, routing or attribution fields');
@@ -2467,7 +2513,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   // a write that used the interview answers brings the asset back In Sync (clears ↻ rewrite due / 'written without interview') — 2026-10-24
   if(answersOnly.trim()&&!only){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
   await saveExistingAssetWriting(page,properties,[]);
-  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{})};
+  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{}),...(titleImages.length?{titleImages:titleImages.length}:{}),...(productImages?{productImages:{placed:productImages.placed||0,made:productImages.made||0,failed:productImages.failed||[],...(productImages.error?{error:productImages.error}:{})}}:{})};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
   return {ok:true,fields:Object.keys(fields),values:only?fields:undefined,violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo}};
 }
@@ -6701,7 +6747,7 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
     .replace(/(^|[^!])\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/)[^)\s]*)\)/g, '$1<a href="$3">$2</a>');   // [text](url) → a link (relative ../slug/ for related posts)
   // a paragraph block: all "- " lines → a list; "### " → a sub-heading; else a paragraph (operator 2026-10-23, Topical Post format v2)
   const para = raw => { const t = String(raw || '').trim(), ls = t.split('\n').map(l => l.trim()).filter(Boolean);
-    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')) + '</li>').join('') + '</ul>';
+    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')).replace(/<img ([^>]*?)style="[^"]*"/, '<img $1style="display:block;width:180px;height:180px;object-fit:cover;border-radius:8px;margin:6px 0;"') + '</li>').join('') + '</ul>';
     if (/^###\s+/.test(t)) { const [h, ...rest] = t.split('\n'); return '<h3>' + md(h.replace(/^###\s+/, '')) + '</h3>' + (rest.join('\n').trim() ? para(rest.join('\n')) : ''); }
     if (/^!\[[^\]\n]*\]\(https:\/\/[^)\s]+\)$/.test(t)) return '<figure style="margin:1.4em 0;">' + md(t) + '</figure>';
     return '<p>' + md(t) + '</p>'; };
@@ -6882,7 +6928,7 @@ async function publishSubPage(env, hdr, page, hub) {
   const md = str => esc(String(str || '').replace(/\\([*_#])/g, '$1')).replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[([^\]\n]+)\]\(((?:https?:\/\/|\.{1,2}\/|\/)[^)\s]*)\)/g, '<a href="$2">$1</a>');
   const para = raw => { const x = String(raw || '').trim(), ls = x.split('\n').map(l => l.trim()).filter(Boolean);
-    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')) + '</li>').join('') + '</ul>';
+    if (ls.length && ls.every(l => /^[-*•]\s+/.test(l))) return '<ul>' + ls.map(l => '<li>' + md(l.replace(/^[-*•]\s+/, '')).replace(/<img ([^>]*?)style="[^"]*"/, '<img $1style="display:block;width:180px;height:180px;object-fit:cover;border-radius:8px;margin:6px 0;"') + '</li>').join('') + '</ul>';
     if (ls.length && ls.every(l => /^\d+[.)]\s+/.test(l))) return '<ol>' + ls.map(l => '<li>' + md(l.replace(/^\d+[.)]\s+/, '')) + '</li>').join('') + '</ol>';
     if (/^###\s+/.test(x)) { const [h, ...rest] = x.split('\n'); return '<h3>' + md(h.replace(/^###\s+/, '')) + '</h3>' + (rest.join('\n').trim() ? para(rest.join('\n')) : ''); }
     return '<p>' + md(x) + '</p>'; };
