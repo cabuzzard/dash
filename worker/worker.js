@@ -1092,6 +1092,12 @@ async function runMainProductResearch(env, only) {
 // [{d, topic, qs, answers, assetId, title, minutes, at, updatedAt}]; client:rate:<id>:<day> = daily limits.
 const STUDIO_INTERVIEW_METHOD_ID = "3eb1f7d3a4bb81189890e536a35ae1ed";   // YouTube Longform — Interview
 const STUDIO_DAILY = { start: 30, generate: 12 };
+// Every Asset Status option in Notion, in Notion's order (the known list when the schema can't be read).
+async function assetStatusOptions() {
+  try { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: ivHdr() }), d = await r.json();
+    const o = (d.properties?.["Asset Status"]?.select?.options || []).map(x => x.name).filter(Boolean); if (r.ok && o.length) return o; } catch (e) { console.error("assetStatusOptions", e.message); }
+  return ["Idea", "Research", "Planning", "Development", "Review", "Publish", "Published", "Paused", "Archived"];
+}
 // Assets "Initiative" (text, operator 2026-11-09) — an unrelated grouping of assets, set and cleared from CP AA. Text, not select: the names
 // in use carry commas, which a Notion select option can't. Added once; a property of that name with another type is never converted.
 async function initiativeEnsureProp(env) {
@@ -37018,7 +37024,8 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const db = await resp.json();
         if (!resp.ok) return json({ error: db.message || "Schema fetch failed" }, resp.status);
         const types = (db.properties?.["Asset Type"]?.select?.options || []).map(o => o.name).filter(Boolean).filter(t => body.all || LIVE_ASSET_TYPES.includes(t));   // all: every Asset Type option (Content Plan pick list)
-        return json({ types });
+        const statuses = (db.properties?.["Asset Status"]?.select?.options || []).map(o => o.name).filter(Boolean);   // every Asset Status option (CP AA, 2026-11-09)
+        return json({ types, statuses });
       }
 
       // ── generateTitleAssets ──
@@ -46161,7 +46168,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         if (!assetId || !status) return json({ error: "assetId and status required" }, 400);
         const dId = id => { const s = id.replace(/-/g,""); return s.slice(0,8)+"-"+s.slice(8,12)+"-"+s.slice(12,16)+"-"+s.slice(16,20)+"-"+s.slice(20); };
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
-        if(body.statusOnly===true&&!['Idea','Development','Review','Publish','Published'].includes(status))return json({error:'Invalid asset status'},400);
+        // statusOnly: any Asset Status option Notion has (operator 2026-11-09: "I'm still working out statuses. but don't leave anything out")
+        if(body.statusOnly===true&&!(await assetStatusOptions()).includes(status))return json({error:'"'+status+'" is not an Asset Status option in Notion'},400);
         if(status==='Published'&&body.statusOnly!==true){const page=await ivPage(assetId);if(['news','articles','offers','subpage'].includes(hubSectionOf(page.properties||{})))await requireAssetWriting(page);}
         const ar = await hubNotionFetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }

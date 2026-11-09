@@ -4730,7 +4730,7 @@ function cplanTraceCols(T) {   // → true when the two columns had to be added 
 let CPLAN_AIDX = null, CPLAN_AIDX_SRC = null;
 function cplanAssetIdx() {   // assetId → its All Output row, for the four statuses; null until the load is in
   if (!CPLAN_TREE) return null; if (CPLAN_AIDX && CPLAN_AIDX_SRC === CPLAN_TREE) return CPLAN_AIDX;
-  const m = new Map(); for (const x of CPLAN_TREE) { if (x.kind !== 'asset' || !x.assetId || !CPLAN_PUB.includes(x.assetStatus)) continue; const id = hdNid(x.assetId); if (!m.has(id)) m.set(id, x); }
+  const m = new Map(); for (const x of CPLAN_TREE) { if (x.kind !== 'asset' || !x.assetId) continue; /* every status (2026-11-09) */ const id = hdNid(x.assetId); if (!m.has(id)) m.set(id, x); }
   CPLAN_AIDX = m; CPLAN_AIDX_SRC = CPLAN_TREE; return m;
 }
 function cplanColRe(T, re) { return (((T && T.columns) || []).find(c => re.test(String(c.name || '').trim())) || {}).id; }
@@ -5029,7 +5029,7 @@ let CPLAN_TREE = null, CPLAN_TREE_P = null, CPLAN_ATYPES = null;   // + Asset ty
 function cplanTreeLoad(name) {
   if (CPLAN_TREE || CPLAN_TREE_P || typeof devAssetsTable !== 'function') return;
   if (!CPLAN_INITS) cplanInitsLoad(name);
-  if (!CPLAN_ATYPES) { CPLAN_ATYPES = []; call('getAssetTypes', { all: true }).then(r => { CPLAN_ATYPES = (r && r.types) || []; cplanPaint(name); }).catch(() => {}); }
+  if (!CPLAN_ATYPES) { CPLAN_ATYPES = []; call('getAssetTypes', { all: true }).then(r => { CPLAN_ATYPES = (r && r.types) || []; cplanStatusesFrom(r && r.statuses); cplanPaint(name); }).catch(() => {}); }
   CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
 }
 function cplanHubTree(hubName, memo) {   // → [{ name, cluster, products: [{ name, titles: [name] }] }]
@@ -5056,7 +5056,8 @@ function cplanPaint(name = 'content-plan-assets') {
   const SL = cplanSortLv(name).filter(s => T.columns.some(c => c.id === s.col)), HL = grpOn ? SL.filter(s => s.head !== false) : [];
   const cv = (r, k) => String(r.cells[k] || '').trim(), cmp = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   if (name === HUBPLAN_TABLE) cplanSync(name);
-  let rows = T.rows.concat(S.vrows || []).filter(r => S.arch || !/^archived$/i.test(r.cells.status || ''));
+  const pubC0 = name === HUBPLAN_TABLE ? cplanColRe(T, /^published$/i) || 'published' : '';
+  let rows = T.rows.concat(S.vrows || []).filter(r => S.arch || (!/^archived$/i.test(r.cells.status || '') && !(pubC0 && /^archived$/i.test(r.cells[pubC0] || '') && cplanAssetOf(S, r))));
   if (S.only && name === HUBPLAN_TABLE) { const ai = cplanTraceIds(T).ai; rows = rows.filter(r => ai && S.only.ids.has(kwNid(String(r.cells[ai] || '').trim()))); }
   // stable multi-level sort; heading levels first (in their order) so each heading's rows sit together, then the rest
   const order = [...HL, ...SL.filter(s => !HL.includes(s))];
@@ -5140,7 +5141,7 @@ function cplanPaint(name = 'content-plan-assets') {
   setTimeout(() => el.querySelectorAll('input[data-ind]').forEach(x => { x.indeterminate = true; }), 0);
   const tw = cols.reduce((s, L) => s + cplanColW(L.key, V), 0) + 84 + 26;   // + the duplicate / delete column + the select column
   S._shown = rows.map(r => r.id); const nShownSel = rows.filter(r => SEL.has(r.id)).length, nAsset = IDX ? rows.filter(r => AX(r)).length : 0;
-  const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length, nArchC = T.columns.filter(c => c.hidden).length;
+  const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length + (pubC0 ? (S.vrows || []).filter(r => /^archived$/i.test(r.cells[pubC0] || '')).length : 0), nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<style>.cp-tr:hover > td { background: rgba(96,165,250,.16) !important; }</style><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       ${S.only ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #c084fc;border-radius:6px;background:rgba(192,132,252,.10);">Showing ${rows.length} of the ${S.only.ids.size} in <b>${esc(S.only.label)}</b><button style="${SB}" title="Show every row again" onclick="cpS(${q}).only=null;cplanPaint(${q})">✕</button></span>` : ''}
       ${name === HUBPLAN_TABLE && IDX ? (() => { const n = cplanInitCarryRows(name).length; return n ? `<button style="${B}border-color:#c084fc;" title="Saved rows that hold an Initiative their asset doesn't carry yet — review the list, then write it onto the assets" onclick="cplanInitCarry(${q})">⇪ Carry over Initiatives (${n})</button>` : ''; })() : ''}
@@ -5188,8 +5189,14 @@ function cplanPaint(name = 'content-plan-assets') {
     <tbody>${body || `<tr><td colspan="${cols.length + 2}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
 // Published column (operator 2026-11-06): the row's asset status — heading rows count each as planning.dev.review.publish.published
-// Review (operator 2026-11-09: "I forgot about review status") — written, awaiting review; its assets get rows like the other four.
-const CPLAN_PUB = ['Planning', 'Development', 'Review', 'Publish', 'Published'], CPLAN_PUB_COLORS = { Planning: '#eab308', Development: '#ff7a00', Review: '#c084fc', Publish: '#16a34a', Published: '#16a34a' };
+// Every Asset Status (operator 2026-11-09: "I forgot about review status" … "I'm still working out statuses. but don't leave anything out"):
+// the known order below, then any other option Notion has (getAssetTypes → statuses) appended — a new or renamed status shows up on reload.
+// Every asset gets a CP AA row whatever its status; Archived assets sit behind Show archived, like archived plan rows.
+const CPLAN_PUB = ['Idea', 'Research', 'Planning', 'Development', 'Review', 'Publish', 'Published', 'Paused', 'Archived'];
+const CPLAN_PUB_COLORS = { Idea: '#94a3b8', Research: '#60a5fa', Planning: '#eab308', Development: '#ff7a00', Review: '#c084fc', Publish: '#16a34a', Published: '#16a34a', Paused: '#94a3b8', Archived: '#64748b' };
+function cplanStatusesFrom(list) { const have = new Set(list || []); if (!have.size) return;
+  for (let i = CPLAN_PUB.length - 1; i >= 0; i--) if (!have.has(CPLAN_PUB[i])) CPLAN_PUB.splice(i, 1);   // gone from Notion
+  (list || []).forEach(s => { if (!CPLAN_PUB.includes(s)) CPLAN_PUB.push(s); }); }
 function cplanEdit(name, rowId, colId, value) {
   const S = cpS(name); let row = S.t && S.t.rows.find(r => r.id === rowId);
   if (!row) { const v = (S.vrows || []).find(r => r.id === rowId); if (!v || !S.t) return;   // an asset's row: saved as a linked row on its first edit
@@ -19669,7 +19676,7 @@ async function cplanOpenSet(label, ids) {
   if (!await cplanGoto(N)) return showToast('The asset records did not load — try ↻ Assets in CP AA', 'error');
   S.only = { label, ids: new Set(ids.map(hdNid)) }; cplanPaint(N); cplanGrpAll(N, 1);
   const el = document.getElementById('cplanBody' + cpId(N)); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
-  const shown = (S._shown || []).length; if (shown < ids.length) showToast(`${ids.length - shown} of ${ids.length} have no row in CP AA (only Planning–Published assets are listed)`, 'error');
+  const shown = (S._shown || []).length; if (shown < ids.length) showToast(`${ids.length - shown} of ${ids.length} have no row in CP AA (Archived assets show with Show archived)`, 'error');
 }
 async function cplanOpenAsset(assetId) {
   const id = hdNid(assetId), N = HUBPLAN_TABLE, S = cpS(N);
@@ -19677,7 +19684,7 @@ async function cplanOpenAsset(assetId) {
   const ok = await cplanGoto(N), I = ok && S.t && cplanTraceIds(S.t);
   const row = ok ? (S.t && I && I.ai && S.t.rows.find(r => kwNid(String(r.cells[I.ai] || '').trim()) === id)) || (S.vrows || []).find(r => r.id === 'a' + id) || null : null;
   if (row && S.only && !S.only.ids.has(id)) S.only = null;
-  if (!row) return showToast('This asset has no row in CP AA (not loaded yet, removed, or not Planning–Published)', 'error');
+  if (!row) return showToast('This asset has no row in CP AA (not loaded yet, or removed)', 'error');
   if (/^archived$/i.test(row.cells.status || '')) S.arch = true;
   S.reveal = row.id; cplanPaint(N);
   setTimeout(() => { const tr = document.querySelector('#cplanBody' + cpId(N) + ' tr[data-row="' + row.id + '"]'); if (!tr) return;
