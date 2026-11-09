@@ -4631,7 +4631,7 @@ const CPLAN_DEFS = {
   'content-plan': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
     { id: 'cluster', name: 'Asset cluster' }, { id: 'step', name: 'Weekly production step' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }],
   'content-plan-assets': [{ id: 'hub', name: 'Hub' }, { id: 'init', name: 'Initiative' }, { id: 'subj', name: 'Subject matter / narrative' }, { id: 'angle', name: 'Engagement angle' },
-    { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
+    { id: 'cluster', name: 'Cluster' }, { id: 'atype', name: 'Asset type' }, { id: 'week', name: 'Sequence week' }, { id: 'day', name: 'Production day' }, { id: 'status', name: 'Status', options: CPLAN_STATUS }, { id: 'note', name: 'Review note' }] };
 const _cp = {};   // name → { t: {columns, rows}, timer, arch, sort: {col, dir} }
 function cpS(name) { return _cp[name] || (_cp[name] = { t: null, timer: null, arch: false, panel: false, open: new Set(), pend: {}, newRows: new Set(), colsDirty: false, sel: new Set() }); }   // open = expanded headings (session only; all collapsed by default)
 // View layout (operator 2026-11-05): column order, widths and column groups are this browser's view only (localStorage) —
@@ -4697,13 +4697,20 @@ async function cplanLoad(force, name = 'content-plan-assets') {
   if (!r || r.error) { el.innerHTML = `<div style="font-size:12px;color:#f87171;">${esc((r && r.error) || 'no response')}</div>`; return; }
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
   S.t = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_DEFS[name].map(c => ({ ...c })), rows: [] };   // not saved until you edit
-  if (ours && name === HUBPLAN_TABLE && cplanTraceCols(S.t)) { S.colsDirty = true; cplanSave(name); }
+  if (ours && name === HUBPLAN_TABLE && (cplanTraceCols(S.t) | cplanClusterCol(S.t))) { S.colsDirty = true; cplanSave(name); }
   S.traceAsked = new Set();
   cplanPaint(name);
 }
 // ── CP AA → asset trace (operator 2026-11-08): "Asset name" names the row's asset; "Asset id" holds the Notion record it is linked to.
 // 🔗 finds the asset by name (in the row's hub), ✍ opens it in the Asset (writer) modal. Each linked row shows whether the record's
 // Asset Type matches the row's Asset type (graph and legacy names of a renamed type count as the same). Nothing is ever retyped here.
+// Cluster (operator 2026-11-08: "need to add cluster column to cp aa") — the hub's keyword cluster above Topic (Cluster → Topic → Product →
+// Title). Added once, before Topic, when the table lacks it; asset rows take their topic's cluster, plan rows pick from the hub's clusters.
+function cplanClusterCol(T) {   // → true when the column had to be added
+  if (T.columns.some(c => /^cluster$/i.test(String(c.name || '').trim()))) return false;
+  const at = T.columns.findIndex(c => /^topic$/i.test(String(c.name || '').trim())), id = T.columns.some(c => c.id === 'cluster') ? 'xcluster' : 'cluster';
+  T.columns.splice(at >= 0 ? at : T.columns.length, 0, { id, name: 'Cluster' }); return true;
+}
 function cplanTraceCols(T) {   // → true when the two columns had to be added (after Title)
   const has = re => T.columns.some(c => re.test(String(c.name || '').trim())); if (has(/^asset name$/i) && has(/^asset id$/i)) return false;
   const tc = (T.columns.find(c => /^title$/i.test(String(c.name || '').trim())) || {}).id, at = T.columns.findIndex(c => c.id === tc), add = [];
@@ -4727,14 +4734,19 @@ function cplanAssetIdx() {   // assetId → its All Output row, for the four sta
 }
 function cplanColRe(T, re) { return (((T && T.columns) || []).find(c => re.test(String(c.name || '').trim())) || {}).id; }
 function cplanDerivedCols(T) {   // the columns an asset row takes from its asset
-  const I = cplanTraceIds(T); return new Set(['hub', 'atype', cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
+  const I = cplanTraceIds(T); return new Set(['hub', 'atype', cplanColRe(T, /^cluster$/i), cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
 }
 function cplanAssetCells(T, x, hubLabel) {
   const I = cplanTraceIds(T), out = {}, put = (id, v) => { if (id) out[id] = String(v || ''); };
   put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
+  put(cplanColRe(T, /^cluster$/i), cplanClusterOf(x));
   put(cplanColRe(T, /^product$/i), x.product && x.product !== 'No Product' ? x.product : ''); put(cplanColRe(T, /^title$/i), x.title || '');
   put(I.an, x.assetName || ''); put(I.ai, hdNid(x.assetId)); put(cplanColRe(T, /^published$/i) || 'published', x.assetStatus || ''); put('created', x.dateCreated || ''); put('changed', x.dateEdited || '');
   return out;
+}
+function cplanClusterOf(x) {   // the asset's own cluster, else its topic's cluster as the tree knows it
+  if (x.keywordCluster) return x.keywordCluster; const tid = x.keywordTopicId || x.titleTopicId; if (!tid || !CPLAN_TREE) return '';
+  const t = CPLAN_TREE.find(y => y.keywordCluster && hdNid(y.keywordTopicId || '') === hdNid(tid)); return (t && t.keywordCluster) || '';
 }
 function cplanAssetOf(S, row) { const idx = cplanAssetIdx(), ai = S.t && cplanTraceIds(S.t).ai, id = ai && kwNid(String(row.cells[ai] || '').trim()); return idx && id && !(S.removed && S.removed.has(id)) ? idx.get(id) || null : null; }
 function cplanRowOf(S, id) { return (S.t && S.t.rows.find(r => r.id === id)) || (S.vrows || []).find(r => r.id === id) || null; }
@@ -4770,6 +4782,7 @@ async function cplanAssetPick(name, rowId, colId, sel) {
   if (colId === 'atype') { ax.rawAssetType = r.after.type || v; showToast('✓ Asset type → ' + ax.rawAssetType, 'success'); return cplanPaint(name); }
   const o = (S.aover || {})[rowId] || {}; Object.assign(ax, { title: v, titleId: r.after.titleId, campId: r.after.campaignIds[0] || ax.campId, hubCids: r.after.campaignIds.length ? r.after.campaignIds : ax.hubCids });
   const pc = cplanColRe(T, /^product$/i), tc = cplanColRe(T, /^topic$/i); if (pc && o[pc]) ax.product = o[pc]; if (tc && o[tc]) ax.keywordTopic = o[tc];
+  const cc = cplanColRe(T, /^cluster$/i); if (cc && o[cc]) ax.keywordCluster = o[cc];
   if (S.aover) delete S.aover[rowId]; showToast('✓ Moved to “' + v + '”', 'success'); cplanPaint(name);
 }
 async function cplanAssetSet(name, rowId, ta) {   // Asset name on an asset row = the asset's Asset Title
@@ -4943,12 +4956,12 @@ function cplanTreeLoad(name) {
   if (!CPLAN_ATYPES) { CPLAN_ATYPES = []; call('getAssetTypes', { all: true }).then(r => { CPLAN_ATYPES = (r && r.types) || []; cplanPaint(name); }).catch(() => {}); }
   CPLAN_TREE_P = devAssetsTable().then(d => { CPLAN_TREE = (d && !d.error && d.rows) || []; }).catch(() => { CPLAN_TREE = []; }).finally(() => { CPLAN_TREE_P = null; cplanPaint(name); });
 }
-function cplanHubTree(hubName, memo) {   // → [{ name, products: [{ name, titles: [name] }] }]
+function cplanHubTree(hubName, memo) {   // → [{ name, cluster, products: [{ name, titles: [name] }] }]
   if (memo.has(hubName)) return memo.get(hubName);
   let out = []; const hb = hubPlanHub(hubName);
   if (hb && CPLAN_TREE && CPLAN_TREE.length) { const c = hdNid(hb.campaignId), rows = CPLAN_TREE.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
-    out = hdTree(hb, rows, CPLAN_TREE).flatMap(C => C.topics).filter(T => T.key !== '__none' && T.key !== '__main')
-      .map(T => ({ name: T.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.filter(t => t.key !== '__none').map(t => t.name) })) })); }
+    out = hdTree(hb, rows, CPLAN_TREE).flatMap(C => C.topics.map(T => ({ C, T }))).filter(({ T }) => T.key !== '__none' && T.key !== '__main')
+      .map(({ C, T }) => ({ name: T.name, cluster: /^\(no cluster\)$/.test(C.name) ? '' : C.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.filter(t => t.key !== '__none').map(t => t.name) })) })); }
   memo.set(hubName, out); return out;
 }
 // Created / Changed (operator 2026-11-06): stamped by the worker on every add / change — shown read-only, sortable (ISO text)
@@ -4976,8 +4989,8 @@ function cplanPaint(name = 'content-plan-assets') {
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;';
   const B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const narrow = c => /^(week|day)$/.test(c.id), pubCol = (T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id || '';
-  const pkCol = re => (T.columns.find(c => re.test(String(c.name || '').trim())) || {}).id, PK = { topic: pkCol(/^topic$/i), product: pkCol(/^product$/i), title: pkCol(/^title$/i) };
-  const pickOf = c => c.id === 'hub' ? 'hub' : c.id === 'atype' ? 'atype' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
+  const pkCol = re => (T.columns.find(c => re.test(String(c.name || '').trim())) || {}).id, PK = { cluster: pkCol(/^cluster$/i), topic: pkCol(/^topic$/i), product: pkCol(/^product$/i), title: pkCol(/^title$/i) };
+  const pickOf = c => c.id === 'hub' ? 'hub' : c.id === 'atype' ? 'atype' : c.id === PK.cluster ? 'cluster' : c.id === PK.topic ? 'topic' : c.id === PK.product ? 'product' : c.id === PK.title ? 'title' : '';
   const memo = new Map(), norm = s => String(s || '').trim().toLowerCase(), uniq = a => [...new Map(a.map(s => String(s || '').trim()).filter(Boolean).map(s => [norm(s), s])).values()].sort((a, b) => a.localeCompare(b));
   cplanTreeLoad(name); cplanTraceLoad(name);
   const pickList = (row, kind) => {
@@ -4985,7 +4998,9 @@ function cplanPaint(name = 'content-plan-assets') {
     if (kind === 'atype') return uniq([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)]);
     if (kind === 'hub') return uniq([...T.rows.map(r => r.cells.hub), ...HUB_SITES.filter(s => s.campaignId).map(s => s.name)]);
     const tree = hub ? cplanHubTree(hub, memo) : [], mine = T.rows.filter(r => hub && same(r, 'hub', hub));
-    if (kind === 'topic') return uniq([...tree.map(t => t.name), ...mine.map(r => r.cells[PK.topic])]);
+    const cluster = PK.cluster ? c[PK.cluster] : '';
+    if (kind === 'cluster') return uniq([...tree.map(t => t.cluster), ...mine.map(r => r.cells[PK.cluster])]);
+    if (kind === 'topic') return uniq([...tree.filter(t => !cluster || norm(t.cluster) === norm(cluster)).map(t => t.name), ...mine.filter(r => !cluster || same(r, PK.cluster, cluster)).map(r => r.cells[PK.topic])]);
     const topic = c[PK.topic], tt = tree.filter(t => !topic || norm(t.name) === norm(topic)), prods = (tt.length ? tt : tree).flatMap(t => t.products);
     if (kind === 'product') return uniq([...prods.map(p => p.name), ...mine.filter(r => !topic || same(r, PK.topic, topic)).map(r => r.cells[PK.product])]);
     const product = c[PK.product], pp = tree.flatMap(t => t.products).filter(p => !product || norm(p.name) === norm(product));
@@ -5003,7 +5018,7 @@ function cplanPaint(name = 'content-plan-assets') {
   const assetCell = (row, c, ax) => {   // → the cell for an asset's own value, or null (the plan-row cell is used)
     if (c.id === TR.an) return `<td ${ATIP} style="${ATD}"><div style="display:flex;gap:4px;align-items:flex-start;"><textarea rows="2" onchange="cplanAssetSet(${q},'${row.id}',this)" style="${IN}resize:vertical;flex:1;">${esc(row.cells[c.id] || '')}</textarea><button style="${SB}" title="Open this asset in the writer" onclick="amOpen('${hdNid(ax.assetId)}')">✍</button></div></td>`;
     if (c.id === pubCol) return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetStatus(${q},'${row.id}',this)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${CPLAN_PUB.map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>`;
-    if (pickOf(c)) return `<td ${['hub', 'topic', 'product'].includes(pickOf(c)) ? 'title="Belongs to the title — narrows the Title list; the asset moves when you pick the Title"' : ATIP} style="${ATD}">${pickSel(row, c, pickOf(c), 'cplanAssetPick')}</td>`;
+    if (pickOf(c)) return `<td ${['hub', 'cluster', 'topic', 'product'].includes(pickOf(c)) ? 'title="Belongs to the title — narrows the Title list; the asset moves when you pick the Title"' : ATIP} style="${ATD}">${pickSel(row, c, pickOf(c), 'cplanAssetPick')}</td>`;
     return null; };
   const AB = 'font-size:11px;padding:1px 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin:0 1px 2px 0;';
   const acts = row => { const ax = AX(row), td = 'padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;';
