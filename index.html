@@ -5679,7 +5679,9 @@ function amDraw() {
   const hubA = amIsHubAsset(), dirtyN = Object.keys(AM.dirty).length;
   const foot = `<div class="amf-ft"><span style="font-size:11px;color:var(--text3);flex:1;min-width:160px;">${a.status === 'Published' ? 'Published' + (hubA ? ' — live on the hub; rewrites republish automatically' : '') : hubA ? 'Hub asset — publishing writes its live page on the hub' : 'Not a hub asset — publishing marks it Published (post it on its platform yourself)'}${dirtyN ? ' · ' + dirtyN + ' unsaved field' + (dirtyN === 1 ? '' : 's') : ''}</span>`
     + `<button style="font-size:12.5px;padding:6px 14px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" ${dirtyN ? '' : 'disabled'} onclick="amFootSave(this)">💾 Save</button>`
-    + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & 📤 Publish to hub' : '💾 Save & Publish'}</button>`) + `</div>`;
+    + (hubA ? (() => { const ps = amPubSec(); return `<label title="The hub section this asset publishes to — saved as soon as you pick it" style="display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:600;">📤 Publish to
+        <select onchange="amSecPick(this)" style="font-size:12.5px;padding:5px 7px;border:1px solid ${ps ? '#4ade80' : '#f59e0b'};border-radius:6px;background:var(--surface2);color:var(--text);">${ps ? '' : '<option value="" selected>— choose section —</option>'}${amHubSections(a).map(x => `<option value="${x}" ${x === ps ? 'selected' : ''}>${esc(AM_SEC_LABEL[x] || x)}</option>`).join('')}</select></label>`; })() : '')
+    + (a.status === 'Published' ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" onclick="amSaveAndPublish(this)">${hubA ? '💾 Save & Publish to ' + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : amVisualsHtml()}</div>` + foot; return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
@@ -6137,7 +6139,9 @@ async function amWrite(btn) {
 }
 async function amPublishHub(btn, confirmed) {   // the same path as All Output's bulk Publish to hub (worker publishHubAsset → updatePublishFields publishToHub)
   if (!AM) return; if (Object.keys(AM.dirty).length) return (AM.log = '✗ Save your field edits first', amDraw());
-  if (!confirmed && !confirm('Publish this asset to its hub now? It goes live and its status becomes Published.')) return;
+  const sec = amPubSec(); if (!sec) { AM.log = '✗ Pick the hub section to publish to first (beside the publish button)'; return amDraw(); }
+  if (!confirmed && !confirm('Publish this asset to the hub’s ' + (AM_SEC_LABEL[sec] || sec) + ' section now? It goes live and its status becomes Published.')) return;
+  if (!await amEnsureSection()) return;   // publishing reads the saved Hub Section
   btn.disabled = true; if ('textContent' in btn && btn.tagName === 'BUTTON') btn.textContent = '⏳ Publishing…';
   const r = await call('publishHubAsset', { assetId: AM.id }).catch(e => ({ error: e.message }));
   if (!AM) return;
@@ -6147,16 +6151,38 @@ async function amPublishHub(btn, confirmed) {   // the same path as All Output's
   await amLoad();
 }
 // a hub asset publishes by writing its live page; anything else is Published by status (operator 2026-10-30: "a save and publish button … for all non hub assets")
-function amIsHubAsset() { const a = AM && AM.data && AM.data.asset; return !!a && ((!!a.hubSection && !/^(unlisted|email)$/i.test(a.hubSection)) || /^sub ?page$/i.test(a.type || '')); }   // a hub SECTION (or a Sub Page) makes it a hub asset — many assets only need Published (operator 2026-10-30)
+function amIsHubAsset() { const a = AM && AM.data && AM.data.asset; if (!a) return false; if (a.hubSection) return !/^(unlisted|email)$/i.test(a.hubSection); return /^sub ?page$/i.test(a.type || '') || amHubType(a.type); }
+// A hub-publishable TYPE is a hub asset before its section is set (operator 2026-11-08: "offer roundup … is a hub asset") — the worker's
+// hubPublishableType rule; Unlisted / Email set on purpose still keep it off the hub.
+function amHubType(t) { t = String(t || ''); return /\bseo post\b|\boffer\b/i.test(t) || /^blog (post|article)$/i.test(t) || (/\bblog\b/i.test(t) && /\bseo\b|\bnews\b/i.test(t)) || /^QA\s*[–-]/i.test(t); }
+// "Publish to [section]" beside the publish button: the sections this type may go in (Offer Roundup: Offers or the posts section, Articles).
+const AM_HUB_SECTIONS = ['News', 'Articles', 'Offers', 'Main Offering', 'CTA', 'Interactive'], AM_SEC_LABEL = { Articles: 'Articles (posts)' };
+function amHubSections(a) { return /^offer ?round ?up$/i.test(String(a.type || '').trim()) ? ['Offers', 'Articles'] : AM_HUB_SECTIONS; }
+function amHubSecDefault(a) { const t = String(a.type || ''); return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) ? 'News' : /\boffer\b/i.test(t) ? 'Offers' : /\bseo post\b|^blog (post|article)$/i.test(t) ? 'Articles' : ''; }
+function amPubSec() { const a = AM.data.asset, L = amHubSections(a), cur = AM.pubSec || a.hubSection || ''; return L.includes(cur) ? cur : (L.includes(amHubSecDefault(a)) ? amHubSecDefault(a) : ''); }
+async function amSecPick(sel) {   // saves the Hub Section right away (pubHubSet, section only — never publishes)
+  if (!AM) return; const v = sel.value; AM.pubSec = v; if (!v || v === AM.data.asset.hubSection) return amDraw();
+  sel.disabled = true; const r = await call('pubHubSet', { assetId: AM.id, section: v }).catch(e => ({ error: e.message }));
+  if (!AM) return; if (!r || r.error) { AM.log = '✗ Section not saved: ' + ((r && r.error) || 'no response'); AM.pubSec = ''; return amDraw(); }
+  AM.data.asset.hubSection = r.section || v; AM.changed = true; AM.log = '✓ Publishes to ' + (AM_SEC_LABEL[v] || v); amDraw();
+}
+async function amEnsureSection() {   // → true when the asset has the picked section saved (publishing reads the Hub Section)
+  const a = AM.data.asset, v = amPubSec(); if (!v) { AM.log = '✗ Pick the hub section to publish to first'; amDraw(); return false; }
+  if (v === a.hubSection) return true;
+  const r = await call('pubHubSet', { assetId: AM.id, section: v }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Section not saved — not published: ' + ((r && r.error) || 'no response'); amDraw(); return false; }
+  a.hubSection = r.section || v; return true;
+}   // a hub SECTION (or a Sub Page) makes it a hub asset — many assets only need Published (operator 2026-10-30)
 async function amFootSave(btn) { if (!AM || !Object.keys(AM.dirty).length) return; await amSaveFields(btn); }
 async function amSaveAndPublish(btn) {
-  if (!AM) return; const hubA = amIsHubAsset();
-  if (!confirm(hubA ? 'Save your edits and publish this asset to its hub? It goes live and becomes Published.' : 'Save your edits and mark this asset Published?')) return;
+  if (!AM) return; const hubA = amIsHubAsset(), sec = hubA ? amPubSec() : '';
+  if (hubA && !sec) { AM.log = '✗ Pick the hub section to publish to first (beside the publish button)'; return amDraw(); }
+  if (!confirm(hubA ? 'Save your edits and publish this asset to the hub’s ' + (AM_SEC_LABEL[sec] || sec) + ' section? It goes live and becomes Published.' : 'Save your edits and mark this asset Published?')) return;
   btn.disabled = true;
   if (Object.keys(AM.dirty).length) { const r = await call('saveAssetFields', { assetId: AM.id, fields: AM.dirty }).catch(e => ({ error: e.message }));
     if (!r || r.error) { AM.log = '✗ Not saved — not published: ' + ((r && r.error) || 'no response'); return amDraw(); }
     AM.dirty = {}; AM.changed = true; }
-  if (hubA) return amPublishHub(btn, true);
+  if (hubA) { if (!await amEnsureSection()) return; return amPublishHub(btn, true); }
   const r = await call('updateAssetStatus', { assetId: AM.id, status: 'Published' }).catch(e => ({ error: e.message }));
   AM.log = !r || r.error ? '✗ Saved, but not published: ' + ((r && r.error) || 'no response') : '✓ Saved and Published';
   AM.changed = true; await amLoad();
