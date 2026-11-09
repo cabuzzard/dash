@@ -1092,6 +1092,18 @@ async function runMainProductResearch(env, only) {
 // [{d, topic, qs, answers, assetId, title, minutes, at, updatedAt}]; client:rate:<id>:<day> = daily limits.
 const STUDIO_INTERVIEW_METHOD_ID = "3eb1f7d3a4bb81189890e536a35ae1ed";   // YouTube Longform — Interview
 const STUDIO_DAILY = { start: 30, generate: 12 };
+// Assets "Initiative" (text, operator 2026-11-09) — an unrelated grouping of assets, set and cleared from CP AA. Text, not select: the names
+// in use carry commas, which a Notion select option can't. Added once; a property of that name with another type is never converted.
+async function initiativeEnsureProp(env) {
+  if (await env.TRADES.get("initiative:prop")) return;
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: hdr }).then(r => r.json()), have = db.properties?.Initiative;
+  if (have && have.type !== "rich_text") throw new Error("Assets already has an “Initiative” property of type " + have.type + " — it is never converted");
+  if (!have) { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Initiative: { rich_text: {} } } }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Initiative to Assets: " + (d.message || r.status)); } }
+  await env.TRADES.put("initiative:prop", "1");
+}
+function initiativeNameBad(n) { return !n ? "An initiative needs a name" : n.length > 200 ? "An initiative name is at most 200 characters" : ""; }
 // Input App (2026-10-19, operator: "identify customer input … app id … link it to the app"): an asset written from a Client
 // Studio interview carries that studio link's id in Assets "Input App"; dash shows it as an App column linking to the studio.
 async function inputAppEnsureProp(env) {
@@ -19378,22 +19390,53 @@ export default {
     // the asset to the title of that name in the hub (Product decides between same-named titles); its Campaign and Product follow the title.
     // Hub / Topic / Product belong to the title, so on an asset they only narrow the Title pick. Refused: a move while the asset hangs under
     // a parent asset. Every change is logged with before / after (KV cplan:assetedit:log) and read back.
+    // initiativeNames {op, name?} (operator 2026-11-09: "allow delete and add of new initiative names and removal of old ones. from the bulk
+    // select") — the Initiative names CP AA offers, KV initiative:names. add = a new name; remove = only once no asset carries it (CP AA
+    // clears those assets first, one at a time, each logged), then the name leaves the list. Every add / remove is logged (KV initiative:names:log).
+    if (body.action === "initiativeNames") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        const op = String(body.op || "list"), name = String(body.name ?? "").trim(), K = "initiative:names";
+        await initiativeEnsureProp(env);
+        const cur = (await env.TRADES.get(K, "json")) || { names: [] }, names = cur.names || [], same = (a, b) => a.toLowerCase() === b.toLowerCase();
+        const log = async e => { const L = (await env.TRADES.get(K + ":log", "json")) || []; L.unshift({ at: new Date().toISOString(), ...e }); await env.TRADES.put(K + ":log", JSON.stringify(L.slice(0, 300))); };
+        if (op === "list") return json({ ok: true, names });
+        if (op === "add") {
+          const bad = initiativeNameBad(name); if (bad) return json({ error: bad }, 400);
+          if (names.some(n => same(n, name))) return json({ ok: true, names, existed: true });
+          const next = [...names, name].sort((a, b) => a.localeCompare(b)); await env.TRADES.put(K, JSON.stringify({ names: next, at: Date.now() })); await log({ op, name });
+          return json({ ok: true, names: next });
+        }
+        if (op === "remove") {
+          if (!name) return json({ error: "name required" }, 400);
+          const still = (await notionQuery(ASSETS_DB, { filter: { property: "Initiative", rich_text: { equals: name } } })).filter(x => !x.archived && !x.in_trash);
+          if (still.length) return json({ error: `${still.length} asset${still.length === 1 ? "" : "s"} still carry “${name}” — take them out of it first`, still: still.length }, 409);
+          const next = names.filter(n => !same(n, name)); await env.TRADES.put(K, JSON.stringify({ names: next, at: Date.now() }));
+          await log({ op, name }); return json({ ok: true, names: next });
+        }
+        return json({ error: "op must be list | add | remove" }, 400);
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "cplanAssetEdit") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       try {
         const id = hubAssetId(String(body.assetId || "")), field = String(body.field || ""), value = String(body.value ?? "").trim();
         if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
-        if (!["type", "name", "title"].includes(field)) return json({ error: "field must be type | name | title" }, 400);
-        if (!value) return json({ error: "A blank value is never written to the asset" }, 400);
+        if (!["type", "name", "title", "initiative"].includes(field)) return json({ error: "field must be type | name | title | initiative" }, 400);
+        if (!value && field !== "initiative") return json({ error: "A blank value is never written to the asset" }, 400);
+        if (field === "initiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
         const get = async () => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
         const pg = await get(), pp = pg.properties || {}; if (pg.archived || pg.in_trash) return json({ error: "The asset is in the trash" }, 409);
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
         let props, check;
         if (field === "type") {
           const types = await cpcTypeOptions(), want = ASSET_TYPE_KEYS[value] || value, t = types.find(x => cpcNorm(x) === cpcNorm(want)) || types.find(x => cpcNorm(x) === cpcNorm(value));
           if (!t) return json({ error: `"${value}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
           props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t);
+        } else if (field === "initiative") {
+          props = { Initiative: { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.initiative === value;
         } else if (field === "name") {
           props = { "Asset Title": { title: ivRt(value.slice(0, 2000)) } }; check = q => q.name === value.slice(0, 2000);
         } else {
@@ -22198,6 +22241,7 @@ Return: {
             hubSection: p["Hub Section"]?.select?.name || "",
             hubSectionKey: hubSectionOf(p) || "",
             contentHub: p["Content Hub"]?.select?.name || "",
+            initiative: (p["Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
             inputApp: (p["Input App"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
             writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox,
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
@@ -22246,7 +22290,7 @@ Return: {
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
           assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/parent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
