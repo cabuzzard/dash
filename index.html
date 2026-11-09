@@ -7094,11 +7094,12 @@ function hdRender() {
   // the summary for where you are: total + per asset type
   const here = depth === 0 ? hdCount(assetsH, plan) : depth === 1 ? hdCount(cur.assets, plan) : hdCount(hdAssetsOf(cur), under(P.slice(1)));
   const hubOnly = depth === 0 ? plan.filter(r => !r.path).length : 0;
-  const summary = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;">
-    <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border2);"><b style="flex:1;font-size:13px;min-width:0;overflow-wrap:anywhere;">${esc(depth ? cur.name : h.name)}</b>${hdChips(here, noGoal, where)}</div>
+  // the all-assets totals for where you are: below the list, collapsed by default (operator 2026-11-09); open / closed is kept this session
+  const summary = `<details ${HD.sumOpen ? 'open' : ''} ontoggle="HD.sumOpen=this.open;this.querySelector('summary span').textContent=this.open?'▼':'▶'" style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;">
+    <summary style="display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;list-style:none;"><span style="color:var(--text3);font-size:11px;width:12px;">${HD.sumOpen ? '▼' : '▶'}</span><b style="flex:1;font-size:13px;min-width:0;overflow-wrap:anywhere;"><span style="font-weight:400;color:var(--text3);">All assets · </span>${esc(depth ? cur.name : h.name)}</b>${hdChips(here, noGoal, where)}</summary>
     ${hdTypeTable(here, noGoal, where)}
     ${HD.planErr ? `<div style="font-size:11px;color:#f87171;padding:6px 10px;">Goals not loaded: ${esc(HD.planErr)}</div>` : ''}
-    ${hubOnly ? `<div style="font-size:11px;color:var(--text3);padding:6px 10px;border-top:1px solid var(--border);">${hubOnly} of ${plan.length} goals count at hub level only — Content Plan — All Assets doesn't name a topic, product or title for them (add a <b>Topic</b>, <b>Product</b> or <b>Title</b> column there to place them).</div>` : ''}</div>`;
+    ${hubOnly ? `<div style="font-size:11px;color:var(--text3);padding:6px 10px;border-top:1px solid var(--border);">${hubOnly} of ${plan.length} goals count at hub level only — Content Plan — All Assets doesn't name a topic, product or title for them (add a <b>Topic</b>, <b>Product</b> or <b>Title</b> column there to place them).</div>` : ''}</details>`;
   const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
@@ -7116,7 +7117,7 @@ function hdRender() {
         ${a.run ? `<span title="Run" style="color:#c084fc;">⟲ ${esc(a.run)}</span>` : ''}${(a.liveUrl || a.contentUrl) && /^published$/i.test(s) ? `<a href="${esc(a.liveUrl || a.contentUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''}
         <span style="color:var(--text3);">${esc(hdDate(a)) || 'no date'}</span></div></div>
       ${hdChips({ goal: '', dev: dev ? 1 : 0, pub: pub ? 1 : 0, devIds: dev ? [a.assetId] : [], pubIds: pub ? [a.assetId] : [] }, true, where + ' › ' + hdName(a))}</div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
-  el.innerHTML = tabs + tools + nav + summary + body;
+  el.innerHTML = tabs + tools + nav + body + summary;
 }
 // ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
 // changes; Run applies in batches (worker planningSweep, every old status logged); Undo restores. Published / Idea / Archived never touched.
