@@ -2397,7 +2397,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   // Keyword Seed (Paste list runs): the operator's own topic line — the subject of the piece and, for SEO writing, its first keyword
   const keywordSeed=hubRichText(p['Keyword Seed']?.rich_text).trim().slice(0,1500);
   const subject={description:String(cur.Description||'').slice(0,600),note:pageNote,...(keywordSeed?{keywordSeed}:{})};
-  let hubPosts=[];if(/topical/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
+  let hubPosts=[];if(/topical|offer ?roundup/i.test(row.name||'')&&cid){try{await hubSitesMerge(env);const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===hubAssetId(cid));
     if(hub)hubPosts=(await hubBlogManifest(env,hub)).filter(x=>x&&x.slug&&hubAssetId(x.assetId||'')!==hubAssetId(page.id)).slice(0,25).map(x=>({title:x.title,url:'../'+x.slug+'/'}));}catch(e){}}
   // operator 2026-11-08 (Offer Roundup): "take the existing images from the single posts on this title" — when the row's inputs name single
   // posts, the packet carries the title's single-post assets that have an image: the image URL plus that post's own copy, in title order.
@@ -2441,7 +2441,7 @@ async function writeContractAsset(env,assetId,opts={}) {
     process:{model:'claude-sonnet-4-6',maxTokens:8000,tool:'write_contract_fields (one string per contract field, all required)',correction:'one corrective pass when a contract rule fails, a keyword is not placed or the kept % is outside the band ±15 — kept only if it scores better',trim:'a field over its ≤ N characters rule (and under 600 chars) is trimmed at a sentence, else word, boundary',protected:['Status','Asset Status','Hub Section','Content Hub','Publishing Date','Deployment Status','Site URL','Content URL','Method'],saves:'only the contract fields + Method (+ Interview Kept %, and Interview Sync = In Sync when interview answers were used); never status or publishing',enforcement:'advisory — violations reported, fields still saved; written = no violations',log:'writeasset:log (last 200 runs)'}};
   let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];}));
-  const band=WRITE_KEEP[style.keep].band,mainOf=f=>f.Body||f['Offer Page']||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
+  const band=WRITE_KEEP[style.keep].band,mainOf=f=>f['Offer Page']||f.Body||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
   const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=!only&&seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=!only&&kept!==null&&(kept<band[0]-15||kept>band[1]+15);
     const problems=[...violations,...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
     return {kept,seo,violations,problems,score:violations.length*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
