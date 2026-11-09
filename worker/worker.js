@@ -56647,7 +56647,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};
         const cid = ivRid(p, "Campaign") || ivRid(tp, "Campaign"), pid = ivRid(p, "Product") || ivRid(tp, "product") || ivRid(tp, "Product"), parentId = ivRid(p, "Parent Asset");
         const plain = props => Object.fromEntries(STRATEGY_FIELDS.map(f => [f, hubRichText(props?.[f]?.rich_text)]));
-        const [pillar, parent, prodRec, product, campaign, typeRow, platforms] = await Promise.all([
+        const [pillar, parent, prodRec, product, campaign, typeRow, platforms, siblings] = await Promise.all([
           titleId ? extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "") : "",
           parentId ? ivPage(parentId).then(async par => { const pv = writingFieldValues(par.properties || {});
             return { id: parentId, title: hubRichText(par.properties?.["Asset Title"]?.title), type: par.properties?.["Asset Type"]?.select?.name || "", status: par.properties?.["Asset Status"]?.select?.name || "",
@@ -56657,7 +56657,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           pid ? ivPage(pid).catch(() => null) : null,
           cid ? writerCampaignResearch(cid).catch(e => ({ error: e.message })) : null,
           writerTypeRow(type).catch(() => null),
-          notionQuery(PLATFORMS_DB, {}).catch(() => [])
+          notionQuery(PLATFORMS_DB, {}).catch(() => []),
+          titleId ? notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(titleId) } } }).catch(() => []) : []   // the title's other assets: the Parent asset picker
         ]);
         const plat = x => ({ id: hubAssetId(x.id), name: hubRichText(x.properties?.Name?.title), status: x.properties?.Status?.select?.name || "",
           characterLimit: x.properties?.["Character Limit"]?.number ?? null, rules: hubRichText(x.properties?.["Content Rules"]?.rich_text).slice(0, 2000) });
@@ -56666,7 +56667,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ ok: true, type,
           title: titleId ? { id: titleId, name: hubRichText(tp.Title?.title || tp.Name?.title), status: tp.Status?.select?.name || "", pillar,
             research: Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)])) } : null,
-          parent, campaignId: cid || "",
+          parent, parentId: parentId || "", siblings: siblings.filter(x => !x.archived && !x.in_trash && hubAssetId(x.id) !== aid).map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.["Asset Title"]?.title),
+            type: x.properties?.["Asset Type"]?.select?.name || "", status: x.properties?.["Asset Status"]?.select?.name || "" })).sort((a, b) => a.type.localeCompare(b.type) || a.title.localeCompare(b.title)),
+          campaignId: cid || "",
           product: pid ? { id: pid, name: hubRichText(product?.properties?.Name?.title), researchId: prodRec ? hubAssetId(prodRec.id) : "", research: plain(prodRec?.properties) } : null,
           campaign, typeSpec: typeRow ? { id: hubAssetId(typeRow.id), name: hubRichText(typeRow.properties?.Name?.title), status: typeRow.properties?.Status?.select?.name || "" } : null,
           platforms: allPlatforms.filter(x => chosen.has(x.id)), allPlatforms });

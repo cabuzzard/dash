@@ -5717,9 +5717,26 @@ function amPillarHtml() {
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px;">${AM_PILLAR_WEIGHTS.map(([k, l]) => `<label style="font-size:12px;display:flex;gap:6px;align-items:center;">
         <span style="flex:1;">${l}</span><input type="range" min="0" max="3" step="1" value="${R.weights[k]}" oninput="AM.pr.weights['${k}']=+this.value;this.nextElementSibling.textContent=AM_WEIGHT_WORDS[+this.value]" style="width:90px;"><span style="width:46px;color:var(--text2);">${AM_WEIGHT_WORDS[R.weights[k]]}</span></label>`).join('')}</div>
       <div style="margin-top:8px;display:flex;gap:8px;align-items:center;"><button style="${AMB('#c084fc', '#c084fc')}" ${AM.prBusy ? 'disabled' : ''} onclick="amPillarRewrite(this)">${AM.prBusy ? '⏳ Rewriting… (1–3 min)' : '↻ Rewrite pillar'}</button></div></div>
-    ${par ? `<div style="${AM_LBL}">Parent asset — ${esc(par.type || '')} · ${esc(par.status || '')}</div>
+    <div style="${AM_LBL}">Parent asset</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><select onchange="amSetParent(this)" ${AM.parBusy ? 'disabled' : ''} title="The asset this one is written from — one of its title's other assets" style="flex:1;min-width:0;font-size:12px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">
+      <option value="">— no parent —</option>${(c.siblings || []).map(x => `<option value="${esc(x.id)}" ${kwNid(c.parentId || '') === x.id ? 'selected' : ''}>${esc(x.type || '(no type)')} · ${esc(x.title || '(untitled)')} · ${esc(x.status || '')}</option>`).join('')}</select>
+      ${AM.parBusy ? '<span style="font-size:11px;color:var(--text3);">saving…</span>' : ''}</div>
+    ${!(c.siblings || []).length ? '<div style="font-size:11.5px;color:var(--text3);">This title has no other assets to be a parent.</div>' : ''}
+    ${par ? `<div style="${AM_LBL}">${esc(par.type || '')} · ${esc(par.status || '')}</div>
       <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">${esc(par.title || par.error || '')} <a href="#" onclick="event.preventDefault();amOpen('${esc(kwNid(par.id))}')" style="font-size:11px;color:var(--accent);">open ↗</a></div>
-      ${amBox([...Object.entries(par.fields || {}).map(([k, v]) => k + ':\n' + v), par.page ? 'Page:\n' + par.page : ''].filter(Boolean).join('\n\n'))}` : '<div style="font-size:11.5px;color:var(--text3);margin-top:10px;">No parent asset.</div>'}`;
+      ${amBox([...Object.entries(par.fields || {}).map(([k, v]) => k + ':\n' + v), par.page ? 'Page:\n' + par.page : ''].filter(Boolean).join('\n\n'))}` : ''}`;
+}
+// Parent asset picker (operator 2026-11-08: "I need to write this from the external parent asset … a reference drop down to assign a parent
+// asset"): one of the title's other assets (setAssetParent — same title only, no loops). The Fields tab's "parent asset" source reads it.
+async function amSetParent(sel) {
+  const c = AM && AM.ctx, to = sel.value; if (!c || to === kwNid(c.parentId || '')) return;
+  const nm = to ? sel.options[sel.selectedIndex].text : '';
+  if (!confirm(to ? 'Make “' + nm + '” this asset’s parent?' : 'Clear this asset’s parent?')) { sel.value = kwNid(c.parentId || ''); return; }
+  AM.parBusy = true; amDraw();
+  const r = await call('setAssetParent', { assetId: AM.id, parentAssetId: to }).catch(e => ({ error: e.message }));
+  AM.parBusy = false;
+  if (!r || r.error) { AM.log = '✗ Parent not saved: ' + ((r && r.error) || 'no response'); amDraw(); return; }
+  AM.log = to ? '✓ Parent set — the Fields tab can write from it (source: parent asset)' : '✓ Parent cleared'; AM.changed = true; AM.ctx = null; amCtxLoad();
 }
 async function amPillarRewrite(btn) {
   const t = AM.ctx && AM.ctx.title; if (!t) return; if (!confirm('Rewrite the pillar of the title “' + (t.name || '') + '”? It replaces the current pillar for every asset of this title.')) return;
