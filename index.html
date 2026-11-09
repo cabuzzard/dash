@@ -4801,16 +4801,32 @@ async function cplanAssetStatus(name, rowId, sel) {   // the writer's own status
   if (!r || r.error) { showToast('Status not changed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
   ax.assetStatus = to; showToast('✓ Status → ' + to, 'success'); cplanPaint(name);
 }
-async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows: one record at a time, stops at the first failure (a rate limit stops it)
-  const S = cpS(name); let n = 0;
+// Bulk asset writes (operator 2026-11-09: "the bulk initiative edit keeps stopping out for too many requests"): one asset at a time, spaced out
+// (CPLAN_WRITE_GAP) to stay under Notion's rate limit. A failure — a rate limit above all — STOPS the run; the rest is kept and ▶ Continue
+// (toolbar) picks up from that asset when you say so. jobs = [{ go: () => call(...), ok: r => {...} }]; done = after the last one.
+const CPLAN_WRITE_GAP = 450;
+async function cplanWrites(name, label, jobs, done, base = 0, total = jobs.length) {
+  const S = cpS(name), m = document.getElementById('cplanMsg' + cpId(name)); S.resume = null; let n = base;
+  for (let i = 0; i < jobs.length; i++) {
+    const r = await jobs[i].go().catch(e => ({ error: e.message }));
+    if (!r || r.error) { const err = (r && r.error) || 'no response', rate = (r && r.rate) || /rate.?limit|429|too many/i.test(err);
+      S.resume = { label, jobs: jobs.slice(i), done, base: n, total, rate };
+      showToast(rate ? `Notion rate limit — paused at ${n} of ${total}. Give it a minute, then ▶ Continue` : `Stopped at ${n} of ${total}: ${err} — ▶ Continue retries from there`, 'error');
+      if (m) { m.style.color = '#f59e0b'; m.textContent = '⏸ ' + label + ': ' + n + ' / ' + total; } cplanPaint(name); return false; }
+    jobs[i].ok(r); n++; if (m && total > 1) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + label + ': ' + n + ' / ' + total; }
+    if (i < jobs.length - 1) await new Promise(res => setTimeout(res, CPLAN_WRITE_GAP));
+  }
+  if (done) await done(n); if (m && total > 1) m.textContent = '✓ ' + label + ': ' + n + ' / ' + total; cplanPaint(name); return true;
+}
+function cplanResume(name) { const R = cpS(name).resume; return R ? cplanWrites(name, R.label, R.jobs, R.done, R.base, R.total) : null; }
+async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows
+  const S = cpS(name), jobs = [];
   for (const row of rows) { const ax = cplanAssetOf(S, row); if (!ax) continue;
-    if (field === 'initiative' && (ax.initiative || '') === v) { n++; continue; }   // already there — no write
-    const r = field === 'status' ? await call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }).catch(e => ({ error: e.message }))
-      : await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: field === 'initiative' ? 'initiative' : 'type', value: v }).catch(e => ({ error: e.message }));
-    if (!r || r.error) { showToast(`Stopped after ${n} of ${rows.length}: ${(r && r.error) || 'no response'}`, 'error'); break; }
-    if (field === 'status') ax.assetStatus = v; else if (field === 'initiative') ax.initiative = (r.after && r.after.initiative) || ''; else ax.rawAssetType = (r.after && r.after.type) || v; n++;
-    if (rows.length > 3) { const m = document.getElementById('cplanMsg' + cpId(name)); if (m) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + n + ' / ' + rows.length + ' assets'; } } }
-  if (n === rows.length) showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'); cplanPaint(name);
+    if (field === 'initiative' && (ax.initiative || '') === v) continue;   // already there — no write
+    jobs.push({ go: () => field === 'status' ? call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }) : call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: field === 'initiative' ? 'initiative' : 'type', value: v }),
+      ok: r => { if (field === 'status') ax.assetStatus = v; else if (field === 'initiative') ax.initiative = (r.after && r.after.initiative) || ''; else ax.rawAssetType = (r.after && r.after.type) || v; } }); }
+  if (!jobs.length) { showToast('Nothing to change — they already have that value', 'success'); return cplanPaint(name); }
+  await cplanWrites(name, field === 'initiative' ? (v ? 'Initiative → ' + v : 'Out of initiative') : field === 'status' ? 'Status → ' + v : 'Asset type → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'));
 }
 // ── Initiative on assets (operator 2026-11-09): "it should be an asset field. but accessible by bulk edit … grab whole groupings and make them
 // initiatives or take them out of initiatives" + "allow delete and add of new initiative names and removal of old ones. from the bulk select".
@@ -4857,15 +4873,13 @@ async function cplanInitRemove(name, i) {
   const S = cpS(name), T = S.t, v = cplanInitNames(T)[i]; if (v == null) return; const nm = s => String(s || '').trim().toLowerCase();
   const assets = (CPLAN_TREE || []).filter(x => x.kind === 'asset' && nm(x.initiative) === nm(v)), plan = T.rows.filter(r => !cplanAssetOf(S, r) && nm(r.cells.init) === nm(v));
   if (!confirm(`Remove the initiative “${v}”?\n\n${assets.length} asset${assets.length === 1 ? '' : 's'} come out of it (each written to its Notion record, one at a time, logged with the old value; it stops at the first failure) and ${plan.length} plan row${plan.length === 1 ? '' : 's'} have it cleared. Then the name is removed from the list.`)) return;
-  let n = 0; const m = document.getElementById('cplanMsg' + cpId(name));
-  for (const ax of assets) { const r = await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'initiative', value: '' }).catch(e => ({ error: e.message }));
-    if (!r || r.error) { showToast(`Stopped after ${n} of ${assets.length}: ${(r && r.error) || 'no response'} — the name is kept`, 'error'); return cplanPaint(name); }
-    ax.initiative = ''; n++; if (m) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + n + ' / ' + assets.length + ' assets'; } }
-  if (plan.length) { plan.forEach(r => cplanEdit(name, r.id, 'init', '')); clearTimeout(S.timer); await cplanSave(name); }
-  const r = await call('initiativeNames', { op: 'remove', name: v }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { showToast('Assets cleared, but the name was not removed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
-  CPLAN_INITS = r.names || []; Object.keys(S.initKV || {}).forEach(k => { if (nm(S.initKV[k]) === nm(v)) delete S.initKV[k]; });
-  showToast(`✓ Removed “${v}” — ${n} asset${n === 1 ? '' : 's'}, ${plan.length} plan row${plan.length === 1 ? '' : 's'}`, 'success'); cplanPaint(name);
+  const jobs = assets.map(ax => ({ go: () => call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'initiative', value: '' }), ok: () => { ax.initiative = ''; } }));
+  await cplanWrites(name, 'Remove “' + v + '”', jobs, async n => {   // the name goes only once every asset is out of it
+    if (plan.length) { plan.forEach(r => cplanEdit(name, r.id, 'init', '')); clearTimeout(S.timer); await cplanSave(name); }
+    const r = await call('initiativeNames', { op: 'remove', name: v }).catch(e => ({ error: e.message }));
+    if (!r || r.error) return showToast('Assets cleared, but the name was not removed: ' + ((r && r.error) || 'no response'), 'error');
+    CPLAN_INITS = r.names || []; Object.keys(S.initKV || {}).forEach(k => { if (nm(S.initKV[k]) === nm(v)) delete S.initKV[k]; });
+    showToast(`✓ Removed “${v}” — ${n} asset${n === 1 ? '' : 's'}, ${plan.length} plan row${plan.length === 1 ? '' : 's'}`, 'success'); });
 }
 function cplanInitCarryRows(name) {   // saved rows linked to an asset whose Initiative is blank while the row held one
   const S = cpS(name), K = S.initKV || {}; if (!S.t) return [];
@@ -4878,11 +4892,8 @@ async function cplanInitCarry(name) {
   const txt = Object.entries(by).map(([v, a]) => `${v} — ${a.length} asset${a.length === 1 ? '' : 's'}: ${a.slice(0, 4).join(', ')}${a.length > 4 ? ', …' : ''}`).join('\n');
   if (!confirm(`Write the sheet's Initiative onto ${L.length} asset${L.length === 1 ? '' : 's'}?\n\n${txt}\n\nOnly assets with no Initiative yet. One at a time, each logged with the old value; it stops at the first failure.`)) return;
   for (const v of Object.keys(by)) if (!await cplanInitAdd(name, v, true)) return;
-  let n = 0; const m = document.getElementById('cplanMsg' + cpId(name));
-  for (const x of L) { const r = await call('cplanAssetEdit', { assetId: hdNid(x.ax.assetId), field: 'initiative', value: x.v }).catch(e => ({ error: e.message }));
-    if (!r || r.error) { showToast(`Stopped after ${n} of ${L.length}: ${(r && r.error) || 'no response'}`, 'error'); return cplanPaint(name); }
-    x.ax.initiative = (r.after && r.after.initiative) || x.v; n++; if (m) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + n + ' / ' + L.length + ' assets'; } }
-  showToast(`✓ ${n} asset${n === 1 ? '' : 's'} carry their Initiative now`, 'success'); cplanPaint(name);
+  const jobs = L.map(x => ({ go: () => call('cplanAssetEdit', { assetId: hdNid(x.ax.assetId), field: 'initiative', value: x.v }), ok: r => { x.ax.initiative = (r.after && r.after.initiative) || x.v; } }));
+  await cplanWrites(name, 'Carry over', jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} carry their Initiative now`, 'success'));
 }
 function cplanAssetsReload(name) { CPLAN_TREE = null; CPLAN_AIDX = null; _devTblLast = null; const S = cpS(name); S.traceAsked = new Set(); cplanTreeLoad(name); cplanPaint(name); }
 async function cplanCreate(name, rowId) {   // ⚒ Create asset
@@ -5171,6 +5182,7 @@ function cplanPaint(name = 'content-plan-assets') {
   const nArchR = T.rows.filter(r => /^archived$/i.test(r.cells.status || '')).length + (pubC0 ? (S.vrows || []).filter(r => /^archived$/i.test(r.cells[pubC0] || '')).length : 0), nArchC = T.columns.filter(c => c.hidden).length;
   el.innerHTML = `<style>.cp-tr:hover > td { background: rgba(96,165,250,.16) !important; }</style><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
       ${S.only ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #c084fc;border-radius:6px;background:rgba(192,132,252,.10);">Showing ${rows.length} of the ${S.only.ids.size} in <b>${esc(S.only.label)}</b><button style="${SB}" title="Show every row again" onclick="cpS(${q}).only=null;cplanPaint(${q})">✕</button></span>` : ''}
+      ${S.resume ? `<span style="display:inline-flex;gap:6px;align-items:center;padding:3px 8px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,.10);">⏸ ${esc(S.resume.label)} — ${S.resume.base} of ${S.resume.total} done${S.resume.rate ? ' (Notion rate limit)' : ''}<button style="${SB}border-color:#4ade80;color:#4ade80;" title="Carry on from where it stopped" onclick="cplanResume(${q})">▶ Continue (${S.resume.jobs.length} left)</button><button style="${SB}" title="Drop the rest of this run" onclick="cpS(${q}).resume=null;cplanPaint(${q})">✕</button></span>` : ''}
       ${name === HUBPLAN_TABLE && IDX ? (() => { const n = cplanInitCarryRows(name).length; return n ? `<button style="${B}border-color:#c084fc;" title="Saved rows that hold an Initiative their asset doesn't carry yet — review the list, then write it onto the assets" onclick="cplanInitCarry(${q})">⇪ Carry over Initiatives (${n})</button>` : ''; })() : ''}
       <button style="${B}" onclick="cplanAddRow(${q})" title="${name === HUBPLAN_TABLE ? 'A plan row — an asset that is not built yet (⚒ creates it)' : 'Add a row'}">＋ Add row</button>
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="Read the asset records again (new, changed or removed assets)" onclick="cplanAssetsReload(${q})">↻ Assets</button><button style="${B}" title="Plan rows whose Hub, Title and Asset type match exactly one unlinked asset — review the list, then link them" onclick="cplanMatch(${q})">🔗 Match plan rows…</button><button style="${B}" title="Records removed here — restore them" onclick="cplanRemovedOpen(${q})">🗑 Removed</button>
@@ -7183,7 +7195,7 @@ async function hiOpen() {
   kwTopicsFor(h.campaignId).then(d => { if (HI) { HI.topics = d; hiDraw(); } }).catch(() => { if (HI) { HI.topics = { topics: [], tc: {} }; hiDraw(); } });
 }
 function hiClose() { if (HI && HI.busy) return; const bg = document.getElementById('hiBg'); if (bg) bg.classList.remove('open'); HI = null; }
-function hiSet(k, v) { if (!HI || HI.busy) return; HI[k] = v; if (k === 'pid') { HI.tid = HI.pid === '__new' ? '__new' : ''; HI.parent = ''; } if (k === 'tid') HI.parent = ''; hiDraw(); }
+function hiSet(k, v) { if (!HI || HI.busy) return; HI[k] = v; if (k === 'pid') { HI.tid = HI.pid === '__new' ? '__new' : ''; HI.parent = ''; HI.newPid = HI.newTid = ''; HI.rest = null; } if (k === 'tid') { HI.parent = ''; HI.newTid = ''; HI.rest = null; } hiDraw(); }
 function hiCount(t, v) { if (!HI || HI.busy) return; const n = Math.max(0, Math.min(50, parseInt(v, 10) || 0)); if (n) HI.counts[t] = n; else delete HI.counts[t]; if (HI.parent === 'new:' + t && !n) HI.parent = ''; hiDraw(); }
 function hiPlan() {   // → the assets in build order: the new parent first
   const H = HI, chosen = Object.entries(H.counts).filter(([, n]) => n > 0), title = H.tid === '__new' ? H.newTitle.trim() : ((hiRows().find(x => x.kind === 'title' && hdNid(x.titleId) === H.tid) || {}).title || '');
@@ -7217,34 +7229,38 @@ function hiDraw() {
     ${H.parent.startsWith('new:') ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12px;"><span style="color:var(--text2);">Pillar type</span><select style="${IN}width:auto;" ${dis} onchange="HI.ptype=this.value">${HI_PILLAR_TYPES.map(t => `<option ${H.ptype === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>` : ''}
     ${lab('Directions — saved on every asset as its Writer Directions (the writer reads them last)')}<textarea rows="6" style="${IN}resize:vertical;line-height:1.5;" ${dis} placeholder="How these assets relate (parent / children), which input to lean on, keywords to focus on, anything the writer should follow…" oninput="HI.dir=this.value">${esc(H.dir)}</textarea>
     ${plan.length ? `${lab('Will build ' + plan.length + ' asset' + (plan.length === 1 ? '' : 's') + ' at Development')}<div style="font-size:12px;line-height:1.55;max-height:150px;overflow:auto;">${plan.map(x => `<div>${x.parent ? '<b style="color:#c084fc;">Pillar</b> ' : H.parent ? '<span style="color:var(--text3);">└ child</span> ' : ''}${esc(x.name)}</div>`).join('')}</div>` : ''}
-    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;"><button style="${B('#4ade80')}font-weight:600;" ${ready && !H.busy ? '' : 'disabled'} onclick="hiBuild()">${H.busy ? '⏳ Building…' : '⚒ Build ' + plan.length + ' asset' + (plan.length === 1 ? '' : 's')}</button>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">${H.rest && !H.busy ? `<button style="${B('#4ade80')}font-weight:600;" onclick="hiBuild(true)">▶ Continue (${H.rest.plan.length} left)</button>` : `<button style="${B('#4ade80')}font-weight:600;" ${ready && !H.busy ? '' : 'disabled'} onclick="hiBuild()">${H.busy ? '⏳ Building…' : '⚒ Build ' + plan.length + ' asset' + (plan.length === 1 ? '' : 's')}</button>`}
       <span style="font-size:11px;color:var(--text3);">${ready ? 'One at a time, logged; it stops at the first failure.' : 'Pick a product, a title, an initiative and at least one asset.'}</span></div>
     ${H.log.length ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;line-height:1.5;">${H.log.map(l => `<div style="color:${/^✗/.test(l) ? '#f87171' : /^⚠/.test(l) ? '#f59e0b' : 'var(--text2)'};">${esc(l)}</div>`).join('')}</div>` : ''}`;
 }
-async function hiBuild() {
+async function hiBuild(resume) {
   const H = HI; if (!H || H.busy) return; const h = H.hub, plan = hiPlan(), init = H.init.trim(), dir = H.dir.trim();
   if (init.length > 200) return showToast('An initiative name is at most 200 characters', 'error');
-  if (!confirm(`Build ${plan.length} Development asset${plan.length === 1 ? '' : 's'} in “${init}”${H.pid === '__new' ? ', a new product' : ''}${H.tid === '__new' ? ', a new title' : ''}? Nothing is written.`)) return;
-  H.busy = true; H.log = []; const say = t => { H.log.push(t); hiDraw(); };
+  if (!resume) H.rest = null;
+  if (!resume && !confirm(`Build ${plan.length} Development asset${plan.length === 1 ? '' : 's'} in “${init}”${H.pid === '__new' ? ', a new product' : ''}${H.tid === '__new' ? ', a new title' : ''}? Nothing is written.`)) return;
+  H.busy = true; if (!resume) H.log = []; const say = t => { H.log.push(t); hiDraw(); };
   try {
-    let pid = H.pid, topicId = '';
-    if (pid === '__new') { const tp = (() => { const d = H.topics || { topics: [] }, v = H.topic; if (v === '__main') return { topicId: '__main', stack: 'Master' }; const t = d.topics.find(x => kwNid(x.id) === v); return t ? { topicId: v, stack: t.name } : { topicId: v }; })();
+    // a product / title made by an earlier, stopped run is reused (H.newPid / H.newTid) — a retry never makes a second one
+    let pid = H.pid, topicId = '', tid = H.tid;
+    if (pid === '__new' && H.newPid) { pid = H.newPid; topicId = H.topic; }
+    else if (pid === '__new') { const tp = (() => { const d = H.topics || { topics: [] }, v = H.topic; if (v === '__main') return { topicId: '__main', stack: 'Master' }; const t = d.topics.find(x => kwNid(x.id) === v); return t ? { topicId: v, stack: t.name } : { topicId: v }; })();
       say('Creating the product…'); const r = await call('createProduct', { title: H.newProd.trim(), campaignId: h.campaignId, status: 'Development', ...(tp || {}) }).catch(e => ({ error: e.message }));
-      if (!r || r.error || !r.id) throw new Error('product not created: ' + ((r && r.error) || 'no response')); pid = kwNid(r.id); topicId = H.topic; say('✓ Product “' + H.newProd.trim() + '”'); }
+      if (!r || r.error || !r.id) throw new Error('product not created: ' + ((r && r.error) || 'no response')); pid = kwNid(r.id); H.newPid = pid; topicId = H.topic; say('✓ Product “' + H.newProd.trim() + '”'); }
     else { const pr = hiRows().find(x => x.kind === 'product' && hdNid(x.productId) === pid); topicId = (pr && (pr.keywordTopicId || pr.topicId)) || ''; }
-    let tid = H.tid;
-    if (tid === '__new') { say('Creating the title…'); const r = await call('createDevTitle', { title: H.newTitle.trim(), campaignId: h.campaignId, productId: pid, status: 'Development', skipPillar: true }).catch(e => ({ error: e.message }));
-      if (!r || r.error || !r.id) throw new Error('title not created: ' + ((r && r.error) || 'no response')); tid = kwNid(r.id); say('✓ Title “' + H.newTitle.trim() + '”');
+    if (tid === '__new' && H.newTid) tid = H.newTid;
+    else if (tid === '__new') { say('Creating the title…'); const r = await call('createDevTitle', { title: H.newTitle.trim(), campaignId: h.campaignId, productId: pid, status: 'Development', skipPillar: true }).catch(e => ({ error: e.message }));
+      if (!r || r.error || !r.id) throw new Error('title not created: ' + ((r && r.error) || 'no response')); tid = kwNid(r.id); H.newTid = tid; say('✓ Title “' + H.newTitle.trim() + '”');
       if (topicId) { const s2 = await call('setTitleTopic', { titleId: tid, topicId: topicId === '__main' ? '__main' : kwNid(topicId) }).catch(e => ({ error: e.message })); if (!s2 || s2.error) say('⚠ topic not set on the title: ' + ((s2 && s2.error) || 'no response')); } }
     if (!(H.names || []).some(n => n.toLowerCase() === init.toLowerCase())) { const r = await call('initiativeNames', { op: 'add', name: init }).catch(e => ({ error: e.message })); if (r && !r.error) { H.names = r.names || H.names; if (typeof CPLAN_INITS !== 'undefined') CPLAN_INITS = H.names; } }
-    let parentId = H.parent.startsWith('ex:') ? H.parent.slice(3) : '', n = 0;
-    for (const x of plan) {
+    let parentId = H.rest ? H.rest.parentId : H.parent.startsWith('ex:') ? H.parent.slice(3) : '', n = H.rest ? H.rest.n : 0; const todo = H.rest ? H.rest.plan : plan; H.rest = null;
+    for (const [j, x] of todo.entries()) {
+      if (j) await new Promise(res => setTimeout(res, CPLAN_WRITE_GAP));
       const r = await call('initiativeBuildAsset', { titleId: tid, campaignId: h.campaignId, productId: pid, assetType: x.type, assetTitle: x.name, initiative: init, directions: dir,
         ...(x.parent ? { asPillar: true, pillarType: H.ptype } : parentId ? { parentAssetId: parentId } : {}) }).catch(e => ({ error: e.message }));
-      if (!r || r.error) throw new Error(`stopped after ${n} of ${plan.length} — “${x.name}”: ${(r && r.error) || 'no response'}`);
+      if (!r || r.error) { H.rest = { plan: todo.slice(j), parentId, n }; throw new Error(`${(r && (r.rate || /rate.?limit|429|too many/i.test(r.error || ''))) ? 'Notion rate limit' : 'stopped'} after ${n} of ${n + todo.length - j} — “${x.name}”: ${(r && r.error) || 'no response'} — give it a minute, then ▶ Continue`); }
       n++; if (x.parent) parentId = r.assetId; say((r.warning ? '⚠ ' + r.warning + ' — ' : '✓ ') + x.name + (r.flowWarnings ? ' (flow note: ' + r.flowWarnings.join(', ') + ')' : ''));
     }
-    say(`✓ Done — ${n} asset${n === 1 ? '' : 's'} at Development in “${init}”. Open the initiative below; each asset links to its CP AA row.`);
+    H.newPid = H.newTid = ''; say(`✓ Done — ${n} asset${n === 1 ? '' : 's'} at Development in “${init}”. Open the initiative below; each asset links to its CP AA row.`);
     HD.rows = null; if (typeof CPLAN_TREE !== 'undefined') { CPLAN_TREE = null; CPLAN_AIDX = null; } hdLoad(true);
   } catch (e) { say('✗ ' + e.message); }
   if (HI) { HI.busy = false; hiDraw(); }

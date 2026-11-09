@@ -19475,8 +19475,9 @@ export default {
         const before = snap(pp);
         const L = (await env.TRADES.get("cplan:assetedit:log", "json")) || []; L.unshift({ at: new Date().toISOString(), assetId: id, field, value, before }); await env.TRADES.put("cplan:assetedit:log", JSON.stringify(L.slice(0, 500)));
         const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
-        if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ error: "Not saved: " + (d.message || "Notion error " + r.status) }, r.status === 429 ? 429 : 502); }
-        const after = snap((await get()).properties || {});
+        const saved = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: (r.status === 429 ? "Notion rate limit — " : "Not saved: ") + (saved.message || "Notion error " + r.status), rate: r.status === 429 }, r.status === 429 ? 429 : 502);
+        const after = snap(saved.properties || (await get()).properties || {});   // the PATCH returns the saved page — no extra read (rate limits)
         if (!check(after)) return json({ error: "Notion did not confirm the change — read back: " + JSON.stringify(after) }, 502);
         return json({ ok: true, assetId: id, field, before, after });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
