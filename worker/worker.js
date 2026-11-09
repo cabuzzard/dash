@@ -1100,15 +1100,22 @@ async function assetStatusOptions() {
 }
 // Assets "Initiative" (text, operator 2026-11-09) — an unrelated grouping of assets, set and cleared from CP AA. Text, not select: the names
 // in use carry commas, which a Notion select option can't. Added once; a property of that name with another type is never converted.
-async function initiativeEnsureProp(env) {
-  if (await env.TRADES.get("initiative:prop")) return;
+async function assetsTextPropEnsure(env, name, flag) {
+  if (await env.TRADES.get(flag)) return;
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
-  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: hdr }).then(r => r.json()), have = db.properties?.Initiative;
-  if (have && have.type !== "rich_text") throw new Error("Assets already has an “Initiative” property of type " + have.type + " — it is never converted");
-  if (!have) { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Initiative: { rich_text: {} } } }) });
-    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Initiative to Assets: " + (d.message || r.status)); } }
-  await env.TRADES.put("initiative:prop", "1");
+  const db = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: hdr }).then(r => r.json()), have = db.properties?.[name];
+  if (have && have.type !== "rich_text") throw new Error("Assets already has a “" + name + "” property of type " + have.type + " — it is never converted");
+  if (!have) { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { [name]: { rich_text: {} } } }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add " + name + " to Assets: " + (d.message || r.status)); } }
+  await env.TRADES.put(flag, "1");
 }
+async function initiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Initiative", "initiative:prop"); }
+// Assets "Writer Directions" (operator 2026-11-09: "assets should have an individual direction field. it becomes another input vector to asset
+// writing, the last in the chain") — the asset's own directions, saved on the asset and read by EVERY write of it (unlike a run's guidance).
+// Set by the hub dashboard's ＋ Add initiative modal and the Asset modal's Fields tab; shown in its Information flow tab.
+async function writerDirectionsEnsureProp(env) { return assetsTextPropEnsure(env, "Writer Directions", "writerdirections:prop"); }
+const WRITER_DIRECTIONS_MAX = 8000;
+function richChunks(text) { const t = String(text || "").slice(0, WRITER_DIRECTIONS_MAX), out = []; for (let i = 0; i < t.length; i += 2000) out.push({ type: "text", text: { content: t.slice(i, i + 2000) } }); return out; }
 function initiativeNameBad(n) { return !n ? "An initiative needs a name" : n.length > 200 ? "An initiative name is at most 200 characters" : ""; }
 // Input App (2026-10-19, operator: "identify customer input … app id … link it to the app"): an asset written from a Client
 // Studio interview carries that studio link's id in Assets "Input App"; dash shows it as an App column linking to the studio.
@@ -2488,6 +2495,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   // find (wording kept vs the band, keywords not placed, contract rules) — it used to look at the kept % only.
   const seoKws=style.purpose==='SEO'?[...new Set([...(keywordSeed?keywordSeed.split(/\s*;\s*/).filter(Boolean).slice(0,3):[]),...kwSplit(String(packet.product?.properties?.Keywords||''))])]:[],seoList=seoCoverage(seoKws,'','').missing;
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
+  const assetDir=hubRichText(p['Writer Directions']?.rich_text).trim();if(assetDir)packet.assetDirections=assetDir.slice(0,WRITER_DIRECTIONS_MAX);   // last in the chain (2026-11-09)
   const pre=await env.TRADES.get('prewrite:'+hubAssetId(page.id),'json').catch(()=>null);   // the asset's PRE-WRITE (external LLM draft, pasted in the Asset modal)
   if(pre&&String(pre.text||'').trim())packet.prewrite=String(pre.text).slice(0,14000);
   const runScope=(only?'\n\nTHIS RUN WRITES ONLY these contract fields: '+contract.map(f=>f.name).join(', ')+'. The packet\'s currentFields show the asset\'s other fields — keep consistent with them, do not rewrite them.':'')
@@ -2495,7 +2503,8 @@ async function writeContractAsset(env,assetId,opts={}) {
     +(String(opts.guidance||'').trim()?'\n\nOPERATOR GUIDANCE FOR THIS RUN (follow it within the contract):\n'+String(opts.guidance).trim().slice(0,4000):'');
   const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
-    +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'');
+    +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'')
+    +(packet.assetDirections?'\n\nTHIS ASSET\'S DIRECTIONS (the packet\'s "assetDirections" — the operator\'s own directions saved on this asset, the LAST input in the chain): follow them within the contract. They decide emphasis, this asset\'s relation to its parent / children / siblings, which input to lean on and which keywords to focus on, and they win over earlier sources on those choices. They never add facts the other sources do not support.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
     rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A',
     styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
@@ -19430,17 +19439,20 @@ export default {
       try {
         const id = hubAssetId(String(body.assetId || "")), field = String(body.field || ""), value = String(body.value ?? "").trim();
         if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
-        if (!["type", "name", "title", "initiative"].includes(field)) return json({ error: "field must be type | name | title | initiative" }, 400);
-        if (!value && field !== "initiative") return json({ error: "A blank value is never written to the asset" }, 400);
+        if (!["type", "name", "title", "initiative", "directions"].includes(field)) return json({ error: "field must be type | name | title | initiative | directions" }, 400);
+        if (!value && field !== "initiative" && field !== "directions") return json({ error: "A blank value is never written to the asset" }, 400);
+        if (field === "directions") { if (value.length > WRITER_DIRECTIONS_MAX) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
         if (field === "initiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
         const get = async () => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
         const pg = await get(), pp = pg.properties || {}; if (pg.archived || pg.in_trash) return json({ error: "The asset is in the trash" }, 409);
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join(""), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
         let props, check;
         if (field === "type") {
           const types = await cpcTypeOptions(), want = ASSET_TYPE_KEYS[value] || value, t = types.find(x => cpcNorm(x) === cpcNorm(want)) || types.find(x => cpcNorm(x) === cpcNorm(value));
           if (!t) return json({ error: `"${value}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
           props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t);
+        } else if (field === "directions") {
+          props = { "Writer Directions": { rich_text: richChunks(value) } }; check = q => q.directions.trim() === value;
         } else if (field === "initiative") {
           props = { Initiative: { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.initiative === value;
         } else if (field === "name") {
@@ -19469,13 +19481,37 @@ export default {
         return json({ ok: true, assetId: id, field, before, after });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
     }
-    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog") {
+    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
       const RLOG = "cplan:removed:log", getPage = async id => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
       try {
         if (body.action === "cplanRemovedLog") return json({ ok: true, log: (await env.TRADES.get(RLOG, "json")) || [] });
+        // initiativeBuildAsset {titleId, campaignId, productId?, assetType, assetTitle, asPillar?, pillarType?, parentAssetId?, initiative, directions}
+        // (operator 2026-11-09, hub dashboard ＋ Add initiative: "deploy a cluster of assets under a new initiative … build not write") — ONE
+        // Development asset under the title via createAsset (its flow guard and Pillar-parent rule apply), then its Initiative and Writer
+        // Directions. No content, no status change beyond Development. The modal calls this once per asset, parent first, stopping at a failure.
+        if (body.action === "initiativeBuildAsset") {
+          const tid = hubAssetId(String(body.titleId || "")), cid = hubAssetId(String(body.campaignId || "")), init = String(body.initiative || "").trim(), dir = String(body.directions || "").trim();
+          if (!/^[0-9a-f]{32}$/i.test(tid) || !/^[0-9a-f]{32}$/i.test(cid)) return json({ error: "titleId and campaignId required" }, 400);
+          const bad = initiativeNameBad(init); if (bad) return json({ error: bad }, 400);
+          if (dir.length > WRITER_DIRECTIONS_MAX) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400);
+          const types = await cpcTypeOptions(), type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
+          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
+          await initiativeEnsureProp(env); await writerDirectionsEnsureProp(env);
+          const assetTitle = String(body.assetTitle || "").trim().slice(0, 300) || type;
+          const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: body.productId ? hubAssetId(body.productId) : undefined, assetTitle, assetType: type,
+            ...(body.asPillar ? { assetClass: "Pillar", pillarType: String(body.pillarType || "Generic") } : {}), ...(body.parentAssetId ? { parentAssetId: hubAssetId(body.parentAssetId) } : {}) });
+          if (!a || a.error || !a.id) return json({ error: "Not created: " + ((a && a.error) || "no response") }, 502);
+          const id = hubAssetId(a.id);
+          const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: {
+            Initiative: { rich_text: init ? [{ type: "text", text: { content: init } }] : [] }, "Writer Directions": { rich_text: richChunks(dir) } } }) });
+          const entry = { at: new Date().toISOString(), assetId: id, title: assetTitle, type, titleId: tid, campaignId: cid, initiative: init, parentAssetId: body.parentAssetId ? hubAssetId(body.parentAssetId) : "", pillar: !!body.asPillar, stamped: r.ok };
+          try { const L = (await env.TRADES.get("initiative:build:log", "json")) || []; L.unshift(entry); await env.TRADES.put("initiative:build:log", JSON.stringify(L.slice(0, 500))); } catch (e) {}
+          if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ ok: true, ...entry, warning: "Made, but its Initiative / directions were not saved: " + (d.message || r.status) }); }
+          return json({ ok: true, ...entry, ...(a.flowWarnings ? { flowWarnings: a.flowWarnings } : {}) });
+        }
         if (body.action === "cplanCreateAsset") {
           const { t } = await cplanLoad(env), row = t && (t.rows || []).find(r => r.id === String(body.rowId || ""));
           if (!row) return json({ error: "no CP AA row " + body.rowId }, 404);
@@ -56604,7 +56640,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
             poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
-            keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text) },
+            keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text), directions: hubRichText(p["Writer Directions"]?.rich_text), initiative: hubRichText(p.Initiative?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
           prewrite: await env.TRADES.get("prewrite:" + hubAssetId(body.assetId), "json").catch(() => null),
           specRow: await (async () => {   // 📋 Spec tab (operator 2026-10-30): the asset type's whole Current Methods row, literally, + how it was matched

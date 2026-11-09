@@ -5793,7 +5793,7 @@ function amDraw() {
     + (a.status === 'Published' && !hubA ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" title="${a.status === 'Published' ? 'Live already — republishing rewrites its hub page in the section picked (moves it when the section changed)' : ''}" onclick="amSaveAndPublish(this)">${hubA ? (a.status === 'Published' ? '🔄 Republish to ' : '💾 Save & Publish to ') + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : amVisualsHtml()}</div>` + foot; return; }
-  P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
+  P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
 }
 // ── Writer modal: Pillar · Research tabs, per-field writing, the type's Platforms (operator 2026-11-08) ──
@@ -6052,7 +6052,7 @@ function amSchemaHtml() {
   // 9. packet
   const src = [['method', P.method], ['contract', P.contract], ['inputs (descriptive — the packet below is fixed)', P.inputs], ['title', P.title && P.title.properties], ['pillar', P.title && P.title.pillar], ['research', P.research], ['voice', P.voice],
     ['hub.audience', P.hub && P.hub.audience], ['hub.design', P.hub && P.hub.design], ['product.properties', P.product && P.product.properties], ['product.research', P.product && P.product.research], ['interview', P.interview], ['platform', P.platform],
-    ['subject (Description · page note · Keyword Seed)', P.subject], ['hubPosts', P.hubPosts], ['prewrite (external LLM draft — the writer starts from it)', P.prewrite], ['currentFields', P.currentFields]];
+    ['subject (Description · page note · Keyword Seed)', P.subject], ['hubPosts', P.hubPosts], ['prewrite (external LLM draft — the writer starts from it)', P.prewrite], ['currentFields', P.currentFields], ['assetDirections (this asset\'s own — read last)', P.assetDirections]];
   html += box('9 · The packet — every source sent (full text in 🧭 Information flow)', kv(src.map(([k, v]) => [k, len(v)])) + kv([['Outline (fixes the structure)', a.outline ? len(a.outline) : 'none'], ['Keyword Seed', a.keywordSeed || 'none']]), false);
   // 10. process
   const pr = d.process || {};
@@ -6102,6 +6102,21 @@ async function amVideo(op, btn) {
   AM.log = !r || r.error ? '✗ ' + (op === 'render' ? 'Not sent: ' : 'Check failed: ') + ((r && r.error) || 'no response')
     : op === 'render' ? '✓ Sent to HeyGen — ↻ Check render in a minute (the callback also finishes it)' : (r.videoUrl ? '✓ Video ready' : '⏳ ' + (r.status || 'still rendering'));
   await amLoad();
+}
+// 🧭 Writer directions (operator 2026-11-09: "an individual direction field … another input vector to asset writing, the last in the chain …
+// accessible by this modal and also in the writer fields section … it goes into asset flow as well") — saved on the asset (logged with the old value).
+function amDirHtml() {
+  const a = AM.data.asset || {}, cur = AM.dirText != null ? AM.dirText : (a.directions || ''), dirty = AM.dirText != null && AM.dirText !== (a.directions || '');
+  return `<div style="border:1px solid #c084fc;border-radius:8px;padding:10px 12px;margin-bottom:14px;background:rgba(192,132,252,.05);">
+    <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;"><b style="font-size:12.5px;">🧭 Writer directions</b><span style="font-size:11px;color:var(--text3);">this asset's own — the writer reads them last, on every write${a.initiative ? ' · initiative: ' + esc(a.initiative) : ''}</span>${dirty ? '<span style="font-size:10.5px;color:#f59e0b;">● unsaved</span>' : ''}</div>
+    <textarea rows="4" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.5;resize:vertical;" placeholder="Relation to its parent / children, which input to lean on, keywords to focus on…" oninput="AM.dirText=this.value;const b=document.getElementById('amDirSave');if(b)b.disabled=false">${esc(cur)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:6px;"><button id="amDirSave" ${dirty ? '' : 'disabled'} onclick="amDirSave(this)" style="font-size:12px;padding:4px 12px;border:1px solid #c084fc;border-radius:6px;background:var(--surface2);color:#c084fc;cursor:pointer;">💾 Save directions</button></div></div>`;
+}
+async function amDirSave(btn) {
+  if (!AM || AM.dirText == null) return; const v = AM.dirText.trim(); btn.disabled = true; btn.textContent = 'Saving…';
+  const r = await call('cplanAssetEdit', { assetId: AM.id, field: 'directions', value: v }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ Directions not saved: ' + ((r && r.error) || 'no response'); btn.disabled = false; btn.textContent = '💾 Save directions'; amDraw(); return; }
+  AM.data.asset.directions = v; AM.dirText = null; AM.log = '✓ Writer directions saved — the next write reads them'; AM.changed = true; await amLoad();
 }
 function amPrewriteHtml() {
   const a = AM.data.asset, pw = AM.data.prewrite, run = amIsSeries(), busy = AM.pwBusy;
@@ -6377,7 +6392,8 @@ function amFlowHtml() {
     + sec('Title research', P.research) + sec('Product facts', P.product && P.product.properties) + sec('Product research', P.product && P.product.research)
     + sec('Hub voice', P.voice) + sec('Hub audience', P.hub && P.hub.audience) + (P.hub && P.hub.design ? sec('Hub design', P.hub.design, 'the method asks for design') : '')
     + sec('Interview', P.interview, 'answered questions') + sec('Platform', P.platform) + sec('This asset — subject', P.subject)
-    + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Pre-write', P.prewrite, 'external LLM draft — the writer starts from it') + sec('Current fields', P.currentFields, 'what is on the asset now');
+    + (P.hubPosts ? sec('Hub posts (for related links)', P.hubPosts) : '') + sec('Pre-write', P.prewrite, 'external LLM draft — the writer starts from it') + sec('Current fields', P.currentFields, 'what is on the asset now')
+    + sec('This asset — writer directions', P.assetDirections, 'its own directions — the last input in the chain');
 }
 // ── ＋ topic (operator 2026-10-30, on the Cluster column): ONE modal that sets up a new topic in an existing cluster plus — optionally — a
 // new product and a new title on it, each with its seed keywords. Placeholders only: no research, keywords run or pillar here (those
@@ -7037,7 +7053,7 @@ function hdRender() {
   const tools = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button>
-    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button>` : ''}
+    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
     <span style="color:var(--text3);font-size:11px;">G = goal (Content Plan — All Assets) · D = Development + Review · P = Publish + Published. Newest first.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }
@@ -7118,6 +7134,92 @@ function hdRender() {
         <span style="color:var(--text3);">${esc(hdDate(a)) || 'no date'}</span></div></div>
       ${hdChips({ goal: '', dev: dev ? 1 : 0, pub: pub ? 1 : 0, devIds: dev ? [a.assetId] : [], pubIds: pub ? [a.assetId] : [] }, true, where + ' › ' + hdName(a))}</div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
   el.innerHTML = tabs + tools + nav + body + summary;
+}
+// ── ＋ Add initiative (operator 2026-11-09): "product picker, a title picker from the hub it's in, then an initiative picker with add new …
+// multiselect of assets to build not write … deploy a cluster of assets under a new initiative … a text box … goes into the writer directions
+// for each created asset … reinforcing parent / child relationships, which input to bias for, keywords to isolate on" + "deploy under new or
+// existing" + "you could add new products, they would need to be researched and synced later". Product / title new or existing; every asset is
+// made at Development (initiativeBuildAsset → createAsset: its flow guard + Pillar-parent rule) with the Initiative and the directions saved on
+// it as Writer Directions. Parent first; one at a time; stops at the first failure. Nothing is written, researched or published here.
+const HI_PILLAR_TYPES = ['Generic', 'Long Form Topical', 'Long Form Sales', 'Product', 'Digest', 'Interactivity', 'Job Application', 'Marketplace Listing'];
+let HI = null;
+function hiHub() { return hdHubs().find(x => hdNid(x.campaignId) === HD.hub) || null; }
+function hiRows() { const cid = HD.hub; return (HD.rows || []).filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid)); }
+async function hiOpen() {
+  const h = hiHub(); if (!h) return;
+  let bg = document.getElementById('hiBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'hiBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="hiPanel" style="max-width:760px;width:94vw;max-height:90vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
+  bg.classList.add('open'); HI = { hub: h, pid: '', tid: '', init: '', counts: {}, q: '', parent: '', ptype: 'Generic', dir: '', newProd: '', newTitle: '', busy: false, log: [], names: [], types: null, topics: null, topic: '' };
+  hiDraw();
+  call('initiativeNames', { op: 'list' }).then(r => { if (HI && r && !r.error) { HI.names = r.names || []; hiDraw(); } }).catch(() => {});
+  (typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES && CPLAN_ATYPES.length ? Promise.resolve({ types: CPLAN_ATYPES }) : call('getAssetTypes', { all: true })).then(r => { if (HI) { HI.types = (r && r.types) || []; hiDraw(); } }).catch(() => { if (HI) { HI.types = []; hiDraw(); } });
+  kwTopicsFor(h.campaignId).then(d => { if (HI) { HI.topics = d; hiDraw(); } }).catch(() => { if (HI) { HI.topics = { topics: [], tc: {} }; hiDraw(); } });
+}
+function hiClose() { if (HI && HI.busy) return; const bg = document.getElementById('hiBg'); if (bg) bg.classList.remove('open'); HI = null; }
+function hiSet(k, v) { if (!HI || HI.busy) return; HI[k] = v; if (k === 'pid') { HI.tid = HI.pid === '__new' ? '__new' : ''; HI.parent = ''; } if (k === 'tid') HI.parent = ''; hiDraw(); }
+function hiCount(t, v) { if (!HI || HI.busy) return; const n = Math.max(0, Math.min(50, parseInt(v, 10) || 0)); if (n) HI.counts[t] = n; else delete HI.counts[t]; if (HI.parent === 'new:' + t && !n) HI.parent = ''; hiDraw(); }
+function hiPlan() {   // → the assets in build order: the new parent first
+  const H = HI, chosen = Object.entries(H.counts).filter(([, n]) => n > 0), title = H.tid === '__new' ? H.newTitle.trim() : ((hiRows().find(x => x.kind === 'title' && hdNid(x.titleId) === H.tid) || {}).title || '');
+  const out = [];
+  chosen.forEach(([t, n]) => { for (let i = 1; i <= n; i++) out.push({ type: t, name: (title || 'Title') + ' — ' + t + (n > 1 ? ' ' + i : ''), parent: H.parent === 'new:' + t && i === 1 }); });
+  return out.sort((a, b) => b.parent - a.parent);
+}
+function hiDraw() {
+  const P = document.getElementById('hiPanel'); if (!P || !HI) return;
+  const H = HI, rows = hiRows(), B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+  const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`, dis = H.busy ? 'disabled' : '';
+  const prods = [...new Map(rows.filter(x => x.kind === 'product' && x.productId).map(x => [hdNid(x.productId), x])).values()].sort((a, b) => String(a.product).localeCompare(String(b.product)));
+  const titles = H.pid && H.pid !== '__new' ? [...new Map(rows.filter(x => x.kind === 'title' && x.titleId && hdNid(x.productId) === H.pid).map(x => [hdNid(x.titleId), x])).values()].sort((a, b) => String(a.title).localeCompare(String(b.title))) : [];
+  const pillars = H.tid && H.tid !== '__new' ? rows.filter(x => x.kind === 'asset' && hdNid(x.titleId) === H.tid && /^pillar$/i.test(x.assetClass || '')) : [];
+  const names = [...new Set([...(H.names || []), ...(HD.rows || []).filter(x => x.kind === 'asset').map(x => String(x.initiative || '').trim()).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
+  const types = (H.types || []).filter(t => !H.q || t.toLowerCase().includes(H.q.toLowerCase()) || H.counts[t]);
+  const plan = hiPlan(), chosen = Object.keys(H.counts);
+  const ready = H.pid && (H.pid !== '__new' || (H.newProd.trim() && H.topic)) && H.tid && (H.tid !== '__new' || H.newTitle.trim()) && H.init.trim() && plan.length;
+  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">＋ Add initiative — ${esc(H.hub.name)}</b><button style="${B('var(--border2)')}color:var(--text);" ${dis} onclick="hiClose()">✕</button></div>
+    <div style="font-size:12px;color:var(--text3);margin:4px 0 2px;">Builds Development assets under one title, each tagged with the initiative and carrying your directions as its Writer Directions. Nothing is written — write each one later in the writer.</div>
+    ${lab('Product')}<select style="${IN}" ${dis} onchange="hiSet('pid',this.value)"><option value="">— pick a product —</option>${prods.map(x => `<option value="${hdNid(x.productId)}" ${H.pid === hdNid(x.productId) ? 'selected' : ''}>${esc(x.product || '(product)')}${hdSt(x) ? ' · ' + esc(hdSt(x)) : ''}</option>`).join('')}<option value="__new" ${H.pid === '__new' ? 'selected' : ''}>＋ New product…</option></select>
+    ${H.pid === '__new' ? `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><input style="${IN}flex:1 1 220px;width:auto;" ${dis} placeholder="New product name" value="${esc(H.newProd)}" oninput="HI.newProd=this.value" onchange="hiDraw()"><select style="${IN}flex:1 1 220px;width:auto;" ${dis} onchange="hiSet('topic',this.value)">${H.topics ? kwTopicOptions(H.topics, H.topic) : '<option value="">loading topics…</option>'}</select></div><div style="font-size:11px;color:var(--text3);margin-top:3px;">Made at Development on that keyword topic — research and sync it later.</div>` : ''}
+    ${lab('Title')}<select style="${IN}" ${dis || (!H.pid ? 'disabled' : '')} onchange="hiSet('tid',this.value)">${H.pid === '__new' ? '' : `<option value="">— pick a title —</option>${titles.map(x => `<option value="${hdNid(x.titleId)}" ${H.tid === hdNid(x.titleId) ? 'selected' : ''}>${esc(x.title || '(title)')}${hdSt(x) ? ' · ' + esc(hdSt(x)) : ''}</option>`).join('')}`}<option value="__new" ${H.tid === '__new' ? 'selected' : ''}>＋ New title…</option></select>
+    ${H.tid === '__new' ? `<input style="${IN}margin-top:6px;" ${dis} placeholder="New title" value="${esc(H.newTitle)}" oninput="HI.newTitle=this.value" onchange="hiDraw()"><div style="font-size:11px;color:var(--text3);margin-top:3px;">Made at Development on the product's keyword topic (no research or pillar yet).</div>` : ''}
+    ${lab('Initiative')}<input style="${IN}" ${dis} list="hiNames" placeholder="Pick one or type a new name" value="${esc(H.init)}" oninput="HI.init=this.value" onchange="hiDraw()"><datalist id="hiNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+    ${H.init.trim() && !names.some(n => n.toLowerCase() === H.init.trim().toLowerCase()) ? '<div style="font-size:11px;color:#c084fc;margin-top:3px;">New initiative — it is added to the names list.</div>' : ''}
+    ${lab('Assets to build — set a count on each type')}<input style="${IN}margin-bottom:6px;" ${dis} placeholder="Filter asset types…" value="${esc(H.q)}" oninput="HI.q=this.value;hiDraw();this.focus();this.setSelectionRange(this.value.length,this.value.length)">
+    <div style="max-height:200px;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;">${H.types ? types.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12.5px;"><input type="number" min="0" max="50" ${dis} value="${H.counts[t] || ''}" placeholder="0" onchange="hiCount(${JSON.stringify(t).replace(/"/g, '&quot;')},this.value)" style="${IN}width:58px;padding:3px 6px;"><span style="${H.counts[t] ? 'font-weight:700;' : 'color:var(--text2);'}">${esc(t)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--text3);">No match</div>' : '<div style="font-size:12px;color:var(--text3);">Loading asset types…</div>'}</div>
+    ${lab('Parent')}<select style="${IN}" ${dis} onchange="hiSet('parent',this.value)"><option value="">No parent</option>${chosen.map(t => `<option value="new:${esc(t)}" ${H.parent === 'new:' + t ? 'selected' : ''}>New: the first ${esc(t)} — made a Pillar, the rest its children</option>`).join('')}${pillars.map(x => `<option value="ex:${hdNid(x.assetId)}" ${H.parent === 'ex:' + hdNid(x.assetId) ? 'selected' : ''}>Existing pillar: ${esc(x.assetName || '(untitled)')}</option>`).join('')}</select>
+    ${H.parent.startsWith('new:') ? `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12px;"><span style="color:var(--text2);">Pillar type</span><select style="${IN}width:auto;" ${dis} onchange="HI.ptype=this.value">${HI_PILLAR_TYPES.map(t => `<option ${H.ptype === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>` : ''}
+    ${lab('Directions — saved on every asset as its Writer Directions (the writer reads them last)')}<textarea rows="6" style="${IN}resize:vertical;line-height:1.5;" ${dis} placeholder="How these assets relate (parent / children), which input to lean on, keywords to focus on, anything the writer should follow…" oninput="HI.dir=this.value">${esc(H.dir)}</textarea>
+    ${plan.length ? `${lab('Will build ' + plan.length + ' asset' + (plan.length === 1 ? '' : 's') + ' at Development')}<div style="font-size:12px;line-height:1.55;max-height:150px;overflow:auto;">${plan.map(x => `<div>${x.parent ? '<b style="color:#c084fc;">Pillar</b> ' : H.parent ? '<span style="color:var(--text3);">└ child</span> ' : ''}${esc(x.name)}</div>`).join('')}</div>` : ''}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;"><button style="${B('#4ade80')}font-weight:600;" ${ready && !H.busy ? '' : 'disabled'} onclick="hiBuild()">${H.busy ? '⏳ Building…' : '⚒ Build ' + plan.length + ' asset' + (plan.length === 1 ? '' : 's')}</button>
+      <span style="font-size:11px;color:var(--text3);">${ready ? 'One at a time, logged; it stops at the first failure.' : 'Pick a product, a title, an initiative and at least one asset.'}</span></div>
+    ${H.log.length ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap;line-height:1.5;">${H.log.map(l => `<div style="color:${/^✗/.test(l) ? '#f87171' : /^⚠/.test(l) ? '#f59e0b' : 'var(--text2)'};">${esc(l)}</div>`).join('')}</div>` : ''}`;
+}
+async function hiBuild() {
+  const H = HI; if (!H || H.busy) return; const h = H.hub, plan = hiPlan(), init = H.init.trim(), dir = H.dir.trim();
+  if (init.length > 200) return showToast('An initiative name is at most 200 characters', 'error');
+  if (!confirm(`Build ${plan.length} Development asset${plan.length === 1 ? '' : 's'} in “${init}”${H.pid === '__new' ? ', a new product' : ''}${H.tid === '__new' ? ', a new title' : ''}? Nothing is written.`)) return;
+  H.busy = true; H.log = []; const say = t => { H.log.push(t); hiDraw(); };
+  try {
+    let pid = H.pid, topicId = '';
+    if (pid === '__new') { const tp = (() => { const d = H.topics || { topics: [] }, v = H.topic; if (v === '__main') return { topicId: '__main', stack: 'Master' }; const t = d.topics.find(x => kwNid(x.id) === v); return t ? { topicId: v, stack: t.name } : { topicId: v }; })();
+      say('Creating the product…'); const r = await call('createProduct', { title: H.newProd.trim(), campaignId: h.campaignId, status: 'Development', ...(tp || {}) }).catch(e => ({ error: e.message }));
+      if (!r || r.error || !r.id) throw new Error('product not created: ' + ((r && r.error) || 'no response')); pid = kwNid(r.id); topicId = H.topic; say('✓ Product “' + H.newProd.trim() + '”'); }
+    else { const pr = hiRows().find(x => x.kind === 'product' && hdNid(x.productId) === pid); topicId = (pr && (pr.keywordTopicId || pr.topicId)) || ''; }
+    let tid = H.tid;
+    if (tid === '__new') { say('Creating the title…'); const r = await call('createDevTitle', { title: H.newTitle.trim(), campaignId: h.campaignId, productId: pid, status: 'Development', skipPillar: true }).catch(e => ({ error: e.message }));
+      if (!r || r.error || !r.id) throw new Error('title not created: ' + ((r && r.error) || 'no response')); tid = kwNid(r.id); say('✓ Title “' + H.newTitle.trim() + '”');
+      if (topicId) { const s2 = await call('setTitleTopic', { titleId: tid, topicId: topicId === '__main' ? '__main' : kwNid(topicId) }).catch(e => ({ error: e.message })); if (!s2 || s2.error) say('⚠ topic not set on the title: ' + ((s2 && s2.error) || 'no response')); } }
+    if (!(H.names || []).some(n => n.toLowerCase() === init.toLowerCase())) { const r = await call('initiativeNames', { op: 'add', name: init }).catch(e => ({ error: e.message })); if (r && !r.error) { H.names = r.names || H.names; if (typeof CPLAN_INITS !== 'undefined') CPLAN_INITS = H.names; } }
+    let parentId = H.parent.startsWith('ex:') ? H.parent.slice(3) : '', n = 0;
+    for (const x of plan) {
+      const r = await call('initiativeBuildAsset', { titleId: tid, campaignId: h.campaignId, productId: pid, assetType: x.type, assetTitle: x.name, initiative: init, directions: dir,
+        ...(x.parent ? { asPillar: true, pillarType: H.ptype } : parentId ? { parentAssetId: parentId } : {}) }).catch(e => ({ error: e.message }));
+      if (!r || r.error) throw new Error(`stopped after ${n} of ${plan.length} — “${x.name}”: ${(r && r.error) || 'no response'}`);
+      n++; if (x.parent) parentId = r.assetId; say((r.warning ? '⚠ ' + r.warning + ' — ' : '✓ ') + x.name + (r.flowWarnings ? ' (flow note: ' + r.flowWarnings.join(', ') + ')' : ''));
+    }
+    say(`✓ Done — ${n} asset${n === 1 ? '' : 's'} at Development in “${init}”. Open the initiative below; each asset links to its CP AA row.`);
+    HD.rows = null; if (typeof CPLAN_TREE !== 'undefined') { CPLAN_TREE = null; CPLAN_AIDX = null; } hdLoad(true);
+  } catch (e) { say('✗ ' + e.message); }
+  if (HI) { HI.busy = false; hiDraw(); }
 }
 // ── 🧹 Planning sweep (operator 2026-11-01): titles with no assets + products with no titles → Planning. Dry run lists exactly what
 // changes; Run applies in batches (worker planningSweep, every old status logged); Undo restores. Published / Idea / Archived never touched.
