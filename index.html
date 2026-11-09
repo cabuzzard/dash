@@ -5187,8 +5187,9 @@ function cplanPaint(name = 'content-plan-assets') {
     <div style="overflow-x:auto;"><table style="border-collapse:collapse;table-layout:fixed;width:${tw}px;"><thead><tr><th style="width:26px;padding:4px 2px 4px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;">${ck(rows.length && nShownSel === rows.length, `cplanSelAll(${q},this.checked)`, 'Select every row shown (under collapsed headings too)', nShownSel && nShownSel < rows.length)}</th>${cols.map(head).join('')}<th style="width:84px;border-bottom:1px solid var(--border2);"></th></tr></thead>
     <tbody>${body || `<tr><td colspan="${cols.length + 2}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet.</td></tr>`}</tbody></table></div>`;
 }
-// Published column (operator 2026-11-06): the row's asset status — heading rows count each as planning.dev.publish.published
-const CPLAN_PUB = ['Planning', 'Development', 'Publish', 'Published'], CPLAN_PUB_COLORS = { Planning: '#eab308', Development: '#ff7a00', Publish: '#16a34a', Published: '#16a34a' };
+// Published column (operator 2026-11-06): the row's asset status — heading rows count each as planning.dev.review.publish.published
+// Review (operator 2026-11-09: "I forgot about review status") — written, awaiting review; its assets get rows like the other four.
+const CPLAN_PUB = ['Planning', 'Development', 'Review', 'Publish', 'Published'], CPLAN_PUB_COLORS = { Planning: '#eab308', Development: '#ff7a00', Review: '#c084fc', Publish: '#16a34a', Published: '#16a34a' };
 function cplanEdit(name, rowId, colId, value) {
   const S = cpS(name); let row = S.t && S.t.rows.find(r => r.id === rowId);
   if (!row) { const v = (S.vrows || []).find(r => r.id === rowId); if (!v || !S.t) return;   // an asset's row: saved as a linked row on its first edit
