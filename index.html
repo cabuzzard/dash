@@ -6148,7 +6148,9 @@ async function amPublishHub(btn, confirmed) {   // the same path as All Output's
   if (!r || r.error) AM.log = '✗ Not published: ' + ((r && r.error) || 'no response');
   else if (r.skipped) AM.log = '✗ Not published — ' + r.skipped;
   else { AM.log = '✓ Published to ' + (r.hub || 'the hub') + (r.section ? ' · ' + r.section : '') + (r.liveUrl ? ' — ' + r.liveUrl + ' (the static host takes about a minute)' : ''); AM.changed = true; }
-  await amLoad();
+  const ok = r && !r.error && !r.skipped, id = AM.id; await amLoad();
+  // the reload can read Notion a moment before the status flip lands — the worker said Published, so show Published (operator 2026-11-08)
+  if (ok && AM && AM.id === id && AM.data && AM.data.asset && AM.data.asset.status !== 'Published') { AM.data.asset.status = 'Published'; amDraw(); }
 }
 // a hub asset publishes by writing its live page; anything else is Published by status (operator 2026-10-30: "a save and publish button … for all non hub assets")
 function amIsHubAsset() { const a = AM && AM.data && AM.data.asset; if (!a) return false; if (a.hubSection) return !/^(unlisted|email)$/i.test(a.hubSection); return /^sub ?page$/i.test(a.type || '') || amHubType(a.type); }
