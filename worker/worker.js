@@ -19318,6 +19318,53 @@ export default {
     // cplanRemoveAsset {assetId, rowId?} — 🗑 Remove record: the asset goes to Notion's trash (restorable 30 days) and the row is deleted
     // (kept in the change log). Published assets are refused. Every removal is logged first (KV cplan:removed:log, with the row's cells),
     // and cplanRestoreAsset {assetId} takes it back out of the trash and puts the row back.
+    // cplanAssetEdit {assetId, field, value, hub?, product?} (operator 2026-11-08: "all the same functionality across all the rows") — an asset
+    // row's cell edited in CP AA writes the ASSET: field "type" = Asset Type (an existing option only), "name" = Asset Title, "title" = move
+    // the asset to the title of that name in the hub (Product decides between same-named titles); its Campaign and Product follow the title.
+    // Hub / Topic / Product belong to the title, so on an asset they only narrow the Title pick. Refused: a move while the asset hangs under
+    // a parent asset. Every change is logged with before / after (KV cplan:assetedit:log) and read back.
+    if (body.action === "cplanAssetEdit") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        const id = hubAssetId(String(body.assetId || "")), field = String(body.field || ""), value = String(body.value ?? "").trim();
+        if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
+        if (!["type", "name", "title"].includes(field)) return json({ error: "field must be type | name | title" }, 400);
+        if (!value) return json({ error: "A blank value is never written to the asset" }, 400);
+        const get = async () => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
+        const pg = await get(), pp = pg.properties || {}; if (pg.archived || pg.in_trash) return json({ error: "The asset is in the trash" }, 409);
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
+        let props, check;
+        if (field === "type") {
+          const types = await cpcTypeOptions(), want = ASSET_TYPE_KEYS[value] || value, t = types.find(x => cpcNorm(x) === cpcNorm(want)) || types.find(x => cpcNorm(x) === cpcNorm(value));
+          if (!t) return json({ error: `"${value}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
+          props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t);
+        } else if (field === "name") {
+          props = { "Asset Title": { title: ivRt(value.slice(0, 2000)) } }; check = q => q.name === value.slice(0, 2000);
+        } else {
+          if (ivRid(pp, "Parent Asset")) return json({ error: "This asset sits under a parent asset of its current title — moving it would leave that link wrong. Open it (✍) and unlink the parent first." }, 409);
+          const hub = String(body.hub || "").trim(), sl = cpcNorm(hub).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+          const H = HUB_SITES.find(h => h.campaignId && (cpcNorm(h.name) === cpcNorm(hub) || h.slug === sl || cpcNorm(h.campaign || "") === cpcNorm(hub)));
+          if (!H) return json({ error: `Hub "${hub || "(blank)"}" is not a known hub` }, 400);
+          let cands = (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Title", title: { equals: value } } })).filter(x => !x.archived && !x.in_trash && ivRid(x.properties, "Campaign") === hubAssetId(H.campaignId));
+          if (cands.length > 1 && body.product) { const named = [];
+            for (const x of cands) { const pid = ivRid(x.properties, "product"), g = pid ? await ivPage(pid).catch(() => null) : null; if (g && cpcNorm(hubRichText(g.properties?.Name?.title)) === cpcNorm(body.product)) named.push(x); }
+            cands = named; }
+          if (!cands.length) return json({ error: `No title "${value}" in ${H.name}${body.product ? " under " + body.product : ""} — a title is never made here` }, 400);
+          if (cands.length > 1) return json({ error: `${cands.length} titles are named "${value}" in ${H.name} — pick the Product first` }, 400);
+          const T = cands[0], tid = hubAssetId(T.id), pid = ivRid(T.properties, "product") || "";
+          props = { "Content Strategy": { relation: [{ id: ivDash(tid) }] }, Campaign: { relation: [{ id: ivDash(hubAssetId(H.campaignId)) }] }, ...(pid ? { Product: { relation: [{ id: ivDash(pid) }] } } : {}) };
+          check = q => q.titleId === tid;
+        }
+        const before = snap(pp);
+        const L = (await env.TRADES.get("cplan:assetedit:log", "json")) || []; L.unshift({ at: new Date().toISOString(), assetId: id, field, value, before }); await env.TRADES.put("cplan:assetedit:log", JSON.stringify(L.slice(0, 500)));
+        const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+        if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ error: "Not saved: " + (d.message || "Notion error " + r.status) }, r.status === 429 ? 429 : 502); }
+        const after = snap((await get()).properties || {});
+        if (!check(after)) return json({ error: "Notion did not confirm the change — read back: " + JSON.stringify(after) }, 502);
+        return json({ ok: true, assetId: id, field, before, after });
+      } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
+    }
     if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -56464,7 +56511,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
       // assetSpec {assetId, op: state | draft | commit | discard, section?, guidance?, text?, mapped?} — the Asset modal's four spec sections
       // assetPrewrite {assetId, op: prompt | get | save | clear, text?} — the Asset modal's Pre-write block (every asset type)
-      // Writer modal (operator 2026-10-30): writerContext {assetId} · writerDraft {assetId, settings, upstream, guidance, fields?} → preview only ·
+      // Writer modal (operator 2026-10-30): assetWriterContext {assetId} · writerDraft {assetId, settings, upstream, guidance, fields?} → preview only ·
       // writerSave {assetId, fields?} → saves the approved draft's fields · writerPurpose {name, rule} adds a purpose
       if (body.action === "writerContext" || body.action === "writerDraft" || body.action === "writerSave" || body.action === "writerPurpose" || body.action === "writerListAdd" || body.action === "writerTypeSave") {
         try {
@@ -56592,9 +56639,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ ok: true, run });
       }
       // ── Writer modal (operator 2026-11-08): Pillar · Research · Fields tabs ──
-      // writerContext {assetId} — the linked title's pillar, the parent asset, the upstream research (title · product · campaign) and the
+      // assetWriterContext {assetId} — the linked title's pillar, the parent asset, the upstream research (title · product · campaign) and the
       // type's Writing Specs header with its Platforms (and every platform to pick from, with its rules). Read only.
-      if (body.action === "writerContext") {
+      if (body.action === "assetWriterContext") {   // (named apart from the title writer's writerContext, which is matched first)
         const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
         const page = await ivPage(aid), p = page.properties || {}, type = p["Asset Type"]?.select?.name || "";
         const titleId = ivRid(p, "Content Strategy"), title = titleId ? await ivPage(titleId).catch(() => null) : null, tp = title?.properties || {};

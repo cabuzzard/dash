@@ -4745,12 +4745,55 @@ function cplanSync(name) {   // linked rows take their asset's cells; every unli
   const hubLabel = x => { const cids = [...(x.hubCids || []), x.campId].filter(Boolean).map(hdNid), h = HUB_SITES.find(z => z.campaignId && cids.includes(hdNid(z.campaignId)));
     return h ? (bySlug[h.slug] || h.name) : (x.campaign && x.campaign !== '?' ? x.campaign : ''); };
   const linked = new Set(), gone = S.removed || new Set();
-  T.rows.forEach(r => { const id = kwNid(String(r.cells[I.ai] || '').trim()); if (!id) return; linked.add(id); const x = idx.get(id); if (x && !gone.has(id)) Object.assign(r.cells, cplanAssetCells(T, x, hubLabel)); });
-  S.vrows = [...idx.values()].filter(x => !linked.has(hdNid(x.assetId)) && !gone.has(hdNid(x.assetId))).map(x => ({ id: 'a' + hdNid(x.assetId), virt: true, cells: cplanAssetCells(T, x, hubLabel) }));
+  T.rows.forEach(r => { const id = kwNid(String(r.cells[I.ai] || '').trim()); if (!id) return; linked.add(id); const x = idx.get(id); if (x && !gone.has(id)) Object.assign(r.cells, cplanAssetCells(T, x, hubLabel), (S.aover || {})[r.id] || {}); });
+  S.vrows = [...idx.values()].filter(x => !linked.has(hdNid(x.assetId)) && !gone.has(hdNid(x.assetId))).map(x => ({ id: 'a' + hdNid(x.assetId), virt: true, cells: { ...cplanAssetCells(T, x, hubLabel), ...((S.aover || {})['a' + hdNid(x.assetId)] || {}) } }));
 }
 function cplanPlanCopy(T, cells) {   // a copy is always a plan row: no asset link, no stamps
   const I = cplanTraceIds(T), c = { ...cells }, had = I.ai && String(c[I.ai] || '').trim(); [I.ai, I.an, 'created', 'changed'].forEach(k => { if (k) delete c[k]; });
   if (had) c[cplanColRe(T, /^published$/i) || 'published'] = 'Planning'; return c;
+}
+// Asset rows edit like plan rows (operator 2026-11-08: "all the same functionality across all the rows") — but their asset's cells write
+// the ASSET (cplanAssetEdit / updateAssetStatus), so the row never drifts from the record: Asset type, Asset name, status (Published opens
+// the writer, where publishing runs), and Title = move the asset to that title (its campaign and product follow the title). Hub, Topic and
+// Product belong to the title: on an asset row they only narrow the Title list until a Title is picked.
+async function cplanAssetPick(name, rowId, colId, sel) {
+  const S = cpS(name), T = S.t, row = cplanRowOf(S, rowId), ax = row && cplanAssetOf(S, row); if (!ax) return cplanPaint(name);
+  const v = sel.value, TI = cplanColRe(T, /^title$/i);
+  if (v === '__new') { showToast('A new value is never made from an asset row — pick one from the list', 'error'); return cplanPaint(name); }
+  if (!v) { showToast('An asset always keeps a value here — pick one', 'error'); return cplanPaint(name); }
+  if (colId !== 'atype' && colId !== TI) { (S.aover ||= {})[rowId] = { ...((S.aover || {})[rowId] || {}), [colId]: v }; showToast('Now pick the Title — the asset moves when you do', 'success'); return cplanPaint(name); }
+  const what = colId === 'atype' ? `Change this asset's Asset type to “${v}”?` : `Move this asset to the title “${v}” (${row.cells.hub || 'no hub'})? Its campaign and product follow that title.`;
+  if (!confirm(what + `\n\n“${ax.assetName || '(untitled)'}” — this writes the asset record in Notion (logged).`)) return cplanPaint(name);
+  sel.disabled = true;
+  const r = await call('cplanAssetEdit', colId === 'atype' ? { assetId: hdNid(ax.assetId), field: 'type', value: v } : { assetId: hdNid(ax.assetId), field: 'title', value: v, hub: row.cells.hub, product: row.cells[cplanColRe(T, /^product$/i)] || '' }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Not changed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
+  if (colId === 'atype') { ax.rawAssetType = r.after.type || v; showToast('✓ Asset type → ' + ax.rawAssetType, 'success'); return cplanPaint(name); }
+  const o = (S.aover || {})[rowId] || {}; Object.assign(ax, { title: v, titleId: r.after.titleId, campId: r.after.campaignIds[0] || ax.campId, hubCids: r.after.campaignIds.length ? r.after.campaignIds : ax.hubCids });
+  const pc = cplanColRe(T, /^product$/i), tc = cplanColRe(T, /^topic$/i); if (pc && o[pc]) ax.product = o[pc]; if (tc && o[tc]) ax.keywordTopic = o[tc];
+  if (S.aover) delete S.aover[rowId]; showToast('✓ Moved to “' + v + '”', 'success'); cplanPaint(name);
+}
+async function cplanAssetSet(name, rowId, ta) {   // Asset name on an asset row = the asset's Asset Title
+  const S = cpS(name), row = cplanRowOf(S, rowId), ax = row && cplanAssetOf(S, row), v = String(ta.value || '').trim(); if (!ax || v === (ax.assetName || '')) return;
+  if (!v) { ta.value = ax.assetName || ''; return showToast('An asset always keeps a name', 'error'); }
+  ta.disabled = true; const r = await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'name', value: v }).catch(e => ({ error: e.message })); ta.disabled = false;
+  if (!r || r.error) { ta.value = ax.assetName || ''; return showToast('Name not changed: ' + ((r && r.error) || 'no response'), 'error'); }
+  ax.assetName = v; showToast('✓ Asset renamed', 'success'); cplanPaint(name);
+}
+async function cplanAssetStatus(name, rowId, sel) {   // the writer's own status change; Published runs through the writer (hub publishing)
+  const S = cpS(name), row = cplanRowOf(S, rowId), ax = row && cplanAssetOf(S, row), to = sel.value; if (!ax || to === ax.assetStatus) return;
+  if (to === 'Published') { sel.value = ax.assetStatus; showToast('Publishing runs from the writer — opening it', 'success'); return amOpen(hdNid(ax.assetId)); }
+  sel.disabled = true; const r = await call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: to, statusOnly: true }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Status not changed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
+  ax.assetStatus = to; showToast('✓ Status → ' + to, 'success'); cplanPaint(name);
+}
+async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows: one record at a time, stops at the first failure (a rate limit stops it)
+  const S = cpS(name); let n = 0;
+  for (const row of rows) { const ax = cplanAssetOf(S, row); if (!ax) continue;
+    const r = field === 'status' ? await call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }).catch(e => ({ error: e.message }))
+      : await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'type', value: v }).catch(e => ({ error: e.message }));
+    if (!r || r.error) { showToast(`Stopped after ${n} of ${rows.length}: ${(r && r.error) || 'no response'}`, 'error'); break; }
+    if (field === 'status') ax.assetStatus = v; else ax.rawAssetType = (r.after && r.after.type) || v; n++; }
+  if (n === rows.length) showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'); cplanPaint(name);
 }
 function cplanAssetsReload(name) { CPLAN_TREE = null; CPLAN_AIDX = null; _devTblLast = null; const S = cpS(name); S.traceAsked = new Set(); cplanTreeLoad(name); cplanPaint(name); }
 async function cplanCreate(name, rowId) {   // ⚒ Create asset
@@ -4948,20 +4991,20 @@ function cplanPaint(name = 'content-plan-assets') {
     const product = c[PK.product], pp = tree.flatMap(t => t.products).filter(p => !product || norm(p.name) === norm(product));
     return uniq([...pp.flatMap(p => p.titles), ...mine.filter(r => !product || same(r, PK.product, product)).map(r => r.cells[PK.title])]);
   };
-  const pickSel = (row, c, kind) => { const cur = String(row.cells[c.id] || ''), list = pickList(row, kind), has = list.some(x => norm(x) === norm(cur));
-    return `<select onchange="cplanPick(${q},'${row.id}','${c.id}',this)" title="${esc(cur)}" style="${IN}">${['', ...(cur && !has ? [cur] : []), ...list].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) && (o || !cur) ? 'selected' : ''}>${o ? esc(o) : '—'}</option>`).join('')}<option value="__new">＋ Add new…</option></select>`; };
+  const pickSel = (row, c, kind, fn = 'cplanPick') => { const cur = String(row.cells[c.id] || ''), list = pickList(row, kind), has = list.some(x => norm(x) === norm(cur));
+    return `<select onchange="${fn}(${q},'${row.id}','${c.id}',this)" title="${esc(cur)}" style="${IN}">${['', ...(cur && !has ? [cur] : []), ...list].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) && (o || !cur) ? 'selected' : ''}>${o ? esc(o) : '—'}</option>`).join('')}<option value="__new">＋ Add new…</option></select>`; };
   const TR = name === HUBPLAN_TABLE ? cplanTraceIds(T) : {}, SB = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const traceCell = (row, c) => c.id === TR.an ? `<div style="display:flex;gap:4px;align-items:flex-start;"><textarea rows="2" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;flex:1;">${esc(row.cells[c.id] || '')}</textarea>
       <div style="display:flex;flex-direction:column;gap:3px;"><button style="${SB}" title="Open this asset in the writer (finds it by name first when it isn't linked yet)" onclick="cplanWriter(${q},'${row.id}')">✍</button><button style="${SB}" title="Find the asset by this name in the row's hub and link it" onclick="cplanLink(${q},'${row.id}')">🔗</button></div></div>
       <div style="font-size:10.5px;margin-top:2px;line-height:1.35;">${cplanTraceHtml(name, row)}</div>`
     : `<input value="${esc(row.cells[c.id] || '')}" onchange="cplanEdit(${q},'${row.id}','${c.id}',kwNid(this.value.trim()));cplanTraceLoad(${q})" title="The linked Notion asset record (set by 🔗)" style="${IN}font-family:monospace;font-size:10.5px;">`;
   const IDX = name === HUBPLAN_TABLE ? cplanAssetIdx() : null, AX = row => IDX ? cplanAssetOf(S, row) : null, AD = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
-  const roCell = (row, c, ax) => { const v = String(row.cells[c.id] || '');
-    const inner = /^(created|changed)$/.test(c.id) ? cplanWhen(v) : c.id === pubCol ? `<b style="font-size:12px;color:${CPLAN_PUB_COLORS[v] || 'var(--text)'};">${esc(v)}</b>`
-      : c.id === TR.an ? `<a href="#" onclick="event.preventDefault();amOpen('${hdNid(ax.assetId)}')" title="Open this asset in the writer" style="font-size:12px;font-weight:600;color:var(--text);text-decoration:none;">${esc(v || '(untitled asset)')}</a>`
-      : c.id === TR.ai ? `<a href="https://www.notion.so/${esc(v)}" target="_blank" title="The asset record in Notion" style="font-family:monospace;font-size:10.5px;color:var(--text3);">${esc(v)}</a>`
-      : `<div style="font-size:12px;color:var(--text2);white-space:pre-wrap;">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</div>`;
-    return `<td title="From the asset record — change it on the asset (✍)" style="padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;background:rgba(74,222,128,.045);${c.hidden ? 'opacity:.55;' : ''}">${inner}</td>`; };
+  const ATD = 'padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;background:rgba(74,222,128,.045);', ATIP = 'title="Writes the asset record (logged)"';
+  const assetCell = (row, c, ax) => {   // → the cell for an asset's own value, or null (the plan-row cell is used)
+    if (c.id === TR.an) return `<td ${ATIP} style="${ATD}"><div style="display:flex;gap:4px;align-items:flex-start;"><textarea rows="2" onchange="cplanAssetSet(${q},'${row.id}',this)" style="${IN}resize:vertical;flex:1;">${esc(row.cells[c.id] || '')}</textarea><button style="${SB}" title="Open this asset in the writer" onclick="amOpen('${hdNid(ax.assetId)}')">✍</button></div></td>`;
+    if (c.id === pubCol) return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetStatus(${q},'${row.id}',this)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${CPLAN_PUB.map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>`;
+    if (pickOf(c)) return `<td ${['hub', 'topic', 'product'].includes(pickOf(c)) ? 'title="Belongs to the title — narrows the Title list; the asset moves when you pick the Title"' : ATIP} style="${ATD}">${pickSel(row, c, pickOf(c), 'cplanAssetPick')}</td>`;
+    return null; };
   const AB = 'font-size:11px;padding:1px 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;color:var(--text2);margin:0 1px 2px 0;';
   const acts = row => { const ax = AX(row), td = 'padding:4px 2px;border-bottom:1px solid var(--border);vertical-align:top;text-align:center;';
     const dup = t => `<button onclick="cplanDupRow(${q},'${row.id}')" title="${t}" style="${AB}">⧉</button>`, del = `<button onclick="cplanDelRow(${q},'${row.id}')" title="Delete this row (asks first)" style="${AB}color:#f87171;">×</button>`;
@@ -4969,7 +5012,7 @@ function cplanPaint(name = 'content-plan-assets') {
       return `<td style="${td}"><button onclick="amOpen('${hdNid(ax.assetId)}')" title="Open this asset in the writer" style="${AB}">✍</button>${dup('Copy as a new plan row (no asset yet), right below')}<button onclick="cplanRemove(${q},'${row.id}')" ${pub ? 'disabled' : ''} title="${pub ? 'A Published asset is never removed here — take it off the hub / unpublish it first' : 'Remove record: deletes this row and moves the asset to Notion’s trash (asks first; 🗑 Removed restores it)'}" style="${AB}color:#f87171;${pub ? 'opacity:.35;cursor:not-allowed;' : ''}">🗑</button></td>`; }
     if (TR.ai && String(row.cells[TR.ai] || '').trim()) return `<td style="${td}"><button onclick="cplanWriter(${q},'${row.id}')" title="Open the linked asset in the writer" style="${AB}">✍</button>${dup('Duplicate this row (the copy is a plan row), right below')}${del}</td>`;
     return `<td style="${td}">${name === HUBPLAN_TABLE ? `<button onclick="cplanCreate(${q},'${row.id}')" title="Create asset: this row's Hub, Asset type, Title (and Product, Asset name) become one Development asset — asks first" style="${AB}color:#4ade80;">⚒</button>` : ''}${dup('Duplicate this row (the copy goes right below it)')}${del}</td>`; };
-  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; const ax = AD.has(c.id) ? AX(row) : null; if (ax) return roCell(row, c, ax); return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : c.id && (c.id === TR.an || c.id === TR.ai) ? traceCell(row, c) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
+  const cell = (row, L) => { if (L.group) return `<td style="border-bottom:1px solid var(--border);background:rgba(192,132,252,.07);"></td>`; const c = L.c; const ax = AD.has(c.id) ? AX(row) : null, ah = ax ? assetCell(row, c, ax) : null; if (ah) return ah; return `<td style="padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top;overflow:hidden;${c.hidden ? 'opacity:.55;' : ''}">${/^(created|changed)$/.test(c.id) ? cplanWhen(row.cells[c.id]) : c.id && (c.id === TR.an || c.id === TR.ai) ? traceCell(row, c) : pickOf(c) ? pickSel(row, c, pickOf(c)) : c.id === 'status'
     ? `<select onchange="cplanEdit(${q},'${row.id}','status',this.value)" style="${IN}">${['', ...cplanStatusOpts(name)].map(o => `<option ${(row.cells.status || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : c.id === pubCol ? `<select onchange="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${['', ...CPLAN_PUB].map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`
     : `<textarea rows="${narrow(c) ? 1 : 2}" oninput="cplanEdit(${q},'${row.id}','${c.id}',this.value)" style="${IN}resize:vertical;">${esc(row.cells[c.id] || '')}</textarea>`}</td>`; };
@@ -5017,7 +5060,7 @@ function cplanPaint(name = 'content-plan-assets') {
       ${V.order || V.w || (V.groups && V.groups.length) ? `<button style="${B}" title="Column order, widths and column groups back to default (this browser only)" onclick="cplanResetView(${q})">↺ Reset columns</button>` : ''}
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="The Content Plan cron: each row's Cron number of Development assets per asset-type period, pillar first" onclick="cpcOpen()">⏰ Cron${CPC.on === true ? ': on' : CPC.on === false ? ': off' : ''}</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
-      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}${name === HUBPLAN_TABLE ? 'Green edge = an asset (Planning / Development / Publish / Published): its hub, type, topic, product, title, name, status and dates come from the asset — ✍ opens it, 🗑 removes the record. Yellow edge = a plan row, not built yet — ⚒ creates its Development asset. Grey edge = linked to an asset in another status. ' : ''}Every other cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
+      <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}${name === HUBPLAN_TABLE ? 'Green edge = an asset (Planning / Development / Publish / Published): its green cells ARE the asset — changing type, name, status or Title writes the record (Hub / Topic / Product narrow the Title list; the asset moves with the Title); ✍ opens it, 🗑 removes the record. Yellow edge = a plan row, not built yet — ⚒ creates its Development asset. Grey edge = linked to an asset in another status. ' : ''}Every other cell is editable and autosaves. ⇅ sorts the view only (Ctrl/Shift-click adds a level); drag ⋮⋮ to move a column (onto a purple group heading to put it in the group), drag a header's right edge to resize, click a group heading to collapse it (layout is this browser only). ⧉ duplicates a row; archive one with Status → Archived, or × deletes it (asks first). ${T.rows.length ? '' : 'Empty — waiting for the Content Plan PDF to seed it.'}</span></div>
     ${SEL.size ? (() => { const bc = S.bulkCol && T.columns.some(c => c.id === S.bulkCol) ? S.bulkCol : '', vals = bc ? [...new Set(T.rows.map(r => String(r.cells[bc] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
       const opts2 = bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
       return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
@@ -5150,14 +5193,14 @@ async function cplanBulkDel(name) {
   if (bad) return cplanLoad(true, name);   // show the stored table as it really is
   if (name === HUBPLAN_TABLE && HD.plan) { HD.plan = T; hdRender(); }
 }
-function cplanBulkEdit(name) {
+async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
   const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
-  const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)), ids = all.filter(r => !(D.has(col) && cplanAssetOf(S, r))).map(r => r.id), skip = all.length - ids.length;   // an asset's own cells are changed on the asset
-  if (!ids.length) return showToast(c.name + ' comes from the asset on every selected row — change it on the asset (✍)', 'error');
-  if (!confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') + '?' + (skip ? ' (' + skip + ' asset row' + (skip === 1 ? '' : 's') + ' skipped — ' + c.name + ' comes from the asset.)' : ''))) return;
-  for (const id of ids) cplanEdit(name, id, col, v);
-  clearTimeout(S.timer); cplanPaint(name); cplanSave(name);
+  const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)), aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)), ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
+  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : '', aOk = aRows.length && aField && v && !(aField === 'status' && v === 'Published');
+  if (aRows.length && !aOk) showToast(`${aRows.length} asset row${aRows.length === 1 ? '' : 's'} skipped — ${aField === 'status' && v === 'Published' ? 'publishing runs from the writer' : !v ? 'an asset always keeps a value' : c.name + ' on an asset changes through its Title (one row at a time)'}`, 'error');
+  if (ids.length && confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?')) { for (const id of ids) cplanEdit(name, id, col, v); clearTimeout(S.timer); cplanPaint(name); cplanSave(name); }
+  if (aOk && confirm(`Write ${c.name} “${v}” to ${aRows.length} asset record${aRows.length === 1 ? '' : 's'} in Notion? One at a time, each logged; it stops at the first failure.`)) await cplanAssetBulk(name, aRows, aField, v);
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
@@ -5651,7 +5694,7 @@ const AM_PILLAR_WEIGHTS = [['titleResearch', 'Title research'], ['productResearc
 const AM_WEIGHT_WORDS = ['ignore', 'light', 'normal', 'heavy'];
 async function amCtxLoad() {
   const id = AM && AM.id; if (!id) return; AM.ctxBusy = true;
-  const r = await call('writerContext', { assetId: id }).catch(e => ({ error: e.message }));
+  const r = await call('assetWriterContext', { assetId: id }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return; AM.ctxBusy = false; AM.ctx = r && !r.error ? r : { error: (r && r.error) || 'no response' }; amDraw();
 }
 const AMB = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12px;padding:5px 11px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
