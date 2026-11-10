@@ -19457,6 +19457,18 @@ export default {
         return json({ ok: true, done, ...(stopped ? { stopped } : {}) });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, 500); }
     }
+    // hdCardPrefs {op: "get" | "set", prefs} (operator 2026-11-09: "drag sort the cards within their group … choose the highlight color of the
+    // card. persistently saved") — the hub dashboard's initiative-card order + colours, one KV record (hd:cards:v1). Display only; nothing else reads it.
+    if (body.action === "hdCardPrefs") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      const K = "hd:cards:v1";
+      if (String(body.op || "get") === "get") return json({ ok: true, prefs: (await env.TRADES.get(K, "json")) || { order: {}, color: {} } });
+      const p = body.prefs || {}, out = { order: {}, color: {} };
+      for (const [k, v] of Object.entries(p.order || {})) if (Array.isArray(v)) out.order[String(k).slice(0, 300)] = v.slice(0, 300).map(x => String(x).slice(0, 300));
+      for (const [k, v] of Object.entries(p.color || {})) if (/^#[0-9a-f]{6}$/i.test(String(v))) out.color[String(k).slice(0, 300)] = String(v);
+      const txt = JSON.stringify(out); if (txt.length > 200000) return json({ error: "Too many card settings to save" }, 400);
+      await env.TRADES.put(K, txt); return json({ ok: true, prefs: out });
+    }
     if (body.action === "initiativeNames") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();

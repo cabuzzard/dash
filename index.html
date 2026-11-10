@@ -6998,6 +6998,7 @@ async function hdLoad(force) {
   HD.plan = pl && !pl.error ? (pl.table || { columns: [], rows: [] }) : null; HD.planErr = pl && !pl.error ? '' : ((pl && pl.error) || 'no response');
   if (!d || d.error) { HD.err = (d && d.error) || 'no response'; HD.rows = null; return hdRender(); }
   HD.err = ''; HD.rows = d.rows || [];
+  if (!HD.cardPrefs) call('hdCardPrefs', { op: 'get' }).then(r => { if (r && r.prefs) { HD.cardPrefs = r.prefs; hdRender(); } }).catch(() => {});
   hdRender();
 }
 function hdOpenCh2(slug) {
@@ -7166,7 +7167,9 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik) {
     goalRows.forEach(r => { const g = get(ofRow(r)); g.goal += r.n || 0; g.goalIds.push(r.rowId); });
     planRows.forEach(r => get(ofRow(r)).planRows.push(r.rowId));
     mineRows.forEach(r => { const aid = ai ? kwNid(String(r.cells[ai] || '').trim()) : '', a = aid && allA.get(aid); get(a ? of(a) : ofRow({ rowId: r.id, sub: sc ? r.cells[sc] : '', product: pc ? r.cells[pc] : '' })); });   // rows make the card, even at zero
-    const L = [...m.values()].sort((a, b) => a.none - b.none || a.name.localeCompare(b.name));
+    const gk = hdNid(h.campaignId) + '|' + I.key + '|' + kind, saved = ((HD.cardPrefs || {}).order || {})[gk] || [], pos = g => { const i = saved.indexOf(nk(g.name)); return i < 0 ? 1e9 : i; };
+    const L = [...m.values()].sort((a, b) => pos(a) - pos(b) || a.none - b.none || a.name.localeCompare(b.name));   // your dragged order first, then A → Z
+    L.forEach(g => { g.gk = gk; g.ck = gk + '|' + nk(g.name); g.color = ((HD.cardPrefs || {}).color || {})[g.ck] || ''; });
     return L.length === 1 && L[0].none ? [] : L;   // nothing named → no cards of this kind
   };
   const subs = groups('Sub-initiative', subOfA, r => r.sub, 'No sub-initiative');
@@ -7176,13 +7179,28 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik) {
     if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
     const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
     return `<a href="#" title="${tip} — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:${col};text-decoration:none;border-radius:6px;padding:2px 0;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${lab}</span><span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; };
-  const card = g => { const lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length;
-    return `<div style="border:1px solid ${g.kind === 'Product' ? 'var(--border2)' : '#c084fc66'};border-radius:10px;background:var(--surface);padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;">
-      <div style="min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};">${g.kind}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
+  const card = g => { const lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length, ci = (HD._cards = HD._cards || []).push(g) - 1;
+    const bd = g.color ? g.color : g.kind === 'Product' ? 'var(--border2)' : '#c084fc66', bg = g.color ? `linear-gradient(${g.color}26,${g.color}26),var(--surface)` : 'var(--surface)';
+    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind === 'Product' ? 'Products' : 'Sub-initiatives'}" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;">
+      <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};flex:1;">${g.kind}</span>
+        <label title="Highlight colour" onclick="event.stopPropagation()" style="position:relative;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#f87171,#facc15,#4ade80,#60a5fa,#c084fc,#f87171)'};cursor:pointer;flex:0 0 auto;"><input type="color" value="${g.color || '#c084fc'}" onchange="hdCardColor(${ci},this.value)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;"></label>
+        ${g.color ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}</div></div>`; };
   const grid = (head, L) => L.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
   return grid('Sub-initiatives', subs) + hint + grid('Products', prods);
 }
+// card order / colour — saved through hdCardPrefs (one KV record), a moment after the last change
+let HD_CARD_DRAG = null, HD_CARD_T = null;
+function hdCardSave() { clearTimeout(HD_CARD_T); HD_CARD_T = setTimeout(() => call('hdCardPrefs', { op: 'set', prefs: HD.cardPrefs }).then(r => { if (!r || r.error) showToast('Card order / colour not saved: ' + ((r && r.error) || 'no response'), 'error'); }).catch(e => showToast('Card order / colour not saved: ' + e.message, 'error')), 600); }
+function hdCardDrag(ev, i) { HD_CARD_DRAG = (HD._cards || [])[i] || null; try { ev.dataTransfer.setData('text/plain', 'card'); ev.dataTransfer.effectAllowed = 'move'; } catch (e) {} }
+function hdCardDrop(ev, i) {
+  ev.preventDefault(); const from = HD_CARD_DRAG, to = (HD._cards || [])[i]; HD_CARD_DRAG = null;
+  if (!from || !to || from === to || from.gk !== to.gk) return;   // only within its own group (Products / Sub-initiatives of this initiative)
+  const L = HD._cards.filter(g => g.gk === to.gk).map(g => g.name.trim().toLowerCase()), a = L.indexOf(from.name.trim().toLowerCase()), b = L.indexOf(to.name.trim().toLowerCase());
+  L.splice(a, 1); L.splice(b, 0, from.name.trim().toLowerCase());
+  HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; (HD.cardPrefs.order = HD.cardPrefs.order || {})[to.gk] = L; hdRender(); hdCardSave();
+}
+function hdCardColor(i, c) { const g = (HD._cards || [])[i]; if (!g) return; HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const C = HD.cardPrefs.color = HD.cardPrefs.color || {}; if (c) C[g.ck] = c; else delete C[g.ck]; hdRender(); hdCardSave(); }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
@@ -7240,7 +7258,7 @@ function hdRender() {
   const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;">${up}<span style="min-width:0;overflow-wrap:anywhere;">${crumbs}</span></div>`;
   const stCol = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#8ab4f8' : '#ff7a00';
   const nlink = id => id ? `<a href="https://www.notion.so/${esc(hdNid(id))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Notion" style="color:var(--text3);font-size:11px;">↗</a>` : '';
-  HD._keys = []; HD._sets = [];
+  HD._keys = []; HD._sets = []; HD._cards = [];
   const where = [h.name, ...nodes.map(n => n.name)].join(' › ');
   const box = (head, inner) => `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-bottom:10px;"><div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">${head}</span><span style="display:inline-flex;gap:4px;"><span style="min-width:44px;text-align:right;">Goal</span><span style="min-width:44px;text-align:right;">Dev</span><span style="min-width:44px;text-align:right;">Pub</span></span></div>${inner}</div>`;
   const row = (key, name, sub, c, link, pre) => { const i = HD._keys.push(key) - 1;
