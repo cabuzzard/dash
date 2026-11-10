@@ -4409,8 +4409,10 @@ async function checkPin() {
       call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
-      document.getElementById('pinError').textContent = 'Incorrect PIN — try again';
-      setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, 900);
+      // a lockout (too many tries from this network) or a server error says so — not "Incorrect PIN" (operator 2026-11-09, phone at the pub)
+      const why = data && data.error && !/^unauthorized$/i.test(data.error) ? data.error : 'Incorrect PIN — try again';
+      document.getElementById('pinError').textContent = why;
+      setTimeout(() => { pinBuffer = ''; updateDots(); document.getElementById('pinError').textContent = ''; }, why === 'Incorrect PIN — try again' ? 900 : 6000);
     }
   } catch(e) {
     document.getElementById('pinError').textContent = 'Connection error — try again';
