@@ -10200,6 +10200,12 @@ async function contentPlanAction(env, body, external) {
 // created once per period; the goal stays on screen as the next run's amount. Off until the operator switches it on (KV cplan:cron:on); creates go
 // through the normal createAsset / writeTitlePillar actions (flow + hierarchy guards apply); a Notion rate limit stops it and switches it off.
 // CPC_START (operator 2026-11-09: "set the first cron run to next sunday") — an ISO time; while it is in the future the cron stays idle even when on.
+// Digest rows (operator 2026-11-09: "instead of a separate schedule for digests, could I just tag them with 1 in cron and have cron update them
+// for review on a weekly" + "if the digest remains in review and is never disseminated, cron skips it on the next period until it is
+// processed") — a Digest / Digest Parent row creates nothing: once per period it queues a run of the EXISTING Digest parent (the row's own
+// asset, else the one Digest parent under the row's Title) on the normal digest runner (digest:manual, same as ▶ Run now), which leaves it
+// at Review. Its period = "Digest - parent"'s Cadence in Current Methods. A parent still at Review with nothing Disseminated since its last
+// run is skipped for that period (checked again next period). Never Disseminates, never changes a status.
 const CPC_ON = "cplan:cron:on", CPC_STATE = "cplan:cron:state", CPC_LOCK = "cplan:cron:lock", CPC_START = "cplan:cron:start", CPC_CADENCES = ["Weekly", "Twice monthly", "Monthly", "Quarterly"];
 const cpcNorm = s => String(s || "").trim().toLowerCase().replace(/&/g, "and").replace(/\s+/g, " ");
 function cpcPeriodKey(cadence, now = new Date()) {   // first day of the current period (UTC), as Content Hubs 2 counts periods
@@ -10223,8 +10229,9 @@ async function cpcPlan(env, t) {   // every row with a Cron number → runnable 
     const g = k => cplanCell(t, r, k), n = Number(g("Cron"));
     if (!(isFinite(n) && n >= 1)) continue;
     const P = { rowId: r.id, hub: g("hub"), atype: g("atype"), topic: g("Topic"), product: g("Product"), title: g("Title"), detail: g("detail"), n: Math.floor(n) };
-    const c = cad.byName[cpcNorm(P.atype)] || cad.byAsset[cpcNorm(P.atype)] || "";
-    if (g("Asset id")) P.skip = "built — the row is linked to its asset (CP AA: an asset row is never a goal)";
+    P.digest = /^digest( parent)?$/.test(cpcNorm(P.atype)); if (P.digest) P.assetId = g("Asset id");
+    const c = cad.byName[cpcNorm(P.atype)] || cad.byAsset[cpcNorm(P.atype)] || (P.digest ? cad.byName["digest - parent"] || cad.byName["digest parent"] : "") || "";
+    if (g("Asset id") && !P.digest) P.skip = "built — the row is linked to its asset (CP AA: an asset row is never a goal)";
     else if (/^series$/i.test(P.atype)) P.skip = "a Series row never runs — the cron makes assets through the series from the rows of the types it feeds";
     else if (/^archived$/i.test(g("status"))) P.skip = "Archived";
     else if (/^standalone$/i.test(g("Kind"))) P.skip = "Standalone — outside the cron";
@@ -10248,6 +10255,7 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   const sl = cpcNorm(P.hub).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const H = HUB_SITES.find(h => h.campaignId && (cpcNorm(h.name) === cpcNorm(P.hub) || h.slug === sl));
   if (!H) return hold(`hub "${P.hub}" is not a known hub`);
+  if (P.digest) return cpcDigestRow(env, P, S, H, res, dry);
   const type = types.find(x => cpcNorm(x) === cpcNorm(P.atype));
   if (!type) return hold(`Asset type "${P.atype}" is not an Asset Type option in Notion`);
   if (!P.title) return hold("the row has no Title — the cron never picks a title");
@@ -10318,6 +10326,43 @@ async function cpcRow(env, invoke, P, S, types, dry) {
   }
   delete R.partial; R.doneP = P.period; S.rows[P.rowId] = R;
   return { ...res, made };
+}
+// A Digest row: find its parent, then queue · already running · waiting for Disseminate · busy (Disseminate running — tried again tomorrow).
+async function cpcDigestRow(env, P, S, H, res, dry) {
+  const hold = reason => ({ ...res, held: reason }), cid = hubAssetId(H.campaignId);
+  let parents = [];
+  if (P.assetId) { const pg = await ivPage(hubAssetId(P.assetId)).catch(() => null); if (!pg || pg.archived || pg.in_trash) return hold("the row's Digest parent asset is archived or not readable"); parents = [pg]; }
+  else {
+    if (!P.title) return hold("the row has no Title — name the digest's title (or tag the Digest Parent's own asset row)");
+    const ts = (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Title", title: { equals: P.title } } })).filter(x => !x.archived && !x.in_trash && ivRid(x.properties, "Campaign") === cid);
+    if (!ts.length) return hold(`no title "${P.title}" in ${H.name}`);
+    if (ts.length > 1) return hold(`${ts.length} titles named "${P.title}" in ${H.name} — tag the Digest Parent's own asset row instead`);
+    res.titleId = hubAssetId(ts[0].id);
+    parents = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Pillar Type", select: { equals: "Digest" } }, { property: "Content Strategy", relation: { contains: ivDash(res.titleId) } }] } })).filter(x => !x.archived && !x.in_trash);
+  }
+  if (!parents.length) return hold(`no Digest parent under "${P.title}" — make one first; the cron never creates a digest`);
+  if (parents.length > 1) return hold(`${parents.length} Digest parents under "${P.title}" — tag the Digest Parent's own asset row instead`);
+  const pg = parents[0], aid = hubAssetId(pg.id), status = pg.properties?.["Asset Status"]?.select?.name || "";
+  if (pg.properties?.["Pillar Type"]?.select?.name !== "Digest") return hold("the row's asset is not a Digest parent (Pillar Type is not Digest)");
+  if (ivRid(pg.properties, "Campaign") !== cid) return hold(`the Digest parent is not in ${H.name}`);
+  Object.assign(res, { digestId: aid, digestStatus: status || "(none)" });
+  const R = S.rows[P.rowId] || {}, settle = (digest, note) => { if (!dry) { R.doneP = P.period; S.rows[P.rowId] = R; } return { ...res, digest, note }; };
+  const q = (await env.TRADES.get("digest:manual", "json")) || [], st = await env.TRADES.get("digest:auto:state:" + aid, "json").catch(() => null);
+  if (q.some(x => x && typeof x === "object" && x.assetId === aid) || (st && !["done", "skip", "error"].includes(st.step))) return settle("running", "a run of this digest is already queued or in progress");
+  if (await env.TRADES.get("digest:generate:active:" + aid)) return { ...res, digest: "busy", note: "Disseminate is running on it — the cron tries again tomorrow" };
+  const wait = await cpcDigestWaiting(env, aid, status, st);
+  if (wait) return settle("waiting", wait);
+  if (dry) return { ...res, digest: "queue" };
+  q.push({ cid, assetId: aid }); await env.TRADES.put("digest:manual", JSON.stringify(q));
+  return settle("queued", "run queued — it lands at Review for you");
+}
+// still at Review with nothing Disseminated since its last finished run → waiting (any Premium / Free / article built after that run = processed)
+async function cpcDigestWaiting(env, aid, status, st) {
+  if (status !== "Review") return "";
+  const d = await env.TRADES.get("digest:items:" + aid, "json").catch(() => null);
+  const ran = (st && st.step === "done" && st.finishedAt) || Date.parse((d && d.at) || "") || 0;
+  const kids = Object.values((d && d.children) || {}).flat().filter(x => x && Date.parse(x.at || x.updatedAt || "") >= ran);
+  return kids.length ? "" : `still at Review — nothing Disseminated since its last run${ran ? " (" + new Date(ran).toISOString().slice(0, 10) + ")" : ""}; skipped this period`;
 }
 // the series' best unused ideas: rt = a run type (its sources only, round-robin like the Series modal), null = any source; list = a saved
 // Paste list (its unused lines, in order). Ranked ideas (seriesRank) go first, in rank order.
