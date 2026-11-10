@@ -56934,7 +56934,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const allPlatforms = platforms.filter(x => !x.archived && !x.in_trash).map(plat).sort((a, b) => a.name.localeCompare(b.name));
         const chosen = new Set((typeRow?.properties?.Platforms?.relation || []).map(r => hubAssetId(r.id)));
         return json({ ok: true, type,
-          title: titleId ? { id: titleId, name: hubRichText(tp.Title?.title || tp.Name?.title), status: tp.Status?.select?.name || "", pillar,
+          title: titleId ? { id: titleId, name: hubRichText(tp.Title?.title || tp.Name?.title), status: tp.Status?.select?.name || "", pillar, topicId: trRt(tp, "Topic ID").trim(),
             research: Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)])) } : null,
           method: methodPg ? { id: hubAssetId(methodPg.id), name: hubRichText(mp.Name?.title), type: mp.Type?.select?.name || "", category: (mp.Category?.multi_select || []).map(x => x.name), status: mp.Status?.select?.name || "" } : null,
           platformName: p["Platform Name"]?.select?.name || "",
@@ -56943,7 +56943,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           parent, parentId: parentId || "", siblings: siblings.filter(x => !x.archived && !x.in_trash && hubAssetId(x.id) !== aid).map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.["Asset Title"]?.title),
             type: x.properties?.["Asset Type"]?.select?.name || "", status: x.properties?.["Asset Status"]?.select?.name || "" })).sort((a, b) => a.type.localeCompare(b.type) || a.title.localeCompare(b.title)),
           campaignId: cid || "",
-          product: pid ? { id: pid, name: hubRichText(product?.properties?.Name?.title), researchId: prodRec ? hubAssetId(prodRec.id) : "", research: plain(prodRec?.properties) } : null,
+          product: pid ? { id: pid, name: hubRichText(product?.properties?.Name?.title), topicId: trRt(product?.properties, "Topic ID").trim(), researchId: prodRec ? hubAssetId(prodRec.id) : "", research: plain(prodRec?.properties) } : null,
           campaign, typeSpec: typeRow ? { id: hubAssetId(typeRow.id), name: hubRichText(typeRow.properties?.Name?.title), status: typeRow.properties?.Status?.select?.name || "" } : null,
           platforms: allPlatforms.filter(x => chosen.has(x.id)), allPlatforms });
       }

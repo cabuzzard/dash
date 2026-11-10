@@ -5938,7 +5938,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['research', '🔬 Research'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}${amPlatformsChip()}
@@ -5957,7 +5957,7 @@ function amDraw() {
         <select onchange="amSecPick(this)" style="font-size:12.5px;padding:5px 7px;border:1px solid ${ps ? '#4ade80' : '#f59e0b'};border-radius:6px;background:var(--surface2);color:var(--text);">${ps ? '' : '<option value="" selected>— choose section —</option>'}${amHubSections(a).map(x => `<option value="${x}" ${x === ps ? 'selected' : ''}>${esc(AM_SEC_LABEL[x] || x)}</option>`).join('')}</select></label>`; })() : '')
     + (a.status === 'Published' && !hubA ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" title="${a.status === 'Published' ? 'Live already — republishing rewrites its hub page in the section picked (moves it when the section changed)' : ''}" onclick="amSaveAndPublish(this)">${hubA ? (a.status === 'Published' ? '🔄 Republish to ' : '💾 Save & Publish to ') + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
-  if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : amVisualsHtml()}</div>` + foot; return; }
+  if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : amVisualsHtml()}</div>` + foot; return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
 }
@@ -6031,16 +6031,49 @@ function amResearchHtml() {
       <div style="margin-top:4px;display:flex;gap:6px;"><button style="${AMB('#4ade80', '#4ade80')}" onclick="amProdSave(${i})">💾 Save</button><button style="${AMB()}" onclick="delete AM.rs.pStage[Object.keys(AM.ctx.product.research)[${i}]];amDraw()">✕ Discard</button></div></div>` : ''}</div>`).join('');
   const sec = (title, body) => `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--border2);border-radius:8px;"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">${title}</div>${body}</div>`;
   const t = c.title, pr = c.product, cr = c.campaign;
-  return `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">The upstream research this asset is written from (Information Flow: campaign → product → title). ✍ in Fields chooses which of these a write uses.${RS.busy ? ' <b style="color:#c084fc;">' + esc(RS.busy) + '</b>' : ''}</div>`
+  return `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">Product and title research — run them after 🏠 Hub · Topic is in sync (Information Flow: hub → topic → product → title). ✍ in Fields chooses which of these a write uses.${RS.busy ? ' <b style="color:#c084fc;">' + esc(RS.busy) + '</b>' : ''}</div>`
     + sec('Title research' + (t ? ' — ' + esc(t.name || '') : ''), !t ? '<span style="font-size:12px;color:var(--text3);">No linked title.</span>' : fieldRows(t.research)
       + `<div style="${AM_LBL}">Guidance for this run</div><textarea rows="2" style="${AM_TA}" oninput="AM.rs.tGuide=this.value">${esc(RS.tGuide)}</textarea>
         <button style="${AMB('#8ab4f8', '#8ab4f8')}margin-top:6px;" ${RS.busy ? 'disabled' : ''} onclick="amTitleResRun()">↻ Run title research</button>`)
     + sec('Product research' + (pr ? ' — ' + esc(pr.name || '') : ''), !pr ? '<span style="font-size:12px;color:var(--text3);">No product on this asset or its title.</span>'
       : `<div style="${AM_LBL}">Guidance for ↻ field runs</div><textarea rows="2" style="${AM_TA}" oninput="AM.rs.pGuide=this.value">${esc(RS.pGuide)}</textarea>`
         + fieldRows(pr.research, (k, i) => `<button style="font-size:10.5px;padding:0 6px;border:1px solid #8ab4f8;border-radius:4px;background:var(--surface2);color:#8ab4f8;cursor:pointer;line-height:16px;" ${RS.busy ? 'disabled' : ''} onclick="amProdRun(${i})" title="Run research for this field — you review it before it is saved">↻</button>`)
-        + (pr.researchId ? `<a href="https://www.notion.so/${esc(pr.researchId)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Product Research record ↗</a>` : ''))
-    + sec('Campaign research', !cr || !cr.id ? `<span style="font-size:12px;color:var(--text3);">${cr && cr.error ? esc(cr.error) : 'No Research record for this campaign.'}</span>`
-      : fieldRows(cr.fields) + `<div style="font-size:11px;color:var(--text3);margin-top:6px;">Campaign research is run from the campaign's microsite. <a href="https://www.notion.so/${esc(cr.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Research record ↗</a></div>`);
+        + (pr.researchId ? `<a href="https://www.notion.so/${esc(pr.researchId)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Product Research record ↗</a>` : ''));
+}
+// 🏠 Hub · Topic (operator 2026-11-10: "put it in the writer — two tabs [hub, cluster topic] [then product, title]") — the keyword topic this
+// asset's title takes its research from (its own Topic ID, else its product's) with the same 🏷 Topic modal as All Output 2 (seed → re-run
+// keywords, edit, isolate, cluster), the hub's Main Keywords, and the campaign research. Sync top-down: this tab, then 🔬 Product · Title.
+function amHubResHtml() {
+  const w = amCtxWait(); if (w) return w; const c = AM.ctx, cr = c.campaign;
+  const sec = (title, body) => `<div style="margin-bottom:14px;padding:10px;border:1px solid var(--border2);border-radius:8px;"><div style="font-size:13px;font-weight:700;margin-bottom:4px;">${title}</div>${body}</div>`;
+  const note = t => `<div style="font-size:12px;color:var(--text3);">${t}</div>`;
+  const h = c.campaignId && HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(c.campaignId));
+  const campSec = sec('Campaign research', !cr || !cr.id ? note(cr && cr.error ? esc(cr.error) : 'No Research record for this campaign.')
+    : Object.entries(cr.fields || {}).map(([k, v]) => `<div style="margin:6px 0;"><div style="${AM_LBL}margin:0;">${esc(k)}</div><div style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;">${esc(v)}</div></div>`).join('')
+      + `<div style="font-size:11px;color:var(--text3);margin-top:6px;">Campaign research is run from the campaign's microsite. <a href="https://www.notion.so/${esc(cr.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Research record ↗</a></div>`);
+  if (!h) return sec('Topic keywords', note('This asset’s campaign isn’t a content hub — no keyword topics.')) + campSec;
+  const K = _hubKw[h.slug];
+  if (!K || K.loading || K.error) {   // one automatic load per open; a failure shows ↻ Retry (never a reload loop)
+    if (K && K.loading && !AM.kwLoading) setTimeout(() => { if (AM && AM.tab === 'hubres') amDraw(); }, 800);   // someone else is loading it
+    if (!K && !AM.kwLoading) { AM.kwLoading = true; hubKwLoad(h.slug).catch(() => {}).finally(() => { if (AM) { AM.kwLoading = false; amDraw(); } }); }
+    return sec('Topic keywords', K && K.error && !AM.kwLoading ? note('✗ Keywords didn’t load: ' + esc(K.error)) + `<button style="${AMB()}margin-top:6px;" onclick="delete _hubKw['${h.slug}'];amDraw()">↻ Retry</button>` : note('Loading the ' + esc(h.slug) + ' keywords…')) + campSec; }
+  const own = (c.title && c.title.topicId) || '', viaProd = !own && (c.product && c.product.topicId) || '', tid = own || viaProd;
+  const t = tid && hubKwTopicOrMain(K, tid === '__main' ? '__main' : ([...K.staged, ...K.committed].find(x => kwNid(x.id) === kwNid(tid)) || {}).id);
+  const chips = kws => kws.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${kws.map(k => `<span style="font-size:11.5px;padding:1px 7px;border:1px solid var(--border2);border-radius:10px;background:var(--surface2);">${esc(k)}</span>`).join('')}</div>` : note('No keywords yet — seed and re-run them.');
+  const btn = (id, name, label) => `<button style="${AMB('#c084fc', '#c084fc')}margin-top:8px;" onclick="ao2TopicModalFor('${esc(c.campaignId)}','${esc(id)}',${esc(JSON.stringify(name))})">${label}</button>`;
+  const src = own ? 'the title’s own topic' : viaProd ? 'from its product' + (c.product && c.product.name ? ' (' + esc(c.product.name) + ')' : '') : '';
+  let topicSec;
+  if (!tid) topicSec = sec('Topic keywords', note('No topic — the title follows its product’s topic and neither has one. Set it in the title’s ✎ Edit title, or place the product on a topic in Content Hubs 2 → Keywords.'));
+  else if (!t) topicSec = sec('Topic keywords', note('Its topic isn’t in the ' + esc(h.slug) + ' keywords any more — it may have been renamed or removed.'));
+  else if (t.id === '__main') topicSec = '';
+  else { const cl = (K.tc && K.tc.assign && K.tc.assign[t.id]) || '', iso = (K.iso || []).includes(kwNid(t.id)), kws = hubKwKwSplit(t.keywords);
+    topicSec = sec('🏷 Topic — ' + esc(t.name) + `<span style="font-weight:400;font-size:11.5px;color:var(--text3);"> · ${src}${cl ? ' · cluster “' + esc(cl) + '”' : ' · no cluster'}${iso ? ' · 🔒 isolated' : ''} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}</span>`,
+      chips(kws) + btn(t.id, t.name, '🏷 Edit topic · seed & re-run keywords')); }
+  const mk = hubKwKwSplit(K.master), onMain = t && t.id === '__main';
+  const mainSec = sec('★ Main Keywords — ' + esc(h.slug) + `<span style="font-weight:400;font-size:11.5px;color:var(--text3);"> · ${onMain ? 'this title’s topic (' + src + ') · ' : ''}${mk.length} keyword${mk.length === 1 ? '' : 's'}</span>`,
+    chips(mk) + btn('__main', 'Main', '★ Edit Main · seed & re-run keywords'));
+  return `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">The hub and keyword topic this asset’s title is researched from. Bring these in sync first, then 🔬 Product · Title.${AM.kwLoading ? ' <b style="color:#c084fc;">Loading…</b>' : ''}</div>`
+    + topicSec + mainSec + campSec;
 }
 async function amTitleResRun() {
   const t = AM.ctx.title, id = AM.id; AM.rs.busy = 'Running title research…'; amDraw();
@@ -7901,6 +7934,10 @@ function ao2RefreshOnClose() {   // when the Edit title modal closes after a sav
 let _ao2Topic = null;
 async function ao2TopicModal(rowId) {
   const x = (AO2_ROWS || []).find(y => y.id === rowId); if (!x || !x.topicId) return;
+  return ao2TopicModalFor(x.campId, x.topicId, x.topic);
+}
+async function ao2TopicModalFor(campId, topicId, topicName) {   // also the writer's 🏠 Hub · Topic tab
+  const x = { campId, topicId, topic: topicName || '' };
   const h = HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(x.campId));
   if (!h) return showToast('This topic’s campaign isn’t a content hub', 'error');
   hcModal(`<h3 style="margin:0 0 4px;">🏷 Topic — ${esc(x.topic)}</h3><div style="font-size:12px;color:var(--text3);">Loading the ${esc(h.slug)} keywords…</div>`);
@@ -7977,6 +8014,7 @@ async function ao2TopicDelete() {
 }
 async function ao2TopicReload(slug, h) {   // the hub's keyword model, then this table (its topic / cluster columns come from the same data)
   delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+  if (typeof AM !== 'undefined' && AM) amDraw();   // the writer's 🏠 Hub · Topic tab reads the same keyword model
   _devTblLast = null; await ao2Load();
 }
 function ocApply() {
