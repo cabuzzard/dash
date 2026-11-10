@@ -4326,7 +4326,7 @@
 
 <script src="shared/design-panel.js?v=2026101301"></script>
 <script src="shared/codex-design-panel.js?v=2026102205"></script>
-<script src="shared/interview-panel.js?v=2026102408"></script>
+<script src="shared/interview-panel.js?v=2026111001"></script>
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script src="shared/governance.js?v=2026102202"></script>
@@ -5938,7 +5938,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
@@ -5957,7 +5957,7 @@ function amDraw() {
         <select onchange="amSecPick(this)" style="font-size:12.5px;padding:5px 7px;border:1px solid ${ps ? '#4ade80' : '#f59e0b'};border-radius:6px;background:var(--surface2);color:var(--text);">${ps ? '' : '<option value="" selected>— choose section —</option>'}${amHubSections(a).map(x => `<option value="${x}" ${x === ps ? 'selected' : ''}>${esc(AM_SEC_LABEL[x] || x)}</option>`).join('')}</select></label>`; })() : '')
     + (a.status === 'Published' && !hubA ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" title="${a.status === 'Published' ? 'Live already — republishing rewrites its hub page in the section picked (moves it when the section changed)' : ''}" onclick="amSaveAndPublish(this)">${hubA ? (a.status === 'Published' ? '🔄 Republish to ' : '💾 Save & Publish to ') + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
-  if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : amVisualsHtml()}</div>` + foot; return; }
+  if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'interview' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : AM.tab === 'interview' ? amIvHtml() : amVisualsHtml()}</div>` + foot; if (AM.tab === 'interview') amIvAttach(); return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
 }
@@ -6275,6 +6275,78 @@ async function amSeriesMount() {
   const keep = typeof _series !== 'undefined' && _series && _series.tid === kwNid(a.titleId) && _series.target === 'amSeriesSlot';
   if (keep) return hubSeriesDraw();
   hubSeriesOpen(h.slug, kwNid(a.titleId), a.id, false, 'amSeriesSlot');
+}
+// 🎤 Interview tab (operator 2026-11-10: "an interview tab … un loaded until you tell it to load questions … depth, number of questions (presets
+// for different asset types) … run the expert check from there … it will then feed into the upstream information for the writer" · "it can go
+// on any asset" · "just adds to the upstream inputs"). The asset's OWN interview (Scope Asset): ⤓ Load reads it (nothing is generated);
+// 🎤 Write questions makes one, or rewrites the questions of the one it has (answered pairs carried) — depth + exact count go to createInterviews,
+// forceInterview so any asset type can have one. Answers + 🔎 expert check are the shared InterviewPanel drawn inline (noWrite: Finish never
+// writes the asset). Every answered question is already an upstream input of this asset's writer (packet interview / ✍ source "Interview").
+const AM_IV_PRESETS = [
+  { k: 'social', l: 'Social post', re: /single post|carousel|story|social|pinterest|linkedin|hook|reel|short/i, depth: 'light', n: 3 },
+  { k: 'news', l: 'News', re: /news/i, depth: 'light', n: 3 },
+  { k: 'free', l: 'Free newsletter', re: /newsletter (free)|free newsletter/i, depth: 'light', n: 3 },
+  { k: 'premium', l: 'Premium newsletter', re: /newsletter|premium/i, depth: 'deep', n: 6 },
+  { k: 'article', l: 'SEO article', re: /seo|topical|blog|article|sub ?page/i, depth: 'standard', n: 5 },
+  { k: 'sales', l: 'Sales / offer', re: /sales|offer|landing|listing|gig/i, depth: 'standard', n: 6 },
+  { k: 'video', l: 'Video / podcast', re: /video|youtube|podcast|longform|avatar/i, depth: 'deep', n: 8 },
+  { k: 'parent', l: 'Parent / pillar', re: /parent|digest|series|pillar/i, depth: 'standard', n: 8 },
+  { k: 'other', l: 'Other', re: /./, depth: 'standard', n: 5 }];
+function amIvPreset(type) { return AM_IV_PRESETS.find(p => p.re.test(String(type || ''))) || AM_IV_PRESETS[AM_IV_PRESETS.length - 1]; }
+function amIvState() {
+  if (!AM.iv) { const pr = amIvPreset(AM.data && AM.data.asset && AM.data.asset.type); AM.iv = { loaded: false, busy: '', err: '', list: null, cur: null, preset: pr.k, depth: pr.depth, n: pr.n, dir: '', el: null }; }
+  return AM.iv;
+}
+function amIvHtml() {
+  const V = amIvState(), a = AM.data.asset, SEL = 'font-size:12px;padding:4px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const presets = AM_IV_PRESETS.map(p => `<button onclick="amIvPick('${p.k}')" title="${esc(p.depth)} · ${p.n} questions" style="font-size:11px;padding:2px 8px;border:1px solid ${V.preset === p.k ? '#c084fc' : 'var(--border2)'};border-radius:10px;background:var(--surface2);color:${V.preset === p.k ? '#c084fc' : 'var(--text2)'};cursor:pointer;">${esc(p.l)} · ${p.n}</button>`).join('');
+  const cur = V.cur, answered = cur ? cur.answers.filter(x => String(x || '').trim()).length : 0;
+  return `<div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">This asset’s own interview. Every answered question is added to this asset’s upstream inputs (✍ in Fields → source “Interview”) — nothing is written from here.${V.busy ? ' <b style="color:#c084fc;">' + esc(V.busy) + '</b>' : ''}</div>
+    ${V.err ? `<div style="font-size:12px;color:#f87171;margin-bottom:8px;">✗ ${esc(V.err)}</div>` : ''}
+    <div style="padding:10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:14px;">
+      <div style="${AM_LBL}margin-top:0;">Preset — ${esc(a.type || 'this asset type')} starts on “${esc(amIvPreset(a.type).l)}”</div><div style="display:flex;flex-wrap:wrap;gap:5px;">${presets}</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
+        <label style="font-size:11.5px;color:var(--text3);">Depth<br><select style="${SEL}" onchange="AM.iv.depth=this.value"><option value="light" ${V.depth === 'light' ? 'selected' : ''}>Light — quick facts</option><option value="standard" ${V.depth === 'standard' ? 'selected' : ''}>Standard — short paragraphs</option><option value="deep" ${V.depth === 'deep' ? 'selected' : ''}>Deep — stories, why, numbers</option></select></label>
+        <label style="font-size:11.5px;color:var(--text3);">Questions<br><input type="number" min="1" max="15" value="${V.n}" style="${SEL}width:70px;" oninput="AM.iv.n=Math.max(1,Math.min(15,parseInt(this.value)||1))"></label></div>
+      <div style="${AM_LBL}">Steer it (optional)</div><textarea rows="2" style="${AM_TA}" placeholder="e.g. a client story about a disputed draw" oninput="AM.iv.dir=this.value">${esc(V.dir)}</textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        ${V.loaded ? '' : `<button style="${AMB('#8ab4f8', '#8ab4f8')}" ${V.busy ? 'disabled' : ''} onclick="amIvLoad()">⤓ Load interview</button>`}
+        <button style="${AMB('#c084fc', '#c084fc')}" ${V.busy ? 'disabled' : ''} onclick="amIvWrite()">🎤 ${cur ? 'Rewrite the questions' : 'Write questions'}</button>
+        ${cur ? `<span style="font-size:11.5px;color:var(--text3);align-self:center;">${cur.status} · ${answered}/${cur.qs.length} answered${answered ? ' · in the writer’s upstream' : ''}</span>` : ''}</div>
+      ${cur && answered ? '<div style="font-size:11px;color:var(--text3);margin-top:6px;">Rewriting keeps every answered question (carried onto the new interview).</div>' : ''}</div>
+    ${!V.loaded ? '<div style="font-size:12.5px;color:var(--text3);">Not loaded — ⤓ Load interview reads this asset’s interview (nothing is generated).</div>'
+      : !cur ? '<div style="font-size:12.5px;color:var(--text3);">No interview on this asset yet — set the depth and number of questions, then 🎤 Write questions.</div>'
+      : '<div id="amIvSlot"></div>'}`;
+}
+function amIvPick(k) { const p = AM_IV_PRESETS.find(x => x.k === k); if (!p) return; Object.assign(AM.iv, { preset: k, depth: p.depth, n: p.n }); amDraw(); }
+function amIvAttach() {   // the answer panel lives across redraws: one element, re-placed into the slot each draw
+  const V = AM.iv, slot = document.getElementById('amIvSlot'); if (!V || !slot || !V.cur) return;
+  if (!window.InterviewPanel || !InterviewPanel.version) { slot.innerHTML = '<div style="font-size:12px;color:#f87171;">The interview panel didn’t load — press ↻ Update.</div>'; return; }
+  if (!V.el || V.elFor !== V.cur.id) { V.el = document.createElement('div'); V.elFor = V.cur.id;
+    InterviewPanel.open({ call, interviewId: V.cur.id, mount: V.el, noWrite: true,
+      onDone: iv => { if (!AM || !AM.iv) return; if (iv) AM.iv.cur = iv; AM.ctx = null; amCtxLoad(); },
+      onClose: () => { if (AM && AM.iv) { AM.iv.cur = null; AM.iv.el = null; amDraw(); } } }); }
+  slot.appendChild(V.el);
+}
+async function amIvLoad() {
+  const V = amIvState(), id = AM.id; V.busy = 'Loading…'; V.err = ''; amDraw();
+  const r = await call('getInterviews', { assetId: id }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; V.busy = '';
+  if (!r || r.error) { V.err = (r && r.error) || 'no response'; return amDraw(); }
+  const own = (r.interviews || []).filter(x => x.status !== 'Superseded').sort((x, y) => String(y.updatedAt || y.created || '').localeCompare(String(x.updatedAt || x.created || '')));
+  V.loaded = true; V.cur = own[0] || null; V.el = null; amDraw();
+}
+async function amIvWrite() {
+  const V = amIvState(), id = AM.id;
+  if (V.cur && !confirm(`Rewrite this asset’s interview questions (${V.depth}, ${V.n} questions)?
+
+Answered questions are kept — carried onto the new interview. The old record is marked Superseded.`)) return;
+  V.busy = 'Writing the questions…'; V.err = ''; amDraw();
+  const r = await call('createInterviews', { assetId: id, direction: String(V.dir || '').trim(), depth: V.depth, count: V.n, forceInterview: true }).catch(e => ({ error: e.message }));
+  if (!AM || AM.id !== id) return; V.busy = '';
+  const iv = r && !r.error && (r.interviews || [])[0];
+  if (!iv) { V.err = (r && (r.error || r.reason)) || 'No interview came back'; return amDraw(); }
+  V.loaded = true; V.cur = iv; V.el = null; AM.log = '✓ Interview questions written — answer them below'; AM.ctx = null; amCtxLoad(); amDraw();
 }
 // 📰 Digest (operator 2026-11-10: "where is the digest modal in the writer?") — on a Digest parent: the same modal as the title row's 📰 digest
 // (records, runs, model, ⚙ Disseminate). Its hub comes from the writer context's campaign.

@@ -1876,13 +1876,22 @@ async function ivSaveOutline(env, assetId, outline) {
 }
 // ivRegenerateAsset: a fresh, structure-first interview for an asset. Earlier interviews → Superseded (kept); every earlier ANSWERED
 // question is carried into the new interview (under "§ · Earlier answer"), so no answer is lost. One model call.
-async function ivRegenerateAsset(env, assetId, direction) {
+// The writer's 🎤 Interview tab (operator 2026-11-10: "you can specify level of depth, number of questions") — depth light | standard | deep,
+// count 1-15 (exact), forceInterview = the operator asked, so a method with no interview requirement still gets one.
+function ivWriterOpts(body) {
+  const depth = ["light", "standard", "deep"].includes(String(body.depth || "")) ? String(body.depth) : "", n = parseInt(body.count);
+  return { depth, count: Number.isFinite(n) ? Math.max(1, Math.min(15, n)) : 0, forceInterview: body.forceInterview === true };
+}
+const IV_DEPTH = { light: "DEPTH: LIGHT — quick, concrete questions the owner can answer in a sentence or two (a fact, a number, a short example, a preference). No multi-part questions.",
+  standard: "DEPTH: STANDARD — specific questions answerable in a short paragraph: a real example, the reasoning behind it, what they'd tell a client.",
+  deep: "DEPTH: DEEP — probing questions that dig under the surface: a full client story with stakes and outcome, the why behind their method, where they disagree with common advice, mistakes they've seen, the numbers. Each question should pull a substantial, first-hand answer." };
+async function ivRegenerateAsset(env, assetId, direction, opts = {}) {
   const aid = hubAssetId(assetId), ap = await ivPage(aid), titleId = ivRid(ap.properties || {}, "Content Strategy");
   if (!titleId) throw new Error("this asset has no title");
   const own = (await ivForTitle(titleId)).filter(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(aid));
   const carried = own.flatMap(iv => iv.qs.map((q, i) => [q, ivPooled(iv, i) ? "" : String(iv.answers[i] || "").trim(), (iv.held || []).filter(h => h.q === i)]).filter(x => x[1]));   // Held Back spans travel with their answer
   for (const iv of own) await fetch("https://api.notion.com/v1/pages/" + ivDash(iv.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Status: { select: { name: "Superseded" } } } }) });
-  const made = await ivCreateForAsset(env, { assetId: aid, titleId, direction });
+  const made = await ivCreateForAsset(env, { assetId: aid, titleId, direction, ...opts });
   const nu = (made.interviews || [])[0]; if (!nu) return { ok: false, error: "no interview came back", carried: carried.length };
   if (carried.length) {
     const qs = [...nu.qs, ...carried.map(x => "§ · Earlier answer — " + x[0].replace(/^§[^—]*—\s*/, ""))], answers = [...nu.answers, ...carried.map(x => x[1])];
@@ -1918,7 +1927,7 @@ async function ivMergeAssetInterviews(env, assetId) {
   await ivInvalidateBank(env, back.cid).catch(() => {});
   return { merged: true, keep: keep.id, superseded, questions: order.length, answered: answers.filter(Boolean).length, status: back.status };
 }
-async function ivCreateForAsset(env, { assetId, titleId, own, direction, digestLevel = "", forceInterview = false }) {
+async function ivCreateForAsset(env, { assetId, titleId, own, direction, digestLevel = "", forceInterview = false, depth = "", count = 0 }) {
   let atype = own || "", aname = "", parentType = "";
   if (assetId) { const ap = await ivPage(assetId); const A = ap.properties;
     if (A["Asset Class"]?.select?.name === "Pillar") parentType = A["Pillar Type"]?.select?.name || "long-form";
@@ -1947,10 +1956,11 @@ ${digestLevel === "premium" ? `THIS IS THE REQUIRED PREMIUM NEWSLETTER INTERVIEW
       : short && !/\bnews\b/i.test(atype) ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video). Its job is to extract the owner's KNOWLEDGE and PERSPECTIVE (voice comes second): first-hand detail that improves the explanation, and — best of all — one original insight the whole article could be built around. Ask 3-5 short questions, ADAPTED to what this piece is: a how-to / decision / technical piece → the mistakes they've seen, unusual cases, and what conventional advice gets wrong; a comparison of options → what they've actually used, which tradeoffs really matter, and how they'd advise a customer choosing; an exploratory, lifestyle or perspective piece → their observations, experiences, values, and where they see it differently from most people. Make the FIRST question invite their single strongest view on the topic. Every question must be answerable honestly with "I don't have first-hand experience with this" — never presume expertise they may not have. Ask for opinions as opinions. The writer REWRITES the answers into the article, so ask for substance, not polished prose.`
       : /\bnews\b/i.test(atype) ? `THIS IS AN OPTIONAL INTERVIEW FOR A NEWS POST that is already written and published from verified reporting. Ask 2-3 short questions ONLY about the development's significance: what people in this field are overlooking, who is most affected and how, and what practical decision the reader should consider. Never ask about the facts themselves. Every question must be answerable with "I don't have a meaningful view on this" — then the post stays as it is.`
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
-      : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
+      : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions.${count || depth ? `
+OPERATOR SETTINGS (these override any question count or depth above):${count ? ` ask EXACTLY ${count} question${count === 1 ? "" : "s"}.` : ""}${depth ? " " + IV_DEPTH[depth] : ""}` : ""} Call submit_interviews.`;
   const isNewsIv = /\bnews\b/i.test(atype), articleInterview = digestLevel === "article" || digestLevel === "analysis";
   const qmin = articleInterview ? 3 : short ? 3 : 5, qmax = articleInterview ? 3 : short ? 5 : 10;
-  const ivMade = await ivAccumulate(env,{outline:outlineOn,cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:articleInterview ? 3 : isNewsIv ? 2 : qmin,qmax:articleInterview ? 3 : isNewsIv ? 3 : qmax,base:{   // normal question-generation path; digest articles are exactly 3
+  const ivMade = await ivAccumulate(env,{outline:outlineOn,cid,subject:{name:aname,type:atype,title:tname,product:pid?hubRichText((await ivPage(pid)).properties.Name?.title):'',titleId,productId:pid,cid,direction},prompt,qmin:count || (articleInterview ? 3 : isNewsIv ? 2 : qmin),qmax:count || (articleInterview ? 3 : isNewsIv ? 3 : qmax),base:{   // normal question-generation path; digest articles are exactly 3
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) } });
@@ -26575,12 +26585,12 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           const ap = await ivPage(body.assetId).catch(() => null), tId = ap ? ivRid(ap.properties || {}, "Content Strategy") : "";
           const hasOwn = tId ? (await ivForTitle(tId)).some(iv => iv.scope === "Asset" && (iv.assetIds || []).includes(hubAssetId(body.assetId))) : false;
           if (ap && hasOwn) {   // always regenerate from 🎤 Request interview: fresh outline + questions, answered pairs carried, old → Superseded (2026-10-24)
-            const g = await ivRegenerateAsset(env, body.assetId, body.direction);
+            const g = await ivRegenerateAsset(env, body.assetId, body.direction, ivWriterOpts(body));
             if (g.ok) return json({ ok: true, regenerated: true, interviews: [ivParse(await ivPage(g.interview))], carried: g.carried, outline: g.outline });
           }
         }
         const r = body.productId ? await ivCreateForProduct(env, String(body.productId).replace(/-/g, ""), { force: true, direction: body.direction })
-          : (body.assetId || body.own) ? await ivCreateForAsset(env, { assetId: body.assetId || "", titleId: body.titleId ? String(body.titleId).replace(/-/g, "") : "", own: body.own || "", direction: body.direction })
+          : (body.assetId || body.own) ? await ivCreateForAsset(env, { assetId: body.assetId || "", titleId: body.titleId ? String(body.titleId).replace(/-/g, "") : "", own: body.own || "", direction: body.direction, ...ivWriterOpts(body) })
           : await ivCreateForTitle(env, String(body.titleId).replace(/-/g, ""), { force: true, another: true, direction: body.direction });
         return json({ ok: true, ...r });
       }

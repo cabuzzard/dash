@@ -6,6 +6,7 @@
 // the voice card in the shared Design panel. All Output rows and the ⚑ flag panels open the same modal.
 //   InterviewPanel.list({ call, campaignId })   → an element listing the hub's interviews (cached per hub)
 //   InterviewPanel.open({ call, interviewId, onDone? })   → the answer modal
+//     + mount: an element → drawn inside it instead of as a modal (the dash writer's 🎤 Interview tab); noWrite: Finish never writes the asset
 (function () {
   const e = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const C = { ink: 'var(--text, var(--ink, #222))', ink2: 'var(--text2, var(--ink2, #555))', ink3: 'var(--text3, var(--ink3, #888))', line: 'var(--border2, var(--border, #ccc))',
@@ -153,7 +154,7 @@
             ${cfg.finish ? `<button type="button" data-x="finish" ${S.busy ? 'disabled' : ''} style="${BTNP}">${writeLabel()}</button>` : ''}</div>` : ''}`;
     }
     // ✓ Finish & write asset: finish the interview (host's own finish), then — for a Topical Post's interview — write the article now
-    const writable = () => { const v = cfg.iv || {}; return v.scope === 'Asset' && (v.assetIds || []).length && /topical post/i.test(v.forType || ''); };
+    const writable = () => { const v = cfg.iv || {}; return !cfg.noWrite && v.scope === 'Asset' && (v.assetIds || []).length && /topical post/i.test(v.forType || ''); };
     function writeLabel() { const v = cfg.iv || {}; return writable() ? '✓ Finish & write asset' : v.scope === 'Product' ? '✓ Finish (feeds this offering)' : '✓ Finish'; }
     async function finishWrite() {
       S.busy = 'Finishing the interview…'; S.err = ''; S.done = ''; draw();
@@ -192,7 +193,8 @@
   // ── the answer modal ──
   let modal = null;
   function open(cfg) {
-    if (modal) modal.remove();
+    const M = cfg.mount || null;   // inline: no overlay, no Esc, Finish keeps it on screen
+    if (modal && !M) modal.remove();
     const S = { iv: null, answers: [], dirty: false, busy: 'Loading…', err: '', saved: '', timer: null, inflight: false };
     // AUTOSAVE (2026-10-24): every keystroke is kept in this browser right away (localStorage draft), and saved to Notion
     // 2 s after typing stops — without redrawing, so the cursor never jumps. A draft newer than Notion is restored on reopen.
@@ -212,15 +214,16 @@
     }
     const onHide = () => { if (S.dirty) { putDraft(); autosave(); } };
     window.addEventListener('beforeunload', onHide); document.addEventListener('visibilitychange', onHide);
-    modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px;';
-    document.body.appendChild(modal);
+    const host = document.createElement('div');
+    if (M) { M.innerHTML = ''; M.appendChild(host); }
+    else { modal = host; modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 12px;'; document.body.appendChild(modal); }
     const box = document.createElement('div');
     box.style.cssText = `width:min(760px,100%);background:var(--bg, ${'#fff'});color:${C.ink};border:1px solid ${C.line};border-radius:12px;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.35);`;
-    modal.appendChild(box);
-    const close = async () => { clearTimeout(S.timer); if (S.dirty && S.iv) { putDraft(); await save(false).catch(() => {}); if (!S.err) dropDraft(); } if (modal) { modal.remove(); modal = null; } document.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onHide); document.removeEventListener('visibilitychange', onHide); };
+    if (M) box.style.cssText = `background:transparent;color:${C.ink};`;
+    host.appendChild(box);
+    const close = async () => { clearTimeout(S.timer); if (S.dirty && S.iv) { putDraft(); await save(false).catch(() => {}); if (!S.err) dropDraft(); } if (M) host.remove(); else if (modal) { modal.remove(); modal = null; } document.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onHide); document.removeEventListener('visibilitychange', onHide); };
     const onKey = ev => { if (ev.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey);
+    if (!M) document.addEventListener('keydown', onKey);
     // a stray click outside the box used to close it — only ✕ / Esc close now, and both save first (2026-10-24)
     function draw() {
       const iv = S.iv;
@@ -228,7 +231,7 @@
           <div style="flex:1;"><div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:${C.ink3};">🎤 Interview${iv ? ' · ' + e(iv.angle || '') : ''}</div>
             <div style="font-size:16px;font-weight:700;margin-top:2px;">${iv ? e(iv.title) : ''}</div>
             ${iv && iv.why ? `<div style="font-size:12px;color:${C.ink2};margin-top:3px;">${e(iv.why)}</div>` : ''}</div>
-          ${iv ? pill(iv.status) : ''}<button data-m="close" style="${BTN}">✕</button></div>
+          ${iv ? pill(iv.status) : ''}${M ? '' : `<button data-m="close" style="${BTN}">✕</button>`}</div>
         ${S.err ? `<div style="font-size:12px;color:#c0392b;margin-bottom:8px;">${e(S.err)}</div>` : ''}
         ${!iv ? `<div style="font-size:12px;color:${C.ink3};">${e(S.busy || '')}</div>` : iv.qs.map((q, i) => `<div style="margin-bottom:12px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${i + 1}. ${e(q)}</div>
@@ -244,13 +247,13 @@
       const xh = box.querySelector('[data-xhost]');
       if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, answers: () => S.answers, beforeRun: () => S.dirty ? save(false) : null,
         finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.'); await save(true); if (S.err) throw new Error(S.err); },
-        onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
+        noWrite: cfg.noWrite, onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
     }
     async function save(finish, extra) {
       S.busy = finish ? 'Saving + teaching your voice…' : 'Saving…'; draw();
       try { const r = await req(cfg.call, 'saveInterview', Object.assign({ interviewId: S.iv.id, answers: S.answers, finish }, extra || {})); S.iv = r.interview; S.answers = r.interview.answers.slice(); S.dirty = false; S.err = ''; dropDraft(); S.saved = '✓ Saved'; changed(); if (cfg.onDone) cfg.onDone(r.interview); }
       catch (err) { S.err = err.message; }
-      S.busy = ''; if (modal) draw();
+      S.busy = ''; if (M || modal) draw();
     }
     box.addEventListener('input', ev => { const t = ev.target; if (t.dataset.a != null) { S.answers[+t.dataset.a] = t.value; S.dirty = true; putDraft(); mark('Unsaved changes…'); clearTimeout(S.timer); S.timer = setTimeout(autosave, 2000); } });
     box.addEventListener('click', async ev => {
@@ -258,10 +261,10 @@
       const m = b.dataset.m;
       if (m === 'close') close();
       else if (m === 'save') save(false);
-      else if (m === 'finish') { if (!S.answers.some(a => (a || '').trim())) { S.err = 'Answer at least one question to finish.'; draw(); return; } await save(true); if (!S.err) close(); }
+      else if (m === 'finish') { if (!S.answers.some(a => (a || '').trim())) { S.err = 'Answer at least one question to finish.'; draw(); return; } await save(true); if (!S.err && !M) close(); }
       else if (m === 'reflag') save(false, { reflag: true });
       else if (m === 'remove') { if (!confirm('Remove this interview?')) return; S.busy = 'Removing…'; draw();
-        try { await req(cfg.call, 'removeInterview', { interviewId: S.iv.id }); S.dirty = false; changed(); if (cfg.onDone) cfg.onDone(null); close(); } catch (err) { S.err = err.message; S.busy = ''; draw(); } }
+        try { await req(cfg.call, 'removeInterview', { interviewId: S.iv.id }); S.dirty = false; changed(); if (cfg.onDone) cfg.onDone(null); close(); if (cfg.onClose) cfg.onClose(); } catch (err) { S.err = err.message; S.busy = ''; draw(); } }
     });
     draw();
     // a busy moment at Notion never stops the interview from opening: retry the load a few times (2026-10-24)
@@ -283,5 +286,5 @@
       changed(); if (iv) open({ call: cfg.call, interviewId: iv.id, onDone: cfg.onDone }); return iv || null; }
     catch (err) { alert('Could not request the interview: ' + err.message); return null; }
   }
-  window.InterviewPanel = { list, open, request, expert, onChange: f => listeners.add(f) };
+  window.InterviewPanel = { list, open, request, expert, onChange: f => listeners.add(f), version: 2 };
 })();
