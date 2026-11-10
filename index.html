@@ -7539,9 +7539,10 @@ async function hdSubSet(g, to) {
   ch.forEach(r => cplanEdit(N, r.id, sc, to)); clearTimeout(S.timer); await cplanSave(N);
   HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender(); showToast(`✓ ${ch.length} row${ch.length === 1 ? '' : 's'} → ${to || 'no sub-initiative'}`, 'success');
 }
-async function hdMoveTo(g, k) {
-  let to = k >= 0 ? (HD._others || [])[k] : String(prompt('New initiative name:') || '').trim(); if (!to) return;
-  if (String(to).trim().toLowerCase() === String(g.gk || '').split('|')[1]) return;   // already in that initiative if (initiativeBad(to)) return showToast(initiativeBad(to), 'error');
+async function hdMoveTo(g, k, toName) {
+  let to = toName || (k >= 0 ? (HD._others || [])[k] : String(prompt('New initiative name:') || '').trim()); if (!to) return;
+  if (String(to).trim().toLowerCase() === String(g.gk || '').split('|')[1]) return;   // already in that initiative
+  if (initiativeBad(to)) return showToast(initiativeBad(to), 'error');
   const N = HUBPLAN_TABLE, S = cpS(N), ids = new Set([...new Set(g.allIds)].map(hdNid)), rids = new Set([...g.goalIds, ...g.planRows, ...g.allRows]);
   showToast('Reading the rows…', 'success');
   if (!S.t) await cplanLoad(false, N); cplanTreeLoad(N);
@@ -7564,6 +7565,75 @@ async function hdMoveTo(g, k) {
   if (S.resume) showToast('Stopped part-way — open CP AA and press ▶ Continue', 'error');
 }
 function hdCardColor(i, c) { const g = (HD._cards || [])[i]; if (!g) return; HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const C = HD.cardPrefs.color = HD.cardPrefs.color || {}; if (c) C[g.ck] = c; else delete C[g.ck]; hdRender(); hdCardSave(); }
+// ▦ Matrix (operator 2026-11-10: "a good way to visualize conflicting / parallel relationships between cluster, topic, product / initiative,
+// sub initiative, product" → "build it"). Rows = cluster → topic (the keyword structure), columns = initiative → sub-initiative (the plan);
+// each cell = the products in both. A product's initiative / sub-initiative = its assets' (sub from the asset's CP AA row) + its unbuilt
+// plan rows. Flags: a topic split across initiatives · a sub-initiative drawing on several clusters · a product in several initiatives ·
+// no topic / no initiative. A chip opens: move the product to an initiative (hdMoveTo — the same logged path as the cards) or open it in CP AA.
+function hdMatrixHtml(h, mine, all, initList) {
+  const t = HD.plan || { columns: [], rows: [] }, sc = cplanSubCol(t), ai = ((t.columns || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id;
+  const subByAid = new Map(); if (sc && ai) (t.rows || []).forEach(r => { const c = r.cells || {}, a = kwNid(String(c[ai] || '').trim()); if (a) subByAid.set(a, String(c[sc] || '').trim()); });
+  const nk = v => String(v || '').trim().toLowerCase();
+  const tName = {}, tCl = {}; all.forEach(x => { if (x.keywordTopicId && x.keywordTopic) { tName[x.keywordTopicId] = x.keywordTopic; if (x.keywordCluster) tCl[x.keywordTopicId] = x.keywordCluster; } });
+  const P = new Map(), prod = (pid, name) => { const k = pid ? hdNid(pid) : 'n:' + nk(name); if (!P.has(k)) P.set(k, { key: k, pid: pid ? hdNid(pid) : '', name: name || '(product)', topic: '', cluster: '', ids: [], rowIds: [], pairs: new Map() }); return P.get(k); };
+  const pair = (p, init, sub) => { const k = nk(init) + '|' + nk(sub); if (!p.pairs.has(k)) p.pairs.set(k, { init: String(init || '').trim(), sub: String(sub || '').trim(), n: 0 }); p.pairs.get(k).n++; };
+  mine.forEach(x => { if (!x.productId || x.kind === 'interview') return; const p = prod(x.productId, x.product);
+    if (x.kind === 'product') { p.name = x.product || p.name; const tk = x.keywordTopicId || ''; if (tk) { p.topic = tk; p.cluster = tk === '__main' ? '★ Main' : (tCl[tk] || x.keywordCluster || ''); } }
+    if (x.kind === 'asset') { p.ids.push(x.assetId); pair(p, x.initiative, subByAid.get(hdNid(x.assetId)) || ''); } });
+  const byName = new Map([...P.values()].map(p => [nk(p.name), p]));
+  hdPlanRowsAll(h).forEach(r => { if (!r.product) return; const p = byName.get(nk(r.product)); if (!p) return; p.rowIds.push(r.rowId); pair(p, r.init, r.sub); });
+  const prods = [...P.values()].filter(p => p.pid); prods.forEach(p => { if (!p.pairs.size) pair(p, '', ''); p.inits = new Set([...p.pairs.values()].map(x => nk(x.init) || '__none')); });
+  // rows: cluster → topic
+  const topicKey = p => p.topic || '__none', clusterOf = p => !p.topic ? 'No topic' : p.cluster || '(no cluster)';
+  const R = new Map(); prods.forEach(p => { const ck = clusterOf(p), tk = topicKey(p); if (!R.has(ck)) R.set(ck, new Map()); const T = R.get(ck); if (!T.has(tk)) T.set(tk, { key: tk, name: tk === '__none' ? 'No topic' : tk === '__main' ? '★ Main Keywords' : tName[tk] || '(topic)', cluster: ck, prods: [] }); T.get(tk).prods.push(p); });
+  const clOrder = k => k === '★ Main' ? 0 : k === 'No topic' ? 3 : k === '(no cluster)' ? 2 : 1;
+  const rows = [...R.entries()].sort((a, b) => clOrder(a[0]) - clOrder(b[0]) || a[0].localeCompare(b[0])).map(([ck, T]) => ({ cluster: ck, topics: [...T.values()].sort((a, b) => a.name.localeCompare(b.name)) }));
+  // columns: initiative → sub-initiative
+  const C = new Map(); prods.forEach(p => p.pairs.forEach(x => { const ik = nk(x.init) || '__none'; if (!C.has(ik)) C.set(ik, { key: ik, name: ik === '__none' ? 'No initiative' : x.init, subs: new Map() }); const S = C.get(ik), sk = nk(x.sub); if (!S.subs.has(sk)) S.subs.set(sk, { key: sk, name: x.sub || '—', clusters: new Set() }); S.subs.get(sk).clusters.add(clusterOf(p)); }));
+  const cols = [...C.values()].sort((a, b) => (a.key === '__none') - (b.key === '__none') || a.name.localeCompare(b.name)).flatMap(I => [...I.subs.values()].sort((a, b) => (a.key === '') - (b.key === '') || a.name.localeCompare(b.name)).map(S => ({ I, S })));
+  if (!prods.length) return '<div style="font-size:12.5px;color:var(--text3);padding:10px;">No products in this hub yet.</div>';
+  // conflicts
+  const realCl = c => !['No topic', '(no cluster)'].includes(c);
+  const topicSplit = new Map(); rows.forEach(r => r.topics.forEach(T => { const s = new Set(T.prods.flatMap(p => [...p.inits])); topicSplit.set(T.cluster + '|' + T.key, s.size); }));
+  const nSplitT = [...topicSplit.values()].filter(n => n > 1).length, nMixS = cols.filter(c => [...c.S.clusters].filter(realCl).length > 1).length;
+  const nMulti = prods.filter(p => p.inits.size > 1).length, nNoTopic = prods.filter(p => !p.topic).length, nNoInit = prods.filter(p => p.inits.has('__none')).length;
+  HD._mx = [];
+  const chip = (p, x) => { const i = HD._mx.push(p) - 1, multi = p.inits.size > 1;
+    return `<button onclick="event.stopPropagation();hdMxMenu(${i})" title="${esc(p.name)}${multi ? ' — in ' + p.inits.size + ' initiatives' : ''} · ${x.n} asset / plan row${x.n === 1 ? '' : 's'} here — click to move it or open it" style="display:inline-flex;gap:4px;align-items:center;max-width:180px;font-size:11px;padding:2px 7px;margin:2px;border:1px solid ${multi ? '#f59e0b' : 'var(--border2)'};border-radius:10px;background:${multi ? 'rgba(245,158,11,.12)' : 'var(--surface2)'};color:var(--text);cursor:pointer;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${multi ? '⚠ ' : ''}${esc(p.name)}</span><span style="color:var(--text3);">${x.n}</span></button>`; };
+  const TH = 'position:sticky;top:0;background:var(--surface);z-index:2;font-size:10.5px;text-align:left;padding:5px 6px;border-bottom:1px solid var(--border2);vertical-align:bottom;';
+  const warnT = 'color:#f59e0b;', badT = 'color:#f87171;';
+  const head1 = `<tr><th style="${TH}left:0;z-index:3;min-width:170px;" rowspan="2">Cluster › Topic</th>${[...new Set(cols.map(c => c.I))].map(I => { const span = cols.filter(c => c.I === I).length;
+      return `<th colspan="${span}" style="${TH}border-left:1px solid var(--border2);${I.key === '__none' ? badT : 'color:#c084fc;'}">${esc(I.name)}</th>`; }).join('')}</tr>`;
+  const head2 = `<tr>${cols.map(c => { const mix = [...c.S.clusters].filter(realCl);
+      return `<th style="${TH}top:24px;font-weight:500;min-width:120px;border-left:1px solid var(--border);${mix.length > 1 ? warnT : 'color:var(--text2);'}" title="${mix.length > 1 ? 'Draws on ' + mix.length + ' clusters: ' + esc(mix.join(', ')) : ''}">${esc(c.S.name)}${mix.length > 1 ? ' ⚠' + mix.length : ''}</th>`; }).join('')}</tr>`;
+  const body = rows.map(r => `<tr><td colspan="${cols.length + 1}" style="position:sticky;left:0;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:8px 6px 3px;color:${r.cluster === 'No topic' ? '#f87171' : 'var(--text3)'};background:var(--surface);">${esc(r.cluster)}</td></tr>`
+    + r.topics.map(T => { const n = topicSplit.get(T.cluster + '|' + T.key) || 0;
+      return `<tr><td style="position:sticky;left:0;z-index:1;background:var(--surface);font-size:12px;padding:4px 6px;border-top:1px solid var(--border);vertical-align:top;${T.key === '__none' ? badT : n > 1 ? warnT : ''}" title="${n > 1 ? 'Its products sit in ' + n + ' initiatives' : ''}">${esc(T.name)}${n > 1 ? ' ⚠' + n : ''}<div style="font-size:10.5px;color:var(--text3);">${T.prods.length} product${T.prods.length === 1 ? '' : 's'}</div></td>`
+        + cols.map(c => { const here = T.prods.map(p => [p, p.pairs.get(nk(c.I.key === '__none' ? '' : c.I.name) + '|' + c.S.key)]).filter(([, x]) => x);
+          return `<td style="padding:3px 4px;border-top:1px solid var(--border);border-left:1px solid var(--border);vertical-align:top;${here.length && (c.I.key === '__none' || T.key === '__none') ? 'background:rgba(248,113,113,.06);' : ''}">${here.map(([p, x]) => chip(p, x)).join('')}</td>`; }).join('') + '</tr>'; }).join('')).join('');
+  const flag = (n, txt, col) => `<span style="color:${n ? col : 'var(--text3)'};">${n ? '⚠ ' : '✓ '}${n} ${txt}</span>`;
+  return `<div style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:8px;font-size:12px;">
+      <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px;"><b style="font-size:13px;">▦ ${esc(h.name)} — keyword structure × plan</b><span style="color:var(--text3);font-size:11px;">${prods.length} products · rows = cluster › topic · columns = initiative › sub-initiative</span></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;">${flag(nSplitT, 'topic' + (nSplitT === 1 ? '' : 's') + ' split across initiatives', '#f59e0b')}${flag(nMixS, 'sub-initiative' + (nMixS === 1 ? '' : 's') + ' drawing on several clusters', '#f59e0b')}${flag(nMulti, 'product' + (nMulti === 1 ? '' : 's') + ' in several initiatives', '#f59e0b')}${flag(nNoTopic, 'with no topic', '#f87171')}${flag(nNoInit, 'with no initiative', '#f87171')}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">A clean plan reads as a diagonal. Click a product to move it to another initiative (its assets' Initiative is written to Notion, logged; its sub-initiative is cleared) or to open its rows in CP AA. Topics are changed in Content Hubs 2 → Keywords.</div></div>
+    <div style="overflow:auto;max-height:72vh;border:1px solid var(--border2);border-radius:8px;background:var(--surface);"><table style="border-collapse:separate;border-spacing:0;min-width:100%;">${head1}${head2}${body}</table></div>`;
+}
+function hdMxMenu(i) {
+  const p = (HD._mx || [])[i]; if (!p) return; const ev = window.event; hdMenuClose();
+  const m = document.createElement('div'); m.id = 'hdMenu'; const x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const it = 'display:block;width:100%;text-align:left;font-size:13px;padding:8px 14px;border:none;background:transparent;color:var(--text);cursor:pointer;';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 270))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 320))}px;min-width:230px;max-width:calc(100vw - 16px);max-height:60vh;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);`;
+  const names = [...new Set([...(CPLAN_INITS || []), ...[...(HD.mxInits || [])]].map(v => String(v || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const cur = [...p.pairs.values()].map(x => x.init + (x.sub ? ' › ' + x.sub : '')).map(v => v || 'No initiative');
+  const one = p.inits.size === 1 ? [...p.inits][0] : '';
+  HD._mxCard = { kind: 'Product', name: p.name, allIds: p.ids.slice(), goalIds: [], planRows: p.rowIds.slice(), allRows: [], gk: hdNid(HD.hub) + '|' + one + '|Product' };
+  m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 2px;"><b style="color:var(--text);">${esc(p.name)}</b><br>now: ${esc(cur.join(' · '))}</div>`
+    + `<button style="${it}color:var(--accent);" onclick="hdMenuClose();hdCp((HD._sets=HD._sets||[]).push({label:${esc(JSON.stringify(p.name))},ids:${esc(JSON.stringify(p.ids))},rowIds:${esc(JSON.stringify(p.rowIds))}})-1)">Open its rows in CP AA</button>`
+    + `<div style="font-size:11px;color:var(--text3);padding:7px 14px 2px;border-top:1px solid var(--border2);">Move the whole product to…</div>`
+    + names.map(n => `<button style="${it}" onclick="hdMenuClose();hdMoveTo(HD._mxCard,-1,${esc(JSON.stringify(n))})">${esc(n)}</button>`).join('')
+    + `<button style="${it}color:#4ade80;" onclick="hdMenuClose();hdMoveTo(HD._mxCard,-1)">＋ New initiative…</button>`;
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
@@ -7574,7 +7644,7 @@ function hdRender() {
   const tools = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;">
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button>
-    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
+    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B(HD.matrix ? '#f59e0b' : 'var(--text2)')}" onclick="HD.matrix=!HD.matrix;hdRender()" title="Cluster → topic (rows) × initiative → sub-initiative (columns): where the keyword structure and the plan disagree">▦ Matrix${HD.matrix ? ' ✓' : ''}</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
     <span style="color:var(--text3);font-size:11px;">G = goal (Content Plan — All Assets) · D = Development + Review · P = Publish + Published. Newest first.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }
@@ -7601,6 +7671,7 @@ function hdRender() {
   const inits = new Map(); const addI = v => { const k = ik(v); if (!inits.has(k)) inits.set(k, { key: k, name: k === '__none' ? 'No initiative' : String(v).trim(), assets: [], newest: '' }); return inits.get(k); };
   assetsH.forEach(a => { const I = addI(a.initiative); I.assets.push(a); const d = hdDate(a); if (d > I.newest) I.newest = d; }); planAll.forEach(r => addI(r.init)); const planRowsAll = hdPlanRowsAll(h); planRowsAll.forEach(r => addI(r.init));
   const initList = [...inits.values()].sort((a, b) => (a.key === '__none') - (b.key === '__none') || a.name.localeCompare(b.name));
+  if (HD.matrix) { HD.mxInits = initList.filter(I => I.key !== '__none').map(I => I.name); el.innerHTML = tools + hdMatrixHtml(h, mine, all, initList); return; }
   const P = HD.path = (HD.path || []).slice(0, 4), nodes = [];
   const In = P.length ? inits.get(P[0]) : null; if (P.length && !In) P.length = 0; if (In) nodes.push(In);
   let rowsI = mine;
