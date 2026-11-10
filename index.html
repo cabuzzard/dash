@@ -7289,7 +7289,7 @@ function hdTypeTable(c, noGoal, label) {   // the per-asset-type breakdown; one 
 // goal count"). Every asset of the initiative counts, whatever its status. Goal = its goal rows (Cron); Plan = unbuilt plan rows + Planning assets;
 // Dev = Development + Review; Pub = Publish + Published. Each count opens exactly that set in CP AA. The same asset is in one sub-initiative card
 // and one product card — on purpose.
-function hdInitCards(I, assets, goalRows, planRows, where, h, ik) {
+function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   // the sheet: an asset's sub-initiative is the cell on its linked row; every unarchived row of this initiative makes its card exist (counts or not)
   const t = HD.plan || { columns: [], rows: [] }, colId = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, sc = cplanSubCol(t), pc = colId(/^product$/i), ai = colId(/^asset id$/i);
   const allA = new Map((HD.rows || []).filter(x => x.kind === 'asset').map(x => [hdNid(x.assetId), x])), byAid = new Map();
@@ -7320,10 +7320,15 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik) {
     return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind === 'Product' ? 'Products' : 'Sub-initiatives'}" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;">
       <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};flex:1;">${g.kind}</span>
         <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
+        ${g.kind !== 'Product' && !g.none ? `<a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.color ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; };
   const grid = (head, L) => L.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
-  return grid('Sub-initiatives', subs) + hint + grid('Products', prods);
+  HD._others = others || [];
+  const strip = subs.some(g => !g.none) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 2px 8px;font-size:11.5px;"><span style="color:var(--text3);">Drag a sub-initiative onto an initiative to move it there:</span>
+    ${HD._others.map((n, k) => `<span ondragover="event.preventDefault();this.style.background='rgba(192,132,252,.25)'" ondragleave="this.style.background=''" ondrop="this.style.background='';hdMoveDrop(event,${k})" style="padding:4px 10px;border:1px dashed #c084fc;border-radius:14px;color:var(--text2);">${esc(n)}</span>`).join('')}
+    <span ondragover="event.preventDefault();this.style.background='rgba(192,132,252,.25)'" ondragleave="this.style.background=''" ondrop="this.style.background='';hdMoveDrop(event,-1)" style="padding:4px 10px;border:1px dashed #4ade80;border-radius:14px;color:#4ade80;">＋ New initiative</span></div>` : '';
+  return strip + grid('Sub-initiatives', subs) + hint + grid('Products', prods);
 }
 // card order / colour — saved through hdCardPrefs (one KV record), a moment after the last change
 let HD_CARD_DRAG = null, HD_CARD_T = null;
@@ -7339,6 +7344,40 @@ function hdCardDrop(ev, i) {
 // operator 2026-11-09: "a cycle through amber, orange, purple, dark green and slate gray" (the CP AA status colours: Planning, Development, Review, Publish(ed), Idea)
 const HD_CARD_COLORS = ['#eab308', '#ff7a00', '#c084fc', '#16a34a', '#94a3b8'];
 function hdCardCycle(i) { const g = (HD._cards || [])[i]; if (!g) return; const k = HD_CARD_COLORS.indexOf(String(g.color || '').toLowerCase()); hdCardColor(i, k + 1 < HD_CARD_COLORS.length ? HD_CARD_COLORS[k + 1] : ''); }
+// Move a whole sub-initiative card to another initiative (operator 2026-11-09: "I need to drag sub initiative groups all the way over to other
+// initiatives") — every asset in the card (Initiative written to Notion, logged, one at a time) and every plan row (CP AA cell). The sub-initiative
+// name stays, so the card reappears whole under the new initiative.
+function hdMoveDrop(ev, k) { ev.preventDefault(); const g = HD_CARD_DRAG; HD_CARD_DRAG = null; if (!g || g.kind === 'Product' || g.none) return; hdMoveTo(g, k); }
+function hdMoveMenu(ci) {
+  const g = (HD._cards || [])[ci]; if (!g) return; const ev = window.event; hdMenuClose();
+  const m = document.createElement('div'); m.id = 'hdMenu'; const x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const it = 'display:block;width:100%;text-align:left;font-size:13px;padding:9px 14px;border:none;background:transparent;color:var(--text);cursor:pointer;';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 260))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 300))}px;min-width:220px;max-height:60vh;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);`;
+  HD._moveCard = g;
+  m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;">Move “${esc(g.name)}” to…</div>` + (HD._others || []).map((n, k) => `<button style="${it}" onclick="hdMenuClose();hdMoveTo(HD._moveCard,${k})">${esc(n)}</button>`).join('')
+    + `<button style="${it}color:#4ade80;" onclick="hdMenuClose();hdMoveTo(HD._moveCard,-1)">＋ New initiative…</button>`;
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
+async function hdMoveTo(g, k) {
+  let to = k >= 0 ? (HD._others || [])[k] : String(prompt('New initiative name:') || '').trim(); if (!to) return; if (initiativeBad(to)) return showToast(initiativeBad(to), 'error');
+  const N = HUBPLAN_TABLE, S = cpS(N), ids = new Set([...new Set(g.allIds)].map(hdNid)), rids = new Set([...g.goalIds, ...g.planRows, ...g.allRows]);
+  showToast('Reading the rows…', 'success');
+  if (!S.t) await cplanLoad(false, N); cplanTreeLoad(N);
+  for (let i = 0; i < 80 && !(cplanAssetIdx() && cplanAssetIdx().size); i++) await new Promise(r => setTimeout(r, 500));
+  if (!S.t || !cplanAssetIdx()) return showToast('CP AA did not load — nothing moved', 'error');
+  cplanSync(N);
+  const rows = [...S.t.rows, ...(S.vrows || [])].filter(r => { if (rids.has(r.id)) return true; const ax = cplanAssetOf(S, r); return !!ax && ids.has(hdNid(ax.assetId)); });
+  const aRows = rows.filter(r => cplanAssetOf(S, r)), pRows = rows.filter(r => !cplanAssetOf(S, r));
+  if (!rows.length) return showToast('Nothing to move', 'error');
+  if (!confirm(`Move the sub-initiative “${g.name}” to the initiative “${to}”?\n\n${aRows.length} asset${aRows.length === 1 ? '' : 's'} (Initiative written to Notion, one at a time, logged) · ${pRows.length} plan row${pRows.length === 1 ? '' : 's'} (CP AA). The sub-initiative name stays.`)) return;
+  pRows.forEach(r => cplanEdit(N, r.id, 'init', to)); if (pRows.length) { clearTimeout(S.timer); await cplanSave(N); }
+  await cplanInitAdd(N, to, true);
+  if (aRows.length) await cplanAssetBulk(N, aRows, 'initiative', to);
+  const moved = new Set(aRows.map(r => cplanAssetOf(S, r)).filter(ax => ax.initiative === to).map(ax => hdNid(ax.assetId)));
+  (HD.rows || []).forEach(x => { if (x.kind === 'asset' && moved.has(hdNid(x.assetId))) x.initiative = to; });
+  HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender();
+  if (S.resume) showToast('Stopped part-way — open CP AA and press ▶ Continue', 'error');
+}
 function hdCardColor(i, c) { const g = (HD._cards || [])[i]; if (!g) return; HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const C = HD.cardPrefs.color = HD.cardPrefs.color || {}; if (c) C[g.ck] = c; else delete C[g.ck]; hdRender(); hdCardSave(); }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
@@ -7420,7 +7459,7 @@ function hdRender() {
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
     return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), '', planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
-  else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
+  else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik, initList.filter(x => x.key !== In.key && x.key !== '__none').map(x => x.name)) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
     hdCount(hdAssetsOf(Pn), under([P[1], Pn.key])), nlink(Pn.row && Pn.row.productId))).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No products yet</div>');
