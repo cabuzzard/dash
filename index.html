@@ -5454,7 +5454,7 @@ async function cplanBulkDel(name) {   // plan rows are deleted; asset rows (oper
   const msg = document.getElementById('cplanMsg' + cpId(name)), say = (t, bad) => { if (msg) { msg.style.color = bad ? '#f87171' : 'var(--text3)'; msg.textContent = t; } };
   if (!ids.length && !go.length) { say(pub.length ? 'Nothing deleted — ' + pub.length + ' selected asset' + (pub.length === 1 ? ' is' : 's are') + ' Published (a Published asset is never removed here).' : 'Nothing to delete in the selection.', true); return; }
   if (!confirm((ids.length ? 'Delete ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + ' (kept in the Content Plan change log).\n' : '')
-    + (go.length ? 'Remove ' + go.length + ' asset record' + (go.length === 1 ? '' : 's') + ' — each asset goes to Notion\'s trash and its row is deleted (🗑 Removed → ↺ Restore puts both back):\n' + go.slice(0, 12).map(a => '· ' + (a.x.assetName || '(untitled)') + ' — ' + (a.x.rawAssetType || '') + ' · ' + (a.x.assetStatus || '')).join('\n') + (go.length > 12 ? '\n· …and ' + (go.length - 12) + ' more' : '') + '\nChild assets are not removed — they only lose their parent.\n' : '')
+    + (go.length ? 'Remove ' + go.length + ' asset record' + (go.length === 1 ? '' : 's') + ' — each asset goes to Notion\'s trash and its row is deleted (🗑 Removed → ↺ Restore puts both back):\n' + go.slice(0, 12).map(a => '· ' + (a.x.assetName || '(untitled)') + ' — ' + (a.x.rawAssetType || '') + ' · ' + (a.x.assetStatus || '')).join('\n') + (go.length > 12 ? '\n· …and ' + (go.length - 12) + ' more' : '') + '\nChild assets are not touched.\n' : '')
     + (pub.length ? '\n' + pub.length + ' Published asset' + (pub.length === 1 ? ' is' : 's are') + ' skipped.' : ''))) return;
   const fails = []; let r = { ok: true }, removed = 0, stopped = '', rowsFailed = false;
   if (ids.length) {
@@ -5465,14 +5465,19 @@ async function cplanBulkDel(name) {   // plan rows are deleted; asset rows (oper
       r = await call('updateContentPlan', { edits: saved.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
     if (!r || r.error || (r.failed && r.failed.length)) { rowsFailed = true; fails.push('plan rows: ' + ((r && (r.error || r.failed.map(f => f.reason).join(' · '))) || 'no response')); }
   }
-  for (let k = 0; k < go.length; k++) {
-    const { row, x } = go[k], id = hdNid(x.assetId), unsaved = !row.virt && S.newRows.has(row.id);
-    say('Removing asset ' + (k + 1) + '/' + go.length + ' — ' + (x.assetName || '(untitled)') + '…');
-    const q = await call('cplanRemoveAsset', { assetId: id, ...(row.virt || unsaved ? {} : { rowId: row.id }) }).catch(e => ({ error: e.message }));
-    if (!q || q.error) { fails.push((x.assetName || id.slice(0, 6)) + ': ' + ((q && q.error) || 'no response')); if (/rate.?limit|429/i.test((q && q.error) || '')) { stopped = ' · stopped: Notion rate limit — run it again in a minute'; break; } continue; }
-    removed++; (S.removed ||= new Set()).add(id); S.sel.delete(row.id);
-    if (!row.virt) { T.rows = T.rows.filter(z => z.id !== row.id); delete S.pend[row.id]; S.newRows.delete(row.id); }
-    if (!(row.virt || unsaved || q.rowDeleted)) fails.push((x.assetName || id.slice(0, 6)) + ': asset is in the trash, but its row was not deleted');
+  for (let k = 0; k < go.length && !stopped; k += 25) {   // one call per 25: rows deleted first in one save, then the assets trashed 3 at a time
+    const part = go.slice(k, k + 25);
+    say('Removing assets ' + (k + 1) + '–' + (k + part.length) + ' of ' + go.length + '…');
+    const q = await call('cplanRemoveAssets', { items: part.map(({ row, x }) => ({ assetId: hdNid(x.assetId), ...(row.virt || S.newRows.has(row.id) ? {} : { rowId: row.id }) })) }).catch(e => ({ error: e.message }));
+    if (!q || q.error) { fails.push('assets ' + (k + 1) + '–' + (k + part.length) + ': ' + ((q && q.error) || 'no response')); if (/rate.?limit|429/i.test((q && q.error) || '')) stopped = ' · stopped: Notion rate limit — run it again in a minute'; continue; }
+    for (const res of q.results || []) {
+      const g = part.find(p => hdNid(p.x.assetId) === res.assetId); if (!g) continue; const { row, x } = g;
+      if (res.error && !res.trashed) { fails.push((x.assetName || res.assetId.slice(0, 6)) + ': ' + res.error); if (res.rate) stopped = ' · stopped: Notion rate limit — run it again in a minute'; }
+      else { removed++; (S.removed ||= new Set()).add(res.assetId); }
+      if (row.virt || res.rowDeleted || S.newRows.has(row.id)) { S.sel.delete(row.id); if (!row.virt) { T.rows = T.rows.filter(z => z.id !== row.id); delete S.pend[row.id]; S.newRows.delete(row.id); } }
+      else if (!res.error) fails.push((x.assetName || res.assetId.slice(0, 6)) + ': asset is in the trash, but its row was not deleted');
+    }
+    cplanPaint(name);
   }
   S.sel = new Set(); cplanPaint(name);
   const done = [ids.length && (rowsFailed ? 0 : ids.length) + ' plan row' + (ids.length === 1 ? '' : 's') + ' deleted', go.length && removed + '/' + go.length + ' asset' + (go.length === 1 ? '' : 's') + ' removed to the trash', pub.length && pub.length + ' Published skipped'].filter(Boolean).join(' · ');

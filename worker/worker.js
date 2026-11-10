@@ -19624,7 +19624,7 @@ export default {
         return json({ ok: true, assetId: id, field, before, after });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
     }
-    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset") {
+    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRemoveAssets" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
@@ -19684,6 +19684,38 @@ export default {
           try { const L = (await env.TRADES.get("cplan:created:log", "json")) || []; L.unshift(entry); await env.TRADES.put("cplan:created:log", JSON.stringify(L.slice(0, 300))); } catch (e) {}
           return json({ ok: true, ...entry, status: back?.properties?.["Asset Status"]?.select?.name || "", verified: !!back && !back.archived && !back.in_trash,
             ...(entry.linked ? {} : { warning: "The asset was made but the row could not be linked: " + ((link.out && (link.out.error || (link.out.failed || []).map(f => f.reason).join(" · "))) || "no response") + " — link it with 🔗" }) });
+        }
+        // cplanRemoveAssets {items:[{assetId, rowId?}]} — CP AA bulk × Delete (operator 2026-11-10: "no need for the check for child. and you
+        // could delete the row first. and still perform the rest"): status reads (a Published asset is never removed) → every removal logged
+        // (row cells + position, so ↺ Restore works) → all rows deleted in ONE commit → assets to Notion's trash 3 at a time. No child lookup.
+        if (body.action === "cplanRemoveAssets") {
+          const items = [...new Map((Array.isArray(body.items) ? body.items : []).map(x => [hubAssetId(String(x && x.assetId || "")), String(x && x.rowId || "")])).entries()]
+            .map(([id, rowId]) => ({ id, rowId })).filter(x => /^[0-9a-f]{32}$/i.test(x.id)).slice(0, 100);
+          if (!items.length) return json({ error: "items required" }, 400);
+          const pool = async (list, n, fn) => { const out = new Array(list.length); let i = 0;
+            await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (i < list.length) { const k = i++; out[k] = await fn(list[k]).catch(e => ({ error: e.message })); } })); return out; };
+          const pages = await pool(items, 3, x => getPage(x.id)), { t } = await cplanLoad(env), results = [], go = [];
+          items.forEach((x, k) => {
+            const pg = pages[k]; if (!pg || pg.error) return results.push({ assetId: x.id, error: (pg && pg.error) || "not readable" });
+            const pp = pg.properties || {}, status = pp["Asset Status"]?.select?.name || "";
+            if (status === "Published" && !(pg.archived || pg.in_trash)) return results.push({ assetId: x.id, error: "Published — never removed here", reason: "published" });
+            const i = x.rowId && t ? t.rows.findIndex(r => r.id === x.rowId) : -1, row = i >= 0 ? t.rows[i] : null;
+            if (row && hubAssetId(cplanCell(t, row, "Asset id")) !== x.id) return results.push({ assetId: x.id, error: "That row is linked to a different asset" });
+            go.push({ x, pg, row, entry: { at: new Date().toISOString(), assetId: x.id, title: hubRichText(pp["Asset Title"]?.title), type: pp["Asset Type"]?.select?.name || "", status,
+              titleId: ivRid(pp, "Content Strategy") || "", campaignId: ivRid(pp, "Campaign") || "", children: [], rowId: row ? row.id : "", row: row ? { ...row.cells } : null, after: i > 0 ? t.rows[i - 1].id : "", bulk: true } });
+          });
+          if (!go.length) return json({ ok: true, removed: 0, results });
+          const L = (await env.TRADES.get(RLOG, "json")) || []; await env.TRADES.put(RLOG, JSON.stringify([...go.map(g => g.entry).reverse(), ...L].slice(0, 300)));   // logged before anything changes
+          const rowIds = go.filter(g => g.row).map(g => g.row.id);
+          const d = rowIds.length ? await contentPlanAction(env, { action: "updateContentPlan", edits: rowIds.map(rowId => ({ op: "delete", rowId })) }, false) : { out: { ok: true } };
+          const rowsOk = !!(d.out && d.out.ok), rowFail = new Set(((d.out && d.out.failed) || []).map(f => f.rowId));
+          const trashed = await pool(go, 3, async g => {
+            if (g.pg.archived || g.pg.in_trash) return { ok: true };
+            const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(g.x.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }), b = await r.json().catch(() => ({}));
+            return r.ok && (b.archived || b.in_trash) ? { ok: true } : { error: "Not removed: " + (b.message || "Notion error " + r.status), rate: r.status === 429 };
+          });
+          go.forEach((g, k) => { const tr = trashed[k] || {}; results.push({ assetId: g.x.id, trashed: !!tr.ok, rowDeleted: !!g.row && rowsOk && !rowFail.has(g.row.id), ...(tr.error ? { error: tr.error, rate: !!tr.rate } : {}) }); });
+          return json({ ok: true, removed: trashed.filter(x => x && x.ok).length, rowsDeleted: rowsOk ? rowIds.length - rowFail.size : 0, results });
         }
         if (body.action === "cplanRemoveAsset") {
           const id = hubAssetId(String(body.assetId || "")); if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
