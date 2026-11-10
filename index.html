@@ -7321,6 +7321,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
       <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};flex:1;">${g.kind}</span>
         <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
         ${g.kind !== 'Product' && !g.none ? `<a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.kind === 'Product' ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.color ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; };
   const grid = (head, L) => L.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
@@ -7336,6 +7337,7 @@ function hdCardSave() { clearTimeout(HD_CARD_T); HD_CARD_T = setTimeout(() => ca
 function hdCardDrag(ev, i) { HD_CARD_DRAG = (HD._cards || [])[i] || null; try { ev.dataTransfer.setData('text/plain', 'card'); ev.dataTransfer.effectAllowed = 'move'; } catch (e) {} }
 function hdCardDrop(ev, i) {
   ev.preventDefault(); const from = HD_CARD_DRAG, to = (HD._cards || [])[i]; HD_CARD_DRAG = null;
+  if (from && to && from.kind === 'Product' && to.kind !== 'Product' && from.gk.split('|').slice(0, 2).join('|') === to.gk.split('|').slice(0, 2).join('|')) return hdSubSet(from, to.none ? '' : to.name);
   if (!from || !to || from === to || from.gk !== to.gk) return;   // only within its own group (Products / Sub-initiatives of this initiative)
   const L = HD._cards.filter(g => g.gk === to.gk).map(g => g.name.trim().toLowerCase()), a = L.indexOf(from.name.trim().toLowerCase()), b = L.indexOf(to.name.trim().toLowerCase());
   L.splice(a, 1); L.splice(b, 0, from.name.trim().toLowerCase());
@@ -7357,6 +7359,35 @@ function hdMoveMenu(ci) {
   m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;">Move “${esc(g.name)}” to…</div>` + (HD._others || []).map((n, k) => `<button style="${it}" onclick="hdMenuClose();hdMoveTo(HD._moveCard,${k})">${esc(n)}</button>`).join('')
     + `<button style="${it}color:#4ade80;" onclick="hdMenuClose();hdMoveTo(HD._moveCard,-1)">＋ New initiative…</button>`;
   document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
+async function hdRowsOfCard(g) {   // → the CP AA rows a card counts (its assets' rows + its plan / goal rows), CP AA loaded; null when it won't load
+  const N = HUBPLAN_TABLE, S = cpS(N), ids = new Set([...new Set(g.allIds)].map(hdNid)), rids = new Set([...g.goalIds, ...g.planRows, ...g.allRows]);
+  if (!S.t) await cplanLoad(false, N); cplanTreeLoad(N);
+  for (let i = 0; i < 80 && !(cplanAssetIdx() && cplanAssetIdx().size); i++) await new Promise(r => setTimeout(r, 500));
+  if (!S.t || !cplanAssetIdx()) return null; cplanSync(N);
+  return [...S.t.rows, ...(S.vrows || [])].filter(r => { if (rids.has(r.id)) return true; const ax = cplanAssetOf(S, r); return !!ax && ids.has(hdNid(ax.assetId)); });
+}
+// Product card → sub-initiative (operator 2026-11-09: "drag product cards onto sub initiative cards within an initiative") — the sub initiative
+// column on every row of the product card; a sheet cell only (nothing written to Notion). Dropped on "No sub-initiative" = cleared.
+function hdSubMenu(ci) {
+  const g = (HD._cards || [])[ci]; if (!g) return; const ev = window.event; hdMenuClose(); HD._moveCard = g;
+  const subs = (HD._cards || []).filter(x => x.kind !== 'Product' && x.gk.split('|').slice(0, 2).join('|') === g.gk.split('|').slice(0, 2).join('|') && !x.none).map(x => x.name);
+  HD._subNames = subs;
+  const m = document.createElement('div'); m.id = 'hdMenu'; const x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const it = 'display:block;width:100%;text-align:left;font-size:13px;padding:9px 14px;border:none;background:transparent;color:var(--text);cursor:pointer;';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 260))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 300))}px;min-width:220px;max-height:60vh;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);`;
+  m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;">Put “${esc(g.name)}” in sub-initiative…</div>` + subs.map((n, k) => `<button style="${it}" onclick="hdMenuClose();hdSubSet(HD._moveCard,HD._subNames[${k}])">${esc(n)}</button>`).join('')
+    + `<button style="${it}color:#4ade80;" onclick="hdMenuClose();(()=>{const v=String(prompt('New sub-initiative name:')||'').trim();if(v)hdSubSet(HD._moveCard,v);})()">＋ New sub-initiative…</button><button style="${it}color:var(--text3);" onclick="hdMenuClose();hdSubSet(HD._moveCard,'')">— none (clear it)</button>`;
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
+async function hdSubSet(g, to) {
+  const N = HUBPLAN_TABLE, S = cpS(N); showToast('Reading the rows…', 'success');
+  const rows = await hdRowsOfCard(g); if (!rows) return showToast('CP AA did not load — nothing changed', 'error');
+  const sc = cplanSubCol(S.t); if (!sc) return showToast('CP AA has no "sub initiative" column', 'error');
+  const ch = rows.filter(r => String(r.cells[sc] || '').trim().toLowerCase() !== to.trim().toLowerCase()); if (!ch.length) return showToast('Nothing to change — already there', 'success');
+  if (!confirm(`${to ? `Put the product “${g.name}” in the sub-initiative “${to}”` : `Take the product “${g.name}” out of its sub-initiative`}?\n\n${ch.length} row${ch.length === 1 ? '' : 's'} — the CP AA sub initiative column (nothing is written to Notion).`)) return;
+  ch.forEach(r => cplanEdit(N, r.id, sc, to)); clearTimeout(S.timer); await cplanSave(N);
+  HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender(); showToast(`✓ ${ch.length} row${ch.length === 1 ? '' : 's'} → ${to || 'no sub-initiative'}`, 'success');
 }
 async function hdMoveTo(g, k) {
   let to = k >= 0 ? (HD._others || [])[k] : String(prompt('New initiative name:') || '').trim(); if (!to) return; if (initiativeBad(to)) return showToast(initiativeBad(to), 'error');
