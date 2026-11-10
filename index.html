@@ -7243,7 +7243,7 @@ function hdAo2(n) {
   ao2Load(); const el = document.getElementById('ao2Body'); if (el && el.scrollIntoView) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
 }
 const hdGoalCol = (goal, pub) => !goal ? 'var(--text3)' : pub >= goal ? '#4ade80' : '#facc15';
-function hdChips(c, noGoal, label, extraRows) {   // compact Goal · Dev · Pub, fixed widths so rows line up on a phone
+function hdChips(c, noGoal, label, extraRows) {   // compact Goal · Dev · Pub · All, fixed widths so rows line up on a phone
   // the whole chip opens CP AA on what it counts (operator 2026-11-09: "I would rather they open the rows in cp aa. including goal count");
   // a click on a chip never opens the row below it
   const cell = (lab, v, col, tip, ids, rowIds, setLabel) => { const k = (ids || []).length + (rowIds || []).length, st = `display:inline-block;min-width:44px;text-align:right;font-size:11.5px;font-variant-numeric:tabular-nums;color:${col};`;
