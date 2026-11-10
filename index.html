@@ -7525,6 +7525,16 @@ async function hiOpen() {
   (typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES && CPLAN_ATYPES.length ? Promise.resolve({ types: CPLAN_ATYPES }) : call('getAssetTypes', { all: true })).then(r => { if (HI) { HI.types = (r && r.types) || []; hiDraw(); } }).catch(() => { if (HI) { HI.types = []; hiDraw(); } });
   kwTopicsFor(h.campaignId).then(d => { if (HI) { HI.topics = d; hiDraw(); } }).catch(() => { if (HI) { HI.topics = { topics: [], tc: {} }; hiDraw(); } });
 }
+// Minimise: the modal hides while the build carries on in this page; a pill (bottom right) shows "Building 4 of 9…", then Done / Stopped. Click → back.
+function hiMin() { if (!HI) return; HI.min = true; const bg = document.getElementById('hiBg'); if (bg) bg.classList.remove('open'); hiPill(); }
+function hiRestore() { const pill = document.getElementById('hiPill'); if (pill) pill.remove(); if (!HI) return; HI.min = false; const bg = document.getElementById('hiBg'); if (bg) bg.classList.add('open'); hiDraw(); }
+function hiPill() {
+  let pill = document.getElementById('hiPill'); if (!HI || !HI.min) { if (pill) pill.remove(); return; }
+  if (!pill) { pill = document.createElement('button'); pill.id = 'hiPill'; pill.onclick = hiRestore; pill.title = 'Open ＋ Add initiative'; document.body.appendChild(pill); }
+  const H = HI, P = H.prog || { done: 0, total: 0 }, last = (H.log || []).slice(-1)[0] || '', bad = /^✗/.test(last);
+  const txt = H.busy ? `＋ Building ${P.done} of ${P.total || '…'}…` : bad ? '⏸ Add initiative stopped — open' : `✓ Built ${P.done} asset${P.done === 1 ? '' : 's'} — open`;
+  pill.textContent = txt; pill.style.cssText = `position:fixed;right:16px;bottom:16px;z-index:1500;font-size:13px;font-weight:700;padding:10px 16px;border-radius:22px;border:1px solid ${bad ? '#f59e0b' : H.busy ? '#c084fc' : '#4ade80'};background:var(--surface);color:${bad ? '#f59e0b' : H.busy ? '#c084fc' : '#4ade80'};box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer;max-width:calc(100vw - 32px);`;
+}
 function hiClose() { if (HI && HI.busy) return; const bg = document.getElementById('hiBg'); if (bg) bg.classList.remove('open'); HI = null; }
 function hiSet(k, v) { if (!HI || HI.busy) return; HI[k] = v; if (k === 'pid') { HI.tid = HI.pid === '__new' ? '__new' : ''; HI.parent = ''; HI.newPid = HI.newTid = ''; HI.rest = null; } if (k === 'tid') { HI.parent = ''; HI.newTid = ''; HI.rest = null; } hiDraw(); }
 function hiCount(t, v) { if (!HI || HI.busy) return; const n = Math.max(0, Math.min(50, parseInt(v, 10) || 0)); if (n) HI.counts[t] = n; else delete HI.counts[t]; if (HI.parent === 'new:' + t && !n) HI.parent = ''; hiDraw(); }
@@ -7535,7 +7545,7 @@ function hiPlan() {   // → the assets in build order: the new parent first
   return out.sort((a, b) => b.parent - a.parent);
 }
 function hiDraw() {
-  const P = document.getElementById('hiPanel'); if (!P || !HI) return;
+  hiPill(); const P = document.getElementById('hiPanel'); if (!P || !HI) return;
   const H = HI, rows = hiRows(), B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
   const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
   const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`, dis = H.busy ? 'disabled' : '';
@@ -7546,7 +7556,7 @@ function hiDraw() {
   const types = (H.types || []).filter(t => !H.q || t.toLowerCase().includes(H.q.toLowerCase()) || H.counts[t]);
   const plan = hiPlan(), chosen = Object.keys(H.counts);
   const ready = H.pid && (H.pid !== '__new' || (H.newProd.trim() && H.topic)) && H.tid && (H.tid !== '__new' || H.newTitle.trim()) && H.init.trim() && plan.length;
-  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">＋ Add initiative — ${esc(H.hub.name)}</b><button style="${B('var(--border2)')}color:var(--text);" ${dis} onclick="hiClose()">✕</button></div>
+  P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">＋ Add initiative — ${esc(H.hub.name)}</b>${H.busy ? `<button style="${B('#c084fc')}" onclick="hiMin()" title="Hide this while it builds — a small pill shows the progress; click it to come back">▁ Minimise</button>` : ''}<button style="${B('var(--border2)')}color:var(--text);" ${dis} onclick="hiClose()">✕</button></div>
     <div style="font-size:12px;color:var(--text3);margin:4px 0 2px;">Builds Development assets under one title, each tagged with the initiative and carrying your directions as its Writer Directions. Nothing is written — write each one later in the writer.</div>
     ${lab('Product')}<select style="${IN}" ${dis} onchange="hiSet('pid',this.value)"><option value="">— pick a product —</option>${prods.map(x => `<option value="${hdNid(x.productId)}" ${H.pid === hdNid(x.productId) ? 'selected' : ''}>${esc(x.product || '(product)')}${hdSt(x) ? ' · ' + esc(hdSt(x)) : ''}</option>`).join('')}<option value="__new" ${H.pid === '__new' ? 'selected' : ''}>＋ New product…</option></select>
     ${H.pid === '__new' ? `<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;"><input style="${IN}flex:1 1 220px;width:auto;" ${dis} placeholder="New product name" value="${esc(H.newProd)}" oninput="HI.newProd=this.value" onchange="hiDraw()"><select style="${IN}flex:1 1 220px;width:auto;" ${dis} onchange="hiSet('topic',this.value)">${H.topics ? kwTopicOptions(H.topics, H.topic) : '<option value="">loading topics…</option>'}</select></div><div style="font-size:11px;color:var(--text3);margin-top:3px;">Made at Development on that keyword topic — research and sync it later.</div>` : ''}
@@ -7584,12 +7594,13 @@ async function hiBuild(resume) {
       if (topicId) { const s2 = await call('setTitleTopic', { titleId: tid, topicId: topicId === '__main' ? '__main' : kwNid(topicId) }).catch(e => ({ error: e.message })); if (!s2 || s2.error) say('⚠ topic not set on the title: ' + ((s2 && s2.error) || 'no response')); } }
     if (!(H.names || []).some(n => n.toLowerCase() === init.toLowerCase())) { const r = await call('initiativeNames', { op: 'add', name: init }).catch(e => ({ error: e.message })); if (r && !r.error) { H.names = r.names || H.names; if (typeof CPLAN_INITS !== 'undefined') CPLAN_INITS = H.names; } }
     let parentId = H.rest ? H.rest.parentId : H.parent.startsWith('ex:') ? H.parent.slice(3) : '', n = H.rest ? H.rest.n : 0; const todo = H.rest ? H.rest.plan : plan; H.rest = null;
+    H.prog = { done: n, total: n + todo.length }; hiDraw();
     for (const [j, x] of todo.entries()) {
       if (j) await new Promise(res => setTimeout(res, CPLAN_WRITE_GAP));
       const r = await call('initiativeBuildAsset', { titleId: tid, campaignId: h.campaignId, productId: pid, assetType: x.type, assetTitle: x.name, initiative: init, directions: dir,
         ...(x.parent ? { asPillar: true, pillarType: H.ptype } : parentId ? { parentAssetId: parentId } : {}) }).catch(e => ({ error: e.message }));
       if (!r || r.error) { H.rest = { plan: todo.slice(j), parentId, n }; throw new Error(`${(r && (r.rate || /rate.?limit|429|too many/i.test(r.error || ''))) ? 'Notion rate limit' : 'stopped'} after ${n} of ${n + todo.length - j} — “${x.name}”: ${(r && r.error) || 'no response'} — give it a minute, then ▶ Continue`); }
-      n++; if (x.parent) parentId = r.assetId; say((r.warning ? '⚠ ' + r.warning + ' — ' : '✓ ') + x.name + (r.flowWarnings ? ' (flow note: ' + r.flowWarnings.join(', ') + ')' : ''));
+      n++; H.prog = { done: n, total: H.prog.total }; if (x.parent) parentId = r.assetId; say((r.warning ? '⚠ ' + r.warning + ' — ' : '✓ ') + x.name + (r.flowWarnings ? ' (flow note: ' + r.flowWarnings.join(', ') + ')' : ''));
     }
     H.newPid = H.newTid = ''; say(`✓ Done — ${n} asset${n === 1 ? '' : 's'} at Development in “${init}”. Open the initiative below; each asset links to its CP AA row.`);
     HD.rows = null; if (typeof CPLAN_TREE !== 'undefined') { CPLAN_TREE = null; CPLAN_AIDX = null; } hdLoad(true);
