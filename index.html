@@ -7164,7 +7164,72 @@ function hdLink(v, ids, label, col, rowIds) {   // ids = asset ids, rowIds = CP 
   return `<a href="#" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" title="Open ${rowIds && rowIds.length ? 'these ' + rowIds.length + ' goal row' + (rowIds.length === 1 ? '' : 's') : 'these ' + k} in CP AA" style="color:${col};text-decoration:underline;text-underline-offset:2px;">${v}</a>`;
 }
 function hdTabClick(name) { const t = [...document.querySelectorAll('.tab')].find(x => (x.getAttribute('onclick') || '').includes("switchTab('" + name + "')")); if (t) t.click(); }
-function hdCp(n) { const s = (HD._sets || [])[n]; if (s) cplanOpenSet(s.label, s.ids, s.rowIds); }
+// A count on the hub dashboard (operator 2026-11-09: "click the count and two options come up. one is go to the cp aa view the other is bulk edit") —
+// a small menu: Open in CP AA (as before) · Bulk edit… (status, initiative, sub initiative on exactly that set, through CP AA's own bulk code).
+function hdCp(n) {
+  const s = (HD._sets || [])[n]; if (!s) return; const ev = window.event; hdMenuClose();
+  const m = document.createElement('div'); m.id = 'hdMenu'; const x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const it = 'display:block;width:100%;text-align:left;font-size:13px;padding:9px 14px;border:none;background:transparent;color:var(--text);cursor:pointer;';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 220))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 110))}px;min-width:200px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;`;
+  m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;max-width:260px;overflow-wrap:anywhere;">${esc(s.label)} · ${s.ids.length + (s.rowIds || []).length}</div>
+    <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdCpGo(${n})">↗ Open in CP AA</button>
+    <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdBulkOpen(${n})">✎ Bulk edit…</button>`;
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
+function hdMenuOut(e) { const m = document.getElementById('hdMenu'); if (m && !m.contains(e.target)) hdMenuClose(); }
+function hdMenuClose() { const m = document.getElementById('hdMenu'); if (m) m.remove(); document.removeEventListener('click', hdMenuOut, true); }
+function hdCpGo(n) { const s = (HD._sets || [])[n]; if (s) cplanOpenSet(s.label, s.ids, s.rowIds); }
+let HB = null;
+async function hdBulkOpen(n) {
+  const s = (HD._sets || [])[n]; if (!s) return; const N = HUBPLAN_TABLE, S = cpS(N);
+  let bg = document.getElementById('hbBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'hbBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="hbPanel" style="max-width:520px;width:94vw;max-height:90vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
+  bg.classList.add('open'); HB = { s, rows: null, busy: false, status: '', init: '__keep', sub: '__keep', msg: '' }; hbDraw();
+  try {
+    if (!S.t) await cplanLoad(false, N); cplanTreeLoad(N);
+    for (let i = 0; i < 80 && !(cplanAssetIdx() && cplanAssetIdx().size); i++) await new Promise(r => setTimeout(r, 500));
+    if (!S.t || !cplanAssetIdx()) throw new Error('CP AA did not load');
+    cplanSync(N);
+    const ids = new Set(s.ids.map(hdNid)), rids = new Set(s.rowIds || []);
+    HB.rows = [...S.t.rows, ...(S.vrows || [])].filter(r => { if (rids.has(r.id)) return true; const ax = cplanAssetOf(S, r); return !!ax && ids.has(hdNid(ax.assetId)); });
+  } catch (e) { HB.msg = 'Not loaded: ' + e.message; }
+  hbDraw();
+}
+function hbClose() { if (HB && HB.busy) return; const bg = document.getElementById('hbBg'); if (bg) bg.classList.remove('open'); HB = null; }
+function hbSet(k, v) { if (!HB || HB.busy) return; if (v === '__new') { v = String(prompt('New ' + (k === 'init' ? 'initiative' : 'sub initiative') + ' name:') || '').trim(); if (!v) return hbDraw(); if (initiativeBad(v)) { showToast(initiativeBad(v), 'error'); return hbDraw(); } HB['new_' + k] = v; } HB[k] = v; hbDraw(); }
+function hbDraw() {
+  const el = document.getElementById('hbPanel'); if (!el || !HB) return; const N = HUBPLAN_TABLE, S = cpS(N), T = S.t;
+  const B = 'font-size:12.5px;padding:6px 12px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;', sel = 'width:100%;font-size:13px;padding:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;';
+  const head = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><b style="flex:1;font-size:14px;overflow-wrap:anywhere;">✎ Bulk edit · ${esc(HB.s.label)}</b><button style="${B}" onclick="hbClose()" ${HB.busy ? 'disabled' : ''}>✕</button></div>`;
+  if (!HB.rows) { el.innerHTML = head + `<div style="font-size:12.5px;color:${HB.msg ? '#f87171' : 'var(--text3)'};">${esc(HB.msg || 'Loading the rows…')}</div>`; return; }
+  const assets = HB.rows.filter(r => cplanAssetOf(S, r)), plans = HB.rows.length - assets.length, live = assets.filter(r => (cplanAssetOf(S, r).assetStatus || '') === 'Published').length;
+  const subC = cplanSubCol(T), norm = v => String(v || '').trim().toLowerCase(), uniq = a => [...new Map(a.map(v => String(v || '').trim()).filter(Boolean).map(v => [norm(v), v])).values()].sort((a, b) => a.localeCompare(b));
+  const inits = uniq([...cplanInitNames(T), HB.new_init]), subs = subC ? uniq([...T.rows.map(r => r.cells[subC]), HB.new_sub]) : [];
+  const opt = (v, lab, cur) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(lab)}</option>`;
+  const pick = (k, list, cur) => `<select style="${sel}" onchange="hbSet('${k}',this.value)" ${HB.busy ? 'disabled' : ''}>${opt('__keep', '— leave as it is —', cur)}${opt('', '— none (clear it) —', cur)}${list.map(v => opt(v, v, cur)).join('')}${opt('__new', '＋ Add new…', cur)}</select>`;
+  const row = (lab, sub, ctl) => `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">${lab} <span style="font-weight:400;color:var(--text3);">${sub}</span></div>${ctl}</div>`;
+  el.innerHTML = head + `<div style="font-size:12px;color:var(--text2);margin-bottom:12px;"><b style="color:#4ade80;">${assets.length}</b> asset row${assets.length === 1 ? '' : 's'} · <b style="color:#eab308;">${plans}</b> plan row${plans === 1 ? '' : 's'}</div>`
+    + row('Status', `assets only${live ? ' — ' + live + ' Published left as they are' : ''}`, `<select style="${sel}" onchange="hbSet('status',this.value)" ${HB.busy ? 'disabled' : ''}>${opt('', '— leave as it is —', HB.status)}${CPLAN_PUB.filter(x => x !== 'Published').map(v => opt(v, v, HB.status)).join('')}</select>`)
+    + row('Initiative', 'assets + plan rows', pick('init', inits, HB.init))
+    + (subC ? row(esc(T.columns.find(c => c.id === subC).name), 'assets + plan rows (the sheet column)', pick('sub', subs, HB.sub)) : '')
+    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button style="${B}border-color:#4ade80;color:#4ade80;font-weight:700;" onclick="hbApply()" ${HB.busy || !HB.rows.length ? 'disabled' : ''}>${HB.busy ? '⏳ Applying…' : 'Apply'}</button><span style="font-size:12px;color:var(--text3);">${esc(HB.msg)}</span></div>`;
+}
+async function hbApply() {
+  if (!HB || HB.busy) return; const N = HUBPLAN_TABLE, S = cpS(N), T = S.t, subC = cplanSubCol(T);
+  const st = HB.status, iv = HB.init, sv = HB.sub; if (!st && iv === '__keep' && sv === '__keep') { HB.msg = 'Nothing chosen'; return hbDraw(); }
+  const aRows = HB.rows.filter(r => cplanAssetOf(S, r)), pRows = HB.rows.filter(r => !cplanAssetOf(S, r)), stRows = aRows.filter(r => (cplanAssetOf(S, r).assetStatus || '') !== 'Published');
+  const say = [st && stRows.length ? `Status → ${st} on ${stRows.length} asset${stRows.length === 1 ? '' : 's'}` : '', iv !== '__keep' ? (iv ? `Initiative → “${iv}”` : 'Initiative cleared') + ` on ${HB.rows.length} row${HB.rows.length === 1 ? '' : 's'}` : '', sv !== '__keep' && subC ? (sv ? `Sub initiative → “${sv}”` : 'Sub initiative cleared') + ` on ${HB.rows.length} row${HB.rows.length === 1 ? '' : 's'}` : ''].filter(Boolean);
+  if (!say.length) { HB.msg = 'Nothing to change'; return hbDraw(); }
+  if (!confirm(say.join('\n') + '\n\nAsset fields are written to their Notion records (one at a time, logged); plan rows and the sub initiative column are saved in CP AA.')) return;
+  HB.busy = true; HB.msg = ''; hbDraw();
+  try {
+    if (sv !== '__keep' && subC) { HB.rows.forEach(r => cplanEdit(N, r.id, subC, sv)); clearTimeout(S.timer); await cplanSave(N); }
+    if (iv !== '__keep') { pRows.forEach(r => cplanEdit(N, r.id, 'init', iv)); if (pRows.length) { clearTimeout(S.timer); await cplanSave(N); }
+      if (iv) await cplanInitAdd(N, iv, true); if (aRows.length) await cplanAssetBulk(N, aRows, 'initiative', iv); }
+    if (st && stRows.length) await cplanAssetBulk(N, stRows, 'status', st);
+    HB.msg = S.resume ? '⏸ Stopped part-way — open CP AA and press ▶ Continue' : '✓ Done';
+  } catch (e) { HB.msg = 'Stopped: ' + e.message; }
+  HB.busy = false; HD.plan = { columns: T.columns, rows: T.rows }; hbDraw(); hdRender();
+}
 function hdAo2(n) {
   const s = (HD._sets || [])[n]; if (!s) return;
   AO2_DRILL = { label: s.label, ids: new Set(s.ids.map(hdNid)) };
