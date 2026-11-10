@@ -32,6 +32,9 @@ crons = ["30 0 * * *", "0 0 * * *", "15 0 * * *", "*/30 * * * *", "*/5 12-16 * *
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]
 # Keyword Research tab (kw* actions) — D1 store. Schema: kw-schema.sql.
+[ai]
+binding = "AI"   # 🎯 Keyword fit — meaning match (bge embeddings)
+
 [[d1_databases]]
 binding = "KWDB"
 database_name = "keyword-research"

@@ -3750,6 +3750,92 @@ async function hubAudienceBlock(env, cid) {
   await env.TRADES.put(K, JSON.stringify({ at: Date.now(), text })).catch(() => {});
   return text;
 }
+// 🎯 KEYWORD FIT (operator 2026-11-10: "start by scoring products against keyword strategy" → "build it on the hub dashboard all hubs").
+// Read-only: every product of a hub scored 0-100 against every keyword topic (the hub's ★ Main keywords count as a topic). Signals, weighted
+// and renormalised over the ones available: keyword match 40 (TF-IDF cosine of the product's own words — name, keywords, description,
+// product research — against the topic's keywords) · search demand 25 (share of the topic's measured volume in keywords the product covers) ·
+// intent fit 20 (share of that volume whose kwIntent suits the product kind) · meaning match 15 (Workers AI bge embeddings). Verdict per
+// product: keep / move? / place? / close call / no fit. Cached in KV kwfit:<cid>; nothing in Notion or CP AA is written.
+const KWFIT_W = { lex: 40, demand: 25, intent: 20, meaning: 15 }, KWFIT_OK = 35;
+function kwfitTokens(text) {
+  return String(text || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(w => w.length > 2 && !KW_STOP.has(w))
+    .map(w => w.length > 4 && w.endsWith("ies") ? w.slice(0, -3) + "y" : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
+}
+function kwfitKind(name, text) {   // what the product is → the search intents that suit it
+  const t = (name + " " + text).toLowerCase();
+  if (/\b(app|tool|tracker|calculator|template|ebook|e-book|book|course|workbook|guide|kit|download|software|plugin|merch|shirt|print)\b/.test(t)) return { kind: "product", ok: ["buy", "tool", "learn", "research"] };
+  if (/\b(consult|coaching|coach|service|management|manager|retainer|review|audit|support|agency|done.for.you|representation|oversight|caretak|repair|install)\w*/.test(t)) return { kind: "service", ok: ["hire", "research", "buy"] };
+  return { kind: "general", ok: ["research", "learn", "buy", "hire", "tool", "general"] };
+}
+async function kwfitHub(env, campaignId) {
+  const cid = hierarchyId(campaignId), dc = kwDashId(cid); if (!/^[a-f0-9]{32}$/i.test(cid)) throw new Error("campaignId required");
+  if (!NOTION_TOKEN) NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const doc = await env.TRADES.get("hub:structure:" + cid, "json"), view = doc ? hubStructureView(doc) : null;
+  const tc = (view && view.topicClusters) || (await env.TRADES.get("seotopicclusters:" + cid, "json").catch(() => null)) || { clusters: [], assign: {} };
+  const topics = (view ? [...view.committed, ...view.staged] : await hubTopicsOf(env, cid)).filter(t => t && t.name)
+    .map(t => ({ id: t.id ? hierarchyId(t.id) : "", name: t.name, keywords: String(t.keywords || ""), cluster: t.id ? (tc.assign || {})[hierarchyId(t.id)] || (tc.assign || {})[String(t.id)] || "" : "" }));
+  const [research, products, prRecs] = await Promise.all([
+    notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
+    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }),
+    notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => [])]);
+  const mainKw = research.map(r => hubRichText(r.properties?.Keywords?.rich_text)).sort((a, b) => b.length - a.length)[0] || "";
+  if (mainKw.trim()) topics.unshift({ id: "__main", name: "★ Main Keywords", keywords: mainKw, cluster: "★ Main" });
+  const live = products.filter(x => !x.archived && !x.in_trash && !x.properties?.Archived?.checkbox && !/^archived$/i.test(x.properties?.Status?.select?.name || ""));
+  const prBy = new Map(); for (const r of prRecs) { if (r.archived || r.in_trash) continue; for (const rel of r.properties?.Product?.relation || []) { const k = hierarchyId(rel.id), txt = STRATEGY_FIELDS.map(f => hubRichText(r.properties?.[f]?.rich_text)).join(" "); if (txt.length > (prBy.get(k) || "").length) prBy.set(k, txt); } }
+  const P = live.map(x => { const q = x.properties || {}, id = hierarchyId(x.id), name = hubRichText(q.Name?.title), kw = hubRichText(q.Keywords?.rich_text), desc = hubRichText(q.Description?.rich_text), res = (prBy.get(id) || "").slice(0, 6000);
+    return { id, name, status: q.Status?.select?.name || "", stack: hubRichText(q["Product Stack"]?.rich_text), topicId: hierarchyText(q["Topic ID"]?.rich_text).replace(/-/g, ""), kw, desc, res,
+      text: [name, name, name, kw, kw, desc, res].join(" ") }; }).filter(x => x.name);
+  if (!topics.length || !P.length) { const out = { cid, at: new Date().toISOString(), topics: topics.map(t => ({ id: t.id, name: t.name, cluster: t.cluster })), products: [], note: !topics.length ? "No keyword topics in this hub" : "No products in this hub" }; await env.TRADES.put("kwfit:" + cid, JSON.stringify(out)); return out; }
+  // 1 · keyword match: TF-IDF over topics + products
+  const tTok = topics.map(t => kwfitTokens(t.name + " " + t.name + " " + t.keywords)), pTok = P.map(x => kwfitTokens(x.text));
+  const df = new Map(), docs = [...tTok, ...pTok]; docs.forEach(d => new Set(d).forEach(w => df.set(w, (df.get(w) || 0) + 1)));
+  const vec = d => { const tf = new Map(); d.forEach(w => tf.set(w, (tf.get(w) || 0) + 1)); const v = new Map(); let n = 0; tf.forEach((c, w) => { const x = (1 + Math.log(c)) * Math.log(1 + docs.length / (df.get(w) || 1)); v.set(w, x); n += x * x; }); n = Math.sqrt(n) || 1; v.forEach((x, w) => v.set(w, x / n)); return v; };
+  const tVec = tTok.map(vec), pVec = pTok.map(vec), cos = (a, b) => { let s = 0; const [x, y] = a.size < b.size ? [a, b] : [b, a]; x.forEach((v, w) => { if (y.has(w)) s += v * y.get(w); }); return s; };
+  // 2 + 3 · demand and intent from the keyword store (exact text match, indexed)
+  const phrases = topics.map(t => [...new Set(t.keywords.split(/[,;\n|]/).map(kwNorm).filter(k => k && k.length < 120))].slice(0, 120));
+  const metric = new Map();
+  if (env.KWDB) { const all = [...new Set(phrases.flat())];
+    for (let i = 0; i < all.length; i += 400) { const r = await env.KWDB.prepare("SELECT k.text, MAX(m.avg_monthly_searches) vol, m.intent FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value JOIN kw_metrics m ON m.keyword_id = k.id GROUP BY k.id").bind(JSON.stringify(all.slice(i, i + 400))).all().catch(() => ({ results: [] }));
+      for (const x of r.results || []) metric.set(x.text, { vol: Number(x.vol || 0), intent: x.intent || "general" }); } }
+  // 4 · meaning match (Workers AI)
+  let tEmb = null, pEmb = null;
+  if (env.AI) { try { const emb = async L => { const out = []; for (let i = 0; i < L.length; i += 50) { const r = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: L.slice(i, i + 50).map(x => x.slice(0, 1800)) }); out.push(...(r.data || [])); } return out; };
+    tEmb = await emb(topics.map(t => t.name + ". " + t.keywords)); pEmb = await emb(P.map(x => [x.name, x.kw, x.desc, x.res.slice(0, 1200)].filter(Boolean).join(". "))); } catch (e) { tEmb = pEmb = null; } }
+  const ecos = (a, b) => { let s = 0, na = 0, nb = 0; for (let i = 0; i < a.length; i++) { s += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return s / (Math.sqrt(na * nb) || 1); };
+  const clamp = x => Math.max(0, Math.min(1, x));
+  const out = P.map((x, pi) => {
+    const set = new Set(pTok[pi]), K = kwfitKind(x.name + " " + x.stack, x.desc);
+    const scores = topics.map((t, ti) => {
+      const lex = clamp(cos(pVec[pi], tVec[ti]) / 0.35);
+      const hit = phrases[ti].filter(k => { const w = kwfitTokens(k); return w.length && w.filter(v => set.has(v)).length / w.length >= (w.length >= 3 ? 0.67 : 1); });
+      const measured = phrases[ti].filter(k => metric.has(k)), totV = measured.reduce((n, k) => n + metric.get(k).vol, 0), hitM = hit.filter(k => metric.has(k)), hitV = hitM.reduce((n, k) => n + metric.get(k).vol, 0);
+      const demand = totV > 0 ? clamp(Math.sqrt(hitV / totV)) : null;
+      const intent = hitV > 0 ? clamp(hitM.filter(k => K.ok.includes(metric.get(k).intent)).reduce((n, k) => n + metric.get(k).vol, 0) / hitV) : null;
+      const meaning = tEmb && pEmb && tEmb[ti] && pEmb[pi] ? clamp((ecos(pEmb[pi], tEmb[ti]) - 0.45) / 0.35) : null;
+      const sig = { lex, demand, intent, meaning }; let wsum = 0, v = 0; for (const [k, w] of Object.entries(KWFIT_W)) if (sig[k] != null) { v += w * sig[k]; wsum += w; }
+      return { ti, score: Math.round(100 * v / (wsum || 1)), sig: Object.fromEntries(Object.entries(sig).map(([k, z]) => [k, z == null ? null : Math.round(z * 100)])), hits: hit.slice(0, 6) };
+    }).sort((a, b) => b.score - a.score);
+    const best = scores[0], second = scores[1], curI = x.topicId ? topics.findIndex(t => t.id && t.id === x.topicId) : -1, cur = curI >= 0 ? scores.find(z => z.ti === curI) : null;
+    let verdict;
+    if (best.score < KWFIT_OK && (!cur || cur.score < KWFIT_OK)) verdict = "nofit";
+    else if (cur && (cur.ti === best.ti || best.score - cur.score < 8)) verdict = "keep";
+    else if (second && best.score - second.score < 5) verdict = "close";
+    else verdict = cur ? "move" : "place";
+    const T = z => z ? { id: topics[z.ti].id, name: topics[z.ti].name, cluster: topics[z.ti].cluster, score: z.score, sig: z.sig, hits: z.hits } : null;
+    return { id: x.id, name: x.name, status: x.status, kind: K.kind, placed: !!x.topicId, current: cur ? T(cur) : x.topicId ? { id: x.topicId, name: "(topic not in this hub)", cluster: "", score: null } : null,
+      best: T(best), second: T(second), verdict, hasResearch: !!x.res };
+  });
+  const tsum = topics.map((t, ti) => ({ id: t.id, name: t.name, cluster: t.cluster, keywords: phrases[ti].length, measured: phrases[ti].filter(k => metric.has(k)).length,
+    strong: out.filter(o => o.best && o.best.id === t.id && o.best.score >= 50).length, placed: out.filter(o => o.current && o.current.id === t.id).length }));
+  const res = { cid, at: new Date().toISOString(), weights: KWFIT_W, signals: { demand: metric.size > 0, meaning: !!tEmb }, topics: tsum, products: out };
+  await env.TRADES.put("kwfit:" + cid, JSON.stringify(res));
+  return res;
+}
+async function keywordFitAction(env, body) {
+  if (body.op === "get") { const ids = (Array.isArray(body.campaignIds) ? body.campaignIds : []).map(hierarchyId).filter(Boolean).slice(0, 60);
+    const got = await Promise.all(ids.map(id => env.TRADES.get("kwfit:" + id, "json").catch(() => null))); return { ok: true, hubs: Object.fromEntries(ids.map((id, i) => [id, got[i]])) }; }
+  return { ok: true, hub: await kwfitHub(env, body.campaignId) };
+}
 async function hubTopicsOf(env, cid) {
   const doc=await env.TRADES.get('hub:structure:'+hierarchyId(cid),'json');
   if(doc){const v=hubStructureView(doc);return [...v.committed.map(t=>({...t,committed:true})),...v.staged.map(t=>({...t,committed:false}))].filter(t=>t.name);}
@@ -42702,6 +42788,7 @@ Call submit_keyword_cluster with your result.`;
       // can be both a cluster and one of its own topics. Stored per campaign in
       // KV seotopicclusters:<cid> = { clusters: [names, in order], assign: { topicId: clusterName } }
       // — works the same for staged (KV) and committed (Notion) topics.
+      if (body.action === "keywordFit") { try { return json(await keywordFitAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "saveTopicClusters") {
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (!cid) return json({ error: "campaignId required" }, 400);
