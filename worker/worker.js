@@ -57941,6 +57941,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
+      // one-time (operator 2026-11-10: "do all the consolidation"): CP AA "Digest" rows → "Digest Parent" through the logged, version-checked
+      // renameContentPlanType (cplan:typerename:log — reversible by rowIds); flagged done so it never runs again
+      if (!(await env.TRADES.get("cplan:migrate:digestparent"))) cw("cplanDigestFold", contentPlanAction(env, { action: "renameContentPlanType", from: "Digest", to: "Digest Parent" }, false)
+        .then(async r => { console.log("cplanDigestFold:", JSON.stringify(r.out).slice(0, 300)); if (r.status === 200) await env.TRADES.put("cplan:migrate:digestparent", JSON.stringify({ at: new Date().toISOString(), rows: r.out.rows || 0 })); })
+        .catch(e => console.error("cplanDigestFold failed:", e.message)));
       cw("ivCronTick", ivCronTick(env).then(r => { if (r && !r.idle) console.log("ivCronTick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('ivCronTick failed:', e.message)));   // 🎤 new titles → interviews
       // stopped 2026-11-06 (operator: "stop any other cron creation") — runs only when KV cron:on:hubnews is set
       if (await env.TRADES.get("cron:on:hubnews")) cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
