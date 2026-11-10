@@ -10091,7 +10091,7 @@ const cplanNamed = (t, cells) => Object.fromEntries(Object.entries(cells || {}).
 // in cplan:removed:log (row cells + position, so ↺ Restore works) → all rows deleted in ONE commit → assets to Notion's trash 3 at a time.
 // items [{assetId, rowId?}] — no rowId: the CP AA row whose Asset id is this asset.
 async function cplanRemoveAssetsRun(env, list, opts = {}) {
-  const RLOG = "cplan:removed:log";
+  const RLOG = "cplan:removed:log"; if (!NOTION_TOKEN) NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();   // a cron run has no request to set it
   const items = [...new Map((Array.isArray(list) ? list : []).map(x => [hubAssetId(String(x && x.assetId || "")), String(x && x.rowId || "")])).entries()]
     .map(([id, rowId]) => ({ id, rowId })).filter(x => /^[0-9a-f]{32}$/i.test(x.id)).slice(0, 100);
   if (!items.length) return { error: "items required" };
@@ -57985,6 +57985,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
       // one-time (operator 2026-11-10: "bulk removal of all digests except for main keyword topic digests in all the hubs" → "yes remove"): the 28
       // non-★ Main Digest Parents, through cplanRemoveAssetsRun (logged, CP AA rows deleted, assets to the trash — ↺ Restore in 🗑 Removed)
+      // its 3 leftovers (17:00 run: read before the Notion key was set in the cron) — once
+      if (!(await env.TRADES.get("cplan:migrate:digestprune2"))) cw("cplanDigestPrune2", cplanRemoveAssetsRun(env, ["4091f7d3a4bb81999debc023c6e5e438", "4111f7d3a4bb81238c0ec53e05954766", "4111f7d3a4bb813087e5ee02d3bc84de"].map(assetId => ({ assetId })), { digestOnly: true })
+        .then(async r => { console.log("cplanDigestPrune2:", JSON.stringify(r).slice(0, 900)); await env.TRADES.put("cplan:migrate:digestprune2", JSON.stringify({ at: new Date().toISOString(), ...r })); })
+        .catch(e => console.error("cplanDigestPrune2 failed:", e.message)));
       if (!(await env.TRADES.get("cplan:migrate:digestprune"))) cw("cplanDigestPrune", cplanRemoveAssetsRun(env, ["4091f7d3a4bb81999debc023c6e5e438", "4111f7d3a4bb81238c0ec53e05954766", "4111f7d3a4bb813087e5ee02d3bc84de", "4111f7d3a4bb8195bdaae7562c585880", "4111f7d3a4bb810d83a0e67f0a4b08a9", "4111f7d3a4bb81549a17eca33c41fd19", "4101f7d3a4bb816fab42da722335354e", "4101f7d3a4bb81f298faf0d164194207", "4111f7d3a4bb81168fa4c11a96e55a50", "4111f7d3a4bb8179bcc3cd7049ac0fbc", "4111f7d3a4bb8150bd6df54654d54fa8", "4111f7d3a4bb81b39939fb35e512da6d", "4101f7d3a4bb8165ae1bf7534cfe1a09", "4111f7d3a4bb8158bde7dc9ffb9ed915", "40d1f7d3a4bb8140b6e7ece3fce771ed", "4111f7d3a4bb8143a83bebf364d92dd6", "4111f7d3a4bb814c880fe82116d4e070", "4111f7d3a4bb81ef8b1ddb5d26ea849a", "4101f7d3a4bb8153ba37ff8f427d8b1d", "4111f7d3a4bb818c8ce0f8efa436a840", "4101f7d3a4bb815cb54ae7e985bdf557", "4111f7d3a4bb81a88920c3393da725f6", "4101f7d3a4bb8121b5b8fd80d7b3eea6", "4101f7d3a4bb8143b5c7ea1a6430bd7f", "4111f7d3a4bb819b92ebd485ee4e88aa", "4111f7d3a4bb817e8280ce034d4ad30d", "4111f7d3a4bb819780bcd62289725e03", "4111f7d3a4bb81a1bd2eee2cd752ea7c"].map(assetId => ({ assetId })), { digestOnly: true })
         .then(async r => { console.log("cplanDigestPrune:", JSON.stringify({ removed: r.removed, rowsDeleted: r.rowsDeleted, failed: (r.results || []).filter(x => x.error) }).slice(0, 900));
           await env.TRADES.put("cplan:migrate:digestprune", JSON.stringify({ at: new Date().toISOString(), ...r })); })
