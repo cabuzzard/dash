@@ -7523,6 +7523,7 @@ async function hiOpen() {
   hiDraw();
   call('initiativeNames', { op: 'list' }).then(r => { if (HI && r && !r.error) { HI.names = r.names || []; hiDraw(); } }).catch(() => {});
   (typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES && CPLAN_ATYPES.length ? Promise.resolve({ types: CPLAN_ATYPES }) : call('getAssetTypes', { all: true })).then(r => { if (HI) { HI.types = (r && r.types) || []; hiDraw(); } }).catch(() => { if (HI) { HI.types = []; hiDraw(); } });
+  call('getInfoFlowTable', { name: 'assetflowgraph' }).then(r => { if (HI) { HI.af = hiAfGroups(r && r.table); hiDraw(); } }).catch(() => { if (HI) { HI.af = []; hiDraw(); } });
   kwTopicsFor(h.campaignId).then(d => { if (HI) { HI.topics = d; hiDraw(); } }).catch(() => { if (HI) { HI.topics = { topics: [], tc: {} }; hiDraw(); } });
 }
 // Minimise: the modal hides while the build carries on in this page; a pill (bottom right) shows "Building 4 of 9…", then Done / Stopped. Click → back.
@@ -7534,6 +7535,34 @@ function hiPill() {
   const H = HI, P = H.prog || { done: 0, total: 0 }, last = (H.log || []).slice(-1)[0] || '', bad = /^✗/.test(last);
   const txt = H.busy ? `＋ Building ${P.done} of ${P.total || '…'}…` : bad ? '⏸ Add initiative stopped — open' : `✓ Built ${P.done} asset${P.done === 1 ? '' : 's'} — open`;
   pill.textContent = txt; pill.style.cssText = `position:fixed;right:16px;bottom:16px;z-index:1500;font-size:13px;font-weight:700;padding:10px 16px;border-radius:22px;border:1px solid ${bad ? '#f59e0b' : H.busy ? '#c084fc' : '#4ade80'};background:var(--surface);color:${bad ? '#f59e0b' : H.busy ? '#c084fc' : '#4ade80'};box-shadow:0 6px 24px rgba(0,0,0,.35);cursor:pointer;max-width:calc(100vw - 32px);`;
+}
+// Asset Flow groups (operator 2026-11-09: "would be nice if the AF parent -> child asset relationships were presented for selection groups in that
+// modal") — each "Parent Asset" node of the Asset Flow graph (KV infoflow:table:assetflowgraph, read only) with the asset nodes it leads to (through
+// research steps such as "run" / "Clipping", never into another parent). Picking one fills the counts: the parent made a new Pillar, 1 of each child;
+// you change the numbers after. A graph name the Asset Types don't have yet is listed, not built.
+const HI_AF_LEGACY = { 'topical seo post': 'Topical - SEO Post', 'news seo · blog': 'Blog - SEO - News', 'newsletter premium': 'Newsletter paid', 'offer blog post': 'Offer – Content Hub',
+  'offer round up': 'Offer Roundup', 'sub page': 'sub page', 'single post carousel': 'carousel', 'youtube long form': 'YouTube Longform', 'resume': 'resume', 'listing': 'listing',
+  'client app': 'Client Studio', 'single post run': 'single post', 'single post video short': 'social reel informative', 'digital product': 'Product', 'offer sales page': 'Landing Page' };   // graph name → the older name (worker ASSET_TYPE_RENAMES)
+function hiAfGroups(t) {
+  const rows = (t && t.rows) || [], nodes = new Map(rows.filter(r => r.cells.kind === 'node').map(r => [r.id, r.cells])), out = new Map();
+  rows.filter(r => r.cells.kind === 'edge').forEach(e => { if (!out.has(e.cells.source)) out.set(e.cells.source, []); out.get(e.cells.source).push(e.cells.target); });
+  const isAsset = c => /asset/i.test(c.role || '') && !/parent|upstream/i.test(c.role || ''), groups = [];
+  for (const [id, c] of nodes) { if (!/^parent asset$/i.test(String(c.role || '').trim())) continue;
+    const kids = [], seen = new Set([id]), walk = n => (out.get(n) || []).forEach(k => { if (seen.has(k)) return; seen.add(k); const kc = nodes.get(k); if (!kc) return;
+      if (isAsset(kc)) kids.push(String(kc.label || '').trim()); else if (/research/i.test(kc.role || '')) walk(k); });
+    walk(id); if (kids.length) groups.push({ parent: String(c.label || '').trim(), kids: [...new Set(kids)] }); }
+  return groups.sort((a, b) => a.parent.localeCompare(b.parent));
+}
+function hiAfType(label, types) {   // a graph name → the modal's Asset Type option (same name, the older name, or "<name> parent")
+  const n = v => String(v || '').trim().toLowerCase(), l = n(label), old = HI_AF_LEGACY[l];
+  return (types || []).find(t => n(t) === l) || (old && (types || []).find(t => n(t) === n(old))) || (types || []).find(t => n(t) === l + ' parent') || '';
+}
+function hiAfPick(i) {
+  const H = HI; if (!H || H.busy || !H.af || !H.af[i]) return; const g = H.af[i], types = H.types || [], miss = [];
+  const pt = hiAfType(g.parent, types); H.counts = {}; if (pt) H.counts[pt] = 1; else miss.push(g.parent + ' (parent)');
+  g.kids.forEach(k => { const t = hiAfType(k, types); if (t && t !== pt) H.counts[t] = (H.counts[t] || 0) + 1; else if (!t) miss.push(k); });
+  H.parent = pt ? 'new:' + pt : ''; H.ptype = HI_PILLAR_TYPES.find(x => x.toLowerCase() === g.parent.toLowerCase()) || 'Generic';
+  H.afNote = `Asset Flow · ${g.parent}: parent + ${g.kids.length} child type${g.kids.length === 1 ? '' : 's'} set, 1 each — change the counts as you like.${miss.length ? ' Not an Asset Type yet, so left out: ' + miss.join(', ') + '.' : ''}`; H.q = ''; hiDraw();
 }
 function hiClose() { if (HI && HI.busy) return; const bg = document.getElementById('hiBg'); if (bg) bg.classList.remove('open'); HI = null; }
 function hiSet(k, v) { if (!HI || HI.busy) return; HI[k] = v; if (k === 'pid') { HI.tid = HI.pid === '__new' ? '__new' : ''; HI.parent = ''; HI.newPid = HI.newTid = ''; HI.rest = null; } if (k === 'tid') { HI.parent = ''; HI.newTid = ''; HI.rest = null; } hiDraw(); }
@@ -7564,6 +7593,7 @@ function hiDraw() {
     ${H.tid === '__new' ? `<input style="${IN}margin-top:6px;" ${dis} placeholder="New title" value="${esc(H.newTitle)}" oninput="HI.newTitle=this.value" onchange="hiDraw()"><div style="font-size:11px;color:var(--text3);margin-top:3px;">Made at Development on the product's keyword topic (no research or pillar yet).</div>` : ''}
     ${lab('Initiative')}<input style="${IN}" ${dis} list="hiNames" placeholder="Pick one or type a new name" value="${esc(H.init)}" oninput="HI.init=this.value" onchange="hiDraw()"><datalist id="hiNames">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     ${H.init.trim() && !names.some(n => n.toLowerCase() === H.init.trim().toLowerCase()) ? '<div style="font-size:11px;color:#c084fc;margin-top:3px;">New initiative — it is added to the names list.</div>' : ''}
+    ${H.af && H.af.length ? `${lab('From the Asset Flow — a parent and its children (fills the counts below)')}<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${H.af.map((g, i) => `<button ${dis} onclick="hiAfPick(${i})" title="${esc(g.parent + ' → ' + g.kids.join(', '))}" style="font-size:12px;padding:5px 10px;border:1px solid #c084fc;border-radius:14px;background:rgba(192,132,252,.08);color:var(--text);cursor:pointer;"><b>${esc(g.parent)}</b> <span style="color:var(--text3);">→ ${g.kids.length}</span></button>`).join('')}</div>${H.afNote ? `<div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">${esc(H.afNote)}</div>` : ''}` : ''}
     ${lab('Assets to build — set a count on each type')}<input style="${IN}margin-bottom:6px;" ${dis} placeholder="Filter asset types…" value="${esc(H.q)}" oninput="HI.q=this.value;hiDraw();this.focus();this.setSelectionRange(this.value.length,this.value.length)">
     <div style="max-height:200px;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;">${H.types ? types.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:12.5px;"><input type="number" min="0" max="50" ${dis} value="${H.counts[t] || ''}" placeholder="0" onchange="hiCount(${JSON.stringify(t).replace(/"/g, '&quot;')},this.value)" style="${IN}width:58px;padding:3px 6px;"><span style="${H.counts[t] ? 'font-weight:700;' : 'color:var(--text2);'}">${esc(t)}</span></div>`).join('') || '<div style="font-size:12px;color:var(--text3);">No match</div>' : '<div style="font-size:12px;color:var(--text3);">Loading asset types…</div>'}</div>
     ${lab('Parent')}<select style="${IN}" ${dis} onchange="hiSet('parent',this.value)"><option value="">No parent</option>${chosen.map(t => `<option value="new:${esc(t)}" ${H.parent === 'new:' + t ? 'selected' : ''}>New: the first ${esc(t)} — made a Pillar, the rest its children</option>`).join('')}${pillars.map(x => `<option value="ex:${hdNid(x.assetId)}" ${H.parent === 'ex:' + hdNid(x.assetId) ? 'selected' : ''}>Existing pillar: ${esc(x.assetName || '(untitled)')}</option>`).join('')}</select>
