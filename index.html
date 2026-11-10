@@ -4806,9 +4806,11 @@ async function cplanAssetStatus(name, rowId, sel) {   // the writer's own status
 // (toolbar) picks up from that asset when you say so. jobs = [{ go: () => call(...), ok: r => {...} }]; done = after the last one.
 const CPLAN_WRITE_GAP = 450;
 async function cplanWrites(name, label, jobs, done, base = 0, total = jobs.reduce((a, j) => a + (j.n || 1), 0)) {
-  const S = cpS(name), m = document.getElementById('cplanMsg' + cpId(name)); S.resume = null; let n = base;
+  const S = cpS(name), m = document.getElementById('cplanMsg' + cpId(name)); S.resume = null; let n = base; const skipped = [];
   for (let i = 0; i < jobs.length; i++) {
     let r = await jobs[i].go().catch(e => ({ error: e.message }));
+    // operator 2026-11-09: one refused asset "stalled the entire operation" — a soft job's own failure is skipped and reported, the run goes on
+    if (jobs[i].soft && (!r || r.error) && !((r && r.rate) || /rate.?limit|429/i.test((r && r.error) || ''))) { skipped.push({ name: jobs[i].name || '', error: (r && r.error) || 'no response' }); continue; }
     if (r && !r.error && r.stopped) { const k = jobs[i].ok(r) || 0; n += k; const rest = jobs[i].rest(r); r = { error: r.stopped.error, rate: r.stopped.rate }; jobs = [...jobs.slice(0, i), rest, ...jobs.slice(i + 1)].filter(Boolean); }
     if (!r || r.error) { const err = (r && r.error) || 'no response', rate = (r && r.rate) || /rate.?limit|429/i.test(err);
       S.resume = { label, jobs: jobs.slice(i), done, base: n, total, rate };
@@ -4818,7 +4820,9 @@ async function cplanWrites(name, label, jobs, done, base = 0, total = jobs.reduc
     n += jobs[i].ok(r) || (jobs[i].n || 1); if (m && total > 1) { m.style.color = 'var(--text3)'; m.textContent = '⏳ ' + label + ': ' + n + ' / ' + total; }
     if (i < jobs.length - 1) await new Promise(res => setTimeout(res, CPLAN_WRITE_GAP));
   }
-  if (done) await done(n); if (m && total > 1) m.textContent = '✓ ' + label + ': ' + n + ' / ' + total; cplanPaint(name); return true;
+  if (done) await done(n); if (m && total > 1) m.textContent = '✓ ' + label + ': ' + n + ' / ' + total + (skipped.length ? ' · ' + skipped.length + ' skipped' : ''); cplanPaint(name);
+  if (skipped.length) { console.warn('[CP AA] skipped', skipped); showToast(`${skipped.length} skipped (left as they were): ${skipped.slice(0, 3).map(x => (x.name ? '“' + x.name.slice(0, 40) + '” — ' : '') + x.error).join(' · ')}${skipped.length > 3 ? ' …' : ''}`, 'error'); }
+  return true;
 }
 // items [{ax, value}] → jobs of 20 assets each through cplanAssetBulkEdit; apply(ax, after) updates the row in place
 function cplanBulkJobs(field, items, apply) {
@@ -4830,7 +4834,7 @@ function cplanBulkJobs(field, items, apply) {
 function cplanResume(name) { const R = cpS(name).resume; return R ? cplanWrites(name, R.label, R.jobs, R.done, R.base, R.total) : null; }
 async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows
   const S = cpS(name), axs = rows.map(row => cplanAssetOf(S, row)).filter(Boolean).filter(ax => !(field === 'initiative' && (ax.initiative || '') === v));   // already there — no write
-  const jobs = field === 'status' ? axs.map(ax => ({ go: () => call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }), ok: () => { ax.assetStatus = v; } }))
+  const jobs = field === 'status' ? axs.map(ax => ({ soft: true, name: ax.assetName || '', go: () => call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }), ok: () => { ax.assetStatus = v; } }))
     : cplanBulkJobs(field === 'initiative' ? 'initiative' : 'type', axs.map(ax => ({ ax, value: v })), (ax, a) => { if (field === 'initiative') ax.initiative = a.initiative || ''; else ax.rawAssetType = a.type || v; });
   if (!jobs.length) { showToast('Nothing to change — they already have that value', 'success'); return cplanPaint(name); }
   await cplanWrites(name, field === 'initiative' ? (v ? 'Initiative → ' + v : 'Out of initiative') : field === 'status' ? 'Status → ' + v : 'Asset type → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'));
@@ -5353,14 +5357,17 @@ async function cplanBulkDel(name) {
 async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
   const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
-  const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)), aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)), ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
+  const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)); let aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)); const ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
   const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative') && !(aField === 'status' && v === 'Published');
   if (aField === 'initiative' && v && initiativeBad(v)) return showToast(initiativeBad(v), 'error');
   if (aRows.length && !aOk) showToast(`${aRows.length} asset row${aRows.length === 1 ? '' : 's'} skipped — ${aField === 'status' && v === 'Published' ? 'publishing runs from the writer' : !v ? 'an asset always keeps a value' : c.name + ' on an asset changes through its Title (one row at a time)'}`, 'error');
   if (ids.length && confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?')) { for (const id of ids) cplanEdit(name, id, col, v); clearTimeout(S.timer); cplanPaint(name); cplanSave(name); }
+  // operator 2026-11-09: a bulk status change caught Published assets — a live asset is never moved by a bulk change (that would pull it off its hub);
+  // change one on its own row if you really mean it
+  if (aOk && aField === 'status') { const live = aRows.filter(r => (cplanAssetOf(S, r).assetStatus || '') === 'Published'); if (live.length) { aRows = aRows.filter(r => !live.includes(r)); showToast(`${live.length} Published asset${live.length === 1 ? '' : 's'} left as they are — a bulk status change never moves a live asset`, 'success'); } if (!aRows.length) return; }
   const nA = aRows.length, sA = nA === 1 ? '' : 's';
   if (aOk && confirm(aField === 'initiative' ? (v ? `Put ${nA} asset${sA} in the initiative “${v}”?` : `Take ${nA} asset${sA} out of their initiative?`) + ' Each is written to its Notion record, one at a time and logged (old value kept); it stops at the first failure.'
-    : `Write ${c.name} “${v}” to ${nA} asset record${sA} in Notion? One at a time, each logged; it stops at the first failure.`)) { if (aField === 'initiative' && v) await cplanInitAdd(name, v, true); await cplanAssetBulk(name, aRows, aField, v); }
+    : `Write ${c.name} “${v}” to ${nA} asset record${sA} in Notion? One at a time${aField === 'status' ? '; an asset Notion refuses is skipped and listed at the end' : ', each logged; it stops at the first failure'}.`)) { if (aField === 'initiative' && v) await cplanInitAdd(name, v, true); await cplanAssetBulk(name, aRows, aField, v); }
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
   const S = cpS(name), row = S.t && S.t.rows.find(r => r.id === rowId); if (!row) return;
