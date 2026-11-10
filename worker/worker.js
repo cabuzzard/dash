@@ -10086,6 +10086,44 @@ async function cplanMirror(env) {   // KV ← the newest master; re-checks so a 
   return { ok: true, seq: last };
 }
 const cplanNamed = (t, cells) => Object.fromEntries(Object.entries(cells || {}).map(([k, v]) => [((t.columns || []).find(c => c.id === k) || {}).name || k, v]));
+// CP AA bulk removal (operator 2026-11-10: "no need for the check for child. and you could delete the row first. and still perform the rest"):
+// status reads (a Published asset is never removed; opts.digestOnly also refuses anything that isn't a Digest Parent) → every removal logged
+// in cplan:removed:log (row cells + position, so ↺ Restore works) → all rows deleted in ONE commit → assets to Notion's trash 3 at a time.
+// items [{assetId, rowId?}] — no rowId: the CP AA row whose Asset id is this asset.
+async function cplanRemoveAssetsRun(env, list, opts = {}) {
+  const RLOG = "cplan:removed:log";
+  const items = [...new Map((Array.isArray(list) ? list : []).map(x => [hubAssetId(String(x && x.assetId || "")), String(x && x.rowId || "")])).entries()]
+    .map(([id, rowId]) => ({ id, rowId })).filter(x => /^[0-9a-f]{32}$/i.test(x.id)).slice(0, 100);
+  if (!items.length) return { error: "items required" };
+  const pool = async (arr, n, f) => { const out = new Array(arr.length); let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, arr.length) }, async () => { while (i < arr.length) { const k = i++; out[k] = await f(arr[k]).catch(e => ({ error: e.message })); } })); return out; };
+  const pages = await pool(items, 3, async x => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(x.id), { headers: ivHdr() }), d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; });
+  const { t } = await cplanLoad(env), results = [], go = [];
+  items.forEach((x, k) => {
+    const pg = pages[k]; if (!pg || pg.error) return results.push({ assetId: x.id, error: (pg && pg.error) || "not readable" });
+    const pp = pg.properties || {}, status = pp["Asset Status"]?.select?.name || "";
+    if (status === "Published" && !(pg.archived || pg.in_trash)) return results.push({ assetId: x.id, error: "Published — never removed here", reason: "published" });
+    if (opts.digestOnly && !isDigestParentPage(pg)) return results.push({ assetId: x.id, error: "not a Digest Parent — left alone" });
+    let i = x.rowId && t ? t.rows.findIndex(r => r.id === x.rowId) : -1;
+    if (i < 0 && !x.rowId && t) i = t.rows.findIndex(r => hubAssetId(cplanCell(t, r, "Asset id")) === x.id);
+    const row = i >= 0 ? t.rows[i] : null;
+    if (row && hubAssetId(cplanCell(t, row, "Asset id")) !== x.id) return results.push({ assetId: x.id, error: "That row is linked to a different asset" });
+    go.push({ x, pg, row, entry: { at: new Date().toISOString(), assetId: x.id, title: hubRichText(pp["Asset Title"]?.title), type: pp["Asset Type"]?.select?.name || "", status,
+      titleId: ivRid(pp, "Content Strategy") || "", campaignId: ivRid(pp, "Campaign") || "", children: [], rowId: row ? row.id : "", row: row ? { ...row.cells } : null, after: i > 0 ? t.rows[i - 1].id : "", bulk: true } });
+  });
+  if (!go.length) return { ok: true, removed: 0, results };
+  const L = (await env.TRADES.get(RLOG, "json")) || []; await env.TRADES.put(RLOG, JSON.stringify([...go.map(g => g.entry).reverse(), ...L].slice(0, 300)));   // logged before anything changes
+  const rowIds = go.filter(g => g.row).map(g => g.row.id);
+  const d = rowIds.length ? await contentPlanAction(env, { action: "updateContentPlan", edits: rowIds.map(rowId => ({ op: "delete", rowId })) }, false) : { out: { ok: true } };
+  const rowsOk = !!(d.out && d.out.ok), rowFail = new Set(((d.out && d.out.failed) || []).map(f => f.rowId));
+  const trashed = await pool(go, 3, async g => {
+    if (g.pg.archived || g.pg.in_trash) return { ok: true };
+    const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(g.x.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }), b = await r.json().catch(() => ({}));
+    return r.ok && (b.archived || b.in_trash) ? { ok: true } : { error: "Not removed: " + (b.message || "Notion error " + r.status), rate: r.status === 429 };
+  });
+  go.forEach((g, k) => { const tr = trashed[k] || {}; results.push({ assetId: g.x.id, title: g.entry.title, trashed: !!tr.ok, rowDeleted: !!g.row && rowsOk && !rowFail.has(g.row.id), ...(tr.error ? { error: tr.error, rate: !!tr.rate } : {}) }); });
+  return { ok: true, removed: trashed.filter(x => x && x.ok).length, rowsDeleted: rowsOk ? rowIds.length - rowFail.size : 0, results };
+}
 async function contentPlanAction(env, body, external) {
   const { seq: seq0, t: t0 } = await cplanLoad(env);
   if (!t0 || !Array.isArray(t0.columns)) return { status: 404, out: { error: "Content Plan — All Assets table not found at " + CPLAN_KEY } };
@@ -19688,35 +19726,7 @@ export default {
         // cplanRemoveAssets {items:[{assetId, rowId?}]} — CP AA bulk × Delete (operator 2026-11-10: "no need for the check for child. and you
         // could delete the row first. and still perform the rest"): status reads (a Published asset is never removed) → every removal logged
         // (row cells + position, so ↺ Restore works) → all rows deleted in ONE commit → assets to Notion's trash 3 at a time. No child lookup.
-        if (body.action === "cplanRemoveAssets") {
-          const items = [...new Map((Array.isArray(body.items) ? body.items : []).map(x => [hubAssetId(String(x && x.assetId || "")), String(x && x.rowId || "")])).entries()]
-            .map(([id, rowId]) => ({ id, rowId })).filter(x => /^[0-9a-f]{32}$/i.test(x.id)).slice(0, 100);
-          if (!items.length) return json({ error: "items required" }, 400);
-          const pool = async (list, n, fn) => { const out = new Array(list.length); let i = 0;
-            await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (i < list.length) { const k = i++; out[k] = await fn(list[k]).catch(e => ({ error: e.message })); } })); return out; };
-          const pages = await pool(items, 3, x => getPage(x.id)), { t } = await cplanLoad(env), results = [], go = [];
-          items.forEach((x, k) => {
-            const pg = pages[k]; if (!pg || pg.error) return results.push({ assetId: x.id, error: (pg && pg.error) || "not readable" });
-            const pp = pg.properties || {}, status = pp["Asset Status"]?.select?.name || "";
-            if (status === "Published" && !(pg.archived || pg.in_trash)) return results.push({ assetId: x.id, error: "Published — never removed here", reason: "published" });
-            const i = x.rowId && t ? t.rows.findIndex(r => r.id === x.rowId) : -1, row = i >= 0 ? t.rows[i] : null;
-            if (row && hubAssetId(cplanCell(t, row, "Asset id")) !== x.id) return results.push({ assetId: x.id, error: "That row is linked to a different asset" });
-            go.push({ x, pg, row, entry: { at: new Date().toISOString(), assetId: x.id, title: hubRichText(pp["Asset Title"]?.title), type: pp["Asset Type"]?.select?.name || "", status,
-              titleId: ivRid(pp, "Content Strategy") || "", campaignId: ivRid(pp, "Campaign") || "", children: [], rowId: row ? row.id : "", row: row ? { ...row.cells } : null, after: i > 0 ? t.rows[i - 1].id : "", bulk: true } });
-          });
-          if (!go.length) return json({ ok: true, removed: 0, results });
-          const L = (await env.TRADES.get(RLOG, "json")) || []; await env.TRADES.put(RLOG, JSON.stringify([...go.map(g => g.entry).reverse(), ...L].slice(0, 300)));   // logged before anything changes
-          const rowIds = go.filter(g => g.row).map(g => g.row.id);
-          const d = rowIds.length ? await contentPlanAction(env, { action: "updateContentPlan", edits: rowIds.map(rowId => ({ op: "delete", rowId })) }, false) : { out: { ok: true } };
-          const rowsOk = !!(d.out && d.out.ok), rowFail = new Set(((d.out && d.out.failed) || []).map(f => f.rowId));
-          const trashed = await pool(go, 3, async g => {
-            if (g.pg.archived || g.pg.in_trash) return { ok: true };
-            const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(g.x.id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }), b = await r.json().catch(() => ({}));
-            return r.ok && (b.archived || b.in_trash) ? { ok: true } : { error: "Not removed: " + (b.message || "Notion error " + r.status), rate: r.status === 429 };
-          });
-          go.forEach((g, k) => { const tr = trashed[k] || {}; results.push({ assetId: g.x.id, trashed: !!tr.ok, rowDeleted: !!g.row && rowsOk && !rowFail.has(g.row.id), ...(tr.error ? { error: tr.error, rate: !!tr.rate } : {}) }); });
-          return json({ ok: true, removed: trashed.filter(x => x && x.ok).length, rowsDeleted: rowsOk ? rowIds.length - rowFail.size : 0, results });
-        }
+        if (body.action === "cplanRemoveAssets") return json(await cplanRemoveAssetsRun(env, body.items));
         if (body.action === "cplanRemoveAsset") {
           const id = hubAssetId(String(body.assetId || "")); if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
           const pg = await getPage(id), pp = pg.properties || {}, status = pp["Asset Status"]?.select?.name || "";
@@ -57973,6 +57983,12 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
+      // one-time (operator 2026-11-10: "bulk removal of all digests except for main keyword topic digests in all the hubs" → "yes remove"): the 28
+      // non-★ Main Digest Parents, through cplanRemoveAssetsRun (logged, CP AA rows deleted, assets to the trash — ↺ Restore in 🗑 Removed)
+      if (!(await env.TRADES.get("cplan:migrate:digestprune"))) cw("cplanDigestPrune", cplanRemoveAssetsRun(env, ["4091f7d3a4bb81999debc023c6e5e438", "4111f7d3a4bb81238c0ec53e05954766", "4111f7d3a4bb813087e5ee02d3bc84de", "4111f7d3a4bb8195bdaae7562c585880", "4111f7d3a4bb810d83a0e67f0a4b08a9", "4111f7d3a4bb81549a17eca33c41fd19", "4101f7d3a4bb816fab42da722335354e", "4101f7d3a4bb81f298faf0d164194207", "4111f7d3a4bb81168fa4c11a96e55a50", "4111f7d3a4bb8179bcc3cd7049ac0fbc", "4111f7d3a4bb8150bd6df54654d54fa8", "4111f7d3a4bb81b39939fb35e512da6d", "4101f7d3a4bb8165ae1bf7534cfe1a09", "4111f7d3a4bb8158bde7dc9ffb9ed915", "40d1f7d3a4bb8140b6e7ece3fce771ed", "4111f7d3a4bb8143a83bebf364d92dd6", "4111f7d3a4bb814c880fe82116d4e070", "4111f7d3a4bb81ef8b1ddb5d26ea849a", "4101f7d3a4bb8153ba37ff8f427d8b1d", "4111f7d3a4bb818c8ce0f8efa436a840", "4101f7d3a4bb815cb54ae7e985bdf557", "4111f7d3a4bb81a88920c3393da725f6", "4101f7d3a4bb8121b5b8fd80d7b3eea6", "4101f7d3a4bb8143b5c7ea1a6430bd7f", "4111f7d3a4bb819b92ebd485ee4e88aa", "4111f7d3a4bb817e8280ce034d4ad30d", "4111f7d3a4bb819780bcd62289725e03", "4111f7d3a4bb81a1bd2eee2cd752ea7c"].map(assetId => ({ assetId })), { digestOnly: true })
+        .then(async r => { console.log("cplanDigestPrune:", JSON.stringify({ removed: r.removed, rowsDeleted: r.rowsDeleted, failed: (r.results || []).filter(x => x.error) }).slice(0, 900));
+          await env.TRADES.put("cplan:migrate:digestprune", JSON.stringify({ at: new Date().toISOString(), ...r })); })
+        .catch(e => console.error("cplanDigestPrune failed:", e.message)));
       // one-time (operator 2026-11-10: "do all the consolidation"): CP AA "Digest" rows → "Digest Parent" through the logged, version-checked
       // renameContentPlanType (cplan:typerename:log — reversible by rowIds); flagged done so it never runs again
       if (!(await env.TRADES.get("cplan:migrate:digestparent"))) cw("cplanDigestFold", contentPlanAction(env, { action: "renameContentPlanType", from: "Digest", to: "Digest Parent" }, false)
