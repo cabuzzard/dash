@@ -5172,7 +5172,10 @@ function cplanPaint(name = 'content-plan-assets') {
   const subC = name === HUBPLAN_TABLE ? cplanSubCol(T) : '', subList = subC ? uniq(T.rows.map(r => r.cells[subC])) : [];   // the sub initiative column: every name in use
   const pickList = (row, kind) => {
     const c = row.cells, hub = String(c.hub || '').trim(), same = (r, k, v) => norm(r.cells[k]) === norm(v);
-    if (kind === 'atype') return uniq([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)]);
+    if (kind === 'atype') {   // "Offer - Content Hub" and "Offer – Content Hub" are one type: dash variants fold together, the spelling the rows use wins
+      const dk = s => norm(s).replace(/\s*[-–—]\s*/g, ' - ');
+      return [...new Map([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)].map(s => String(s || '').trim()).filter(Boolean).map(s => [dk(s), s])).values()].sort((a, b) => a.localeCompare(b));
+    }
     if (kind === 'hub') return uniq([...T.rows.map(r => r.cells.hub), ...HUB_SITES.filter(s => s.campaignId).map(s => s.name)]);
     const tree = hub ? cplanHubTree(hub, memo) : [], mine = T.rows.filter(r => hub && same(r, 'hub', hub));
     const cluster = PK.cluster ? c[PK.cluster] : '';
