@@ -5173,7 +5173,7 @@ function cplanPaint(name = 'content-plan-assets') {
   const pickList = (row, kind) => {
     const c = row.cells, hub = String(c.hub || '').trim(), same = (r, k, v) => norm(r.cells[k]) === norm(v);
     if (kind === 'atype') {   // "Offer - Content Hub" and "Offer – Content Hub" are one type: dash variants fold together, the spelling the rows use wins
-      const dk = s => norm(s).replace(/\s*[-–—]\s*/g, ' - ');
+      const dk = s => /^digest( parent)?$/.test(norm(s)) ? 'digest parent' : norm(s).replace(/\s*[-–—]\s*/g, ' - ');   // "Digest" is retired into "Digest Parent" (2026-11-10)
       return [...new Map([...(CPLAN_ATYPES || []), ...T.rows.map(r => r.cells.atype)].map(s => String(s || '').trim()).filter(Boolean).map(s => [dk(s), s])).values()].sort((a, b) => a.localeCompare(b));
     }
     if (kind === 'hub') return uniq([...T.rows.map(r => r.cells.hub), ...HUB_SITES.filter(s => s.campaignId).map(s => s.name)]);
@@ -6111,6 +6111,7 @@ async function amFwRun() {
   const sources = F.all ? AM_SOURCES.map(x => x[0]) : [...F.chosen], id = AM.id; AM.fwBusy = true; AM.log = '⏳ Writing ' + (F.field ? '“' + F.field + '”' : 'all fields') + '…'; amDraw();
   const r = await call('writeAssetFields', { assetId: id, ...(F.field ? { fields: [F.field] } : {}), sources, guidance: F.guidance || '' }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return; AM.fwBusy = false;
+  if (r && r.route === 'digest_run') { AM.log = '📰 ' + r.reason; AM.fw = null; return amDraw(); }
   if (!r || r.error || r.needsInterview) { AM.log = '✗ Not written: ' + ((r && (r.reason || r.error)) || (r && r.needsInterview ? 'its interview must be answered first' : 'no response')); return amDraw(); }
   AM.log = '✓ Written: ' + (r.fields || []).join(', ') + (r.violations && r.violations.length ? ' · ✗ ' + r.violations.join(' · ') : ' · all rules pass');
   AM.fw = null; AM.dirty = {}; AM.changed = true; await amLoad();
@@ -6534,6 +6535,7 @@ async function amWrite(btn) {
   if (r && r.lost) { const L = await call('writeAssetLast', { assetId: id, since }).catch(() => null); if (L && L.run) r = { ok: true, written: L.run.written, violations: L.run.violations || [], fromLog: true }; }
   if (!AM || AM.id !== id) return;
   if (r && r.needsInterview) AM.log = '🎤 This asset needs its interview answered first — open it from the title’s interviews, then Write again.';
+  else if (r && r.route === 'digest_run') { AM.log = '📰 ' + r.reason; btn.disabled = false; btn.textContent = '✍ Write'; return amDraw(); }   // a Digest Parent's write = its digest run
   else if (!r || r.error) AM.log = '✗ Not written: ' + ((r && (r.reason || r.error)) || 'no response');
   else AM.log = (r.written ? '✓ Written — every rule passes' : '✓ Written · ' + (r.violations || []).length + ' rule' + ((r.violations || []).length === 1 ? '' : 's') + ' still failing: ' + (r.violations || []).join(' · '))
     + (r.style && r.style.keptPct != null ? ' · kept ' + r.style.keptPct + '% of the interview wording' : '') + (r.style && r.style.corrected ? ' · corrected once' : '');
