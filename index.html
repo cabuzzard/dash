@@ -5941,7 +5941,7 @@ function amDraw() {
   const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amLoginSel()}${amPlatformsChip()}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
           ${chip(d.rules ? '📏 ' + d.rules.row : unmapped ? '📏 no writing rules' : '', unmapped ? d.reason : 'Writing-rules row (Current Methods)', unmapped ? '#f59e0b' : '')}
           ${a.platformName ? chip(a.platformName, 'Platform Name') : ''}${a.parentTitle ? chip('↑ ' + a.parentTitle, 'Parent Asset') : ''}
           ${a.contentHub ? chip(a.contentHub, 'Content Hub') : ''}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);">Notion ↗</a></div></div>
@@ -6275,6 +6275,14 @@ async function amSeriesMount() {
   const keep = typeof _series !== 'undefined' && _series && _series.tid === kwNid(a.titleId) && _series.target === 'amSeriesSlot';
   if (keep) return hubSeriesDraw();
   hubSeriesOpen(h.slug, kwNid(a.titleId), a.id, false, 'amSeriesSlot');
+}
+// 📰 Digest (operator 2026-11-10: "where is the digest modal in the writer?") — on a Digest parent: the same modal as the title row's 📰 digest
+// (records, runs, model, ⚙ Disseminate). Its hub comes from the writer context's campaign.
+function amDigestBtn() {
+  const a = AM && AM.data && AM.data.asset, c = AM && AM.ctx; if (!a || !(/^digest( parent)?$/i.test(String(a.type || '').trim()) || /^digest$/i.test(a.pillarType || ''))) return '';
+  const h = c && c.campaignId && HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(c.campaignId));
+  if (!h) return `<span title="${c ? 'This digest’s campaign isn’t a content hub' : 'Loading its hub…'}" style="font-size:11.5px;padding:2px 9px;border:1px solid var(--border2);border-radius:6px;color:var(--text3);">📰 Digest</span>`;
+  return `<button title="This Digest parent’s records, runs, model and ⚙ Disseminate" style="font-size:11.5px;padding:2px 9px;border:1px solid #60a5fa;border-radius:6px;background:var(--surface2);color:#60a5fa;cursor:pointer;" onclick="hubDigestRowOpen('${h.slug}','${esc(AM.id)}')">📰 Digest</button>`;
 }
 function amIsSeries() { const a = AM && AM.data && AM.data.asset; return !!a && (/^series$/i.test(a.type || '') || /^series$/i.test(a.pillarType || '')); }
 // 🎬 Video (operator 2026-10-30): on video assets only — a single post story / HyperFrames reel with a Video Spec renders through the
