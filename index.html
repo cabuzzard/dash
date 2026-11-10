@@ -5444,8 +5444,9 @@ function cplanBulkDup(name) {
     const nid = 'p' + (t0 + k++).toString(36); T.rows.splice(i >= 0 ? i + 1 : T.rows.length, 0, { id: nid, cells }); S.newRows.add(nid); made.add(nid); }
   S.sel = made; S.dupOpen = false; cplanPaint(name); cplanSave(name);
 }
-async function cplanBulkDel(name) {   // plan rows are deleted; asset rows (operator 2026-11-10: bulk delete of digests "doesnt look like it worked") go one at a
-  // time through 🗑 Remove record's own path — Notion trash, logged, ↺ Restore in 🗑 Removed, never a Published asset. The result stays on screen.
+async function cplanBulkDel(name) {   // operator 2026-11-10: "it should remove the row first every time and then continue cleaning" — every selected
+  // row leaves the table the moment you confirm; then plan rows are deleted and asset rows go through cplanRemoveAssets (25 per call: logged,
+  // rows deleted in one save, assets to Notion's trash, ↺ Restore in 🗑 Removed, never a Published asset). Anything that fails comes back.
   const S = cpS(name), T = S.t; if (!T || !S.sel.size) return;
   const ai = name === HUBPLAN_TABLE ? cplanTraceIds(T).ai : '', isA = r => !!(ai && String(r.cells[ai] || '').trim());
   const ids = T.rows.filter(r => S.sel.has(r.id) && !isA(r)).map(r => r.id);
@@ -5456,36 +5457,39 @@ async function cplanBulkDel(name) {   // plan rows are deleted; asset rows (oper
   if (!confirm((ids.length ? 'Delete ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + ' (kept in the Content Plan change log).\n' : '')
     + (go.length ? 'Remove ' + go.length + ' asset record' + (go.length === 1 ? '' : 's') + ' — each asset goes to Notion\'s trash and its row is deleted (🗑 Removed → ↺ Restore puts both back):\n' + go.slice(0, 12).map(a => '· ' + (a.x.assetName || '(untitled)') + ' — ' + (a.x.rawAssetType || '') + ' · ' + (a.x.assetStatus || '')).join('\n') + (go.length > 12 ? '\n· …and ' + (go.length - 12) + ' more' : '') + '\nChild assets are not touched.\n' : '')
     + (pub.length ? '\n' + pub.length + ' Published asset' + (pub.length === 1 ? ' is' : 's are') + ' skipped.' : ''))) return;
-  const fails = []; let r = { ok: true }, removed = 0, stopped = '', rowsFailed = false;
+  // 1 · off the screen now
+  const gone = new Set([...ids, ...go.filter(a => !a.row.virt).map(a => a.row.id)]);
+  T.rows = T.rows.filter(r => !gone.has(r.id)); go.forEach(a => (S.removed ||= new Set()).add(hdNid(a.x.assetId)));
+  const savedPlan = ids.filter(id => !S.newRows.has(id)); gone.forEach(id => { S.newRows.delete(id); delete S.pend[id]; });
+  S.sel = new Set(); cplanPaint(name); if (name === HUBPLAN_TABLE && HD.plan) { HD.plan = T; hdRender(); }
+  // 2 · then the cleaning
+  const fails = []; let r = { ok: true }, removed = 0, stopped = '', rowsFailed = false, back = 0;
   if (ids.length) {
-    const del = new Set(ids); T.rows = T.rows.filter(r => !del.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); cplanPaint(name);
     say('Deleting ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '…');
     if (name !== HUBPLAN_TABLE) r = await call('saveInfoFlowTable', { name, table: T }).catch(e => ({ error: e.message }));
-    else for (let i = 0; i < saved.length && r && !r.error && !(r.failed && r.failed.length); i += 50)
-      r = await call('updateContentPlan', { edits: saved.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
+    else for (let i = 0; i < savedPlan.length && r && !r.error && !(r.failed && r.failed.length); i += 50)
+      r = await call('updateContentPlan', { edits: savedPlan.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
     if (!r || r.error || (r.failed && r.failed.length)) { rowsFailed = true; fails.push('plan rows: ' + ((r && (r.error || r.failed.map(f => f.reason).join(' · '))) || 'no response')); }
   }
-  for (let k = 0; k < go.length && !stopped; k += 25) {   // one call per 25: rows deleted first in one save, then the assets trashed 3 at a time
+  const putBack = a => { S.removed && S.removed.delete(hdNid(a.x.assetId)); back++; };
+  for (let k = 0; k < go.length; k += 25) {
     const part = go.slice(k, k + 25);
-    say('Removing assets ' + (k + 1) + '–' + (k + part.length) + ' of ' + go.length + '…');
-    const q = await call('cplanRemoveAssets', { items: part.map(({ row, x }) => ({ assetId: hdNid(x.assetId), ...(row.virt || S.newRows.has(row.id) ? {} : { rowId: row.id }) })) }).catch(e => ({ error: e.message }));
-    if (!q || q.error) { fails.push('assets ' + (k + 1) + '–' + (k + part.length) + ': ' + ((q && q.error) || 'no response')); if (/rate.?limit|429/i.test((q && q.error) || '')) stopped = ' · stopped: Notion rate limit — run it again in a minute'; continue; }
+    if (stopped) { part.forEach(putBack); continue; }
+    say('Cleaning up — removing assets ' + (k + 1) + '–' + (k + part.length) + ' of ' + go.length + '…');
+    const q = await call('cplanRemoveAssets', { items: part.map(({ row, x }) => ({ assetId: hdNid(x.assetId), ...(row.virt ? {} : { rowId: row.id }) })) }).catch(e => ({ error: e.message }));
+    if (!q || q.error) { part.forEach(putBack); fails.push('assets ' + (k + 1) + '–' + (k + part.length) + ': ' + ((q && q.error) || 'no response')); if (/rate.?limit|429/i.test((q && q.error) || '')) stopped = ' · stopped: Notion rate limit — run it again in a minute'; continue; }
     for (const res of q.results || []) {
-      const g = part.find(p => hdNid(p.x.assetId) === res.assetId); if (!g) continue; const { row, x } = g;
-      if (res.error && !res.trashed) { fails.push((x.assetName || res.assetId.slice(0, 6)) + ': ' + res.error); if (res.rate) stopped = ' · stopped: Notion rate limit — run it again in a minute'; }
-      else { removed++; (S.removed ||= new Set()).add(res.assetId); }
-      if (row.virt || res.rowDeleted || S.newRows.has(row.id)) { S.sel.delete(row.id); if (!row.virt) { T.rows = T.rows.filter(z => z.id !== row.id); delete S.pend[row.id]; S.newRows.delete(row.id); } }
-      else if (!res.error) fails.push((x.assetName || res.assetId.slice(0, 6)) + ': asset is in the trash, but its row was not deleted');
+      const a = part.find(p => hdNid(p.x.assetId) === res.assetId); if (!a) continue;
+      if (res.trashed) removed++; else { putBack(a); fails.push((a.x.assetName || res.assetId.slice(0, 6)) + ': ' + (res.error || 'not removed')); if (res.rate) stopped = ' · stopped: Notion rate limit — run it again in a minute'; }
+      if (res.trashed && !a.row.virt && !res.rowDeleted) fails.push((a.x.assetName || res.assetId.slice(0, 6)) + ': in the trash, but its row was not deleted');
     }
-    cplanPaint(name);
   }
-  S.sel = new Set(); cplanPaint(name);
   const done = [ids.length && (rowsFailed ? 0 : ids.length) + ' plan row' + (ids.length === 1 ? '' : 's') + ' deleted', go.length && removed + '/' + go.length + ' asset' + (go.length === 1 ? '' : 's') + ' removed to the trash', pub.length && pub.length + ' Published skipped'].filter(Boolean).join(' · ');
-  say((fails.length ? '✗ ' : '✓ ') + done + stopped + (fails.length ? ' — failed: ' + fails.join(' · ') : ''), !!fails.length);
   if (fails.length) console.error('CP AA bulk delete:', fails);
   showToast((fails.length ? '✗ ' : '🗑 ') + done, fails.length ? 'error' : 'success');
-  if (rowsFailed) return cplanLoad(true, name);   // show the stored table as it really is
-  if (name === HUBPLAN_TABLE && HD.plan) { HD.plan = T; hdRender(); }
+  // 3 · anything that failed comes back: re-read the stored table (and the asset index) so the screen matches what is really there
+  if (rowsFailed || back || fails.length) { await cplanLoad(true, name); if (name === HUBPLAN_TABLE) cplanAssetsReload(name); }
+  say((fails.length ? '✗ ' : '✓ ') + done + stopped + (back ? ' · ' + back + ' put back on screen' : '') + (fails.length ? ' — failed: ' + fails.join(' · ') : ''), !!fails.length);
 }
 async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
