@@ -7478,7 +7478,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
     return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind === 'Product' ? 'Products' : 'Sub-initiatives'}" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;">
       <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};flex:1;">${g.kind}</span>${g.rel != null ? `<span title="${esc('Relevance to “' + anchor + '”: ' + g.rel + (g.drift.length ? '\nNot on that topic: ' + g.drift.slice(0, 8).join(', ') : ''))}" style="font-size:10.5px;font-weight:700;color:${hdRelCol(g.rel)};">🎯 ${g.rel}</span>` : ''}
         <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
-        ${g.kind !== 'Product' && !g.none ? `<a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.kind !== 'Product' && !g.none ? `<a href="#" title="Rename this sub-initiative" onclick="event.preventDefault();event.stopPropagation();hdSubEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">✎</a><a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Product' ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.color && !g.autoColor ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; };
@@ -7495,7 +7495,8 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
       ${anchor ? '' : '<span style="color:#f59e0b;">no clear topic — pick one</span>'}
       <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" ${arrange ? 'checked' : ''} ${tai < 0 ? 'disabled' : ''} onchange="hdArrange(this.checked)"> Arrange by keyword relevance</label>
       <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — a colour you pick on a card wins; your order stays when this is off</span></div>`;
-  return strip + anchorBar + grid('Sub-initiatives', subs) + hint + grid('Products', prods);
+  const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>`;
+  return strip + ren + anchorBar + grid('Sub-initiatives', subs) + hint + grid('Products', prods);
 }
 const hdRelCol = v => v >= 60 ? '#16a34a' : v >= 35 ? '#eab308' : '#ff7a00';   // the card highlight palette: dark green · amber · orange
 function hdPinTopic(k, v) { HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const P = HD.cardPrefs.pins = HD.cardPrefs.pins || {}; if (v) P[k] = v; else delete P[k]; hdRender(); hdCardSave(); }
@@ -7574,7 +7575,7 @@ async function hdMoveTo(g, k, toName) {
   if (!rows.length) return showToast('Nothing to move', 'error');
   // a product moves with its sub-initiative cleared (operator 2026-11-09: "drag a whole … product card into an initiative with no sub initiative")
   const prod = g.kind === 'Product', sc = cplanSubCol(S.t);
-  if (!confirm(`Move ${prod ? 'the product' : 'the sub-initiative'} “${g.name}” to the initiative “${to}”?\n\n${aRows.length} asset${aRows.length === 1 ? '' : 's'} (Initiative written to Notion, one at a time, logged) · ${pRows.length} plan row${pRows.length === 1 ? '' : 's'} (CP AA). ${prod ? 'Their sub-initiative is cleared.' : 'The sub-initiative name stays.'}`)) return;
+  if (!confirm(g.kind === 'Initiative' ? `Rename the initiative “${g.name}” to “${to}” in this hub?\n\n${aRows.length} asset${aRows.length === 1 ? '' : 's'} (Initiative written to Notion, one at a time, logged) · ${pRows.length} plan row${pRows.length === 1 ? '' : 's'} (CP AA). Sub-initiatives stay.` : `Move ${prod ? 'the product' : 'the sub-initiative'} “${g.name}” to the initiative “${to}”?\n\n${aRows.length} asset${aRows.length === 1 ? '' : 's'} (Initiative written to Notion, one at a time, logged) · ${pRows.length} plan row${pRows.length === 1 ? '' : 's'} (CP AA). ${prod ? 'Their sub-initiative is cleared.' : 'The sub-initiative name stays.'}`)) return;
   if (prod && sc) rows.forEach(r => { if (String(r.cells[sc] || '').trim()) cplanEdit(N, r.id, sc, ''); });
   pRows.forEach(r => cplanEdit(N, r.id, 'init', to)); if (pRows.length || prod) { clearTimeout(S.timer); await cplanSave(N); }
   await cplanInitAdd(N, to, true);
@@ -7582,7 +7583,8 @@ async function hdMoveTo(g, k, toName) {
   const moved = new Set(aRows.map(r => cplanAssetOf(S, r)).filter(ax => ax.initiative === to).map(ax => hdNid(ax.assetId)));
   (HD.rows || []).forEach(x => { if (x.kind === 'asset' && moved.has(hdNid(x.assetId))) x.initiative = to; });
   HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender();
-  if (S.resume) showToast('Stopped part-way — open CP AA and press ▶ Continue', 'error');
+  if (S.resume) { showToast('Stopped part-way — open CP AA and press ▶ Continue', 'error'); return 'partial'; }
+  return true;
 }
 function hdCardColor(i, c) { const g = (HD._cards || [])[i]; if (!g) return; HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const C = HD.cardPrefs.color = HD.cardPrefs.color || {}; if (c) C[g.ck] = c; else delete C[g.ck]; hdRender(); hdCardSave(); }
 // ▦ Matrix (operator 2026-11-10: "a good way to visualize conflicting / parallel relationships between cluster, topic, product / initiative,
@@ -7724,8 +7726,62 @@ function hdIpBadge(key) {
   const tip = 'Best keyword topic: ' + b.topic + (b.cluster ? ' (' + b.cluster + ')' : '') + ' — ' + b.score + ' (' + sig(b) + ')' + (x.second ? '\nNext: ' + x.second.topic + ' — ' + x.second.score : '');
   return `<span title="${esc(tip)}" style="display:inline-flex;gap:4px;align-items:center;font-size:10.5px;margin-left:6px;padding:1px 7px;border:1px solid ${c};border-radius:9px;color:${c};white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;"><b>🎯 ${b.score}</b><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;">${esc(b.topic)}</span></span>`;
 }
+// ✎ Rename an initiative / sub-initiative (operator 2026-11-10: "a small edit initiative or edit sub initiative modal that comes up through the
+// card or through a small edit link in the row"). Initiative = hdMoveTo to the new name for every asset + plan row of it in this hub (Initiative
+// written to Notion, logged; sub-initiatives kept); the old name leaves the names list once nothing anywhere uses it; its card settings / pinned
+// topic follow it. Sub-initiative = the CP AA sub initiative column on its rows (a sheet cell, nothing in Notion); its colour / order follow.
+function hdInitEditLink(I, h, ik, big) {
+  if (!I || I.key === '__none') return '';
+  const k = (HD._inits = HD._inits || []).push({ I, h, ik }) - 1;
+  return `<a href="#" title="Rename this initiative" onclick="event.preventDefault();event.stopPropagation();hdInitEdit(${k})" style="font-size:${big ? 12 : 11.5}px;color:var(--text3);text-decoration:none;margin-left:6px;">✎${big ? ' Rename initiative' : ''}</a>`;
+}
+function hdEditModal(title, note, val, go) {
+  hcModal(`<h3 style="margin:0 0 6px;">${title}</h3><div style="font-size:12px;color:var(--text3);margin-bottom:10px;">${note}</div>
+    <input id="hdEdName" value="${esc(val)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.closest('.modal').querySelector('.modal-btn').click();}" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;"><button class="modal-btn" onclick="hcModalRun(this, ${go})">💾 Rename</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const i = document.getElementById('hdEdName'); if (i) { i.focus(); i.select(); } }, 50);
+}
+function hdInitEdit(k) {
+  const E = (HD._inits || [])[k]; if (!E) return; HD._edit = E; const n = E.I.assets.length;
+  hdEditModal('✎ Rename initiative', `${n} asset${n === 1 ? '' : 's'} in ${esc(E.h.name)} get the new name (each asset's Initiative is written to Notion, one at a time, logged), and its CP AA plan rows move with them. Sub-initiatives, products and titles stay as they are.`, E.I.name, 'hdInitRenameGo');
+}
+async function hdInitRenameGo() {
+  const E = HD._edit, I = E && E.I, to = String((document.getElementById('hdEdName') || {}).value || '').trim(); if (!I) return 'Nothing to rename';
+  if (!to) return 'Give it a name'; if (to.toLowerCase() === I.name.toLowerCase()) return to === I.name ? 'That is already its name' : 'Only the capitals changed — not supported yet';
+  if (initiativeBad(to)) return initiativeBad(to);
+  const cid = hdNid(E.h.campaignId), mine = r => E.ik(r.init) === I.key;
+  const g = { kind: 'Initiative', name: I.name, allIds: I.assets.map(a => a.assetId), goalIds: hdPlan(E.h).filter(mine).map(r => r.rowId), planRows: hdPlanRowsAll(E.h).filter(mine).map(r => r.rowId), allRows: [], gk: cid + '|' + I.key + '|Initiative' };
+  document.getElementById('hcModal').classList.remove('open');
+  const ok = await hdMoveTo(g, -1, to); if (!ok) return true;
+  // its card settings and pinned topic follow the new name
+  const P = HD.cardPrefs, oldK = cid + '|' + I.key + '|', newK = cid + '|' + to.toLowerCase() + '|';
+  if (P) { for (const sec of ['order', 'color']) Object.keys(P[sec] || {}).forEach(k => { if (k.startsWith(oldK)) { P[sec][newK + k.slice(oldK.length)] = P[sec][k]; delete P[sec][k]; } });
+    if (P.pins && P.pins[cid + '|' + I.key]) { P.pins[cid + '|' + to.toLowerCase()] = P.pins[cid + '|' + I.key]; delete P.pins[cid + '|' + I.key]; } hdCardSave(); }
+  if (Array.isArray(HD.path) && HD.path[0] === I.key) HD.path[0] = to.toLowerCase();
+  // the old name leaves the list once nothing in any hub uses it
+  const used = (HD.rows || []).some(x => x.kind === 'asset' && String(x.initiative || '').trim().toLowerCase() === I.key) || ((HD.plan || {}).rows || []).some(r => String((r.cells || {}).init || '').trim().toLowerCase() === I.key);
+  if (!used && ok === true) { const r = await call('initiativeNames', { op: 'remove', name: I.name }).catch(() => null); if (r && r.names) CPLAN_INITS = r.names; }
+  showToast(ok === true ? '✓ Renamed “' + I.name + '” → “' + to + '”' + (used ? ' (the old name is still used in another hub)' : '') : 'Stopped part-way — open CP AA and press ▶ Continue', ok === true ? 'success' : 'error');
+  hdRender(); return true;
+}
+function hdSubEdit(ci) {
+  const g = (HD._cards || [])[ci]; if (!g || g.none) return; HD._edit = g;
+  hdEditModal('✎ Rename sub-initiative', 'Its rows in CP AA get the new name in the sub initiative column (a sheet cell — nothing is written to Notion). Its products, titles and assets stay where they are.', g.name, 'hdSubRenameGo');
+}
+async function hdSubRenameGo() {
+  const g = HD._edit, to = String((document.getElementById('hdEdName') || {}).value || '').trim(); if (!g) return 'Nothing to rename';
+  if (!to) return 'Give it a name'; if (to === g.name) return 'That is already its name';
+  const N = HUBPLAN_TABLE, S = cpS(N), rows = await hdRowsOfCard(g); if (!rows) return 'CP AA did not load — nothing changed';
+  const sc = cplanSubCol(S.t); if (!sc) return 'CP AA has no "sub initiative" column';
+  const ch = rows.filter(r => String(r.cells[sc] || '').trim().toLowerCase() === g.name.toLowerCase()); if (!ch.length) return 'No rows carry that name';
+  ch.forEach(r => cplanEdit(N, r.id, sc, to)); clearTimeout(S.timer); await cplanSave(N);
+  const P = HD.cardPrefs, nk = v => String(v || '').trim().toLowerCase();
+  if (P) { const oldC = g.gk + '|' + nk(g.name), newC = g.gk + '|' + nk(to); if (P.color && P.color[oldC]) { P.color[newC] = P.color[oldC]; delete P.color[oldC]; }
+    if (P.order && P.order[g.gk]) P.order[g.gk] = P.order[g.gk].map(x => x === nk(g.name) ? nk(to) : x); hdCardSave(); }
+  HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender(); showToast('✓ ' + ch.length + ' row' + (ch.length === 1 ? '' : 's') + ': “' + g.name + '” → “' + to + '”', 'success'); return true;
+}
 function hdRender() {
-  const el = document.getElementById('hdBody'); if (!el) return;
+  const el = document.getElementById('hdBody'); if (!el) return; HD._inits = [];
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
   const hubs = hdHubs();
   if (HD.hub && !hubs.some(h => hdNid(h.campaignId) === HD.hub)) { HD.hub = ''; HD.path = []; }
@@ -7807,7 +7863,7 @@ function hdRender() {
   const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
-    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), hdIpBadge(I.key), planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), hdInitEditLink(I, h, ik) + hdIpBadge(I.key), planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
   else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik, initList.filter(x => x.key !== '__none').map(x => x.name)) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
