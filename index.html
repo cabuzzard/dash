@@ -4860,6 +4860,13 @@ function cplanBulkJobs(field, items, apply) {
 }
 function cplanResume(name) { const R = cpS(name).resume; return R ? cplanWrites(name, R.label, R.jobs, R.done, R.base, R.total) : null; }
 async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows
+  if (field === 'title') {   // each asset moves to the title (its campaign + product follow it, logged) — one at a time; a refused one is skipped and listed
+    const S = cpS(name), T = S.t, pc = cplanColRe(T, /^product$/i), rs = rows.filter(r => { const ax = cplanAssetOf(S, r); return ax && String(ax.title || '').trim().toLowerCase() !== v.trim().toLowerCase(); });
+    if (!rs.length) { showToast('Nothing to move — they are already on that title', 'success'); return cplanPaint(name); }
+    const jobs = rs.map(r => { const ax = cplanAssetOf(S, r); return { soft: true, name: ax.assetName || '', go: () => call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'title', value: v, hub: r.cells.hub, product: (S.bulkProduct || '') }),
+      ok: res => { Object.assign(ax, { title: v, titleId: res.after.titleId, campId: res.after.campaignIds[0] || ax.campId, hubCids: res.after.campaignIds.length ? res.after.campaignIds : ax.hubCids }); } }; });
+    await cplanWrites(name, 'Title → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} moved to “${v}” — press ↻ Assets to see their new product`, 'success')); return;
+  }
   const S = cpS(name), axs = rows.map(row => cplanAssetOf(S, row)).filter(Boolean).filter(ax => !(field === 'initiative' && (ax.initiative || '') === v) && !(field === 'subinitiative' && (ax.subInitiative || '') === v));   // already there — no write
   const jobs = field === 'status' ? axs.map(ax => ({ soft: true, name: ax.assetName || '', go: () => call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }), ok: () => { ax.assetStatus = v; } }))
     : cplanBulkJobs(field === 'initiative' || field === 'subinitiative' ? field : 'type', axs.map(ax => ({ ax, value: v })), (ax, a) => { if (field === 'initiative') ax.initiative = a.initiative || ''; else if (field === 'subinitiative') ax.subInitiative = a.subinitiative || ''; else ax.rawAssetType = a.type || v; });
@@ -5438,7 +5445,7 @@ async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
   const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
   const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)); let aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)); const ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
-  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative' || aField === 'subinitiative') && !(aField === 'status' && v === 'Published');
+  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : col === cplanColRe(T, /^title$/i) ? 'title' : '', aOk = aRows.length && aField && (v || aField === 'initiative' || aField === 'subinitiative') && !(aField === 'status' && v === 'Published');
   if ((aField === 'initiative' || aField === 'subinitiative') && v && initiativeBad(v)) return showToast(initiativeBad(v), 'error');
   if (aRows.length && !aOk) showToast(`${aRows.length} asset row${aRows.length === 1 ? '' : 's'} skipped — ${aField === 'status' && v === 'Published' ? 'publishing runs from the writer' : !v ? 'an asset always keeps a value' : c.name + ' on an asset changes through its Title (one row at a time)'}`, 'error');
   if (ids.length && confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?')) { for (const id of ids) cplanEdit(name, id, col, v); clearTimeout(S.timer); cplanPaint(name); cplanSave(name); }
