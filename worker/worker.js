@@ -1110,6 +1110,8 @@ async function assetsTextPropEnsure(env, name, flag) {
   await env.TRADES.put(flag, "1");
 }
 async function initiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Initiative", "initiative:prop"); }
+// Assets "Sub Initiative" (operator 2026-11-09: "one card for each sub initiative (new column in cpaa)") — a group inside an initiative, text, set from CP AA
+async function subInitiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Sub Initiative", "subinitiative:prop"); }
 // Assets "Writer Directions" (operator 2026-11-09: "assets should have an individual direction field. it becomes another input vector to asset
 // writing, the last in the chain") — the asset's own directions, saved on the asset and read by EVERY write of it (unlike a run's guidance).
 // Set by the hub dashboard's ＋ Add initiative modal and the Asset modal's Fields tab; shown in its Information flow tab.
@@ -19420,14 +19422,14 @@ export default {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const field = String(body.field || ""), items = (Array.isArray(body.items) ? body.items : []).slice(0, 25).map(x => ({ assetId: hubAssetId(String(x.assetId || "")), value: String(x.value ?? "").trim() }));
-      if (!["initiative", "type", "directions"].includes(field)) return json({ error: "field must be initiative | type | directions" }, 400);
+      if (!["initiative", "subinitiative", "type", "directions"].includes(field)) return json({ error: "field must be initiative | subinitiative | type | directions" }, 400);
       if (!items.length || items.some(x => !/^[0-9a-f]{32}$/i.test(x.assetId))) return json({ error: "items [{assetId, value}] required" }, 400);
       try {
-        if (field === "initiative") { const bad = items.map(x => x.value && initiativeNameBad(x.value)).find(Boolean); if (bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
+        if (field === "initiative" || field === "subinitiative") { const bad = items.map(x => x.value && initiativeNameBad(x.value)).find(Boolean); if (bad) return json({ error: bad }, 400); await (field === "initiative" ? initiativeEnsureProp(env) : subInitiativeEnsureProp(env)); }
         if (field === "directions") { if (items.some(x => x.value.length > WRITER_DIRECTIONS_MAX)) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
         if (field === "type" && items.some(x => !x.value)) return json({ error: "An asset always keeps an Asset Type" }, 400);
         const types = field === "type" ? await cpcTypeOptions() : null;
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: hubRichText(q.Initiative?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join("").trim() });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: hubRichText(q.Initiative?.rich_text), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join("").trim() });
         const nf = async (url, opt) => { for (let t = 0; ; t++) { const r = await fetch(url, { ...opt, headers: ivHdr() }); if (r.status !== 429 || t) return r;
           await new Promise(res => setTimeout(res, Math.min(3000, 1000 * (+r.headers.get("retry-after") || 1.2)))); } };
         const done = []; let stopped = null;
@@ -19438,6 +19440,7 @@ export default {
             if (!t) { stopped = { assetId: x.assetId, error: `"${x.value}" is not an Asset Type option in Notion` }; break; }
             props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t); }
           else if (field === "initiative") { props = { Initiative: { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.initiative === x.value; }
+          else if (field === "subinitiative") { props = { "Sub Initiative": { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.subinitiative === x.value; }
           else { props = { "Writer Directions": { rich_text: richChunks(x.value) } }; check = q => q.directions === x.value; }
           const g = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), {}), pg = await g.json().catch(() => ({}));
           if (!g.ok) { stopped = { assetId: x.assetId, error: (g.status === 429 ? "Notion rate limit — " : "") + (pg.message || "Notion error " + g.status), rate: g.status === 429 }; break; }
@@ -19485,13 +19488,14 @@ export default {
       try {
         const id = hubAssetId(String(body.assetId || "")), field = String(body.field || ""), value = String(body.value ?? "").trim();
         if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
-        if (!["type", "name", "title", "initiative", "directions"].includes(field)) return json({ error: "field must be type | name | title | initiative | directions" }, 400);
-        if (!value && field !== "initiative" && field !== "directions") return json({ error: "A blank value is never written to the asset" }, 400);
+        if (!["type", "name", "title", "initiative", "subinitiative", "directions"].includes(field)) return json({ error: "field must be type | name | title | initiative | subinitiative | directions" }, 400);
+        if (!value && !["initiative", "subinitiative", "directions"].includes(field)) return json({ error: "A blank value is never written to the asset" }, 400);
+        if (field === "subinitiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await subInitiativeEnsureProp(env); }
         if (field === "directions") { if (value.length > WRITER_DIRECTIONS_MAX) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
         if (field === "initiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
         const get = async () => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
         const pg = await get(), pp = pg.properties || {}; if (pg.archived || pg.in_trash) return json({ error: "The asset is in the trash" }, 409);
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join(""), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join(""), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
         let props, check;
         if (field === "type") {
           const types = await cpcTypeOptions(), want = ASSET_TYPE_KEYS[value] || value, t = types.find(x => cpcNorm(x) === cpcNorm(want)) || types.find(x => cpcNorm(x) === cpcNorm(value));
@@ -19501,6 +19505,8 @@ export default {
           props = { "Writer Directions": { rich_text: richChunks(value) } }; check = q => q.directions.trim() === value;
         } else if (field === "initiative") {
           props = { Initiative: { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.initiative === value;
+        } else if (field === "subinitiative") {
+          props = { "Sub Initiative": { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.subinitiative === value;
         } else if (field === "name") {
           props = { "Asset Title": { title: ivRt(value.slice(0, 2000)) } }; check = q => q.name === value.slice(0, 2000);
         } else {
@@ -22334,7 +22340,7 @@ Return: {
             hubSection: p["Hub Section"]?.select?.name || "",
             hubSectionKey: hubSectionOf(p) || "",
             contentHub: p["Content Hub"]?.select?.name || "",
-            initiative: (p["Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
+            initiative: (p["Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(), subInitiative: hubRichText(p["Sub Initiative"]?.rich_text),
             inputApp: (p["Input App"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
             writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox,
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
@@ -22385,7 +22391,7 @@ Return: {
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
           assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/parent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
@@ -22438,7 +22444,7 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/parent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "", initiative: a.initiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
+              assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",

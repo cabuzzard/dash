@@ -4699,7 +4699,7 @@ async function cplanLoad(force, name = 'content-plan-assets') {
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
   S.t = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_DEFS[name].map(c => ({ ...c })), rows: [] };   // not saved until you edit
   S.initKV = Object.fromEntries(S.t.rows.map(r => [r.id, String((r.cells || {}).init || '').trim()]).filter(x => x[1]));
-  if (ours && name === HUBPLAN_TABLE && (cplanTraceCols(S.t) | cplanClusterCol(S.t))) { S.colsDirty = true; cplanSave(name); }
+  if (ours && name === HUBPLAN_TABLE && (cplanTraceCols(S.t) | cplanClusterCol(S.t) | cplanSubInitCol(S.t))) { S.colsDirty = true; cplanSave(name); }
   S.traceAsked = new Set();
   cplanPaint(name);
 }
@@ -4712,6 +4712,25 @@ function cplanClusterCol(T) {   // → true when the column had to be added
   if (T.columns.some(c => /^cluster$/i.test(String(c.name || '').trim()))) return false;
   const at = T.columns.findIndex(c => /^topic$/i.test(String(c.name || '').trim())), id = T.columns.some(c => c.id === 'cluster') ? 'xcluster' : 'cluster';
   T.columns.splice(at >= 0 ? at : T.columns.length, 0, { id, name: 'Cluster' }); return true;
+}
+// Sub-initiative (operator 2026-11-09: "one card for each sub initiative (new column in cpaa)") — a group inside an initiative. Asset rows show and
+// write the asset's own "Sub Initiative" (Notion, text); plan rows keep it as a sheet cell. Added once, right after Initiative.
+function cplanSubInitCol(T) {
+  if (T.columns.some(c => c.id === 'subinit')) return false;
+  const at = T.columns.findIndex(c => c.id === 'init'); T.columns.splice(at >= 0 ? at + 1 : T.columns.length, 0, { id: 'subinit', name: 'Sub-initiative' }); return true;
+}
+function cplanSubNames(S) {   // every sub-initiative in use (assets + plan rows)
+  const out = new Map(), add = v => { v = String(v || '').trim(); if (v && !out.has(v.toLowerCase())) out.set(v.toLowerCase(), v); };
+  (CPLAN_TREE || []).forEach(x => x.kind === 'asset' && add(x.subInitiative)); ((S && S.t && S.t.rows) || []).forEach(r => add((r.cells || {}).subinit));
+  return [...out.values()].sort((a, b) => a.localeCompare(b));
+}
+async function cplanAssetSub(name, rowId, sel) {   // one asset row's Sub-initiative
+  const S = cpS(name), row = cplanRowOf(S, rowId), ax = row && cplanAssetOf(S, row); if (!ax) return cplanPaint(name);
+  let v = sel.value; if (v === '__new') { v = String(prompt('New sub-initiative name:') || '').trim(); if (!v) return cplanPaint(name); if (initiativeBad(v)) { showToast(initiativeBad(v), 'error'); return cplanPaint(name); } }
+  if (v === (ax.subInitiative || '')) return cplanPaint(name);
+  sel.disabled = true; const r = await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'subinitiative', value: v }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Sub-initiative not changed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
+  ax.subInitiative = (r.after && r.after.subinitiative) || ''; showToast(v ? '✓ Sub-initiative → ' + v : '✓ Out of its sub-initiative', 'success'); cplanPaint(name);
 }
 function cplanTraceCols(T) {   // → true when the two columns had to be added (after Title)
   const has = re => T.columns.some(c => re.test(String(c.name || '').trim())); if (has(/^asset name$/i) && has(/^asset id$/i)) return false;
@@ -4736,11 +4755,11 @@ function cplanAssetIdx() {   // assetId → its All Output row, for the four sta
 }
 function cplanColRe(T, re) { return (((T && T.columns) || []).find(c => re.test(String(c.name || '').trim())) || {}).id; }
 function cplanDerivedCols(T) {   // the columns an asset row takes from its asset
-  const I = cplanTraceIds(T); return new Set(['hub', 'atype', 'init', cplanColRe(T, /^cluster$/i), cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
+  const I = cplanTraceIds(T); return new Set(['hub', 'atype', 'init', 'subinit', cplanColRe(T, /^cluster$/i), cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
 }
 function cplanAssetCells(T, x, hubLabel) {
   const I = cplanTraceIds(T), out = {}, put = (id, v) => { if (id) out[id] = String(v || ''); };
-  put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put('init', x.initiative || ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
+  put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put('init', x.initiative || ''); put('subinit', x.subInitiative || ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
   put(cplanColRe(T, /^cluster$/i), cplanClusterOf(x));
   put(cplanColRe(T, /^product$/i), x.product && x.product !== 'No Product' ? x.product : ''); put(cplanColRe(T, /^title$/i), x.title || '');
   put(I.an, x.assetName || ''); put(I.ai, hdNid(x.assetId)); put(cplanColRe(T, /^published$/i) || 'published', x.assetStatus || ''); put('created', x.dateCreated || ''); put('changed', x.dateEdited || '');
@@ -4833,11 +4852,11 @@ function cplanBulkJobs(field, items, apply) {
 }
 function cplanResume(name) { const R = cpS(name).resume; return R ? cplanWrites(name, R.label, R.jobs, R.done, R.base, R.total) : null; }
 async function cplanAssetBulk(name, rows, field, v) {   // ✎ Set on selected asset rows
-  const S = cpS(name), axs = rows.map(row => cplanAssetOf(S, row)).filter(Boolean).filter(ax => !(field === 'initiative' && (ax.initiative || '') === v));   // already there — no write
+  const S = cpS(name), axs = rows.map(row => cplanAssetOf(S, row)).filter(Boolean).filter(ax => !(field === 'initiative' && (ax.initiative || '') === v) && !(field === 'subinitiative' && (ax.subInitiative || '') === v));   // already there — no write
   const jobs = field === 'status' ? axs.map(ax => ({ soft: true, name: ax.assetName || '', go: () => call('updateAssetStatus', { assetId: hdNid(ax.assetId), status: v, statusOnly: true }), ok: () => { ax.assetStatus = v; } }))
-    : cplanBulkJobs(field === 'initiative' ? 'initiative' : 'type', axs.map(ax => ({ ax, value: v })), (ax, a) => { if (field === 'initiative') ax.initiative = a.initiative || ''; else ax.rawAssetType = a.type || v; });
+    : cplanBulkJobs(field === 'initiative' || field === 'subinitiative' ? field : 'type', axs.map(ax => ({ ax, value: v })), (ax, a) => { if (field === 'initiative') ax.initiative = a.initiative || ''; else if (field === 'subinitiative') ax.subInitiative = a.subinitiative || ''; else ax.rawAssetType = a.type || v; });
   if (!jobs.length) { showToast('Nothing to change — they already have that value', 'success'); return cplanPaint(name); }
-  await cplanWrites(name, field === 'initiative' ? (v ? 'Initiative → ' + v : 'Out of initiative') : field === 'status' ? 'Status → ' + v : 'Asset type → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'));
+  await cplanWrites(name, field === 'initiative' ? (v ? 'Initiative → ' + v : 'Out of initiative') : field === 'subinitiative' ? (v ? 'Sub-initiative → ' + v : 'Out of sub-initiative') : field === 'status' ? 'Status → ' + v : 'Asset type → ' + v, jobs, n => showToast(`✓ ${n} asset${n === 1 ? '' : 's'} updated`, 'success'));
 }
 // ── Initiative on assets (operator 2026-11-09): "it should be an asset field. but accessible by bulk edit … grab whole groupings and make them
 // initiatives or take them out of initiatives" + "allow delete and add of new initiative names and removal of old ones. from the bulk select".
@@ -5135,6 +5154,8 @@ function cplanPaint(name = 'content-plan-assets') {
     if (c.id === TR.an) return `<td ${ATIP} style="${ATD}"><div style="display:flex;gap:4px;align-items:flex-start;"><textarea rows="2" onchange="cplanAssetSet(${q},'${row.id}',this)" style="${IN}resize:vertical;flex:1;">${esc(row.cells[c.id] || '')}</textarea><button style="${SB}" title="Open this asset in the writer" onclick="amOpen('${hdNid(ax.assetId)}')">✍</button></div></td>`;
     if (c.id === 'init') { const cur = ax.initiative || '', L = cplanInitNames(T);
       return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetInit(${q},'${row.id}',this)" title="${esc(cur || 'No initiative')}" style="${IN}">${['', ...(cur && !L.some(x => norm(x) === norm(cur)) ? [cur] : []), ...L].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) ? 'selected' : ''}>${o ? esc(o) : '— none'}</option>`).join('')}<option value="__new">＋ New initiative…</option></select></td>`; }
+    if (c.id === 'subinit') { const cur = ax.subInitiative || '', L = cplanSubNames(S);
+      return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetSub(${q},'${row.id}',this)" title="${esc(cur || 'No sub-initiative')}" style="${IN}">${['', ...(cur && !L.some(x => norm(x) === norm(cur)) ? [cur] : []), ...L].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) ? 'selected' : ''}>${o ? esc(o) : '— none'}</option>`).join('')}<option value="__new">＋ New sub-initiative…</option></select></td>`; }
     if (c.id === pubCol) return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetStatus(${q},'${row.id}',this)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${CPLAN_PUB.map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>`;
     if (pickOf(c)) return `<td ${['hub', 'cluster', 'topic', 'product'].includes(pickOf(c)) ? 'title="Belongs to the title — narrows the Title list; the asset moves when you pick the Title"' : ATIP} style="${ATD}">${pickSel(row, c, pickOf(c), 'cplanAssetPick')}</td>`;
     return null; };
@@ -5220,7 +5241,7 @@ function cplanPaint(name = 'content-plan-assets') {
         + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
         + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
     ${(() => { const none = !SEL.size, DIS = none ? 'disabled style="opacity:.45;cursor:default;' : 'style="', bc = S.bulkCol && T.columns.some(c => c.id === S.bulkCol) ? S.bulkCol : '', vals = bc ? [...new Set(T.rows.map(r => String(r.cells[bc] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
-      const opts2 = bc === 'init' && name === HUBPLAN_TABLE ? cplanInitNames(T) : bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
+      const opts2 = bc === 'init' && name === HUBPLAN_TABLE ? cplanInitNames(T) : bc === 'subinit' && name === HUBPLAN_TABLE ? cplanSubNames(S) : bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
       return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
         <b style="${none ? 'color:var(--text3);font-weight:600;' : ''}">${SEL.size} row${SEL.size === 1 ? '' : 's'} selected</b>${none ? '<span style="color:var(--text3);">— tick rows, or a heading to take everything under it</span>' : ''}
         <button ${DIS}${B}${S.dupOpen ? 'border-color:#60a5fa;' : ''}" onclick="cpS(${q}).dupOpen=!cpS(${q}).dupOpen;cplanPaint(${q})" title="Copy every selected row (each copy right below its original) — into a new title and/or with a tag">⧉ Duplicate…</button>
@@ -5358,15 +5379,15 @@ async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
   const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
   const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)); let aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)); const ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
-  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative') && !(aField === 'status' && v === 'Published');
-  if (aField === 'initiative' && v && initiativeBad(v)) return showToast(initiativeBad(v), 'error');
+  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : col === 'subinit' ? 'subinitiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative' || aField === 'subinitiative') && !(aField === 'status' && v === 'Published');
+  if ((aField === 'initiative' || aField === 'subinitiative') && v && initiativeBad(v)) return showToast(initiativeBad(v), 'error');
   if (aRows.length && !aOk) showToast(`${aRows.length} asset row${aRows.length === 1 ? '' : 's'} skipped — ${aField === 'status' && v === 'Published' ? 'publishing runs from the writer' : !v ? 'an asset always keeps a value' : c.name + ' on an asset changes through its Title (one row at a time)'}`, 'error');
   if (ids.length && confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?')) { for (const id of ids) cplanEdit(name, id, col, v); clearTimeout(S.timer); cplanPaint(name); cplanSave(name); }
   // operator 2026-11-09: a bulk status change caught Published assets — a live asset is never moved by a bulk change (that would pull it off its hub);
   // change one on its own row if you really mean it
   if (aOk && aField === 'status') { const live = aRows.filter(r => (cplanAssetOf(S, r).assetStatus || '') === 'Published'); if (live.length) { aRows = aRows.filter(r => !live.includes(r)); showToast(`${live.length} Published asset${live.length === 1 ? '' : 's'} left as they are — a bulk status change never moves a live asset`, 'success'); } if (!aRows.length) return; }
   const nA = aRows.length, sA = nA === 1 ? '' : 's';
-  if (aOk && confirm(aField === 'initiative' ? (v ? `Put ${nA} asset${sA} in the initiative “${v}”?` : `Take ${nA} asset${sA} out of their initiative?`) + ' Each is written to its Notion record, one at a time and logged (old value kept); it stops at the first failure.'
+  if (aOk && confirm(aField === 'initiative' || aField === 'subinitiative' ? (v ? `Put ${nA} asset${sA} in the ${aField === 'initiative' ? '' : 'sub-'}initiative “${v}”?` : `Take ${nA} asset${sA} out of their ${aField === 'initiative' ? '' : 'sub-'}initiative?`) + ' Each is written to its Notion record, one at a time and logged (old value kept); it stops at the first failure.'
     : `Write ${c.name} “${v}” to ${nA} asset record${sA} in Notion? One at a time${aField === 'status' ? '; an asset Notion refuses is skipped and listed at the end' : ', each logged; it stops at the first failure'}.`)) { if (aField === 'initiative' && v) await cplanInitAdd(name, v, true); await cplanAssetBulk(name, aRows, aField, v); }
 }
 async function cplanDelRow(name, rowId) {   // row deletion (operator 2026-11-05) — asks first; Content Plan — All Assets keeps the deleted row in its change log
@@ -7054,15 +7075,15 @@ function hdPlan(h) {
   const t = HD.plan; if (!t) return [];
   const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i), cc = cplanCronCol(t);
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim())) || !cplanCronN(c, cc)) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
+    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), sub: String(c.subinit || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
 // Every UNBUILT plan row of a hub — goal or not (no Cron, Standalone, no Asset type included); archived rows left out (operator 2026-11-09:
 // "reachable is best"). The initiative rows' Plan count opens exactly these in CP AA.
 function hdPlanRowsAll(h) {
   const t = HD.plan; if (!t) return [];
-  const ai = ((t.columns || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id;
+  const ai = ((t.columns || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id, cp = ((t.columns || []).find(c => /^product$/i.test(String(c.name || '').trim())) || {}).id;
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (ai && String(c[ai] || '').trim())) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => ({ rowId: r.id, init: String((r.cells || {}).init || '').trim() }));
+    .map(r => ({ rowId: r.id, init: String((r.cells || {}).init || '').trim(), sub: String((r.cells || {}).subinit || '').trim(), product: cp ? String((r.cells || {})[cp] || '').trim() : '' }));
 }
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
   const n = hubCheckNorm;
@@ -7113,6 +7134,34 @@ function hdTypeTable(c, noGoal, label) {   // the per-asset-type breakdown; one 
   return `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;"><colgroup><col><col style="width:52px"><col style="width:46px"><col style="width:46px"></colgroup>
     <thead><tr><th style="${th}text-align:left;">Asset type</th><th style="${th}text-align:right;">Goal</th><th style="${th}text-align:right;">Dev</th><th style="${th}text-align:right;">Pub</th></tr></thead>
     <tbody>${c.types.map(o => row(o)).join('')}${c.types.length > 1 ? row({ label: 'Total', goal: c.goal, dev: c.dev, pub: c.pub, devIds: c.devIds, pubIds: c.pubIds, goalIds: c.goalIds }, true) : ''}</tbody></table>`;
+}
+// Initiative cards (operator 2026-11-09: "when I click on an initiative I want there to be cards. one card for each sub initiative … and one card for
+// each product and clickable planning, dev and published counts in each card … I want to quickly click through to different filter views" + "also
+// goal count"). Every asset of the initiative counts, whatever its status. Goal = its goal rows (Cron); Plan = unbuilt plan rows + Planning assets;
+// Dev = Development + Review; Pub = Publish + Published. Each count opens exactly that set in CP AA. The same asset is in one sub-initiative card
+// and one product card — on purpose.
+function hdInitCards(I, assets, goalRows, planRows, where) {
+  const nk = v => String(v || '').trim().toLowerCase(), groups = (kind, of, ofRow, none) => {
+    const m = new Map(), get = v => { const k = nk(v) || '__none'; if (!m.has(k)) m.set(k, { kind, name: k === '__none' ? none : String(v).trim(), none: k === '__none', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [] }); return m.get(k); };
+    assets.forEach(a => { const g = get(of(a)), s = hdSt(a).trim(); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
+    goalRows.forEach(r => { const g = get(ofRow(r)); g.goal += r.n || 0; g.goalIds.push(r.rowId); });
+    planRows.forEach(r => get(ofRow(r)).planRows.push(r.rowId));
+    const L = [...m.values()].filter(g => g.goal || g.planIds.length || g.planRows.length || g.devIds.length || g.pubIds.length).sort((a, b) => a.none - b.none || a.name.localeCompare(b.name));
+    return L.length === 1 && L[0].none ? [] : L;   // nothing named → no cards of this kind
+  };
+  const subs = groups('Sub-initiative', a => a.subInitiative, r => r.sub, 'No sub-initiative');
+  const prods = groups('Product', a => a.product && a.product !== 'No Product' ? a.product : '', r => r.product, 'No product');
+  if (!subs.length && !prods.length) return '';
+  const cnt = (lab, v, col, ids, rowIds, setLabel, tip) => { const k = ids.length + rowIds.length;
+    if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
+    const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
+    return `<a href="#" title="${tip} — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:${col};text-decoration:none;border-radius:6px;padding:2px 0;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${lab}</span><span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; };
+  const card = g => { const lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length;
+    return `<div style="border:1px solid ${g.kind === 'Product' ? 'var(--border2)' : '#c084fc66'};border-radius:10px;background:var(--surface);padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;">
+      <div style="min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};">${g.kind}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
+      <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}</div></div>`; };
+  const grid = (head, L) => L.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
+  return grid('Sub-initiatives', subs) + grid('Products', prods);
 }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
@@ -7194,7 +7243,7 @@ function hdRender() {
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
     return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), '', planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan')); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
-  else if (depth === 1) body = box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
+  else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
     hdCount(hdAssetsOf(Pn), under([P[1], Pn.key])), nlink(Pn.row && Pn.row.productId))).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No products yet</div>');
