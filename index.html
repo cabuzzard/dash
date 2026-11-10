@@ -4699,7 +4699,7 @@ async function cplanLoad(force, name = 'content-plan-assets') {
   const t = r.table || {}, ours = (t.columns || []).some(c => c.id === 'status');
   S.t = ours ? { columns: t.columns, rows: t.rows || [] } : { columns: CPLAN_DEFS[name].map(c => ({ ...c })), rows: [] };   // not saved until you edit
   S.initKV = Object.fromEntries(S.t.rows.map(r => [r.id, String((r.cells || {}).init || '').trim()]).filter(x => x[1]));
-  if (ours && name === HUBPLAN_TABLE && (cplanTraceCols(S.t) | cplanClusterCol(S.t) | cplanSubInitCol(S.t) | cplanParentCol(S.t))) { S.colsDirty = true; cplanSave(name); }
+  if (ours && name === HUBPLAN_TABLE && (cplanTraceCols(S.t) | cplanClusterCol(S.t) | cplanSubInitDrop(S.t) | cplanParentCol(S.t))) { S.colsDirty = true; cplanSave(name); }
   S.traceAsked = new Set();
   cplanPaint(name);
 }
@@ -4713,11 +4713,12 @@ function cplanClusterCol(T) {   // → true when the column had to be added
   const at = T.columns.findIndex(c => /^topic$/i.test(String(c.name || '').trim())), id = T.columns.some(c => c.id === 'cluster') ? 'xcluster' : 'cluster';
   T.columns.splice(at >= 0 ? at : T.columns.length, 0, { id, name: 'Cluster' }); return true;
 }
-// Sub-initiative (operator 2026-11-09: "one card for each sub initiative (new column in cpaa)") — a group inside an initiative. Asset rows show and
-// write the asset's own "Sub Initiative" (Notion, text); plan rows keep it as a sheet cell. Added once, right after Initiative.
-function cplanSubInitCol(T) {
-  if (T.columns.some(c => c.id === 'subinit')) return false;
-  const at = T.columns.findIndex(c => c.id === 'init'); T.columns.splice(at >= 0 ? at + 1 : T.columns.length, 0, { id: 'subinit', name: 'Sub-initiative' }); return true;
+// Sub-initiative (operator 2026-11-09) = the operator's own CP AA column named "sub initiative" (a sheet cell on plan and asset rows alike —
+// "I have sub initiatives already set"). A "Sub-initiative" column briefly auto-added on 2026-11-09 is removed again while it is still empty.
+function cplanSubCol(T) { return (((T && T.columns) || []).find(c => c.id !== 'subinit' && /^sub[\s-]*initiatives?$/i.test(String(c.name || '').trim())) || {}).id || ''; }
+function cplanSubInitDrop(T) {
+  const i = T.columns.findIndex(c => c.id === 'subinit'); if (i < 0 || T.rows.some(r => String((r.cells || {}).subinit || '').trim())) return false;
+  T.columns.splice(i, 1); return true;
 }
 // Parent asset (operator 2026-11-09: "add sorting by parent child asset relationship in cp aa" → "put the column in") — the asset's own Notion
 // "Parent Asset" link (one per asset, set when it was made; never a rule's guess). Read only. Sorting by it orders each family together: the top
@@ -4736,19 +4737,6 @@ let CPLAN_KIDS = null, CPLAN_KIDS_SRC = null;
 function cplanFamilyKey(ax, head) {   // sort value (head: the family heading value) — top parent's name + id, then each step down by name
   const f = cplanFamily(ax), nm = x => String(x.assetName || '(untitled)').trim(), top = nm(f.root) + '' + hdNid(f.root.assetId);
   return head ? top : top.toLowerCase() + f.chain.slice(1).map(x => '' + nm(x).toLowerCase() + '' + hdNid(x.assetId)).join('');
-}
-function cplanSubNames(S) {   // every sub-initiative in use (assets + plan rows)
-  const out = new Map(), add = v => { v = String(v || '').trim(); if (v && !out.has(v.toLowerCase())) out.set(v.toLowerCase(), v); };
-  (CPLAN_TREE || []).forEach(x => x.kind === 'asset' && add(x.subInitiative)); ((S && S.t && S.t.rows) || []).forEach(r => add((r.cells || {}).subinit));
-  return [...out.values()].sort((a, b) => a.localeCompare(b));
-}
-async function cplanAssetSub(name, rowId, sel) {   // one asset row's Sub-initiative
-  const S = cpS(name), row = cplanRowOf(S, rowId), ax = row && cplanAssetOf(S, row); if (!ax) return cplanPaint(name);
-  let v = sel.value; if (v === '__new') { v = String(prompt('New sub-initiative name:') || '').trim(); if (!v) return cplanPaint(name); if (initiativeBad(v)) { showToast(initiativeBad(v), 'error'); return cplanPaint(name); } }
-  if (v === (ax.subInitiative || '')) return cplanPaint(name);
-  sel.disabled = true; const r = await call('cplanAssetEdit', { assetId: hdNid(ax.assetId), field: 'subinitiative', value: v }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { showToast('Sub-initiative not changed: ' + ((r && r.error) || 'no response'), 'error'); return cplanPaint(name); }
-  ax.subInitiative = (r.after && r.after.subinitiative) || ''; showToast(v ? '✓ Sub-initiative → ' + v : '✓ Out of its sub-initiative', 'success'); cplanPaint(name);
 }
 function cplanTraceCols(T) {   // → true when the two columns had to be added (after Title)
   const has = re => T.columns.some(c => re.test(String(c.name || '').trim())); if (has(/^asset name$/i) && has(/^asset id$/i)) return false;
@@ -4773,11 +4761,11 @@ function cplanAssetIdx() {   // assetId → its All Output row, for the four sta
 }
 function cplanColRe(T, re) { return (((T && T.columns) || []).find(c => re.test(String(c.name || '').trim())) || {}).id; }
 function cplanDerivedCols(T) {   // the columns an asset row takes from its asset
-  const I = cplanTraceIds(T); return new Set(['hub', 'atype', 'init', 'subinit', 'parent', cplanColRe(T, /^cluster$/i), cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
+  const I = cplanTraceIds(T); return new Set(['hub', 'atype', 'init', 'parent', cplanColRe(T, /^cluster$/i), cplanColRe(T, /^topic$/i), cplanColRe(T, /^product$/i), cplanColRe(T, /^title$/i), I.an, I.ai, cplanColRe(T, /^published$/i) || 'published', 'created', 'changed'].filter(Boolean));
 }
 function cplanAssetCells(T, x, hubLabel) {
   const I = cplanTraceIds(T), out = {}, put = (id, v) => { if (id) out[id] = String(v || ''); };
-  put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put('init', x.initiative || ''); put('subinit', x.subInitiative || ''); put('parent', x.parentAssetId ? (((cplanAssetIdx() || new Map()).get(hdNid(x.parentAssetId)) || {}).assetName || '(parent not loaded)') : ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
+  put('hub', hubLabel(x)); put('atype', x.rawAssetType || ''); put('init', x.initiative || ''); put('parent', x.parentAssetId ? (((cplanAssetIdx() || new Map()).get(hdNid(x.parentAssetId)) || {}).assetName || '(parent not loaded)') : ''); put(cplanColRe(T, /^topic$/i), x.keywordTopic && !/^no topic/i.test(x.keywordTopic) ? x.keywordTopic : '');
   put(cplanColRe(T, /^cluster$/i), cplanClusterOf(x));
   put(cplanColRe(T, /^product$/i), x.product && x.product !== 'No Product' ? x.product : ''); put(cplanColRe(T, /^title$/i), x.title || '');
   put(I.an, x.assetName || ''); put(I.ai, hdNid(x.assetId)); put(cplanColRe(T, /^published$/i) || 'published', x.assetStatus || ''); put('created', x.dateCreated || ''); put('changed', x.dateEdited || '');
@@ -5177,8 +5165,6 @@ function cplanPaint(name = 'content-plan-assets') {
       const kids = f.kids ? `<span style="color:#c084fc;" title="Assets whose Parent Asset is this one">▣ parent of ${f.kids}</span>` : '';
       const up = pid ? (p ? `<a href="#" onclick="event.preventDefault();cplanOpenAsset('${pid}')" title="Go to the parent's row" style="color:var(--accent);">↳ ${esc(p.assetName || '(untitled)')}</a>` : `<span style="color:#f59e0b;" title="Its Parent Asset isn't among the loaded assets (archived, trashed or another status)">↳ parent not loaded</span>`) : '';
       return `<td title="The asset's own Parent Asset link (read only)" style="${ATD}font-size:11.5px;${sorted ? 'padding-left:' + (6 + f.depth * 14) + 'px;' : ''}">${up}${up && kids ? '<br>' : ''}${kids}${!up && !kids ? '<span style="color:var(--text3);">—</span>' : ''}</td>`; }
-    if (c.id === 'subinit') { const cur = ax.subInitiative || '', L = cplanSubNames(S);
-      return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetSub(${q},'${row.id}',this)" title="${esc(cur || 'No sub-initiative')}" style="${IN}">${['', ...(cur && !L.some(x => norm(x) === norm(cur)) ? [cur] : []), ...L].map(o => `<option value="${esc(o)}" ${norm(o) === norm(cur) ? 'selected' : ''}>${o ? esc(o) : '— none'}</option>`).join('')}<option value="__new">＋ New sub-initiative…</option></select></td>`; }
     if (c.id === pubCol) return `<td ${ATIP} style="${ATD}"><select onchange="cplanAssetStatus(${q},'${row.id}',this)" style="${IN}color:${CPLAN_PUB_COLORS[row.cells[c.id]] || 'var(--text)'};">${CPLAN_PUB.map(o => `<option ${(row.cells[c.id] || '') === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>`;
     if (pickOf(c)) return `<td ${['hub', 'cluster', 'topic', 'product'].includes(pickOf(c)) ? 'title="Belongs to the title — narrows the Title list; the asset moves when you pick the Title"' : ATIP} style="${ATD}">${pickSel(row, c, pickOf(c), 'cplanAssetPick')}</td>`;
     return null; };
@@ -5264,7 +5250,7 @@ function cplanPaint(name = 'content-plan-assets') {
         + `<div style="display:flex;gap:8px;flex-wrap:wrap;">${SL.length < CPLAN_SORT_MAX ? `<button style="${B}" onclick="cplanSortAdd(${q})">＋ sort level</button>` : ''}${SL.length ? `<button style="${B}" onclick="cplanSortPut(${q},[])">✕ Clear sort</button>` : ''}</div>`
         + `<div style="color:var(--text3);font-size:11px;">Up to 7 levels. With Headings on, each level with Heading ticked is a collapsible heading tier (nested in level order); unticked levels only order the rows inside them. Sort and headings are this browser's view only — the saved row order never changes.</div></div>`; })()}
     ${(() => { const none = !SEL.size, DIS = none ? 'disabled style="opacity:.45;cursor:default;' : 'style="', bc = S.bulkCol && T.columns.some(c => c.id === S.bulkCol) ? S.bulkCol : '', vals = bc ? [...new Set(T.rows.map(r => String(r.cells[bc] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
-      const opts2 = bc === 'init' && name === HUBPLAN_TABLE ? cplanInitNames(T) : bc === 'subinit' && name === HUBPLAN_TABLE ? cplanSubNames(S) : bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
+      const opts2 = bc === 'init' && name === HUBPLAN_TABLE ? cplanInitNames(T) : bc === 'status' ? cplanStatusOpts(name) : bc && bc === ((T.columns.find(c => c.id === 'published' || /^published$/i.test(String(c.name || '').trim())) || {}).id) ? CPLAN_PUB : bc === 'atype' && typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES ? [...new Set([...CPLAN_ATYPES, ...vals])] : vals;
       return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
         <b style="${none ? 'color:var(--text3);font-weight:600;' : ''}">${SEL.size} row${SEL.size === 1 ? '' : 's'} selected</b>${none ? '<span style="color:var(--text3);">— tick rows, or a heading to take everything under it</span>' : ''}
         <button ${DIS}${B}${S.dupOpen ? 'border-color:#60a5fa;' : ''}" onclick="cpS(${q}).dupOpen=!cpS(${q}).dupOpen;cplanPaint(${q})" title="Copy every selected row (each copy right below its original) — into a new title and/or with a tag">⧉ Duplicate…</button>
@@ -5402,7 +5388,7 @@ async function cplanBulkEdit(name) {
   const S = cpS(name), T = S.t, col = S.bulkCol, c = T && T.columns.find(x => x.id === col); if (!c || !S.sel.size) return;
   const v = String((document.getElementById('cpBulkVal' + cpId(name)) || {}).value || '').trim(), D = name === HUBPLAN_TABLE ? cplanDerivedCols(T) : new Set();
   const all = [...T.rows, ...(S.vrows || [])].filter(r => S.sel.has(r.id)); let aRows = all.filter(r => D.has(col) && cplanAssetOf(S, r)); const ids = all.filter(r => !aRows.includes(r)).map(r => r.id);
-  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : col === 'subinit' ? 'subinitiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative' || aField === 'subinitiative') && !(aField === 'status' && v === 'Published');
+  const pubId = cplanColRe(T, /^published$/i) || 'published', aField = col === 'atype' ? 'type' : col === pubId ? 'status' : col === 'init' ? 'initiative' : '', aOk = aRows.length && aField && (v || aField === 'initiative' || aField === 'subinitiative') && !(aField === 'status' && v === 'Published');
   if ((aField === 'initiative' || aField === 'subinitiative') && v && initiativeBad(v)) return showToast(initiativeBad(v), 'error');
   if (aRows.length && !aOk) showToast(`${aRows.length} asset row${aRows.length === 1 ? '' : 's'} skipped — ${aField === 'status' && v === 'Published' ? 'publishing runs from the writer' : !v ? 'an asset always keeps a value' : c.name + ' on an asset changes through its Title (one row at a time)'}`, 'error');
   if (ids.length && confirm((v ? 'Set ' + c.name + ' to “' + v + '”' : 'Clear ' + c.name) + ' on ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?')) { for (const id of ids) cplanEdit(name, id, col, v); clearTimeout(S.timer); cplanPaint(name); cplanSave(name); }
@@ -7098,7 +7084,7 @@ function hdPlan(h) {
   const t = HD.plan; if (!t) return [];
   const col = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, ct = col(/^topic$/i), cp = col(/^product$/i), cti = col(/^title$/i), ck = col(/^kind$/i), cc = cplanCronCol(t);
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || !String(c.atype || '').trim() || (ck && /^standalone$/i.test(String(c[ck] || '').trim())) || !cplanCronN(c, cc)) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), sub: String(c.subinit || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
+    .map(r => { const c = r.cells, raw = String(c.atype).trim(); return { rowId: r.id, init: String(c.init || '').trim(), sub: String(c[cplanSubCol(t)] || '').trim(), k: hubCheckNorm(raw), label: raw, n: cplanCronN(c, cc), topic: ct ? c[ct] || '' : '', product: cp ? c[cp] || '' : '', title: cti ? c[cti] || '' : '', path: null }; });
 }
 // Every UNBUILT plan row of a hub — goal or not (no Cron, Standalone, no Asset type included); archived rows left out (operator 2026-11-09:
 // "reachable is best"). The initiative rows' Plan count opens exactly these in CP AA.
@@ -7106,7 +7092,7 @@ function hdPlanRowsAll(h) {
   const t = HD.plan; if (!t) return [];
   const ai = ((t.columns || []).find(c => /^asset id$/i.test(String(c.name || '').trim())) || {}).id, cp = ((t.columns || []).find(c => /^product$/i.test(String(c.name || '').trim())) || {}).id;
   return (t.rows || []).filter(r => { const c = r.cells || {}; if (/^archived$/i.test(String(c.status || '').trim()) || (ai && String(c[ai] || '').trim())) return false; const x = hubPlanHub(c.hub); return !!x && x.slug === h.slug; })
-    .map(r => ({ rowId: r.id, init: String((r.cells || {}).init || '').trim(), sub: String((r.cells || {}).subinit || '').trim(), product: cp ? String((r.cells || {})[cp] || '').trim() : '' }));
+    .map(r => ({ rowId: r.id, init: String((r.cells || {}).init || '').trim(), sub: String((r.cells || {})[cplanSubCol(t)] || '').trim(), product: cp ? String((r.cells || {})[cp] || '').trim() : '' }));
 }
 function hdPlace(plan, topics) {   // most specific match wins: title, then product, then topic; no match = hub level
   const n = hubCheckNorm;
@@ -7163,18 +7149,26 @@ function hdTypeTable(c, noGoal, label) {   // the per-asset-type breakdown; one 
 // goal count"). Every asset of the initiative counts, whatever its status. Goal = its goal rows (Cron); Plan = unbuilt plan rows + Planning assets;
 // Dev = Development + Review; Pub = Publish + Published. Each count opens exactly that set in CP AA. The same asset is in one sub-initiative card
 // and one product card — on purpose.
-function hdInitCards(I, assets, goalRows, planRows, where) {
+function hdInitCards(I, assets, goalRows, planRows, where, h, ik) {
+  // the sheet: an asset's sub-initiative is the cell on its linked row; every unarchived row of this initiative makes its card exist (counts or not)
+  const t = HD.plan || { columns: [], rows: [] }, colId = re => ((t.columns || []).find(c => re.test(String(c.name || '').trim())) || {}).id, sc = cplanSubCol(t), pc = colId(/^product$/i), ai = colId(/^asset id$/i);
+  const allA = new Map((HD.rows || []).filter(x => x.kind === 'asset').map(x => [hdNid(x.assetId), x])), byAid = new Map();
+  const mineRows = (t.rows || []).filter(r => { const c = r.cells || {}, x = hubPlanHub(c.hub); if (/^archived$/i.test(String(c.status || '').trim()) || !x || x.slug !== h.slug) return false;
+    const aid = ai ? kwNid(String(c[ai] || '').trim()) : '', a = aid && allA.get(aid); if (aid) byAid.set(aid, c); return ik(a ? a.initiative : c.init) === I.key; });
+  (t.rows || []).forEach(r => { const c = r.cells || {}, aid = ai ? kwNid(String(c[ai] || '').trim()) : ''; if (aid && !byAid.has(aid)) byAid.set(aid, c); });
+  const subOfA = a => sc ? (byAid.get(hdNid(a.assetId)) || {})[sc] : '';
   const nk = v => String(v || '').trim().toLowerCase(), groups = (kind, of, ofRow, none) => {
     const m = new Map(), get = v => { const k = nk(v) || '__none'; if (!m.has(k)) m.set(k, { kind, name: k === '__none' ? none : String(v).trim(), none: k === '__none', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [] }); return m.get(k); };
     assets.forEach(a => { const g = get(of(a)), s = hdSt(a).trim(); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
     goalRows.forEach(r => { const g = get(ofRow(r)); g.goal += r.n || 0; g.goalIds.push(r.rowId); });
     planRows.forEach(r => get(ofRow(r)).planRows.push(r.rowId));
-    const L = [...m.values()].filter(g => g.goal || g.planIds.length || g.planRows.length || g.devIds.length || g.pubIds.length).sort((a, b) => a.none - b.none || a.name.localeCompare(b.name));
+    mineRows.forEach(r => { const aid = ai ? kwNid(String(r.cells[ai] || '').trim()) : '', a = aid && allA.get(aid); get(a ? of(a) : ofRow({ rowId: r.id, sub: sc ? r.cells[sc] : '', product: pc ? r.cells[pc] : '' })); });   // rows make the card, even at zero
+    const L = [...m.values()].sort((a, b) => a.none - b.none || a.name.localeCompare(b.name));
     return L.length === 1 && L[0].none ? [] : L;   // nothing named → no cards of this kind
   };
-  const subs = groups('Sub-initiative', a => a.subInitiative, r => r.sub, 'No sub-initiative');
+  const subs = groups('Sub-initiative', subOfA, r => r.sub, 'No sub-initiative');
   const prods = groups('Product', a => a.product && a.product !== 'No Product' ? a.product : '', r => r.product, 'No product');
-  const hint = subs.length ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>Sub-initiative</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
+  const hint = subs.length ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>${esc(((t.columns || []).find(c => c.id === sc) || {}).name || 'sub initiative')}</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
   const cnt = (lab, v, col, ids, rowIds, setLabel, tip) => { const k = ids.length + rowIds.length;
     if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
     const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
@@ -7266,7 +7260,7 @@ function hdRender() {
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
     return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), '', planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan')); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
-  else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
+  else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
     hdCount(hdAssetsOf(Pn), under([P[1], Pn.key])), nlink(Pn.row && Pn.row.productId))).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No products yet</div>');
