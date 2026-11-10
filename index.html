@@ -7174,7 +7174,7 @@ function hdInitCards(I, assets, goalRows, planRows, where) {
   };
   const subs = groups('Sub-initiative', a => a.subInitiative, r => r.sub, 'No sub-initiative');
   const prods = groups('Product', a => a.product && a.product !== 'No Product' ? a.product : '', r => r.product, 'No product');
-  if (!subs.length && !prods.length) return '';
+  const hint = subs.length ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>Sub-initiative</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
   const cnt = (lab, v, col, ids, rowIds, setLabel, tip) => { const k = ids.length + rowIds.length;
     if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
     const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
@@ -7184,7 +7184,7 @@ function hdInitCards(I, assets, goalRows, planRows, where) {
       <div style="min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};">${g.kind}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}</div></div>`; };
   const grid = (head, L) => L.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
-  return grid('Sub-initiatives', subs) + grid('Products', prods);
+  return grid('Sub-initiatives', subs) + hint + grid('Products', prods);
 }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
