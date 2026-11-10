@@ -5076,6 +5076,14 @@ function cplanSort(name, colId, ev) {   // click: sort by this column only (agai
 function cplanSortSet(name, i, f, v) { const S = cplanSortLv(name).map(s => ({ ...s })); if (!S[i]) return; S[i][f] = v; cplanSortPut(name, S); }
 function cplanSortAdd(name) { const S = cplanSortLv(name).map(s => ({ ...s })), T = cpS(name).t, used = new Set(S.map(s => s.col));
   const c = (T.columns || []).find(c => !used.has(c.id) && !c.hidden); if (c) S.push({ col: c.id, dir: 1, head: true }); cplanSortPut(name, S); }
+// "contains" filters (operator 2026-11-09: "I need text string sort (column contains) on cp AA") — rows whose cell contains the text stay
+// (case-insensitive; "Any column" = every cell; a leading ! = does NOT contain). Several stack (all must hold). This browser's view only.
+function cplanFiltAdd(name) {
+  const c = document.getElementById('cpFiltCol' + cpId(name)), t = document.getElementById('cpFiltTxt' + cpId(name)), q = String((t && t.value) || '').trim(); if (!q || q === '!') return;
+  const V = cpView(name); V.F = [...(V.F || []), { col: (c && c.value) || '__any', q }]; cpViewSet(name, V); cplanPaint(name);
+  setTimeout(() => { const t2 = document.getElementById('cpFiltTxt' + cpId(name)); if (t2) t2.focus(); }, 0);
+}
+function cplanFiltDel(name, i) { const V = cpView(name); V.F = (V.F || []).filter((_, k) => k !== i); cpViewSet(name, V); cplanPaint(name); }
 function cplanSortAddCol(name, col) { if (!col) return; const S = cplanSortLv(name).filter(s => s.col !== col); S.push({ col, dir: 1, head: col !== '__rows' }); cplanSortPut(name, S); }   // the list's ＋ sort
 function cplanSortDel(name, i) { const S = cplanSortLv(name).slice(); S.splice(i, 1); cplanSortPut(name, S); }
 function cplanSortMove(name, i, d) { const S = cplanSortLv(name).slice(), j = i + d; if (j < 0 || j >= S.length) return; [S[i], S[j]] = [S[j], S[i]]; cplanSortPut(name, S); }
@@ -5146,6 +5154,9 @@ function cplanPaint(name = 'content-plan-assets') {
   const pubC0 = name === HUBPLAN_TABLE ? cplanColRe(T, /^published$/i) || 'published' : '';
   let rows = T.rows.concat(S.vrows || []).filter(r => S.arch || (!/^archived$/i.test(r.cells.status || '') && !(pubC0 && /^archived$/i.test(r.cells[pubC0] || '') && cplanAssetOf(S, r))));
   if (S.only && name === HUBPLAN_TABLE) { const ai = cplanTraceIds(T).ai; rows = rows.filter(r => (S.only.rowIds && S.only.rowIds.has(r.id)) || (ai && S.only.ids.has(kwNid(String(r.cells[ai] || '').trim()))));  }
+  const FL = (V.F || []).filter(f => f && f.q && (f.col === '__any' || T.columns.some(c => c.id === f.col)));
+  if (FL.length) rows = rows.filter(r => FL.every(f => { const neg = f.q.startsWith('!'), needle = (neg ? f.q.slice(1) : f.q).trim().toLowerCase(); if (!needle) return true;
+    const hay = (f.col === '__any' ? Object.values(r.cells || {}).join(' \u0001 ') : String((r.cells || {})[f.col] || '')).toLowerCase(), hit = hay.includes(needle); return neg ? !hit : hit; }));
   // stable multi-level sort; heading levels first (in their order) so each heading's rows sit together, then the rest
   const order = [...HL, ...SL.filter(s => !HL.includes(s) && s.col !== '__rows')];
   if (order.length) rows = rows.map((r, i) => [r, i]).sort((x, y) => { for (const s of order) { const a = cv(x[0], s.col), b = cv(y[0], s.col);
@@ -5313,6 +5324,11 @@ function cplanPaint(name = 'content-plan-assets') {
       ${name === HUBPLAN_TABLE ? `<button style="${B}" title="The Content Plan cron: each row's Cron number of Development assets per asset-type period, pillar first" onclick="cpcOpen()">⏰ Cron${CPC.on === true ? ': on' : CPC.on === false ? ': off' : ''}</button>` : ''}
       ${name === HUBPLAN_TABLE ? (() => { const g = hubPlanGoals(T, []), n = Object.values(g.byType).reduce((a, x) => a + x.total, 0); return `<b title="The sum of the Cron column: each row adds the number in its Cron cell (blank or 0 adds nothing). Archived and Kind = Standalone rows never count." style="color:var(--text);">Goal total: ${n}</b>`; })() : ''}
       <span style="color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'} shown. ${SL.length ? 'Sorted by ' + SL.map(s => esc(colName(s.col)) + (s.dir === -1 ? ' ↓' : ' ↑')).join(', then ') + '. ' : ''}</span></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px;"><span style="color:var(--text2);">🔍 Filter</span>
+      <select id="cpFiltCol${cpId(name)}" style="font-size:12px;padding:3px;max-width:160px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="__any">Any column</option>${T.columns.filter(c => S.arch || !c.hidden).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+      <span style="color:var(--text3);">contains</span><input id="cpFiltTxt${cpId(name)}" placeholder="text  (!text = does not contain)" onkeydown="if(event.key==='Enter')cplanFiltAdd(${q})" style="font-size:12px;padding:4px 7px;min-width:150px;flex:0 1 220px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><button style="${B}" onclick="cplanFiltAdd(${q})">＋ Add</button>
+      ${FL.map((f, i) => `<span style="display:inline-flex;align-items:center;border:1px solid #f59e0b;border-radius:14px;overflow:hidden;background:rgba(245,158,11,.08);"><span style="padding:3px 8px;">${f.col === '__any' ? 'Any column' : esc(colName(f.col))} ${f.q.startsWith('!') ? 'does not contain' : 'contains'} “${esc(f.q.replace(/^!/, ''))}”</span><button onclick="cplanFiltDel(${q},${(V.F || []).indexOf(f)})" title="Remove this filter" style="font-size:13px;padding:3px 8px;border:none;border-left:1px solid var(--border2);background:transparent;color:#f87171;cursor:pointer;">×</button></span>`).join('')}
+      ${FL.length > 1 ? `<button style="${B}" onclick="(()=>{const V=cpView(${q});V.F=[];cpViewSet(${q},V);cplanPaint(${q});})()">✕ Clear filters</button>` : ''}</div>
     ${!S.panel ? '' : (() => { const sel = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;', sb = 'font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
       const opts = cur => `<option value="__rows" ${cur === '__rows' ? 'selected' : ''}>Rows (count under each heading)</option>` + T.columns.filter(c => S.arch || !c.hidden || c.id === cur).map(c => `<option value="${c.id}" ${c.id === cur ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
       return `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11.5px;display:grid;gap:6px;">`
