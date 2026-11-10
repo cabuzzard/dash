@@ -3831,6 +3831,96 @@ async function kwfitHub(env, campaignId) {
   await env.TRADES.put("kwfit:" + cid, JSON.stringify(res));
   return res;
 }
+// 🧭 INITIATIVE PLAN (operator 2026-11-10: "hub -> clusters -> topics -> up to three initiatives per topic. match the initiatives to topic intent.
+// find initiatives that match and prioritize them. dont delete any but score them. then rename the initiatives to reflect their keyword topic.
+// start with that pass and dont change any products or titles yet"). READ-ONLY proposal: every initiative of a hub (its assets' Initiative +
+// its CP AA plan rows) scored against every keyword topic — placement 45 (share of its assets / rows whose product sits on the topic) · words
+// & meaning 35 (TF-IDF + Workers AI embeddings vs the topic keywords) · intent 20 (topic keywords' kwIntent mix vs what its asset types serve).
+// Each initiative goes to at most one topic, best pairs first, ≤ 3 per topic, score ≥ 30; a proposed name from the topic. Unplaced ones keep
+// their name. Cached in KV initplan:<cid>; renaming is a separate, approved step.
+const IP_FAMILY = [[/newsletter|digest/i, "Newsletter", ["research", "learn"]], [/offer|sales|landing|listing|gig|product/i, "Offers", ["buy", "hire"]],
+  [/seo|topical|blog|article|sub ?page|pillar|ebook/i, "Articles", ["learn", "research"]], [/single post|carousel|reel|social|story|pinterest|linkedin|short/i, "Social", ["general", "learn"]],
+  [/video|youtube|podcast|avatar/i, "Video", ["learn", "research"]], [/profile|resume|job|client studio|app/i, "Profiles & apps", ["hire", "tool"]]];
+const ipFamily = type => IP_FAMILY.find(f => f[0].test(String(type || ""))) || [null, "", ["general"]];
+async function initPlanHub(env, campaignId) {
+  const cid = hierarchyId(campaignId), dc = kwDashId(cid); if (!/^[a-f0-9]{32}$/i.test(cid)) throw new Error("campaignId required");
+  if (!NOTION_TOKEN) NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  await hubSitesMerge(env).catch(() => {}); const H = HUB_SITES.find(h => hierarchyId(h.campaignId) === cid) || { name: "", slug: "" };
+  const doc = await env.TRADES.get("hub:structure:" + cid, "json"), view = doc ? hubStructureView(doc) : null;
+  const tc = (view && view.topicClusters) || (await env.TRADES.get("seotopicclusters:" + cid, "json").catch(() => null)) || { clusters: [], assign: {} };
+  const topics = (view ? [...view.committed, ...view.staged] : await hubTopicsOf(env, cid)).filter(t => t && t.name)
+    .map(t => ({ id: t.id ? hierarchyId(t.id) : "", name: t.name, keywords: String(t.keywords || ""), cluster: t.id ? (tc.assign || {})[hierarchyId(t.id)] || (tc.assign || {})[String(t.id)] || "" : "" }));
+  const live = x => !x.archived && !x.in_trash;
+  const [research, products, titles, assets, plan] = await Promise.all([
+    notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
+    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }).catch(() => []),
+    notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
+    notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
+    cplanLoad(env).catch(() => ({ t: null }))]);
+  const mainKw = research.map(r => hubRichText(r.properties?.Keywords?.rich_text)).sort((a, b) => b.length - a.length)[0] || "";
+  if (mainKw.trim()) topics.unshift({ id: "__main", name: H.name || "Main", keywords: mainKw, cluster: "★ Main", main: true });
+  const prod = new Map(products.filter(live).map(x => [hierarchyId(x.id), { name: hubRichText(x.properties?.Name?.title), topic: hierarchyText(x.properties?.["Topic ID"]?.rich_text).replace(/-/g, "") }]));
+  const ttl = new Map(titles.filter(live).map(x => [hierarchyId(x.id), { name: hubRichText(x.properties?.Title?.title), product: ivRid(x.properties || {}, "product") || ivRid(x.properties || {}, "Product") }]));
+  const nk = v => String(v || "").trim().toLowerCase(), I = new Map(), init = name => { const k = nk(name); if (!I.has(k)) I.set(k, { key: k, names: {}, assets: 0, rows: 0, statuses: {}, fam: {}, topicHits: {}, words: [] }); const x = I.get(k); x.names[String(name).trim()] = (x.names[String(name).trim()] || 0) + 1; return x; };
+  const topicOfProduct = pid => (prod.get(hierarchyId(pid)) || {}).topic || "", topicByName = new Map(topics.map(t => [nk(t.name), t.id]));
+  for (const a of assets.filter(live)) { const q = a.properties || {}, nm = hubRichText(q.Initiative?.rich_text) || q.Initiative?.select?.name || ""; if (!nm.trim()) continue;
+    const st = q["Asset Status"]?.select?.name || ""; if (/^delete$/i.test(st)) continue;
+    const x = init(nm), type = q["Asset Type"]?.select?.name || "", tid = ivRid(q, "Content Strategy"), T = tid ? ttl.get(hierarchyId(tid)) : null, pid = ivRid(q, "Product") || (T && T.product) || "";
+    x.assets++; x.statuses[st || "—"] = (x.statuses[st || "—"] || 0) + 1; const f = ipFamily(type)[1] || "Other"; x.fam[f] = (x.fam[f] || 0) + 1;
+    const tp = pid ? topicOfProduct(pid) : ""; if (tp) x.topicHits[tp] = (x.topicHits[tp] || 0) + 1;
+    x.words.push(hubRichText(q["Asset Title"]?.title), T ? T.name : "", pid ? (prod.get(hierarchyId(pid)) || {}).name || "" : ""); }
+  const t0 = plan && plan.t;
+  if (t0) for (const r of t0.rows || []) { const g = k => cplanCell(t0, r, k), hub = String(g("Hub") || ""), sl = cpcNorm(hub).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!(cpcNorm(hub) === cpcNorm(H.name) || (H.slug && sl === H.slug) || cpcNorm(H.campaign || "") === cpcNorm(hub)) || /^archived$/i.test(String(g("Status") || "")) || String(g("Asset id") || "").trim()) continue;
+    const nm = String(r.cells?.init || "").trim(); if (!nm) continue;
+    const x = init(nm); x.rows++; const f = ipFamily(r.cells?.atype)[1] || "Other"; x.fam[f] = (x.fam[f] || 0) + 1;
+    const tn = nk(g("Topic")), tp = tn && topicByName.get(tn); if (tp) x.topicHits[tp] = (x.topicHits[tp] || 0) + 1;
+    x.words.push(g("Title"), g("Product"), g("Topic"), g("Subject matter / narrative")); }
+  const inits = [...I.values()].map(x => ({ ...x, name: Object.entries(x.names).sort((a, b) => b[1] - a[1])[0][0], n: x.assets + x.rows }));
+  if (!topics.length || !inits.length) { const out = { cid, at: new Date().toISOString(), topics: [], unassigned: inits.map(x => ({ name: x.name, n: x.n })), note: !topics.length ? "No keyword topics in this hub" : "No initiatives in this hub" }; await env.TRADES.put("initplan:" + cid, JSON.stringify(out)); return out; }
+  // words: TF-IDF + embeddings
+  const tTok = topics.map(t => kwfitTokens(t.name + " " + t.name + " " + t.keywords)), iTok = inits.map(x => kwfitTokens([x.name, x.name, x.name, ...x.words].join(" ")));
+  const docs = [...tTok, ...iTok], df = new Map(); docs.forEach(d => new Set(d).forEach(w => df.set(w, (df.get(w) || 0) + 1)));
+  const vec = d => { const tf = new Map(); d.forEach(w => tf.set(w, (tf.get(w) || 0) + 1)); const v = new Map(); let n = 0; tf.forEach((c, w) => { const z = (1 + Math.log(c)) * Math.log(1 + docs.length / (df.get(w) || 1)); v.set(w, z); n += z * z; }); n = Math.sqrt(n) || 1; v.forEach((z, w) => v.set(w, z / n)); return v; };
+  const tV = tTok.map(vec), iV = iTok.map(vec), cos = (a, b) => { let s = 0; const [x, y] = a.size < b.size ? [a, b] : [b, a]; x.forEach((v, w) => { if (y.has(w)) s += v * y.get(w); }); return s; };
+  let tE = null, iE = null;
+  if (env.AI) { try { const emb = async L => { const out = []; for (let i = 0; i < L.length; i += 50) { const r = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: L.slice(i, i + 50).map(x => x.slice(0, 1800)) }); out.push(...(r.data || [])); } return out; };
+    tE = await emb(topics.map(t => t.name + ". " + t.keywords)); iE = await emb(inits.map(x => [x.name, ...[...new Set(x.words.filter(Boolean))].slice(0, 30)].join(". "))); } catch (e) { tE = iE = null; } }
+  const ecos = (a, b) => { let s = 0, na = 0, nb = 0; for (let i = 0; i < a.length; i++) { s += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return s / (Math.sqrt(na * nb) || 1); };
+  // intent: topic keyword intent mix (volume-weighted) vs the initiative's asset families
+  const phrases = topics.map(t => [...new Set(t.keywords.split(/[,;\n|]/).map(kwNorm).filter(k => k && k.length < 120))].slice(0, 120)), metric = new Map();
+  if (env.KWDB) { const all = [...new Set(phrases.flat())]; for (let i = 0; i < all.length; i += 400) { const r = await env.KWDB.prepare("SELECT k.text, MAX(m.avg_monthly_searches) vol, m.intent FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value JOIN kw_metrics m ON m.keyword_id = k.id GROUP BY k.id").bind(JSON.stringify(all.slice(i, i + 400))).all().catch(() => ({ results: [] })); for (const x of r.results || []) metric.set(x.text, { vol: Number(x.vol || 0) || 1, intent: x.intent || "general" }); } }
+  const tMix = phrases.map(L => { const m = {}; let n = 0; L.forEach(k => { const z = metric.get(k); if (z) { m[z.intent] = (m[z.intent] || 0) + z.vol; n += z.vol; } }); if (!n) return null; Object.keys(m).forEach(k => m[k] /= n); return m; });
+  const iMix = inits.map(x => { const m = {}; let n = 0; Object.entries(x.fam).forEach(([f, c]) => { const ok = (IP_FAMILY.find(z => z[1] === f) || [null, "", ["general"]])[2]; ok.forEach(i => { m[i] = (m[i] || 0) + c / ok.length; }); n += c; }); Object.keys(m).forEach(k => m[k] /= n || 1); return m; });
+  const clamp = x => Math.max(0, Math.min(1, x)), pair = [];
+  inits.forEach((x, ii) => topics.forEach((t, ti) => {
+    const place = x.n ? (x.topicHits[t.id] || 0) / x.n : 0, lex = clamp(cos(iV[ii], tV[ti]) / 0.35), mean = tE && iE && tE[ti] && iE[ii] ? clamp((ecos(iE[ii], tE[ti]) - 0.45) / 0.35) : null;
+    const words = mean == null ? lex : 0.5 * lex + 0.5 * mean, intent = tMix[ti] ? Object.keys(tMix[ti]).reduce((n, k) => n + Math.min(tMix[ti][k], iMix[ii][k] || 0), 0) : null;
+    const w = { place: 45, words: 35, intent: 20 }, sig = { place, words, intent }; let v = 0, ws = 0; for (const k in w) if (sig[k] != null) { v += w[k] * sig[k]; ws += w[k]; }
+    pair.push({ ii, ti, score: Math.round(100 * v / ws), sig: { place: Math.round(place * 100), words: Math.round(words * 100), intent: intent == null ? null : Math.round(intent * 100) } }); }));
+  pair.sort((a, b) => b.score - a.score);
+  const got = new Map(), slots = topics.map(() => []);
+  for (const z of pair) { if (z.score < 30 || got.has(z.ii) || slots[z.ti].length >= 3) continue; got.set(z.ii, z); slots[z.ti].push(z); }
+  const best = ii => pair.find(z => z.ii === ii);
+  const fam = x => Object.entries(x.fam).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+  const outTopics = topics.map((t, ti) => { const L = slots[ti].sort((a, b) => b.score - a.score), used = new Set();
+    return { id: t.id, name: t.name, cluster: t.cluster, main: !!t.main, intent: tMix[ti] ? Object.entries(tMix[ti]).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => k + " " + Math.round(v * 100) + "%").join(" · ") : "",
+      initiatives: L.map((z, r) => { const x = inits[z.ii], base = t.name; let nm = r === 0 ? base : base + " · " + (fam(x) || x.name);
+        if (used.has(nk(nm))) nm = base + " · " + x.name; used.add(nk(nm));
+        return { name: x.name, proposed: nm, rank: r + 1, score: z.score, sig: z.sig, assets: x.assets, rows: x.rows, families: x.fam, statuses: x.statuses, rename: nk(nm) !== nk(x.name) }; }) }; });
+  const unassigned = inits.map((x, ii) => got.has(ii) ? null : (b => ({ name: x.name, assets: x.assets, rows: x.rows, families: x.fam, best: b ? { topic: topics[b.ti].name, cluster: topics[b.ti].cluster, score: b.score, sig: b.sig } : null,
+    why: !b || b.score < 30 ? "no topic scores 30+" : "its best topic already has 3 better initiatives" }))(best(ii))).filter(Boolean).sort((a, b) => (b.best ? b.best.score : 0) - (a.best ? a.best.score : 0));
+  // per initiative (operator: "dont even have to pick 3 just score them and put the score in their dashboard row"): its best and second topic
+  const byInit = Object.fromEntries(inits.map((x, ii) => { const L = pair.filter(z => z.ii === ii), T = z => z ? { topic: topics[z.ti].name, cluster: topics[z.ti].cluster, main: !!topics[z.ti].main, score: z.score, sig: z.sig } : null;
+    return [x.key, { name: x.name, assets: x.assets, rows: x.rows, best: T(L[0]), second: T(L[1]) }]; }));
+  const out = { cid, hub: H.name, at: new Date().toISOString(), signals: { intent: metric.size > 0, meaning: !!tE }, initiatives: inits.length, byInit, topics: outTopics, unassigned };
+  await env.TRADES.put("initplan:" + cid, JSON.stringify(out)); return out;
+}
+async function initPlanAction(env, body) {
+  if (body.op === "get") { const ids = (Array.isArray(body.campaignIds) ? body.campaignIds : []).map(hierarchyId).filter(Boolean).slice(0, 60);
+    const got = await Promise.all(ids.map(id => env.TRADES.get("initplan:" + id, "json").catch(() => null))); return { ok: true, hubs: Object.fromEntries(ids.map((id, i) => [id, got[i]])) }; }
+  return { ok: true, hub: await initPlanHub(env, body.campaignId) };
+}
 async function keywordFitAction(env, body) {
   if (body.op === "get") { const ids = (Array.isArray(body.campaignIds) ? body.campaignIds : []).map(hierarchyId).filter(Boolean).slice(0, 60);
     const got = await Promise.all(ids.map(id => env.TRADES.get("kwfit:" + id, "json").catch(() => null))); return { ok: true, hubs: Object.fromEntries(ids.map((id, i) => [id, got[i]])) }; }
@@ -42788,6 +42878,7 @@ Call submit_keyword_cluster with your result.`;
       // can be both a cluster and one of its own topics. Stored per campaign in
       // KV seotopicclusters:<cid> = { clusters: [names, in order], assign: { topicId: clusterName } }
       // — works the same for staged (KV) and committed (Notion) topics.
+      if (body.action === "initiativePlan") { try { return json(await initPlanAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "keywordFit") { try { return json(await keywordFitAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "saveTopicClusters") {
         const cid = String(body.campaignId || "").replace(/-/g, "");

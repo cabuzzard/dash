@@ -7686,6 +7686,24 @@ function hdFitHtml(hubs) {
       <div style="display:flex;gap:5px;flex-wrap:wrap;">${chips}</div></div>`
     + (D ? hubs.map(hubBox).join('') : '<div class="loading-wrap"><div class="spinner"></div>Loading…</div>');
 }
+// 🎯 initiative score on its dashboard row (operator 2026-11-10: "just score them and put the score in their dashboard card … or dashboard row"):
+// worker initiativePlan scores each initiative against every keyword topic of the hub; the row shows its best topic + score. Read-only.
+async function hdIpLoad(cid) {
+  HD.ipLoading.add(cid); const r = await call('initiativePlan', { op: 'get', campaignIds: [cid] }).catch(() => null);
+  HD.ip[cid] = (r && r.hubs && r.hubs[cid]) || { none: true }; hdRender();
+}
+async function hdIpRun(cid) {
+  if (HD.ipBusy) return; HD.ipBusy = true; HD.ipMsg = ''; hdRender();
+  const r = await call('initiativePlan', { op: 'run', campaignId: cid }).catch(e => ({ error: e.message }));
+  HD.ipBusy = false; if (r && r.hub) (HD.ip ||= {})[cid] = r.hub; else HD.ipMsg = 'Not scored: ' + ((r && r.error) || 'no response'); hdRender();
+}
+function hdIpBadge(key) {
+  const d = (HD.ip || {})[HD.hub]; if (!d || d.none) return ''; const x = d.byInit && d.byInit[key];
+  if (!x || !x.best) return key === '__none' ? '' : `<span title="Not scored — press 🎯 Score initiatives" style="font-size:10.5px;color:var(--text3);margin-left:6px;">🎯 —</span>`;
+  const b = x.best, c = b.score >= 60 ? '#4ade80' : b.score >= 35 ? '#f59e0b' : '#f87171', sig = z => 'placement ' + z.sig.place + ' · words ' + z.sig.words + ' · intent ' + (z.sig.intent == null ? '—' : z.sig.intent);
+  const tip = 'Best keyword topic: ' + b.topic + (b.cluster ? ' (' + b.cluster + ')' : '') + ' — ' + b.score + ' (' + sig(b) + ')' + (x.second ? '\nNext: ' + x.second.topic + ' — ' + x.second.score : '');
+  return `<span title="${esc(tip)}" style="display:inline-flex;gap:4px;align-items:center;font-size:10.5px;margin-left:6px;padding:1px 7px;border:1px solid ${c};border-radius:9px;color:${c};white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;"><b>🎯 ${b.score}</b><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;">${esc(b.topic)}</span></span>`;
+}
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return;
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
@@ -7697,7 +7715,7 @@ function hdRender() {
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button>
     <button style="${B(HD.fit ? '#f59e0b' : '#8ab4f8')}" onclick="HD.fit=!HD.fit;if(HD.fit){HD.hub='';HD.path=[];}hdRender()" title="Every hub's products scored against its keyword topics — read-only">🎯 Keyword fit${HD.fit ? ' ✓' : ''}</button>
-    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B(HD.matrix ? '#f59e0b' : 'var(--text2)')}" onclick="HD.matrix=!HD.matrix;hdRender()" title="Cluster → topic (rows) × initiative → sub-initiative (columns): where the keyword structure and the plan disagree">▦ Matrix${HD.matrix ? ' ✓' : ''}</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
+    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button ${HD.ipBusy ? 'disabled' : ''} style="${B('#8ab4f8')}" onclick="hdIpRun('${esc(hdNid(h.campaignId))}')" title="Score every initiative of this hub against its keyword topics — placement 45 · words & meaning 35 · intent 20 (read-only)">🎯 ${HD.ipBusy ? 'Scoring…' : 'Score initiatives'}</button>${(HD.ip || {})[hdNid(h.campaignId)] && HD.ip[hdNid(h.campaignId)].at ? `<span style="font-size:10.5px;color:var(--text3);">scored ${esc(new Date(HD.ip[hdNid(h.campaignId)].at).toLocaleString())}</span>` : ''}${HD.ipMsg ? `<span style="font-size:11px;color:#f87171;">${esc(HD.ipMsg)}</span>` : ''}<button style="${B(HD.matrix ? '#f59e0b' : 'var(--text2)')}" onclick="HD.matrix=!HD.matrix;hdRender()" title="Cluster → topic (rows) × initiative → sub-initiative (columns): where the keyword structure and the plan disagree">▦ Matrix${HD.matrix ? ' ✓' : ''}</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
     <span style="color:var(--text3);font-size:11px;">G = goal (Content Plan — All Assets) · D = Development + Review · P = Publish + Published. Newest first.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }
@@ -7725,6 +7743,7 @@ function hdRender() {
   const inits = new Map(); const addI = v => { const k = ik(v); if (!inits.has(k)) inits.set(k, { key: k, name: k === '__none' ? 'No initiative' : String(v).trim(), assets: [], newest: '' }); return inits.get(k); };
   assetsH.forEach(a => { const I = addI(a.initiative); I.assets.push(a); const d = hdDate(a); if (d > I.newest) I.newest = d; }); planAll.forEach(r => addI(r.init)); const planRowsAll = hdPlanRowsAll(h); planRowsAll.forEach(r => addI(r.init));
   const initList = [...inits.values()].sort((a, b) => (a.key === '__none') - (b.key === '__none') || a.name.localeCompare(b.name));
+  if (!(HD.ip ||= {})[cid] && !(HD.ipLoading ||= new Set()).has(cid)) hdIpLoad(cid);
   if (HD.matrix) { HD.mxInits = initList.filter(I => I.key !== '__none').map(I => I.name); el.innerHTML = tools + hdMatrixHtml(h, mine, all, initList); return; }
   const P = HD.path = (HD.path || []).slice(0, 4), nodes = [];
   const In = P.length ? inits.get(P[0]) : null; if (P.length && !In) P.length = 0; if (In) nodes.push(In);
@@ -7768,7 +7787,7 @@ function hdRender() {
   const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
   if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
-    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), '', planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), hdIpBadge(I.key), planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
   else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik, initList.filter(x => x.key !== '__none').map(x => x.name)) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
