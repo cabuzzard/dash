@@ -5275,7 +5275,7 @@ function cplanPaint(name = 'content-plan-assets') {
       return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;padding:7px 10px;border:1px solid #60a5fa;border-radius:8px;background:rgba(96,165,250,.08);font-size:12px;">
         <b style="${none ? 'color:var(--text3);font-weight:600;' : ''}">${SEL.size} row${SEL.size === 1 ? '' : 's'} selected</b>${none ? '<span style="color:var(--text3);">— tick rows, or a heading to take everything under it</span>' : ''}
         <button ${DIS}${B}${S.dupOpen ? 'border-color:#60a5fa;' : ''}" onclick="cpS(${q}).dupOpen=!cpS(${q}).dupOpen;cplanPaint(${q})" title="Copy every selected row (each copy right below its original) — into a new title and/or with a tag">⧉ Duplicate…</button>
-        <button ${DIS}${B}color:#f87171;" onclick="cplanBulkDel(${q})" title="Delete every selected row (asks first)">× Delete</button>
+        <button ${DIS}${B}color:#f87171;" onclick="cplanBulkDel(${q})" title="Delete every selected row (asks first) — asset rows: the asset goes to Notion&#39;s trash (↺ Restore in 🗑 Removed); Published assets are never removed">× Delete</button>
         <span style="color:var(--text2);">✎ Set</span><select id="cpBulkCol${cpId(name)}" onchange="cpS(${q}).bulkCol=this.value;cplanPaint(${q})" style="font-size:12px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">column…</option>${T.columns.filter(c => !/^(created|changed)$/.test(c.id) && (S.arch || !c.hidden)).map(c => `<option value="${c.id}" ${c.id === bc ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
         ${bc ? `<span style="color:var(--text2);">to</span><input id="cpBulkVal${cpId(name)}" list="cpBulkList${cpId(name)}" placeholder="value (blank clears it)" style="font-size:12px;padding:4px 7px;min-width:220px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"><datalist id="cpBulkList${cpId(name)}">${opts2.map(v => `<option value="${esc(v)}">`).join('')}</datalist><button ${DIS}${B}" onclick="cplanBulkEdit(${q})">Apply to ${SEL.size}</button>` : ''}
         ${bc === 'init' && name === HUBPLAN_TABLE ? `<button style="${B}${S.initMgr ? 'border-color:#c084fc;' : ''}" onclick="cpS(${q}).initMgr=!cpS(${q}).initMgr;cplanPaint(${q})" title="Add new initiative names, remove old ones">⚙ Initiative names</button>` : ''}
@@ -5444,21 +5444,42 @@ function cplanBulkDup(name) {
     const nid = 'p' + (t0 + k++).toString(36); T.rows.splice(i >= 0 ? i + 1 : T.rows.length, 0, { id: nid, cells }); S.newRows.add(nid); made.add(nid); }
   S.sel = made; S.dupOpen = false; cplanPaint(name); cplanSave(name);
 }
-async function cplanBulkDel(name) {
+async function cplanBulkDel(name) {   // plan rows are deleted; asset rows (operator 2026-11-10: bulk delete of digests "doesnt look like it worked") go one at a
+  // time through 🗑 Remove record's own path — Notion trash, logged, ↺ Restore in 🗑 Removed, never a Published asset. The result stays on screen.
   const S = cpS(name), T = S.t; if (!T || !S.sel.size) return;
-  const ai = name === HUBPLAN_TABLE ? cplanTraceIds(T).ai : '', isA = r => !!(ai && String(r.cells[ai] || '').trim());   // asset rows go one by one with 🗑, never in bulk
-  const ids = T.rows.filter(r => S.sel.has(r.id) && !isA(r)).map(r => r.id), nA = [...S.sel].filter(id => { const r = cplanRowOf(S, id); return r && (r.virt || isA(r)); }).length;
-  if (!ids.length) return showToast('Only asset rows are selected — remove those one by one with 🗑', 'error');
-  if (!confirm('Delete ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '?' + (nA ? ' (' + nA + ' selected asset row' + (nA === 1 ? ' is' : 's are') + ' left alone — remove an asset with its 🗑.)' : '') + ' This cannot be undone from the dash (the Content Plan keeps deleted rows in its change log).')) return;
-  const del = new Set(ids); T.rows = T.rows.filter(r => !del.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); S.sel = new Set(); cplanPaint(name);
-  const msg = document.getElementById('cplanMsg' + cpId(name)); if (msg) msg.textContent = 'Deleting ' + ids.length + '…';
-  let r = { ok: true };
-  if (name !== HUBPLAN_TABLE) r = await call('saveInfoFlowTable', { name, table: T }).catch(e => ({ error: e.message }));
-  else for (let i = 0; i < saved.length && r && !r.error && !(r.failed && r.failed.length); i += 50)
-    r = await call('updateContentPlan', { edits: saved.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
-  const bad = !r || r.error || (r.failed && r.failed.length);
-  if (msg) { msg.style.color = bad ? '#f87171' : 'var(--text3)'; msg.textContent = bad ? 'Not all deleted: ' + ((r && (r.error || r.failed.map(f => f.reason).join(' · '))) || 'no response') : 'Deleted ' + ids.length; }
-  if (bad) return cplanLoad(true, name);   // show the stored table as it really is
+  const ai = name === HUBPLAN_TABLE ? cplanTraceIds(T).ai : '', isA = r => !!(ai && String(r.cells[ai] || '').trim());
+  const ids = T.rows.filter(r => S.sel.has(r.id) && !isA(r)).map(r => r.id);
+  const assetRows = name !== HUBPLAN_TABLE ? [] : [...S.sel].map(id => cplanRowOf(S, id)).filter(r => r && (r.virt || isA(r))).map(row => ({ row, x: cplanAssetOf(S, row) })).filter(a => a.x && a.x.assetId);
+  const pub = assetRows.filter(a => a.x.assetStatus === 'Published'), go = assetRows.filter(a => a.x.assetStatus !== 'Published');
+  const msg = document.getElementById('cplanMsg' + cpId(name)), say = (t, bad) => { if (msg) { msg.style.color = bad ? '#f87171' : 'var(--text3)'; msg.textContent = t; } };
+  if (!ids.length && !go.length) { say(pub.length ? 'Nothing deleted — ' + pub.length + ' selected asset' + (pub.length === 1 ? ' is' : 's are') + ' Published (a Published asset is never removed here).' : 'Nothing to delete in the selection.', true); return; }
+  if (!confirm((ids.length ? 'Delete ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + ' (kept in the Content Plan change log).\n' : '')
+    + (go.length ? 'Remove ' + go.length + ' asset record' + (go.length === 1 ? '' : 's') + ' — each asset goes to Notion\'s trash and its row is deleted (🗑 Removed → ↺ Restore puts both back):\n' + go.slice(0, 12).map(a => '· ' + (a.x.assetName || '(untitled)') + ' — ' + (a.x.rawAssetType || '') + ' · ' + (a.x.assetStatus || '')).join('\n') + (go.length > 12 ? '\n· …and ' + (go.length - 12) + ' more' : '') + '\nChild assets are not removed — they only lose their parent.\n' : '')
+    + (pub.length ? '\n' + pub.length + ' Published asset' + (pub.length === 1 ? ' is' : 's are') + ' skipped.' : ''))) return;
+  const fails = []; let r = { ok: true }, removed = 0, stopped = '', rowsFailed = false;
+  if (ids.length) {
+    const del = new Set(ids); T.rows = T.rows.filter(r => !del.has(r.id)); const saved = ids.filter(id => !S.newRows.has(id)); ids.forEach(id => { S.newRows.delete(id); delete S.pend[id]; }); cplanPaint(name);
+    say('Deleting ' + ids.length + ' plan row' + (ids.length === 1 ? '' : 's') + '…');
+    if (name !== HUBPLAN_TABLE) r = await call('saveInfoFlowTable', { name, table: T }).catch(e => ({ error: e.message }));
+    else for (let i = 0; i < saved.length && r && !r.error && !(r.failed && r.failed.length); i += 50)
+      r = await call('updateContentPlan', { edits: saved.slice(i, i + 50).map(rowId => ({ op: 'delete', rowId })) }).catch(e => ({ error: e.message }));
+    if (!r || r.error || (r.failed && r.failed.length)) { rowsFailed = true; fails.push('plan rows: ' + ((r && (r.error || r.failed.map(f => f.reason).join(' · '))) || 'no response')); }
+  }
+  for (let k = 0; k < go.length; k++) {
+    const { row, x } = go[k], id = hdNid(x.assetId), unsaved = !row.virt && S.newRows.has(row.id);
+    say('Removing asset ' + (k + 1) + '/' + go.length + ' — ' + (x.assetName || '(untitled)') + '…');
+    const q = await call('cplanRemoveAsset', { assetId: id, ...(row.virt || unsaved ? {} : { rowId: row.id }) }).catch(e => ({ error: e.message }));
+    if (!q || q.error) { fails.push((x.assetName || id.slice(0, 6)) + ': ' + ((q && q.error) || 'no response')); if (/rate.?limit|429/i.test((q && q.error) || '')) { stopped = ' · stopped: Notion rate limit — run it again in a minute'; break; } continue; }
+    removed++; (S.removed ||= new Set()).add(id); S.sel.delete(row.id);
+    if (!row.virt) { T.rows = T.rows.filter(z => z.id !== row.id); delete S.pend[row.id]; S.newRows.delete(row.id); }
+    if (!(row.virt || unsaved || q.rowDeleted)) fails.push((x.assetName || id.slice(0, 6)) + ': asset is in the trash, but its row was not deleted');
+  }
+  S.sel = new Set(); cplanPaint(name);
+  const done = [ids.length && (rowsFailed ? 0 : ids.length) + ' plan row' + (ids.length === 1 ? '' : 's') + ' deleted', go.length && removed + '/' + go.length + ' asset' + (go.length === 1 ? '' : 's') + ' removed to the trash', pub.length && pub.length + ' Published skipped'].filter(Boolean).join(' · ');
+  say((fails.length ? '✗ ' : '✓ ') + done + stopped + (fails.length ? ' — failed: ' + fails.join(' · ') : ''), !!fails.length);
+  if (fails.length) console.error('CP AA bulk delete:', fails);
+  showToast((fails.length ? '✗ ' : '🗑 ') + done, fails.length ? 'error' : 'success');
+  if (rowsFailed) return cplanLoad(true, name);   // show the stored table as it really is
   if (name === HUBPLAN_TABLE && HD.plan) { HD.plan = T; hdRender(); }
 }
 async function cplanBulkEdit(name) {
