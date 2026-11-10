@@ -7465,7 +7465,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   const cidA = hdNid(h.campaignId), ip = (HD.ip || {})[cidA], ipOk = ip && !ip.none && ip.topicNames, pinK = cidA + '|' + I.key, pinned = ((HD.cardPrefs || {}).pins || {})[pinK] || '';
   const auto = ipOk && ip.byInit && ip.byInit[I.key] && ip.byInit[I.key].best, anchor = pinned || (auto && auto.score >= 35 ? auto.topic : ''), tai = ipOk ? ip.topicNames.indexOf(anchor) : -1;
   [...subs, ...prods].forEach(g => { const x = tai >= 0 && ip.groups && ip.groups[I.key] && ip.groups[I.key][g.kind === 'Product' ? 'prod' : 'sub'][g.none ? '' : nk(g.name)];
-    g.rel = x ? x.s[tai] : null; if (g.rel != null && !g.color) { g.color = hdRelCol(g.rel); g.autoColor = true; }   // relevance pre-selects the highlight (operator 2026-11-10); a colour you picked wins
+    g.rel = x ? x.s[tai] : null; if (g.rel != null && (!g.color || (HD.cardPrefs || {}).arrange)) { g.color = hdRelCol(g.rel); g.autoColor = true; }   // relevance sets the highlight (operator 2026-11-10: "change the pre selected highlight color") — while Arrange is on it overrides your own colours; off, yours come back
     g.drift = x ? (x.m || []).filter(([, tp]) => tp !== anchor).map(([n, tp]) => n + (tp ? ' (on ' + tp + ')' : ' (no topic)')) : []; });
   if ((HD.cardPrefs || {}).arrange && tai >= 0) [subs, prods].forEach(L => L.sort((a, b) => (b.rel ?? -1) - (a.rel ?? -1)));
   const hint = subs.length ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>${esc(((t.columns || []).find(c => c.id === sc) || {}).name || 'sub initiative')}</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
@@ -7494,7 +7494,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
         <option value="" ${pinned ? '' : 'selected'}>auto — ${auto ? esc(auto.topic) + ' (' + auto.score + ')' + (auto.score < 35 ? ' · too weak' : '') : 'none'}</option>${opts.map(n => `<option value="${esc(n)}" ${pinned === n ? 'selected' : ''}>📌 ${esc(n)}</option>`).join('')}</select>
       ${anchor ? '' : '<span style="color:#f59e0b;">no clear topic — pick one</span>'}
       <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" ${arrange ? 'checked' : ''} ${tai < 0 ? 'disabled' : ''} onchange="hdArrange(this.checked)"> Arrange by keyword relevance</label>
-      <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — a colour you pick on a card wins; your order stays when this is off</span></div>`;
+      <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — while this is on, the score sets every card's colour; off, your own order and colours come back</span></div>`;
   const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>`;
   return strip + ren + anchorBar + grid('Sub-initiatives', subs) + hint + grid('Products', prods);
 }
@@ -7515,7 +7515,7 @@ function hdCardDrop(ev, i) {
 }
 // operator 2026-11-09: "a cycle through amber, orange, purple, dark green and slate gray" (the CP AA status colours: Planning, Development, Review, Publish(ed), Idea)
 const HD_CARD_COLORS = ['#eab308', '#ff7a00', '#c084fc', '#16a34a', '#94a3b8'];
-function hdCardCycle(i) { const g = (HD._cards || [])[i]; if (!g) return; const k = HD_CARD_COLORS.indexOf(String(g.color || '').toLowerCase()); hdCardColor(i, k + 1 < HD_CARD_COLORS.length ? HD_CARD_COLORS[k + 1] : ''); }
+function hdCardCycle(i) { const g = (HD._cards || [])[i]; if (!g) return; if (g.autoColor && (HD.cardPrefs || {}).arrange) return showToast('The keyword score sets this colour while “Arrange by keyword relevance” is on — switch it off to pick your own', 'error'); const k = HD_CARD_COLORS.indexOf(String(g.color || '').toLowerCase()); hdCardColor(i, k + 1 < HD_CARD_COLORS.length ? HD_CARD_COLORS[k + 1] : ''); }
 // Move a whole sub-initiative card to another initiative (operator 2026-11-09: "I need to drag sub initiative groups all the way over to other
 // initiatives") — every asset in the card (Initiative written to Notion, logged, one at a time) and every plan row (CP AA cell). The sub-initiative
 // name stays, so the card reappears whole under the new initiative.
