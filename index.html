@@ -7514,7 +7514,7 @@ function hdCardGrid(head, L, where, ctx, extra) {
   const H = (HD.cardPrefs || {}).hidden || {}, vis = []; let n = 0;
   L.forEach(g => { g.hidden = !!H[g.ck]; if (g.hidden) n++; if (!g.hidden || HD.showHidden) vis.push(g); });
   if (!vis.length && !n && !extra) return '';
-  return `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}${n ? ` · <a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;text-transform:none;letter-spacing:0;">${HD.showHidden ? 'hide the ' + n + ' hidden' : n + ' hidden — show'}</a>` : ''}${extra || ''}</div>`
+  return `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}${n && !(ctx || {}).noHidLink ? ` · <a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;text-transform:none;letter-spacing:0;">${HD.showHidden ? 'hide the ' + n + ' hidden' : n + ' hidden — show'}</a>` : ''}${extra || ''}</div>`
     + (vis.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${vis.map(g => hdCardHtml(g, where, ctx)).join('')}</div>` : '');
 }
 const hdRelCol = v => v >= 60 ? '#16a34a' : v >= 35 ? '#eab308' : '#ff7a00';   // the card highlight palette: dark green · amber · orange
@@ -7913,9 +7913,9 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
       const inner2 = level(ordered(T.products.map(P => Object.assign(mk('Product', P.name, P.key === '__none', [], [], cid + '|kw:' + kc + '/' + T.key + '|Product'), { P }))), pg => {
         const P = pg.P, oP = O.has(pg.ck), gkT = cid + '|kw:' + [kc, T.key, P.key].join('/') + '|Title';
         const titles = ordered(P.titles.map(t => mk('Title', t.name, t.key === '__none', t.assets, under(goal, [T.key, P.key, t.key]), gkT)));
-        const t = {}; titles.forEach(x => { if (!H[x.ck]) t[x.color] = (t[x.color] || 0) + 1; });
+        const t = {}; titles.forEach(x => { if (H[x.ck]) nHid++; else t[x.color] = (t[x.color] || 0) + 1; });
         const where = [h.name, C.name, T.name, P.name].join(' › ');
-        const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, {}) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';
+        const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, { noHidLink: true }) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';
         return { g: pg, t, html: row(pg, 2, oP, t, `${P.titles.length} title${P.titles.length === 1 ? '' : 's'}`) + cards }; });
       return { g: tg, t: inner2.t, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`) + (oT ? inner2.html : '') }; });
     return { g: cg, t: inner.t, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`) + (oC ? inner.html : '') }; });
