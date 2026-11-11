@@ -7978,17 +7978,26 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const selC = hdCount(selA, selG), selL = h.name + ' › coloured titles';
   // rows by parent → child (operator 2026-11-10: "arrange the asset rows by parent child relation"): from the counted assets' own Parent Asset
   // links — a parent type, then the types of its children (↳, most-linked first), then their children; families first, unrelated types after
-  { const tk = a => hubCheckNorm(String(a.rawAssetType || a.assetType || '').trim() || '(no type)'), idx = new Map((HD.rows || []).filter(x => x.kind === 'asset').map(x => [hdNid(x.assetId), x])), E = new Map();
+  const tk = a => hubCheckNorm(String(a.rawAssetType || a.assetType || '').trim() || '(no type)');
+  { const idx = new Map((HD.rows || []).filter(x => x.kind === 'asset').map(x => [hdNid(x.assetId), x])), E = new Map();
     selA.forEach(a => { const p = a.parentAssetId && idx.get(hdNid(a.parentAssetId)); if (!p) return; const pt = tk(p), ct = tk(a); if (pt === ct) return; if (!E.has(pt)) E.set(pt, new Map()); E.get(pt).set(ct, (E.get(pt).get(ct) || 0) + 1); });
     const byK = new Map(selC.types.map(o => [hubCheckNorm(o.label), o])), kid = new Set([...E.values()].flatMap(m => [...m.keys()]).filter(k => byK.has(k))), out = [], seen = new Set();
     const walk = (k, d) => { if (seen.has(k) || !byK.has(k)) return; seen.add(k); const o = byK.get(k); o.depth = d; out.push(o); [...(E.get(k) || new Map())].sort((a, b) => b[1] - a[1]).forEach(([c]) => walk(c, d + 1)); };
     const roots = selC.types.map(o => hubCheckNorm(o.label)).filter(k => !kid.has(k)), fam = k => [...(E.get(k) || new Map()).keys()].some(c => byK.has(c));
     [...roots.filter(fam), ...roots.filter(k => !fam(k))].forEach(k => walk(k, 0)); selC.types.forEach(o => walk(hubCheckNorm(o.label), 0));   // anything left (a loop) at the end
     selC.types = out; }
-  const dots = HD_CARD_COLORS.map(c => [c, selT.filter(x => x.color === c).length]).filter(([, n]) => n).map(([c, n]) => `<span style="font-size:11.5px;font-weight:700;color:${c};margin-left:8px;">● ${n}</span>`).join('');
+  // columns = the title colours, in the same places as the heading rows above (operator 2026-11-10: "instead of goal dev pub show the counts by
+  // what color they belong to … same column placement"); each number = that type's assets under titles of that colour, opening them in CP AA
+  const colIds = (c, k) => [...new Set(selT.filter(x => x.color === c).flatMap(x => x.assets).filter(a => k == null || tk(a) === k).map(a => a.assetId))];
+  const cell = (ids, c, lab) => `<span style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;">${ids.length ? hdLink(ids.length, ids, lab, c) : ''}</span>`;
+  const trow = (label, depth, k, bold) => `<div style="display:flex;gap:8px;align-items:center;padding:7px 10px 7px ${10 + (depth || 0) * 14}px;border-top:1px solid var(--border);font-size:12.5px;${bold ? 'font-weight:700;' : ''}">
+      <span style="flex:1;min-width:0;overflow-wrap:anywhere;">${depth ? '<span style="color:var(--text3);">↳ </span>' : ''}${esc(label)}</span>
+      <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${HD_CARD_COLORS.map(c => cell(colIds(c, k), c, selL + ' · ' + label)).join('')}</span><span style="width:16px;flex:0 0 auto;"></span></div>`;
+  const types = selC.types.filter(o => selA.some(a => tk(a) === hubCheckNorm(o.label)));
   const assetTbl = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-top:10px;">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--border2);"><span style="flex:1;min-width:0;font-size:13px;"><b>All assets</b> <span style="color:var(--text3);">· ${selT.length} coloured, visible title${selT.length === 1 ? '' : 's'}</span>${dots}</span>${selT.length ? hdChips(selC, noGoal, selL) : ''}</div>
-    ${selT.length ? hdTypeTable(selC, noGoal, selL) : '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">Give a title a colour (the dot on its card) to count its assets here.</div>'}</div>`;
+    <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;"><span style="flex:1;min-width:0;font-size:13px;"><b>All assets</b> <span style="color:var(--text3);">· ${selT.length} coloured, visible title${selT.length === 1 ? '' : 's'} · by type</span></span>
+      <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${HD_CARD_COLORS.map(c => cell(colIds(c, null), c, selL + ' · all')).join('')}</span><span style="width:16px;flex:0 0 auto;"></span></div>
+    ${types.length ? types.map(o => trow(o.label, o.depth, hubCheckNorm(o.label))).join('') : `<div style="font-size:12px;color:var(--text3);padding:8px 10px;border-top:1px solid var(--border);">${selT.length ? 'No assets on those titles yet.' : 'Give a title a colour (the dot on its card) to count its assets here.'}</div>`}</div>`;
   return nav + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);">${legend}${body.html || '<div style="font-size:12px;color:var(--text3);padding:10px;">No clusters yet</div>'}</div>` + assetTbl;
 }
 function hdRender() {
