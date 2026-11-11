@@ -7471,26 +7471,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   // visibility (operator 2026-11-10: "a visibility toggle … that drops visibility of sub initiatives by a variable relevance level")
   const minRel = tai >= 0 ? Number((HD.cardPrefs || {}).minRel || 0) : 0, lowSubs = minRel ? subs.filter(g => g.rel != null && g.rel < minRel) : [];
   if (lowSubs.length && !HD.showLow) lowSubs.forEach(g => subs.splice(subs.indexOf(g), 1));
-  // hidden cards (operator 2026-11-10: "tag sub initiatives and product cards … to just disappear them. maybe with a toggle") — 🙈 on a card hides it;
-  // "n hidden — show" brings them back dimmed with 👁 to unhide. Display only: no rows, assets or Notion change.
-  const H = (HD.cardPrefs || {}).hidden || {}, hid = { 'Sub-initiatives': 0, Products: 0 };
-  [[subs, 'Sub-initiatives'], [prods, 'Products']].forEach(([L, head]) => { for (let i = L.length - 1; i >= 0; i--) if (H[L[i].ck]) { L[i].hidden = true; hid[head]++; if (!HD.showHidden) L.splice(i, 1); } });
-  const hint = subs.length || hid['Sub-initiatives'] ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>${esc(((t.columns || []).find(c => c.id === sc) || {}).name || 'sub initiative')}</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
-  const cnt = (lab, v, col, ids, rowIds, setLabel, tip) => { const k = ids.length + rowIds.length;
-    if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
-    const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
-    return `<a href="#" title="${tip} — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:${col};text-decoration:none;border-radius:6px;padding:2px 0;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${lab}</span><span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; };
-  const card = g => { const lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length, ci = (HD._cards = HD._cards || []).push(g) - 1;
-    const bd = g.color ? g.color : g.kind === 'Product' ? 'var(--border2)' : '#c084fc66', bg = g.color ? `linear-gradient(${g.color}26,${g.color}26),var(--surface)` : 'var(--surface)';
-    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind === 'Product' ? 'Products' : 'Sub-initiatives'}" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;${g.hidden ? 'opacity:.45;border-style:dashed;' : ''}">
-      <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${g.kind === 'Product' ? 'var(--text3)' : '#c084fc'};flex:1;">${g.kind}</span>${g.rel != null ? `<span title="${esc('Relevance to “' + anchor + '”: ' + g.rel + (g.drift.length ? '\nNot on that topic: ' + g.drift.slice(0, 8).join(', ') : ''))}" style="font-size:10.5px;font-weight:700;color:${hdRelCol(g.rel)};">🎯 ${g.rel}</span>` : ''}
-        <a href="#" title="${g.hidden ? 'Hidden — click to show this card again' : 'Hide this card (bring it back with “hidden — show” above the cards)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;">${g.hidden ? '👁' : '🙈'}</a>
-        <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
-        ${g.kind !== 'Product' && !g.none ? `<a href="#" title="Rename this sub-initiative" onclick="event.preventDefault();event.stopPropagation();hdSubEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">✎</a><a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
-        ${g.kind === 'Product' ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
-        ${g.color && !g.autoColor ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</div></div>
-      <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; };
-  const grid = (head, L) => L.length || hid[head] ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}${hid[head] ? ` · <a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;text-transform:none;letter-spacing:0;">${HD.showHidden ? 'hide the ' + hid[head] + ' hidden' : hid[head] + ' hidden — show'}</a>` : ''}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${L.map(card).join('')}</div>` : '';
+  const hint = subs.length ? '' : `<div style="font-size:11.5px;color:var(--text3);margin:2px 2px 10px;">No sub-initiatives in “${esc(I.name)}” yet — set them in CP AA's <b>${esc(((t.columns || []).find(c => c.id === sc) || {}).name || 'sub initiative')}</b> column (per row, or ✎ bulk on a selection); each one becomes a card here.</div>`;
   HD._others = others || [];
   const strip = HD._others.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 2px 8px;font-size:11.5px;"><span style="color:var(--text3);">Initiatives — drag a sub-initiative or product card onto one to move it there:</span>
     ${HD._others.map((n, k) => ik(n) === I.key ? `<span title="The initiative you're in" style="padding:4px 10px;border:1px solid #c084fc;border-radius:14px;background:#c084fc;color:#fff;font-weight:700;">${esc(n)}</span>` : `<span ondragover="event.preventDefault();this.style.background='rgba(192,132,252,.25)'" ondragleave="this.style.background=''" ondrop="this.style.background='';hdMoveDrop(event,${k})" onclick="hdGo(null,0,String(HD._others[${k}]).trim().toLowerCase())" title="Click: open this initiative · drop a sub-initiative here: move it to this initiative" style="padding:4px 10px;border:1px dashed #c084fc;border-radius:14px;color:var(--text2);cursor:pointer;">${esc(n)}</span>`).join('')}
@@ -7506,7 +7487,35 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
       ${lowSubs.length ? `<a href="#" onclick="event.preventDefault();HD.showLow=!HD.showLow;hdRender()" style="color:#f59e0b;">${HD.showLow ? 'hide the ' + lowSubs.length + ' below ' + minRel : lowSubs.length + ' sub-initiative' + (lowSubs.length === 1 ? '' : 's') + ' below ' + minRel + ' hidden — show'}</a>` : ''}
       <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — while this is on, the score sets every card's colour; off, your own order and colours come back</span></div>`;
   const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>`;
-  return strip + ren + anchorBar + grid('Sub-initiatives', subs) + hint + grid('Products', prods);
+  return strip + ren + anchorBar + hdCardGrid('Sub-initiatives', subs, where, { anchor }) + hint + hdCardGrid('Products', prods, where, { anchor });
+}
+// One card, the same everywhere (operator 2026-11-10: "inside of topics have initiative and product cards same exact cards with show hide and al the
+// same functionality"): sub-initiative / product cards inside an initiative, initiative / product cards inside a keyword topic. Drag to reorder,
+// colour, 🙈 hide, clickable Goal / Plan / Dev / Pub / All counts. ctx.anchor = the topic the 🎯 score is against; ctx.topic = inside a topic.
+function hdCardCnt(lab, v, col, ids, rowIds, setLabel, tip) { const k = ids.length + rowIds.length;
+  if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
+  const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
+  return `<a href="#" title="${tip} — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:${col};text-decoration:none;border-radius:6px;padding:2px 0;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${lab}</span><span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; }
+function hdCardHtml(g, where, ctx) { ctx = ctx || {}; const cnt = hdCardCnt, anchor = ctx.anchor || '', lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length, ci = (HD._cards = HD._cards || []).push(g) - 1;
+    const kc = g.kind === 'Product' ? 'var(--text3)' : g.kind === 'Initiative' ? '#8ab4f8' : '#c084fc';
+    const bd = g.color ? g.color : g.kind === 'Product' ? 'var(--border2)' : g.kind === 'Initiative' ? '#8ab4f866' : '#c084fc66', bg = g.color ? `linear-gradient(${g.color}26,${g.color}26),var(--surface)` : 'var(--surface)';
+    const nm = g.kind === 'Initiative' ? `<a href="#" title="Open this initiative" onclick="event.preventDefault();event.stopPropagation();hdGo(null,0,HD._cards[${ci}].ikey)" style="color:var(--text);">${esc(g.name)}</a>${g.pinned ? '' : ' <span title="Placed here by its best keyword score (35+) — ⇄ to pin it to a topic" style="font-size:10px;font-weight:400;color:var(--text3);">auto</span>'}` : esc(g.name);
+    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind === 'Product' ? 'Products' : g.kind === 'Initiative' ? 'Initiatives' : 'Sub-initiatives'}" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;${g.hidden ? 'opacity:.45;border-style:dashed;' : ''}">
+      <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${kc};flex:1;">${g.kind}</span>${g.rel != null ? `<span title="${esc('Relevance to “' + anchor + '”: ' + g.rel + ((g.drift || []).length ? '\nNot on that topic: ' + g.drift.slice(0, 8).join(', ') : ''))}" style="font-size:10.5px;font-weight:700;color:${hdRelCol(g.rel)};">🎯 ${g.rel}</span>` : ''}
+        <a href="#" title="${g.hidden ? 'Hidden — click to show this card again' : 'Hide this card (bring it back with “hidden — show” above the cards)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;">${g.hidden ? '👁' : '🙈'}</a>
+        <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
+        ${g.kind === 'Sub-initiative' && !g.none ? `<a href="#" title="Rename this sub-initiative" onclick="event.preventDefault();event.stopPropagation();hdSubEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">✎</a><a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.kind === 'Product' && !ctx.topic ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.kind === 'Initiative' ? hdInitEditLink(g.I, g.h, g.ik) + `<a href="#" title="Put this initiative in another keyword topic" onclick="event.preventDefault();event.stopPropagation();hdTopicMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.color && !g.autoColor ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${nm}</div></div>
+      <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; }
+// a heading + the cards; hidden ones (🙈, operator 2026-11-10) are left out unless "n hidden — show" is on, then dimmed with 👁 to unhide
+function hdCardGrid(head, L, where, ctx, extra) {
+  const H = (HD.cardPrefs || {}).hidden || {}, vis = []; let n = 0;
+  L.forEach(g => { g.hidden = !!H[g.ck]; if (g.hidden) n++; if (!g.hidden || HD.showHidden) vis.push(g); });
+  if (!vis.length && !n && !extra) return '';
+  return `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:2px 2px 6px;">${head}${n ? ` · <a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;text-transform:none;letter-spacing:0;">${HD.showHidden ? 'hide the ' + n + ' hidden' : n + ' hidden — show'}</a>` : ''}${extra || ''}</div>`
+    + (vis.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px;">${vis.map(g => hdCardHtml(g, where, ctx)).join('')}</div>` : '');
 }
 const hdRelCol = v => v >= 60 ? '#16a34a' : v >= 35 ? '#eab308' : '#ff7a00';   // the card highlight palette: dark green · amber · orange
 function hdPinTopic(k, v) { HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const P = HD.cardPrefs.pins = HD.cardPrefs.pins || {}; if (v) P[k] = v; else delete P[k]; hdRender(); hdCardSave(); }
@@ -7519,7 +7528,7 @@ function hdCardSave() { clearTimeout(HD_CARD_T); HD_CARD_T = setTimeout(() => ca
 function hdCardDrag(ev, i) { HD_CARD_DRAG = (HD._cards || [])[i] || null; try { ev.dataTransfer.setData('text/plain', 'card'); ev.dataTransfer.effectAllowed = 'move'; } catch (e) {} }
 function hdCardDrop(ev, i) {
   ev.preventDefault(); const from = HD_CARD_DRAG, to = (HD._cards || [])[i]; HD_CARD_DRAG = null;
-  if (from && to && from.kind === 'Product' && to.kind !== 'Product' && from.gk.split('|').slice(0, 2).join('|') === to.gk.split('|').slice(0, 2).join('|')) return hdSubSet(from, to.none ? '' : to.name);
+  if (from && to && from.kind === 'Product' && to.kind === 'Sub-initiative' && from.gk.split('|').slice(0, 2).join('|') === to.gk.split('|').slice(0, 2).join('|')) return hdSubSet(from, to.none ? '' : to.name);
   if (!from || !to || from === to || from.gk !== to.gk) return;   // only within its own group (Products / Sub-initiatives of this initiative)
   const L = HD._cards.filter(g => g.gk === to.gk).map(g => g.name.trim().toLowerCase()), a = L.indexOf(from.name.trim().toLowerCase()), b = L.indexOf(to.name.trim().toLowerCase());
   L.splice(a, 1); L.splice(b, 0, from.name.trim().toLowerCase());
@@ -7798,6 +7807,73 @@ async function hdSubRenameGo() {
     if (P.order && P.order[g.gk]) P.order[g.gk] = P.order[g.gk].map(x => x === nk(g.name) ? nk(to) : x); hdCardSave(); }
   HD.plan = { columns: S.t.columns, rows: S.t.rows }; hdRender(); showToast('✓ ' + ch.length + ' row' + (ch.length === 1 ? '' : 's') + ': “' + g.name + '” → “' + to + '”', 'success'); hdIpStale(); return true;
 }
+// Dashboard sections (operator 2026-11-10: "make the initiatives section on dashboard collapsible. then have a clusters section below that. then open
+// the clusters and have topics. then inside of topics have initiative and product cards … and then I can add initiatives inside of topics").
+// Open / closed is kept this session. An initiative sits in ONE topic: its pinned keyword topic (the same pin as "🎯 Keyword topic of …"
+// inside the initiative), else its best keyword score when 35+ ("auto"). ⇄ on its card / ＋ Add initiative here set that pin — a dashboard
+// setting only (card prefs): no assets, rows or Notion change. A product card is the product's assets in that topic.
+function hdSec(k, title, sub, inner) {
+  const S = HD.secClosed = HD.secClosed || new Set(), open = !S.has(k);
+  return `<div style="margin-bottom:10px;"><div onclick="hdToggle('secClosed','${k}')" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:6px 4px;user-select:none;"><span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span><b style="font-size:13.5px;">${title}</b><span style="font-size:11px;color:var(--text3);">${sub}</span></div>${open ? inner : ''}</div>`;
+}
+function hdInitTopic(cid, key) {   // → { name, pinned } or null
+  const pin = (((HD.cardPrefs || {}).pins) || {})[cid + '|' + key]; if (pin) return { name: pin, pinned: true };
+  const ip = (HD.ip || {})[cid], b = ip && !ip.none && ip.byInit && ip.byInit[key] && ip.byInit[key].best; return b && b.score >= 35 ? { name: b.topic, pinned: false } : null;
+}
+function hdClustersHtml(h, tree, initList, planAll, planRowsAll, under, where, ik, noGoal) {
+  const cid = hdNid(h.campaignId), nk = v => String(v || '').trim().toLowerCase(), ip = (HD.ip || {})[cid];
+  HD.openCl = HD.openCl || new Set(); HD.openTp = HD.openTp || new Set();
+  // topics with nothing in them yet (scored keyword topics) still show, so an initiative can go in
+  const C2 = tree.map(C => ({ ...C, topics: C.topics.slice() })), seen = new Set(C2.flatMap(C => C.topics.map(T => nk(T.name))));
+  ((ip && !ip.none && ip.topics) || []).forEach(t => { if (!t.name || seen.has(nk(t.name))) return; seen.add(nk(t.name)); const cn = t.cluster || '(no cluster)';
+    let C = C2.find(x => nk(x.name) === nk(cn)); if (!C) C2.push(C = { name: cn, topics: [], newest: '' }); C.topics.push({ key: 'ip:' + nk(t.name), name: t.name, products: [], rows: [], newest: '' }); });
+  const byT = new Map(); initList.forEach(I => { if (I.key === '__none') return; const t = hdInitTopic(cid, I.key); if (!t) return; const k = nk(t.name); if (!byT.has(k)) byT.set(k, []); byT.get(k).push({ I, pinned: t.pinned }); });
+  HD._tpNames = C2.flatMap(C => C.topics.map(T => T.name)); HD._tpCid = cid; HD._tpInits = initList.filter(I => I.key !== '__none');
+  const P = HD.cardPrefs || {}, mk = (kind, name, assets, goalRows, planRowIds, gk) => {
+    const g = { kind, name, none: false, goal: 0, goalIds: [], planIds: [], planRows: planRowIds, devIds: [], pubIds: [], allIds: [], allRows: [], gk, ck: gk + '|' + nk(name) };
+    assets.forEach(a => { const s = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
+    goalRows.forEach(r => { g.goal += r.n || 0; g.goalIds.push(r.rowId); }); g.color = (P.color || {})[g.ck] || ''; return g; };
+  const ordered = L => { if (!L.length) return L; const saved = (P.order || {})[L[0].gk] || [], pos = g => { const i = saved.indexOf(nk(g.name)); return i < 0 ? 1e9 : i; }; return L.sort((a, b) => pos(a) - pos(b) || a.name.localeCompare(b.name)); };
+  const tRow = (open, onclick, name, sub, chips) => `<div onclick="${onclick}" class="hd-row" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);"><span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span><div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b><span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>${chips}</div>`;
+  const keys = HD._clKeys = [];
+  const html = C2.map(C => { const ck = 'c:' + nk(C.name), open = HD.openCl.has(ck), kc = keys.push(ck) - 1, tk = new Set(C.topics.map(T => T.key));
+    const nI = C.topics.reduce((n, T) => n + (byT.get(nk(T.name)) || []).length, 0);
+    const head = tRow(open, `hdToggle('openCl',HD._clKeys[${kc}])`, C.name, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'} · ${nI} initiative${nI === 1 ? '' : 's'}`,
+      hdChips(hdCount(C.topics.flatMap(hdAssetsOf), planAll.filter(r => r.path && tk.has(r.path[0]))), noGoal, where + ' › ' + C.name));
+    if (!open) return head;
+    return head + `<div style="padding:4px 0 4px 18px;border-bottom:1px solid var(--border);">` + C.topics.map(T => { const tpk = 't:' + nk(T.name), o = HD.openTp.has(tpk), kt = keys.push(tpk) - 1, ins = byT.get(nk(T.name)) || [], sig = hdTopicSignal(T), nPr = T.products.filter(p => p.key !== '__none').length;
+      const r = tRow(o, `hdToggle('openTp',HD._clKeys[${kt}])`, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${ins.length} initiative${ins.length === 1 ? '' : 's'} · ${nPr} product${nPr === 1 ? '' : 's'}`,
+        hdChips(hdCount(hdAssetsOf(T), under([T.key])), noGoal, where + ' › ' + T.name));
+      if (!o) return r;
+      const gkB = cid + '|topic:' + nk(T.name) + '|', tw = where + ' › ' + T.name, ti = HD._tpNames.indexOf(T.name);
+      const iCards = ordered(ins.map(({ I, pinned }) => Object.assign(mk('Initiative', I.name, I.assets, planAll.filter(x => ik(x.init) === I.key), planRowsAll.filter(x => ik(x.init) === I.key).map(x => x.rowId), gkB + 'Initiative'), { ikey: I.key, I, h, ik, pinned })));
+      const pCards = ordered(T.products.filter(p => p.key !== '__none').map(Pn => mk('Product', Pn.name, hdAssetsOf(Pn), under([T.key, Pn.key]), [], gkB + 'Product')));
+      const add = ` · <a href="#" onclick="event.preventDefault();event.stopPropagation();hdTopicAdd(${ti})" title="Put an initiative in this topic — pick one or name a new one" style="color:#4ade80;text-transform:none;letter-spacing:0;">＋ Add initiative here</a>`;
+      return r + `<div style="padding:8px 4px 2px 18px;">${hdCardGrid('Initiatives', iCards, tw, { anchor: T.name, topic: true }, add)}${iCards.length ? '' : '<div style="font-size:11.5px;color:var(--text3);margin:0 2px 10px;">No initiative in this topic yet.</div>'}${hdCardGrid('Products', pCards, tw, { anchor: T.name, topic: true })}</div>`; }).join('') + `</div>`; }).join('');
+  const note = ip && !ip.none ? '' : `<div style="font-size:11.5px;color:var(--text3);padding:8px 10px;">Initiatives land in a topic when you add them there, or by their best keyword score — press <b>🎯 Score initiatives</b> for the auto placement.</div>`;
+  return `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);">${note}${html || '<div style="font-size:12px;color:var(--text3);padding:10px;">No clusters yet</div>'}</div>`;
+}
+function hdTopicMenuShow(title, items) {   // items: [{ label, color?, run }]
+  const ev = window.event; hdMenuClose(); HD._menuRun = items.map(x => x.run);
+  const m = document.createElement('div'); m.id = 'hdMenu'; const x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const it = 'display:block;width:100%;text-align:left;font-size:13px;padding:9px 14px;border:none;background:transparent;color:var(--text);cursor:pointer;';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 260))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 300))}px;min-width:220px;max-height:60vh;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);`;
+  m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;">${title}</div>` + items.map((x, k) => `<button style="${it}${x.color ? 'color:' + x.color + ';' : ''}" onclick="hdMenuClose();HD._menuRun[${k}]()">${esc(x.label)}</button>`).join('');
+  document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
+}
+function hdTopicMenu(ci) {   // ⇄ on an initiative card inside a topic → another topic, or back to auto
+  const g = (HD._cards || [])[ci]; if (!g) return; const cid = HD._tpCid, k = cid + '|' + g.ikey, here = String(g.gk).split('|')[1].slice(6);
+  hdTopicMenuShow(`Put “${esc(g.name)}” in topic…`, (HD._tpNames || []).filter(n => n.toLowerCase() !== here).map(n => ({ label: n, run: () => hdPinTopic(k, n) }))
+    .concat(g.pinned ? [{ label: '— auto (its best keyword score)', color: 'var(--text3)', run: () => hdPinTopic(k, '') }] : []));
+}
+function hdTopicAdd(ti) {   // ＋ Add initiative here → an existing initiative of this hub, or a new name
+  const tn = (HD._tpNames || [])[ti], cid = HD._tpCid; if (!tn) return;
+  const L = (HD._tpInits || []).filter(I => { const t = hdInitTopic(cid, I.key); return !t || t.name.toLowerCase() !== tn.toLowerCase(); });
+  hdTopicMenuShow(`Add to “${esc(tn)}”…`, [{ label: '＋ New initiative…', color: '#4ade80', run: async () => {
+      const v = String(prompt('New initiative name:') || '').trim(); if (!v) return; if (initiativeBad(v)) return showToast(initiativeBad(v), 'error');
+      if (!(await cplanInitAdd(HUBPLAN_TABLE, v, true))) return; hdPinTopic(cid + '|' + v.toLowerCase(), tn); showToast('✓ “' + v + '” added to ' + tn, 'success'); } }]
+    .concat(L.map(I => { const t = hdInitTopic(cid, I.key); return { label: I.name + (t ? '  (now in ' + t.name + ')' : ''), run: () => hdPinTopic(cid + '|' + I.key, tn) }; })));
+}
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return; HD._inits = [];
   const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:5px;background:var(--surface2);color:${c};cursor:pointer;`;
@@ -7836,6 +7912,7 @@ function hdRender() {
   const ik = v => String(v || '').trim().toLowerCase() || '__none', assetsH = mine.filter(x => x.kind === 'asset'), planAll = hdPlan(h);
   const inits = new Map(); const addI = v => { const k = ik(v); if (!inits.has(k)) inits.set(k, { key: k, name: k === '__none' ? 'No initiative' : String(v).trim(), assets: [], newest: '' }); return inits.get(k); };
   assetsH.forEach(a => { const I = addI(a.initiative); I.assets.push(a); const d = hdDate(a); if (d > I.newest) I.newest = d; }); planAll.forEach(r => addI(r.init)); const planRowsAll = hdPlanRowsAll(h); planRowsAll.forEach(r => addI(r.init));
+  Object.keys(((HD.cardPrefs || {}).pins) || {}).forEach(k => { if (!k.startsWith(cid + '|')) return; const v = k.slice(cid.length + 1); if (v && v !== '__none' && !inits.has(v)) addI(((typeof CPLAN_INITS !== 'undefined' && CPLAN_INITS) || []).find(n => n.toLowerCase() === v) || v); });   // added inside a topic, no assets yet
   const initList = [...inits.values()].sort((a, b) => (a.key === '__none') - (b.key === '__none') || a.name.localeCompare(b.name));
   if (!(HD.ip ||= {})[cid] && !(HD.ipLoading ||= new Set()).has(cid)) hdIpLoad(cid); else if (HD.ip[cid]) setTimeout(() => hdIpAuto(cid), 0);
   if (HD.matrix) { HD.mxInits = initList.filter(I => I.key !== '__none').map(I => I.name); el.innerHTML = tools + hdMatrixHtml(h, mine, all, initList); return; }
@@ -7844,7 +7921,7 @@ function hdRender() {
   let rowsI = mine;
   if (In) { const tA = new Set(assetsH.map(a => hdNid(a.titleId))), pA = new Set(assetsH.map(a => hdNid(a.productId))), tI = new Set(In.assets.map(a => hdNid(a.titleId))), pI = new Set(In.assets.map(a => hdNid(a.productId))), none = In.key === '__none';
     rowsI = mine.filter(x => x.kind === 'asset' ? ik(x.initiative) === In.key : x.kind === 'title' ? tI.has(hdNid(x.titleId)) || (none && !tA.has(hdNid(x.titleId))) : x.kind === 'product' ? pI.has(hdNid(x.productId)) || (none && !pA.has(hdNid(x.productId))) : none); }
-  const topics = hdTree(h, rowsI, all).flatMap(C => C.topics).sort(byNew);
+  const tree = hdTree(h, rowsI, all), topics = tree.flatMap(C => C.topics).sort(byNew);
   const plan = In ? planAll.filter(r => ik(r.init) === In.key) : planAll; hdPlace(plan, topics);
   // resolve the rest of the path (topic → product → title); a stale step (after a refresh / filter change) is dropped
   for (let i = 1; i < P.length; i++) {
@@ -7880,8 +7957,9 @@ function hdRender() {
     ${hubOnly ? `<div style="font-size:11px;color:var(--text3);padding:6px 10px;border-top:1px solid var(--border);">${hubOnly} of ${plan.length} goals count at hub level only — Content Plan — All Assets doesn't name a topic, product or title for them (add a <b>Topic</b>, <b>Product</b> or <b>Title</b> column there to place them).</div>` : ''}</details>`;
   const dt = n => n.newest ? 'newest ' + esc(n.newest) : 'no date';
   let body;
-  if (depth === 0) body = box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
-    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), hdInitEditLink(I, h, ik) + hdIpBadge(I.key), planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>');
+  if (depth === 0) body = hdSec('init', 'Initiatives', initList.length + ' initiative' + (initList.length === 1 ? '' : 's'), box('Initiative', initList.map(I => { const nT = new Set(I.assets.map(a => hdNid(a.titleId))).size;
+    return row(I.key, I.name, `${I.assets.length} asset${I.assets.length === 1 ? '' : 's'} · ${nT} title${nT === 1 ? '' : 's'} · ${dt(I)}`, hdCount(I.assets, planAll.filter(r => ik(r.init) === I.key)), hdInitEditLink(I, h, ik) + hdIpBadge(I.key), planChip(planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId), where + ' › ' + I.name + ' · Plan'), planRowsAll.filter(r => ik(r.init) === I.key).map(r => r.rowId)); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No assets yet</div>'))
+    + hdSec('clusters', 'Clusters', tree.length + ' cluster' + (tree.length === 1 ? '' : 's'), hdClustersHtml(h, tree, initList, planAll, planRowsAll, under, where, ik, noGoal));
   else if (depth === 1) body = hdInitCards(In, mineAll.filter(x => x.kind === 'asset' && ik(x.initiative) === In.key), planAll.filter(r => ik(r.init) === In.key), planRowsAll.filter(r => ik(r.init) === In.key), where, h, ik, initList.filter(x => x.key !== '__none').map(x => x.name)) + box('Topic', topics.map(T => { const sig = hdTopicSignal(T);
     return row(T.key, T.name, `<span style="color:${hdSigColor(sig)};font-weight:600;">${esc(sig)}</span> · ${T.products.length} product${T.products.length === 1 ? '' : 's'} · ${dt(T)}`, hdCount(hdAssetsOf(T), under([T.key]))); }).join('') || '<div style="font-size:12px;color:var(--text3);padding:10px;">No topics yet</div>');
   else if (depth === 2) body = box('Product', cur.products.map(Pn => row(Pn.key, Pn.name, `${Pn.row ? `<span style="color:${stCol(hdSt(Pn.row))};">${esc(hdSt(Pn.row))}</span> · ` : ''}${Pn.titles.length} title${Pn.titles.length === 1 ? '' : 's'} · ${dt(Pn)}`,
