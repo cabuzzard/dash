@@ -7503,7 +7503,7 @@ function hdCardHtml(g, where, ctx) { ctx = ctx || {}; const cnt = hdCardCnt, anc
     return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" title="Drag to reorder within ${g.kind}s" style="border:${g.color ? 2 : 1}px solid ${bd};border-radius:10px;background:${bg};padding:8px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;cursor:grab;${g.hidden ? 'opacity:.45;border-style:dashed;' : ''}">
       <div style="min-width:0;"><span style="display:flex;align-items:center;gap:6px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${kc};flex:1;">${g.kind}</span>${g.rel != null ? `<span title="${esc('Relevance to “' + anchor + '”: ' + g.rel + ((g.drift || []).length ? '\nNot on that topic: ' + g.drift.slice(0, 8).join(', ') : ''))}" style="font-size:10.5px;font-weight:700;color:${hdRelCol(g.rel)};">🎯 ${g.rel}</span>` : ''}
         <a href="#" title="${g.hidden ? 'Hidden — click to show this card again' : 'Hide this card (bring it back with “hidden — show” above the cards)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;">${g.hidden ? '👁' : '🙈'}</a>
-        <a href="#" title="Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
+        <a href="#" title="${g.kind === 'Title' && g.titleId ? esc('Status: ' + (g.status || 'none') + ' — click to change it') : 'Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none'}" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
         ${g.kind === 'Sub-initiative' && !g.none ? `<a href="#" title="Rename this sub-initiative" onclick="event.preventDefault();event.stopPropagation();hdSubEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">✎</a><a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Product' && !ctx.topic ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Initiative' ? hdInitEditLink(g.I, g.h, g.ik) + `<a href="#" title="Put this initiative in another keyword topic" onclick="event.preventDefault();event.stopPropagation();hdTopicMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
@@ -7536,7 +7536,7 @@ function hdCardDrop(ev, i) {
 }
 // operator 2026-11-09: "a cycle through amber, orange, purple, dark green and slate gray" (the CP AA status colours: Planning, Development, Review, Publish(ed), Idea)
 const HD_CARD_COLORS = ['#eab308', '#ff7a00', '#c084fc', '#16a34a', '#94a3b8'];
-function hdCardCycle(i) { const g = (HD._cards || [])[i]; if (!g) return; if (g.autoColor && (HD.cardPrefs || {}).arrange) return showToast('The keyword score sets this colour while “Arrange by keyword relevance” is on — switch it off to pick your own', 'error'); const k = HD_CARD_COLORS.indexOf(String(g.color || '').toLowerCase()); hdCardColor(i, k + 1 < HD_CARD_COLORS.length ? HD_CARD_COLORS[k + 1] : ''); }
+function hdCardCycle(i) { const g = (HD._cards || [])[i]; if (!g) return; if (g.kind === 'Title' && g.titleId) return hdTitleStatusMenu(i); if (g.autoColor && (HD.cardPrefs || {}).arrange) return showToast('The keyword score sets this colour while “Arrange by keyword relevance” is on — switch it off to pick your own', 'error'); const k = HD_CARD_COLORS.indexOf(String(g.color || '').toLowerCase()); hdCardColor(i, k + 1 < HD_CARD_COLORS.length ? HD_CARD_COLORS[k + 1] : ''); }
 // Move a whole sub-initiative card to another initiative (operator 2026-11-09: "I need to drag sub initiative groups all the way over to other
 // initiatives") — every asset in the card (Initiative written to Notion, logged, one at a time) and every plan row (CP AA cell). The sub-initiative
 // name stays, so the card reappears whole under the new initiative.
@@ -7886,6 +7886,23 @@ function hdKwK(h) {   // the hub's keyword model, loaded once (without the produ
   if (!K) { const prev = _hubStageBackfill, guard = Promise.resolve(); _hubStageBackfill = prev || guard; hubKwLoad(h.slug).finally(() => { if (_hubStageBackfill === guard) _hubStageBackfill = prev; }); }
   return null;
 }
+// Title colour = title Status (operator 2026-11-11: "the color status I give titles in hub dashboard should actually be a change of their status").
+// The card palette already is the status palette: amber Planning · orange Development · purple Review · dark green Published · slate grey Idea.
+// A title card shows its Status colour; its dot opens a status menu that writes the title's Status (updateTitleStage — one Notion write, the
+// operator's own action). Saved card colours no longer apply to titles. Idea / Planning titles are hidden unless "Show all" is ticked.
+const HD_TITLE_ST = [['Idea', '#94a3b8'], ['Planning', '#eab308'], ['Development', '#ff7a00'], ['Review', '#c084fc'], ['Published', '#16a34a']];
+const hdTitleCol = st => { const s = String(st || '').trim().toLowerCase(); return s === 'publish' || s === 'done' ? '#16a34a' : (HD_TITLE_ST.find(([n]) => n.toLowerCase() === s) || [])[1] || ''; };
+function hdTitleStatusMenu(ci) {
+  const g = (HD._cards || [])[ci]; if (!g || !g.titleId) return;
+  hdTopicMenuShow(`Status of “${esc(g.name)}” — now ${esc(g.status || 'none')}`, HD_TITLE_ST.map(([n, c]) => ({ label: '● ' + n + (n.toLowerCase() === String(g.status || '').toLowerCase() ? '  ✓' : ''), color: c, run: () => hdTitleSetStatus(g, n) })));
+}
+async function hdTitleSetStatus(g, st) {
+  if (String(g.status || '').toLowerCase() === st.toLowerCase()) return;
+  const r = await call('updateTitleStage', { titleId: g.titleId, stage: st }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Status not changed: ' + ((r && r.error) || 'no response'), 'error');
+  (HD.rows || []).forEach(x => { if (x.kind === 'title' && hdNid(x.titleId) === hdNid(g.titleId)) { x.status = st; x.titleStatus = st; } });
+  hdRender(); showToast('✓ “' + g.name + '” → ' + st + (/^(idea|planning)$/i.test(st) && !HD.showAllGlobal ? ' — hidden now (tick Show all to see Idea / Planning titles)' : ''), 'success');
+}
 function hdKwAct(i) { const f = (HD._kwActs || [])[i]; if (f) f(); }
 function hdKwWatch(rows) {   // when the modal closes: redraw, or re-read the rows when a product / title may have been made
   const m = document.getElementById('hcModal'); if (!m) return;
@@ -7976,7 +7993,8 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
       const T = tg.T, oT = O.has(tg.ck);
       const inner2 = level(ordered(T.products.map(P => Object.assign(mk('Product', P.name, P.key === '__none', [], [], cid + '|kw:' + kc + '/' + T.key + '|Product'), { P }))), pg => {
         const P = pg.P, oP = O.has(pg.ck), gkT = cid + '|kw:' + [kc, T.key, P.key].join('/') + '|Title';
-        const titles = ordered(P.titles.map(t => mk('Title', t.name, t.key === '__none', t.assets, under(goal, [T.key, P.key, t.key]), gkT)));
+        const titles = ordered(P.titles.map(t => { const x = mk('Title', t.name, t.key === '__none', t.assets, under(goal, [T.key, P.key, t.key]), gkT);
+          if (t.key !== '__none') { x.titleId = t.key; x.status = t.row ? hdSt(t.row) : ''; x.color = hdTitleCol(x.status); x.autoColor = true; } return x; }));
         const t = {}; titles.forEach(x => { if (H[x.ck]) nHid++; else t[x.color] = (t[x.color] || 0) + 1; });
         const where = [h.name, C.name, T.name, P.name].join(' › ');
         const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, { noHidLink: true }) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';

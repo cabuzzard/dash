@@ -45534,7 +45534,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       if (body.action === "updateTitleStage") {
         const { titleId, stage } = body;
         if (!titleId || !stage) return json({ error: "titleId and stage required" }, 400);
-        const stage4 = normStatus4(stage);   // Writing / Review / Approved / Explode / Done … → Planning
+        const stage4 = /^idea$/i.test(String(stage).trim()) ? "Idea" : normStatus4(stage);   // Writing / Review / Approved / Explode / Done … → Planning; Idea kept (dashboard status colours, 2026-11-11)
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH",
