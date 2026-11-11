@@ -10235,6 +10235,36 @@ function cplanValidate(t, row) {   // → reason string, or "" when the row is v
 // (strongly consistent) holds the master: every edit reads the CURRENT stored table, changes only the cells it names, and commits only if
 // nobody committed in between (seq compare-and-set; else it re-reads and re-applies). KV CPLAN_KEY stays the mirror the dash and crons read.
 let CPLAN_D1_READY = false;
+// 📊 Usage tracking (operator 2026-11-10: "start tracking all usage" — the evidence for a later dash2 that keeps only what's used). Every worker
+// action, every GET route, every cron job and every dashboard tab opened is counted per day × kind × name × source page, in D1 usage_daily
+// (KWDB). Buffered per isolate and flushed as one batch (same keys merge), so a busy action costs one row write per flush, not per call; a
+// few hits can be lost if an isolate is evicted before its flush. Never blocks or fails a request. Read with usageReport.
+let USAGE_READY = false, USAGE_BUF = new Map(), USAGE_AT = 0;
+function usageSrc(request) {
+  let u; try { u = new URL(request.headers.get("referer") || request.headers.get("origin") || ""); } catch (e) { return "none"; }
+  if (!/github\.io$/i.test(u.hostname)) return u.hostname.replace(/^www\./, "").slice(0, 80);
+  const p = u.pathname;
+  if (/\/microsites\//.test(p)) return "microsite"; if (/\/productsites\//.test(p)) return "productsite"; if (/\/web\/hub\//.test(p)) return "hub"; if (/\/web\//.test(p)) return "live site";
+  const f = (p.match(/\/dash\/(.+)$/) || [])[1] || ""; return !f || /^index\.html$/i.test(f) ? "dash" : ("dash/" + f).slice(0, 80);
+}
+function usageHit(env, ctx, kind, name, src) {
+  try {
+    name = String(name || "").replace(/[^\w .:\/-]/g, "").slice(0, 80); if (!name || !env.KWDB) return;
+    const day = new Date().toISOString().slice(0, 10), k = day + "\u0001" + kind + "\u0001" + name + "\u0001" + (src || "none");
+    USAGE_BUF.set(k, (USAGE_BUF.get(k) || 0) + 1);
+    if (USAGE_BUF.size >= 25 || Date.now() - USAGE_AT > 20000 || kind === "cron") ctx && ctx.waitUntil && ctx.waitUntil(usageFlush(env));
+  } catch (e) {}
+}
+async function usageFlush(env) {
+  if (!USAGE_BUF.size || !env.KWDB) return; const buf = USAGE_BUF; USAGE_BUF = new Map(); USAGE_AT = Date.now();
+  try {
+    const db = env.KWDB;
+    if (!USAGE_READY) { await db.prepare("CREATE TABLE IF NOT EXISTS usage_daily (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, src TEXT NOT NULL, n INTEGER NOT NULL, last INTEGER NOT NULL, PRIMARY KEY (day, kind, name, src))").run(); USAGE_READY = true; }
+    const now = Date.now();
+    await db.batch([...buf].map(([k, n]) => { const [day, kind, name, src] = k.split("\u0001");
+      return db.prepare("INSERT INTO usage_daily (day, kind, name, src, n, last) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (day, kind, name, src) DO UPDATE SET n = n + excluded.n, last = excluded.last").bind(day, kind, name, src, n, now); }));
+  } catch (e) { console.error("usageFlush", e.message); for (const [k, n] of buf) USAGE_BUF.set(k, (USAGE_BUF.get(k) || 0) + n); }   // kept for the next flush
+}
 const CPLAN_ASSET_STATUSES = ["Planning", "Development", "Publish", "Published"];   // the Published column (operator 2026-11-06)
 const CPLAN_STAMPS = ["created", "changed"];   // Created / Changed columns (operator 2026-11-06): ISO times the worker writes on every add / real change
 // rows from before the stamps: created from the row id (dash ids are "p" / "cp" + Date.now() in base 36) or the change log's add; changed from
@@ -18988,6 +19018,7 @@ export default {
   },
   async handle(request, env, ctx) {
     await hubSitesMerge(env);
+    if (request.method !== "POST" && request.method !== "OPTIONS") { try { const u = new URL(request.url); usageHit(env, ctx, "get", [...u.searchParams.keys()][0] || u.pathname, usageSrc(request)); } catch (e) {} }
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
     NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -19261,6 +19292,8 @@ export default {
     catch { return json({ error: "Invalid JSON" }, 400); }
     env={...env,__researchRequest:{action:body.action,titleId:body.titleId,assetId:body.assetId,methodId:body.methodId,campaignId:body.campaignId,assetType:body.assetType,force:body.force===true}};
     if (hubWriteScope.getStore()) hubWriteScope.getStore().action = body.action;
+    if (body.action === "usageMark") usageHit(env, ctx, String(body.kind || "ui").replace(/\W/g, "").slice(0, 20) || "ui", body.name, usageSrc(request));
+    else if (/^\w{1,60}$/.test(String(body.action || ""))) usageHit(env, ctx, "action", body.action, usageSrc(request));
 
     // â"€â"€ auth  -  exchange PIN for a session token (public, no token required) â"€â"€
     if (body.action === "auth") {
@@ -19677,6 +19710,17 @@ export default {
     }
     if (!externalCaller && (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET)))) {
       return json({ error: "Unauthorized" }, 401);
+    }
+    if (body.action === "usageMark") return json({ ok: true });
+    if (body.action === "usageReport") {   // → per kind / name / source: calls, days used, first + last day; plus calls per day
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      await usageFlush(env); if (!env.KWDB) return json({ error: "no D1" }, 500);
+      const days = Math.max(1, Math.min(365, Number(body.days) || 30)), since = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
+      try {
+        const rows = (await env.KWDB.prepare("SELECT kind, name, src, SUM(n) calls, COUNT(DISTINCT day) days, MIN(day) first, MAX(day) lastDay FROM usage_daily WHERE day >= ? GROUP BY kind, name, src ORDER BY calls DESC").bind(since).all()).results || [];
+        const perDay = (await env.KWDB.prepare("SELECT day, kind, SUM(n) calls FROM usage_daily WHERE day >= ? GROUP BY day, kind ORDER BY day").bind(since).all()).results || [];
+        return json({ ok: true, since, rows, perDay });
+      } catch (e) { return json({ ok: true, since, rows: [], perDay: [], note: /no such table/i.test(e.message) ? "nothing recorded yet" : e.message }); }
     }
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
@@ -58144,7 +58188,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     const cap = (lvl, args) => { try { if (run.lines.length < 80) run.lines.push({ t: Date.now(), lvl, msg: args.map(x => typeof x === "string" ? x : (x && x.message) || JSON.stringify(x)).join(" ").slice(0, 400) }); } catch (e) {} };
     const myLog = (...x) => { cap("log", x); oLog(...x); }, myErr = (...x) => { cap("error", x); oErr(...x); };
     console.log = myLog; console.error = myErr;
-    const cw = (name, p) => { const t0 = Date.now(), j = { name, ms: 0, ok: true }; run.jobs.push(j);
+    const cw = (name, p) => { const t0 = Date.now(), j = { name, ms: 0, ok: true }; run.jobs.push(j); usageHit(env, ctx, "cron", name, event.cron);
       const q = Promise.resolve(p).then(() => { j.ms = Date.now() - t0; }, e => { j.ms = Date.now() - t0; j.ok = false; j.error = String((e && e.message) || e).slice(0, 300); });
       pend.push(q); ctx.waitUntil(q); };
     ctx.waitUntil((async () => {

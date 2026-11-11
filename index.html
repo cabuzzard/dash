@@ -7905,7 +7905,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
     return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="hdKwTog(${ki})" class="hd-row" title="Click to open / close · drag to reorder" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : ''}">
       <span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span>
       <div style="flex:1 1 auto;min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${HD_KIND_COL[g.kind]};margin-right:6px;">${g.kind}</span><b style="font-size:13px;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</b><span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
-      <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${g.kind === 'Product' ? nums(t) : nums({})}</span>
+      <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${open && g.kind !== 'Product' ? nums({}) : nums(t)}</span>
       <a href="#" title="${g.hidden ? 'Hidden — click to show it again' : 'Hide this (its titles stop counting above)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;width:16px;text-align:center;">${g.hidden ? '👁' : '🙈'}</a></div>`; };
   // each level → { html, t: titles per colour (visible only) }; a hidden item is left out (or shown dimmed) and adds nothing to its parent
   const level = (items, build) => { const out = { html: '', t: {} };
@@ -9753,6 +9753,7 @@ function loadInformationFlowTables() {
 }
 
 function loadTabContent(name) {
+  try { call('usageMark', { kind: 'tab', name }).catch(() => {}); } catch (e) {}   // usage tracking (operator 2026-11-10) — which tabs actually get opened
   if (SESSION_TOKEN && !_hubRegistryReady) { const p = hubSitesExtraLoad(); if (p && p.then) return p.then(() => loadTabContentNow(name)); }
   return loadTabContentNow(name);
 }
