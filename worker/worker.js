@@ -19777,6 +19777,7 @@ export default {
       for (const [k, v] of Object.entries(p.color || {})) if (/^#[0-9a-f]{6}$/i.test(String(v))) out.color[String(k).slice(0, 300)] = String(v);
       out.pins = {}; for (const [k, v] of Object.entries(p.pins || {})) if (String(v || "").trim()) out.pins[String(k).slice(0, 300)] = String(v).slice(0, 200);   // initiative → its keyword topic (operator pin)
       if (p.arrange) out.arrange = true;   // sub-initiative / product cards ordered by keyword relevance
+      out.hidden = {}; for (const [k, v] of Object.entries(p.hidden || {})) if (v) out.hidden[String(k).slice(0, 300)] = true;   // cards the operator hid (🙈)
       if (Number(p.minRel) > 0) out.minRel = Math.min(100, Math.round(Number(p.minRel)));   // sub-initiatives below this relevance are hidden
       const txt = JSON.stringify(out); if (txt.length > 200000) return json({ error: "Too many card settings to save" }, 400);
       await env.TRADES.put(K, txt); return json({ ok: true, prefs: out });
