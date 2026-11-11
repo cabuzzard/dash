@@ -7928,7 +7928,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const mk = (kind, name, none, assets, goalRows, gk) => {
     const g = { kind, name, none, goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [], gk, ck: gk + '|' + nk(name) };
     assets.forEach(a => { const s = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
-    goalRows.forEach(r => { g.goal += r.n || 0; g.goalIds.push(r.rowId); }); g.color = (Pf.color || {})[g.ck] || ''; return g; };
+    goalRows.forEach(r => { g.goal += r.n || 0; g.goalIds.push(r.rowId); }); g.assets = assets; g.goalRows = goalRows; g.color = (Pf.color || {})[g.ck] || ''; return g; };
   const ordered = L => { if (!L.length) return L; const saved = (Pf.order || {})[L[0].gk] || [], pos = g => { const i = saved.indexOf(nk(g.name)); return i < 0 ? 1e9 : i; }; return L.sort((a, b) => pos(a) - pos(b) || a.none - b.none); };
   const COLS = HD_CARD_COLORS, add = (t, n) => { COLS.forEach(c => { t[c] = (t[c] || 0) + (n[c] || 0); }); return t; };
   const nums = t => COLS.map(c => `<span style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${c};">${t[c] || ''}</span>`).join('');
@@ -7940,8 +7940,8 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
       <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${open && g.kind !== 'Product' ? nums({}) : nums(t)}</span>
       <a href="#" title="${g.hidden ? 'Hidden — click to show it again' : 'Hide this (its titles stop counting above)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;width:16px;text-align:center;">${g.hidden ? '👁' : '🙈'}</a></div>`; };
   // each level → { html, t: titles per colour (visible only) }; a hidden item is left out (or shown dimmed) and adds nothing to its parent
-  const level = (items, build) => { const out = { html: '', t: {} };
-    items.forEach(it => { const r = build(it); r.g.hidden = !!H[r.g.ck]; if (r.g.hidden) { nHid++; if (!HD.showHidden) return; } else add(out.t, r.t); out.html += r.html; }); return out; };
+  const level = (items, build) => { const out = { html: '', t: {}, sel: [] };   // sel = the coloured, visible titles under it (for the asset table)
+    items.forEach(it => { const r = build(it); r.g.hidden = !!H[r.g.ck]; if (r.g.hidden) { nHid++; if (!HD.showHidden) return; } else { add(out.t, r.t); out.sel.push(...(r.sel || [])); } out.html += r.html; }); return out; };
   const body = level(ordered(tree.map(C => Object.assign(mk('Cluster', C.name, /^(no topic assigned|\(no cluster\))$/i.test(C.name), [], [], cid + '|kw:|Cluster'), { C }))), cg => {
     const C = cg.C, kc = nk(C.name), oC = O.has(cg.ck);
     const inner = level(ordered(C.topics.map(T => Object.assign(mk('Topic', T.name, T.key === '__none', [], [], cid + '|kw:' + kc + '|Topic'), { T }))), tg => {
@@ -7953,24 +7953,34 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
         const where = [h.name, C.name, T.name, P.name].join(' › ');
         const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, { noHidLink: true }) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';
         const pa = KM && T.kid && P.key !== '__none' ? act('＋', 'Add a title to this product', () => { hubKwTitleAdd(h.slug, T.kid, P.key); hdKwWatch(true); }, '#4ade80') : '';
-        return { g: pg, t, html: row(pg, 2, oP, t, `${P.titles.length} title${P.titles.length === 1 ? '' : 's'}`, pa) + cards }; });
+        return { g: pg, t, sel: titles.filter(x => !H[x.ck] && x.color), html: row(pg, 2, oP, t, `${P.titles.length} title${P.titles.length === 1 ? '' : 's'}`, pa) + cards }; });
       const ta = KM && T.kid ? act('🔑', 'Keywords — seed & re-run (Google ideas + a best-guess pick), edit the list', () => { hubKwKwModal(h.slug, T.kid); hdKwWatch(false); })
         + act('⚙', 'Topic — rename, move to another cluster, isolate, delete', () => { ao2TopicModalFor(h.campaignId, T.kid, T.name); hdKwWatch(false); })
         + act('＋', 'Add a product on this topic (new or existing)', () => { hubKwAddProduct(h.slug, T.kid); hdKwWatch(true); }, '#4ade80')
         + act('↗', 'Open this topic in the Keywords tab', () => hubKwOpenInTool(h.slug, T.kid)) : '';
-      return { g: tg, t: inner2.t, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, ta, oT && T.products.some(P => O.has(cid + '|kw:' + kc + '/' + T.key + '|Product|' + nk(P.name)))) + (oT ? inner2.html : '') }; });
+      return { g: tg, t: inner2.t, sel: inner2.sel, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, ta, oT && T.products.some(P => O.has(cid + '|kw:' + kc + '/' + T.key + '|Product|' + nk(P.name)))) + (oT ? inner2.html : '') }; });
     const ci = KM ? (KM.tc.clusters || []).indexOf(C.name) : -1;
     const ca = ci < 0 ? '' : act('✎', 'Rename this cluster (onto an existing name = merge)', async () => { await hubKwRename(h.slug, 'cluster', ci); hdRender(); })
       + act('＋', 'Add a topic to this cluster — seed keywords → 🔬 research', () => hdKwAddTopic(h.slug, C.name), '#4ade80')
       + act('🗑', 'Delete this cluster — its topics become unclustered; no topic, keyword, product or title is deleted', () => hubKwDeleteCluster(h.slug, ci), '#f87171');
-    return { g: cg, t: inner.t, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`, ca, oC && C.topics.some(T => O.has(cid + '|kw:' + kc + '|Topic|' + nk(T.name)))) + (oC ? inner.html : '') }; });
+    return { g: cg, t: inner.t, sel: inner.sel, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`, ca, oC && C.topics.some(T => O.has(cid + '|kw:' + kc + '|Topic|' + nk(T.name)))) + (oC ? inner.html : '') }; });
   const legend = `<div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Cluster › Topic › Product — titles by colour</span></div>`;
   const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><button style="${B('var(--text2)')}" onclick="HD.hub='';HD.path=[];hdRender()">↑ All hubs</button><span style="flex:1;min-width:0;"><a href="#" onclick="event.preventDefault();HD.hub='';HD.path=[];hdRender()" style="color:var(--accent);">All hubs</a> <span style="color:var(--text3);">›</span> <b>${esc(h.name)}</b></span>
     ${nHid ? `<a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;font-size:12px;">${HD.showHidden ? 'hide the ' + nHid + ' hidden' : nHid + ' hidden — show'}</a>` : ''}
     ${KM ? `<button style="${B('#4ade80')}" onclick="hubKwAddCluster('${esc(h.slug)}');hdKwWatch(false)" title="Add a cluster — seed keywords → 🔬 research suggests a real keyword to name it">＋ Cluster</button><button style="${B('#4ade80')}" onclick="hdKwAddTopic('${esc(h.slug)}','')" title="Add a topic — seed keywords → 🔬 research">＋ Topic</button>`
       : (_hubKw[h.slug] || {}).error ? `<a href="#" onclick="event.preventDefault();delete _hubKw['${esc(h.slug)}'];hdRender()" style="color:#f87171;font-size:12px;">keywords didn't load — retry</a>` : '<span style="font-size:11px;color:var(--text3);">loading keywords…</span>'}
     <span style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;">${['Cluster', 'Topic', 'Product'].map(k => `<span style="color:var(--text3);white-space:nowrap;">${k}s <a href="#" onclick="event.preventDefault();hdKwAll('${k}',true)" title="Expand every ${k.toLowerCase()}" style="color:var(--accent);">expand</a> / <a href="#" onclick="event.preventDefault();hdKwAll('${k}',false)" title="Collapse every ${k.toLowerCase()}" style="color:var(--accent);">collapse</a></span>`).join('')}</span></div>`;
-  return nav + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);">${legend}${body.html || '<div style="font-size:12px;color:var(--text3);padding:10px;">No clusters yet</div>'}</div>`;
+  // 📊 All assets of the coloured, visible titles (operator 2026-11-10: "for everything that has a color and is not disappeared, put an all assets
+  // count table below the clusters table arranged by type with CP AA links … counts only the assets from the colored, visible records"). A title
+  // counts when it has a highlight and neither it nor any heading above it is hidden (🙈 — even while "hidden — show" is on). Goal = goal rows
+  // placed on those titles. Every number opens its records in CP AA.
+  const selT = body.sel, selA = [...new Map(selT.flatMap(x => x.assets).map(a => [hdNid(a.assetId), a])).values()], selG = [...new Map(selT.flatMap(x => x.goalRows).map(r => [r.rowId, r])).values()];
+  const selC = hdCount(selA, selG), selL = h.name + ' › coloured titles';
+  const dots = HD_CARD_COLORS.map(c => [c, selT.filter(x => x.color === c).length]).filter(([, n]) => n).map(([c, n]) => `<span style="font-size:11.5px;font-weight:700;color:${c};margin-left:8px;">● ${n}</span>`).join('');
+  const assetTbl = `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);margin-top:10px;">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--border2);"><span style="flex:1;min-width:0;font-size:13px;"><b>All assets</b> <span style="color:var(--text3);">· ${selT.length} coloured, visible title${selT.length === 1 ? '' : 's'}</span>${dots}</span>${selT.length ? hdChips(selC, noGoal, selL) : ''}</div>
+    ${selT.length ? hdTypeTable(selC, noGoal, selL) : '<div style="font-size:12px;color:var(--text3);padding:8px 10px;">Give a title a colour (the dot on its card) to count its assets here.</div>'}</div>`;
+  return nav + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);">${legend}${body.html || '<div style="font-size:12px;color:var(--text3);padding:10px;">No clusters yet</div>'}</div>` + assetTbl;
 }
 function hdRender() {
   const el = document.getElementById('hdBody'); if (!el) return; HD._inits = [];
