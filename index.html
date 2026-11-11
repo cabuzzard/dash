@@ -7978,12 +7978,12 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const selC = hdCount(selA, selG), selL = h.name + ' › coloured titles';
   // rows by parent → child from the Asset Flow graph (operator 2026-11-10: "arrange the asset rows by parent child relation" + "there is no pillar.
   // topical seo … is a child of series. newsletter should be child of digest"): each AF Parent Asset node and the asset nodes it leads to (through
-  // research steps, hiAfGroups), matched to these asset types (same name, the older name, "<name> parent", or one name extending the other).
+  // research steps, hiAfGroups), matched to these asset types (same name, the older name, or "<name> parent").
   // A parent type with no counted assets still shows (faded) so its children sit under it; types the graph doesn't relate come after.
   const tk = a => hubCheckNorm(String(a.rawAssetType || a.assetType || '').trim() || '(no type)');
   if (!HD.afG && !HD.afBusy) { HD.afBusy = true; call('getInfoFlowTable', { name: 'assetflowgraph' }).then(r => { HD.afG = hiAfGroups(r && r.table); }).catch(() => { HD.afG = []; }).finally(() => { HD.afBusy = false; hdRender(); }); }
   { const labels = selC.types.map(o => o.label), byK = new Map(selC.types.map(o => [hubCheckNorm(o.label), o])), E = new Map();
-    const match = l => { const x = hiAfType(l, labels); if (x) return x; const n = hubCheckNorm(l); return labels.find(t => { const m = hubCheckNorm(t); return n.startsWith(m + ' ') || m.startsWith(n + ' '); }) || ''; };
+    const match = l => hiAfType(l, labels);   // exact name, the older name, or "<name> parent" — never a partial name (that put Offer under Series)
     (HD.afG || []).forEach(g => { const kids = g.kids.map(match).filter(Boolean); if (!kids.length) return;
       let pk = match(g.parent); if (!pk) { pk = g.parent; if (!byK.has(hubCheckNorm(pk))) byK.set(hubCheckNorm(pk), { label: pk, placeholder: true }); }
       const P = hubCheckNorm(pk); kids.forEach(c => { const K2 = hubCheckNorm(c); if (K2 === P) return; if (!E.has(P)) E.set(P, []); if (!E.get(P).includes(K2)) E.get(P).push(K2); }); });
