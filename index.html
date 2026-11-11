@@ -7891,6 +7891,34 @@ function hdKwWatch(rows) {   // when the modal closes: redraw, or re-read the ro
   const m = document.getElementById('hcModal'); if (!m) return;
   setTimeout(() => { const ob = new MutationObserver(() => { if (!m.classList.contains('open')) { ob.disconnect(); if (rows) hdLoad(true); else hdRender(); } }); ob.observe(m, { attributes: true, attributeFilter: ['class'] }); }, 0);
 }
+// ✎ cluster modal (operator 2026-11-11: "change the edit cluster form to show the cluster keywords and have a re run instead of just title of cluster").
+// A cluster has no keyword list of its own — its keywords are its topics' keywords, listed here by topic. 🔬 Re-run = the ＋ Cluster modal's
+// research (kwSeedResearch, kind cluster: Google ideas → broad head terms with volume); click one to make it the name. 💾 Save renames through
+// kwHubApply renameCluster (backup + ↶ undo; renaming onto an existing cluster merges them).
+function hdKwClusterModal(slug, ci) {
+  const K = _hubKw[slug]; if (!K) return; const c = (K.tc.clusters || [])[ci]; if (c == null) return;
+  const A = K.tc.assign || {}, ts = [...(K.committed || []), ...(K.staged || [])].filter(t => (A[t.id] || A[kwNid(t.id)]) === c);
+  const split = v => String(v || '').split(/[,;\n]/).map(x => x.trim()).filter(Boolean), all = [...new Set(ts.flatMap(t => split(t.keywords).map(x => x.toLowerCase())))];
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  hcModal(`<h3 style="margin:0 0 4px;">✎ Cluster — ${esc(c)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${ts.length} topic${ts.length === 1 ? '' : 's'} · ${all.length} keyword${all.length === 1 ? '' : 's'}. A cluster's keywords are its topics' keywords — edit those with 🔑 on a topic row.</div>
+    <label style="font-size:11px;color:var(--text3);">Cluster name (usually the broad keyword that groups its topics)</label><input id="hdClName" style="${IN}" value="${esc(c)}">
+    <label style="font-size:11px;color:var(--text3);">Seeds to re-run (comma or one per line)</label><textarea id="hdClSeed" rows="2" style="${IN}">${esc(c)}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 8px;"><button class="kw-btn" onclick="hubKwSeedResearch('${esc(slug)}','cluster','hdClSeed','hdClName','hdClOut')">🔬 Re-run</button><span style="font-size:10.5px;color:var(--text3);">Google ideas → broad head terms with monthly searches — click one to make it the name</span></div>
+    <div id="hdClOut" style="font-size:11.5px;color:var(--text3);margin-bottom:10px;max-height:20vh;overflow:auto;"></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Keywords in this cluster</div>
+    <div style="max-height:30vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:6px 8px;margin-bottom:12px;">${ts.length ? ts.map(t => `<div style="margin-bottom:8px;"><div style="font-size:12px;font-weight:700;">${esc(t.name)}</div><div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">${split(t.keywords).map(k => `<span style="font-size:11.5px;padding:1px 7px;border:1px solid var(--border2);border-radius:10px;">${esc(k)}</span>`).join('') || '<span style="font-size:11px;color:var(--text3);">no keywords</span>'}</div></div>`).join('') : '<div style="font-size:12px;color:var(--text3);">No topics in this cluster yet — ＋ on the cluster row adds one.</div>'}</div>
+    <div style="display:flex;gap:8px;align-items:center;"><button class="modal-btn" onclick="hcModalRun(this, () => hdKwClusterSave('${esc(slug)}',${ci}))">💾 Save</button>${HC_CANCEL}<a href="#" style="margin-left:auto;font-size:11px;color:var(--text3);" onclick="event.preventDefault();hubKwOpenClusterInTool('${esc(slug)}',${ci})">↗ Keywords tab</a></div>`);
+}
+async function hdKwClusterSave(slug, ci) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return 'Hub not loaded';
+  const cur = (K.tc.clusters || [])[ci], n = document.getElementById('hdClName').value.trim(); if (!n) return 'Give it a name';
+  if (n === cur) { document.getElementById('hcModal').classList.remove('open'); return true; }
+  if ((K.tc.clusters || []).some(x => x !== cur && x.toLowerCase() === n.toLowerCase()) && !confirm('"' + n + '" is already a cluster — merge "' + cur + '" into it?')) return 'Not saved';
+  const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name || slug, ops: [{ op: 'renameCluster', from: cur, to: n }] }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return (r && r.error) || 'Not saved'; if (r.errors && r.errors.length) return r.errors.join(' · ');
+  document.getElementById('hcModal').classList.remove('open');
+  delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug); showToast('✓ Cluster renamed “' + cur + '” → “' + n + '”', 'success'); return true;
+}
 function hdKwAddTopic(slug, cluster) { hubKwAddTopic(slug); hdKwWatch(false); if (cluster) setTimeout(() => { const el = document.getElementById('hkwNtCl'); if (el) el.value = cluster; }, 60); }
 // 🗂 Keyword view (operator 2026-11-10, an experiment: "collapse headings all the way until you are inside the product level and then you are seeing
 // title cards. and on the heading rows instead of showing asset counts show counts of how many titles have which color just using numbers and blank
@@ -7960,7 +7988,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
         + act('↗', 'Open this topic in the Keywords tab', () => hubKwOpenInTool(h.slug, T.kid)) : '';
       return { g: tg, t: inner2.t, sel: inner2.sel, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, ta, oT && T.products.some(P => O.has(cid + '|kw:' + kc + '/' + T.key + '|Product|' + nk(P.name)))) + (oT ? inner2.html : '') }; });
     const ci = KM ? (KM.tc.clusters || []).indexOf(C.name) : -1;
-    const ca = ci < 0 ? '' : act('✎', 'Rename this cluster (onto an existing name = merge)', async () => { await hubKwRename(h.slug, 'cluster', ci); hdRender(); })
+    const ca = ci < 0 ? '' : act('✎', 'Edit this cluster — its keywords, 🔬 re-run, rename', () => { hdKwClusterModal(h.slug, ci); hdKwWatch(false); })
       + act('＋', 'Add a topic to this cluster — seed keywords → 🔬 research', () => hdKwAddTopic(h.slug, C.name), '#4ade80')
       + act('🗑', 'Delete this cluster — its topics become unclustered; no topic, keyword, product or title is deleted', () => hubKwDeleteCluster(h.slug, ci), '#f87171');
     return { g: cg, t: inner.t, sel: inner.sel, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`, ca, oC && C.topics.some(T => O.has(cid + '|kw:' + kc + '|Topic|' + nk(T.name)))) + (oC ? inner.html : '') }; });
