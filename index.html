@@ -7880,6 +7880,10 @@ function hdTopicAdd(ti) {   // ＋ Add initiative here → an existing initiativ
 // product shows its title cards (the same card: colour, order, 🙈, Goal / Plan / Dev / Pub / All). A heading's numbers = its titles per highlight
 // colour; hidden titles — and everything under a hidden heading — are not counted. Open / closed is kept this session. Display only.
 const HD_KIND_COL = { Cluster: '#f59e0b', Topic: '#c084fc', Product: 'var(--text3)', Title: 'var(--text3)', Initiative: '#8ab4f8', 'Sub-initiative': '#c084fc' };
+// expand / collapse a whole level (operator 2026-11-10): expanding topics also opens the clusters they sit in, products the topics + clusters;
+// collapsing a level also closes everything under it
+function hdKwAll(lv, open) { const L = ['Cluster', 'Topic', 'Product'], i = L.indexOf(lv), A = HD._kwAll || {}, O = HD.kwOpen = HD.kwOpen || new Set();
+  L.forEach((k, j) => (A[k] || []).forEach(ck => { if (open && j <= i) O.add(ck); if (!open && j >= i) O.delete(ck); })); hdRender(); }
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const cid = hdNid(h.campaignId), nk = v => String(v || '').trim().toLowerCase(), ip = (HD.ip || {})[cid];
@@ -7889,7 +7893,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const topics = tree.flatMap(C => C.topics), goal = planAll.map(r => ({ ...r })); hdPlace(goal, topics);
   const under = (L, path) => L.filter(r => r.path && path.every((k, i) => r.path[i] === k));
   const Pf = HD.cardPrefs || {}, H = Pf.hidden || {}, O = HD.kwOpen = HD.kwOpen || new Set();
-  HD._keys = []; HD._sets = []; HD._cards = []; HD._kwKeys = []; let nHid = 0;
+  HD._keys = []; HD._sets = []; HD._cards = []; HD._kwKeys = []; HD._kwAll = { Cluster: [], Topic: [], Product: [] }; let nHid = 0;
   const mk = (kind, name, none, assets, goalRows, gk) => {
     const g = { kind, name, none, goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [], gk, ck: gk + '|' + nk(name) };
     assets.forEach(a => { const s = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
@@ -7897,7 +7901,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const ordered = L => { if (!L.length) return L; const saved = (Pf.order || {})[L[0].gk] || [], pos = g => { const i = saved.indexOf(nk(g.name)); return i < 0 ? 1e9 : i; }; return L.sort((a, b) => pos(a) - pos(b) || a.none - b.none); };
   const COLS = HD_CARD_COLORS, add = (t, n) => { COLS.forEach(c => { t[c] = (t[c] || 0) + (n[c] || 0); }); return t; };
   const nums = t => COLS.map(c => `<span style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${c};">${t[c] || ''}</span>`).join('');
-  const row = (g, depth, open, t, sub) => { const ci = HD._cards.push(g) - 1, ki = HD._kwKeys.push(g.ck) - 1;
+  const row = (g, depth, open, t, sub) => { const ci = HD._cards.push(g) - 1, ki = HD._kwKeys.push(g.ck) - 1; HD._kwAll[g.kind].push(g.ck);
     return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="hdKwTog(${ki})" class="hd-row" title="Click to open / close · drag to reorder" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : ''}">
       <span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span>
       <div style="flex:1 1 auto;min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${HD_KIND_COL[g.kind]};margin-right:6px;">${g.kind}</span><b style="font-size:13px;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</b><span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
@@ -7922,7 +7926,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const legend = `<div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Cluster › Topic › Product — titles by colour</span></div>`;
   const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><button style="${B('var(--text2)')}" onclick="HD.hub='';HD.path=[];hdRender()">↑ All hubs</button><span style="flex:1;min-width:0;"><a href="#" onclick="event.preventDefault();HD.hub='';HD.path=[];hdRender()" style="color:var(--accent);">All hubs</a> <span style="color:var(--text3);">›</span> <b>${esc(h.name)}</b></span>
     ${nHid ? `<a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;font-size:12px;">${HD.showHidden ? 'hide the ' + nHid + ' hidden' : nHid + ' hidden — show'}</a>` : ''}
-    ${O.size ? `<a href="#" onclick="event.preventDefault();HD.kwOpen=new Set();hdRender()" style="color:var(--text2);font-size:12px;">collapse all</a>` : ''}</div>`;
+    <span style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;">${['Cluster', 'Topic', 'Product'].map(k => `<span style="color:var(--text3);white-space:nowrap;">${k}s <a href="#" onclick="event.preventDefault();hdKwAll('${k}',true)" title="Expand every ${k.toLowerCase()}" style="color:var(--accent);">expand</a> / <a href="#" onclick="event.preventDefault();hdKwAll('${k}',false)" title="Collapse every ${k.toLowerCase()}" style="color:var(--accent);">collapse</a></span>`).join('')}</span></div>`;
   return nav + `<div style="border:1px solid var(--border2);border-radius:10px;overflow:hidden;background:var(--surface);">${legend}${body.html || '<div style="font-size:12px;color:var(--text3);padding:10px;">No clusters yet</div>'}</div>`;
 }
 function hdRender() {
