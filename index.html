@@ -7932,8 +7932,9 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const ordered = L => { if (!L.length) return L; const saved = (Pf.order || {})[L[0].gk] || [], pos = g => { const i = saved.indexOf(nk(g.name)); return i < 0 ? 1e9 : i; }; return L.sort((a, b) => pos(a) - pos(b) || a.none - b.none); };
   const COLS = HD_CARD_COLORS, add = (t, n) => { COLS.forEach(c => { t[c] = (t[c] || 0) + (n[c] || 0); }); return t; };
   const nums = t => COLS.map(c => `<span style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${c};">${t[c] || ''}</span>`).join('');
-  const row = (g, depth, open, t, sub, acts) => { const ci = HD._cards.push(g) - 1, ki = HD._kwKeys.push(g.ck) - 1; HD._kwAll[g.kind].push(g.ck);
-    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="hdKwTog(${ki})" class="hd-row" title="Click to open / close · drag to reorder" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : ''}">
+  // faded = open with an open heading under it (operator 2026-11-10: the lowest open headings stay full strength)
+  const row = (g, depth, open, t, sub, acts, faded) => { const ci = HD._cards.push(g) - 1, ki = HD._kwKeys.push(g.ck) - 1; HD._kwAll[g.kind].push(g.ck);
+    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="hdKwTog(${ki})" class="hd-row" title="Click to open / close · drag to reorder" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : faded ? 'opacity:.6;' : ''}">
       <span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span>
       <div style="flex:1 1 auto;min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${HD_KIND_COL[g.kind]};margin-right:6px;">${g.kind}</span><b style="font-size:13px;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</b><span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
       ${acts ? `<span style="display:inline-flex;gap:8px;align-items:center;flex:0 0 auto;">${acts}</span>` : ''}
@@ -7958,12 +7959,12 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
         + act('⚙', 'Topic — rename, move to another cluster, isolate, delete', () => { ao2TopicModalFor(h.campaignId, T.kid, T.name); hdKwWatch(false); })
         + act('＋ Product', 'Add a product on this topic (new or existing)', () => { hubKwAddProduct(h.slug, T.kid); hdKwWatch(true); }, '#4ade80')
         + act('↗', 'Open this topic in the Keywords tab', () => hubKwOpenInTool(h.slug, T.kid)) : '';
-      return { g: tg, t: inner2.t, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, ta) + (oT ? inner2.html : '') }; });
+      return { g: tg, t: inner2.t, html: row(tg, 1, oT, inner2.t, `${T.products.length} product${T.products.length === 1 ? '' : 's'}`, ta, oT && T.products.some(P => O.has(cid + '|kw:' + kc + '/' + T.key + '|Product|' + nk(P.name)))) + (oT ? inner2.html : '') }; });
     const ci = KM ? (KM.tc.clusters || []).indexOf(C.name) : -1;
     const ca = ci < 0 ? '' : act('✎', 'Rename this cluster (onto an existing name = merge)', async () => { await hubKwRename(h.slug, 'cluster', ci); hdRender(); })
       + act('＋ Topic', 'Add a topic to this cluster — seed keywords → 🔬 research', () => hdKwAddTopic(h.slug, C.name), '#4ade80')
       + act('🗑', 'Delete this cluster — its topics become unclustered; no topic, keyword, product or title is deleted', () => hubKwDeleteCluster(h.slug, ci), '#f87171');
-    return { g: cg, t: inner.t, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`, ca) + (oC ? inner.html : '') }; });
+    return { g: cg, t: inner.t, html: row(cg, 0, oC, inner.t, `${C.topics.length} topic${C.topics.length === 1 ? '' : 's'}`, ca, oC && C.topics.some(T => O.has(cid + '|kw:' + kc + '|Topic|' + nk(T.name)))) + (oC ? inner.html : '') }; });
   const legend = `<div style="display:flex;gap:8px;align-items:center;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);border-bottom:1px solid var(--border2);"><span style="flex:1;">Cluster › Topic › Product — titles by colour</span></div>`;
   const nav = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;font-size:13px;"><button style="${B('var(--text2)')}" onclick="HD.hub='';HD.path=[];hdRender()">↑ All hubs</button><span style="flex:1;min-width:0;"><a href="#" onclick="event.preventDefault();HD.hub='';HD.path=[];hdRender()" style="color:var(--accent);">All hubs</a> <span style="color:var(--text3);">›</span> <b>${esc(h.name)}</b></span>
     ${nHid ? `<a href="#" onclick="event.preventDefault();HD.showHidden=!HD.showHidden;hdRender()" style="color:#f59e0b;font-size:12px;">${HD.showHidden ? 'hide the ' + nHid + ' hidden' : nHid + ' hidden — show'}</a>` : ''}
