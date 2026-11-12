@@ -6416,7 +6416,22 @@ function amTrendHtml() {
       ${lab('Ideas · ' + ideas.length + ' (scored)')}<div style="border:1px solid var(--border);border-radius:8px;">${ideas.map((x, i) => `<div style="padding:7px 10px;border-top:${i ? '1px solid var(--border)' : '0'};">
         <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="color:${scol(x.score)};min-width:28px;">${x.score}</b><b style="font-size:13px;flex:1;min-width:180px;">${esc(x.item)}</b><span style="font-size:11px;color:var(--text3);">${esc(x.platform)} · ${esc(x.form)}</span></div>
         <div style="font-size:12px;color:var(--text2);margin:3px 0 0 36px;">${esc(x.why)}</div>
-        <div style="font-size:11px;color:var(--text3);margin:2px 0 0 36px;">${(x.keywords || []).map(esc).join(' · ')}</div></div>`).join('')}</div>` : ''}`;
+        <div style="font-size:11px;color:var(--text3);margin:2px 0 0 36px;">${(x.keywords || []).map(esc).join(' · ')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:5px 0 0 36px;">${amTrendMakeBtn(x, 'single', 'Single Post')}${x.platform === 'Etsy' ? amTrendMakeBtn(x, 'etsy', 'Etsy Listing') : ''}</div></div>`).join('')}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">＋ Etsy Listing = a child of this Trend Parent. ＋ Single Post stands alone (no parent): the idea and market notes are routed to its writer, and it carries this run (${esc(T.runId || '')}).</div>` : ''}`;
+}
+function amTrendMakeBtn(x, kind, label) {
+  const id = x.made && x.made[kind], busy = AM._trendMaking === x.id + kind;
+  return id ? `<button onclick="amOpen('${esc(id)}')" title="Open it" style="font-size:11px;padding:2px 8px;border:1px solid #4ade80;border-radius:5px;background:transparent;color:#4ade80;cursor:pointer;">✓ ${label} ↗</button>`
+    : `<button ${busy ? 'disabled' : ''} onclick="amTrendMake('${esc(x.id)}','${kind}')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);cursor:pointer;">${busy ? '⏳' : '＋'} ${label}</button>`;
+}
+async function amTrendMake(ideaId, kind) {
+  if (!AM || AM._trendMaking) return; AM._trendMaking = ideaId + kind; amDraw();
+  const r = await call('trendParentRun', { assetId: AM.id, op: 'make', ideaId, kind }).catch(e => ({ error: e.message }));
+  AM._trendMaking = '';
+  if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.trend = r; AM.log = (r.existing ? '↷ Already made' : '✓ ' + (kind === 'etsy' ? 'Etsy Listing made (Development, child of this Trend Parent)' : 'Single Post made (Development, no parent — idea routed, run ' + (r.runId || '') + ')')) + (r.warning ? ' · ⚠ ' + r.warning : '');
+  amDraw(); if (typeof HD !== 'undefined' && HD) HD.rows = null;
 }
 function amTrendInputs() { return { keywords: (document.getElementById('trKw') || {}).value || '', notes: (document.getElementById('trNotes') || {}).value || '', platforms: [...document.querySelectorAll('.trPl')].filter(x => x.checked).map(x => x.value) }; }
 async function amTrendLoad() {

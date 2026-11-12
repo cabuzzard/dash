@@ -2520,6 +2520,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   const seoKws=style.purpose==='SEO'?[...new Set([...(keywordSeed?keywordSeed.split(/\s*;\s*/).filter(Boolean).slice(0,3):[]),...kwSplit(String(packet.product?.properties?.Keywords||''))])]:[],seoList=seoCoverage(seoKws,'','').missing;
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
   const assetDir=hubRichText(p['Writer Directions']?.rich_text).trim();if(assetDir)packet.assetDirections=assetDir.slice(0,WRITER_DIRECTIONS_MAX);   // last in the chain (2026-11-09)
+  const routed=await env.TRADES.get('route:'+hubAssetId(page.id),'json').catch(()=>null);if(routed)packet.routedInput=routed;   // information ROUTED to this asset (2026-11-11) — not a parent
   const pre=await env.TRADES.get('prewrite:'+hubAssetId(page.id),'json').catch(()=>null);   // the asset's PRE-WRITE (external LLM draft, pasted in the Asset modal)
   if(pre&&String(pre.text||'').trim())packet.prewrite=String(pre.text).slice(0,14000);
   const runScope=(only?'\n\nTHIS RUN WRITES ONLY these contract fields: '+contract.map(f=>f.name).join(', ')+'. The packet\'s currentFields show the asset\'s other fields — keep consistent with them, do not rewrite them.':'')
@@ -2527,6 +2528,7 @@ async function writeContractAsset(env,assetId,opts={}) {
     +(String(opts.guidance||'').trim()?'\n\nOPERATOR GUIDANCE FOR THIS RUN (follow it within the contract):\n'+String(opts.guidance).trim().slice(0,4000):'');
   const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
+    +(packet.routedInput?'\n\nROUTED INPUT: the packet\'s "routedInput" is information routed to this asset from a '+(packet.routedInput.fromType||'source')+' (run "'+(packet.routedInput.run||'')+'") — it is NOT this asset\'s parent. Its idea is this asset\'s subject; its market notes (what sells, price bands, review pain points, white space) are sourced facts you may use. Do not invent details the item or market notes do not give.':'')
     +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'')
     +(packet.assetDirections?'\n\nTHIS ASSET\'S DIRECTIONS (the packet\'s "assetDirections" — the operator\'s own directions saved on this asset, the LAST input in the chain): follow them within the contract. They decide emphasis, this asset\'s relation to its parent / children / siblings, which input to lean on and which keywords to focus on, and they win over earlier sources on those choices. They never add facts the other sources do not support.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
@@ -3496,7 +3498,8 @@ async function trendParentRunJob(env, id, inputs) {
     if (!ideas.length) return fail("The research returned no usable ideas — nothing changed");
     const m = g.market || {}, market = Object.fromEntries(["whatSells", "priceBands", "saturation", "reviewPainPoints", "whiteSpace"].map(k => [k, String(m[k] || "").slice(0, 4000)]));
     if (prev.at) await env.TRADES.put("trend:parent:history:" + id + ":" + prev.at, JSON.stringify(prev), { expirationTtl: 365 * 86400 });
-    const st = { inputs, market, ideas, at: new Date().toISOString(), status: "done", usage,
+    const at = new Date().toISOString(), runId = "Trend " + at.slice(0, 16).replace("T", " ") + " · " + (inputs.keywords[0] || "").slice(0, 60);
+    const st = { inputs, market, ideas, at, runId, status: "done", usage,
       evidence: { etsyCounts: ev.etsy ? ev.etsy.counts : null, etsyListings: ev.etsy ? ev.etsy.items.length : 0, etsyReviews: ev.etsy ? ev.etsy.reviews.length : 0, kdpResults: ev.kdp ? ev.kdp.items.length : 0 },
       errors: [...(ev.etsy ? ev.etsy.errors : []), ...(ev.kdp ? ev.kdp.errors : [])].slice(0, 20) };
     await env.TRADES.put(key, JSON.stringify(st));
@@ -3505,7 +3508,7 @@ async function trendParentRunJob(env, id, inputs) {
   } catch (e) { await fail(e.message); }
   finally { await env.TRADES.delete("trend:lock:" + id).catch(() => {}); }
 }
-async function trendParentAction(env, ctx, body) {
+async function trendParentAction(env, ctx, body, invoke) {
   const id = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/.test(id)) return { error: "assetId required" };
   const key = "trend:parent:" + id, st = (await env.TRADES.get(key, "json")) || { inputs: { keywords: [], platforms: ["Etsy"], notes: "" } };
   const running = !!(await env.TRADES.get("trend:lock:" + id));
@@ -3526,7 +3529,30 @@ async function trendParentAction(env, ctx, body) {
     ctx.waitUntil(trendParentRunJob(env, id, inputs));
     return { ok: true, started: true };
   }
-  return { error: "op must be get · inputs · run" };
+  if (body.op === "make") {   // one idea → one asset. Etsy Listing = child of this Trend Parent (Asset Flow edge). Single Post = NO parent:
+    // the idea reaches its writer by ROUTING (KV route:<assetId>, read into the writing packet as routedInput) and it carries the Run.
+    const kind = body.kind === "etsy" ? "etsy" : body.kind === "single" ? "single" : ""; if (!kind) return { error: "kind must be single or etsy" };
+    const idea = (st.ideas || []).find(x => x.id === body.ideaId); if (!idea) return { error: "That idea is not in the current list — re-open the tab" };
+    if (kind === "etsy" && idea.platform !== "Etsy") return { error: "Only an Etsy idea can become an Etsy Listing" };
+    if (idea.made && idea.made[kind]) return { ok: true, existing: true, assetId: idea.made[kind], ...st, running };
+    const page = await ivPage(id), pp = page.properties || {}, tid = ivRid(pp, "Content Strategy"), cid = ivRid(pp, "Campaign"), pid = ivRid(pp, "Product");
+    if (!tid || !cid) return { error: "The Trend Parent has no title / campaign" };
+    const runId = st.runId || ("Trend " + String(st.at || "").slice(0, 16).replace("T", " "));
+    const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: pid || undefined,
+      assetTitle: (kind === "etsy" ? idea.item : idea.item + " — Single Post").slice(0, 300), assetType: kind === "etsy" ? "Etsy Listing" : "single post",
+      ...(kind === "etsy" ? { parentAssetId: id } : {}) });
+    if (!a || a.error || !a.id) return { error: "Not created: " + ((a && a.error) || "no response") };
+    const aid = hubAssetId(a.id), warn = [];
+    try { await runEnsureProps(env); const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(runId) } } }) });
+      if (!r.ok) warn.push("Run not saved"); } catch (e) { warn.push("Run not saved: " + e.message); }
+    try { await seriesKeywordSeed(env, [aid], idea.keywords.join("; ")); } catch (e) { warn.push("Keyword Seed not saved"); }
+    await env.TRADES.put("route:" + aid, JSON.stringify({ from: id, fromType: "Trend Parent", run: runId, at: new Date().toISOString(),
+      idea: { item: idea.item, platform: idea.platform, form: idea.form, keywords: idea.keywords, why: idea.why, score: idea.score },
+      market: st.market ? { whatSells: st.market.whatSells, priceBands: st.market.priceBands, reviewPainPoints: st.market.reviewPainPoints, whiteSpace: st.market.whiteSpace } : null }));
+    idea.made = { ...(idea.made || {}), [kind]: aid }; await env.TRADES.put(key, JSON.stringify(st));
+    return { ok: true, assetId: aid, kind, ...(warn.length ? { warning: warn.join(" · ") } : {}), ...st, running };
+  }
+  return { error: "op must be get · inputs · run · make" };
 }
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
@@ -57191,7 +57217,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
-      if (body.action === "trendParentRun") { try { return json(await trendParentAction(env, ctx, body)); } catch (e) { return json({ error: e.message }, 500); } }
+      if (body.action === "trendParentRun") { const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        try { return json(await trendParentAction(env, ctx, body, invoke)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "createRunAssets") { try { return json(await createRunAssets(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "setRunStatus") { try { return json(await setRunStatus(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getRun") { const runId = String(body.runId || "").trim(); return json({ ok: true, runId, log: (await env.TRADES.get("run:log:" + runId, "json")) || [] }); }
