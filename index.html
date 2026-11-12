@@ -8355,7 +8355,16 @@ async function aiJson(input) {
 function aiImgs(input) { if (!AI) return; Array.from(input.files || []).forEach(f => { AI.imgs[f.name.toLowerCase()] = f; }); aiDraw(); }
 function aiTitles() { return [...new Map(hiRows().filter(x => x.kind === 'title' && x.titleId).map(x => [hdNid(x.titleId), x])).values()].sort((a, b) => String(a.title).localeCompare(String(b.title))); }
 function aiKey(p, i) { return String(p.key || p.line || p.thumbnail || '').trim() || 'post-' + (i + 1); }
-function aiImgOf(p) { if (!p.thumbnail) return null; const n = String(p.thumbnail).split('/').pop().split('\\').pop().toLowerCase(); return AI.imgs[n] || null; }
+// thumbnails match forgivingly: the exact file name, else the same name with any extension / case, else the item's key (a post's key without
+// "-post") — birdhouse-01.png matches "birdhouse-01.jpg" and the key birdhouse-01
+const aiBase = n => String(n || '').split('/').pop().split('\\').pop().toLowerCase().trim();
+const aiStem = n => aiBase(n).replace(/[.](jpe?g|png|webp|gif|heic|avif)$/i, '');
+function aiImgOf(p) {
+  const files = AI.imgs, exact = p.thumbnail ? files[aiBase(p.thumbnail)] : null; if (exact) return exact;
+  const stems = [aiStem(p.thumbnail), aiStem(p.key), aiStem(String(p.key || '').replace(/-post$/i, '')), aiStem(p.promotes)].filter(Boolean);
+  for (const st of stems) { const hit = Object.keys(files).find(k => aiStem(k) === st); if (hit) return files[hit]; }
+  return null;
+}
 function aiFileData(file) {   // big photos are scaled to 1600px JPEG (the KV image store); small ones go as they are
   return new Promise((res, rej) => {
     const rd = new FileReader(); rd.onerror = () => rej(Error('could not read ' + file.name));
@@ -8428,6 +8437,7 @@ async function aiRun() {
           line0 = u0 && !u0.error ? '🖼 ' + name + ' — already imported, thumbnail added' : '⚠ ' + name + ' — already imported, thumbnail not saved: ' + ((u0 && u0.error) || 'no response'); }
         catch (e) { line0 = '⚠ ' + name + ' — already imported, thumbnail not saved: ' + e.message; } }
       else if (im0) line0 = '↷ ' + name + ' — already imported, already has an image';
+      else line0 = '↷ ' + name + ' — already imported; no thumbnail matched' + (p.thumbnail ? ' (looked for ' + p.thumbnail + ')' : '');
       skipped++; A.log.push(line0); A.done = i + 1; aiDraw(); continue; }
     made++; let line = '✓ ' + name + (r.warning ? ' (' + r.warning + ')' : '');
     const im = aiImgOf(p);
