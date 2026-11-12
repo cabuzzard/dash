@@ -202,12 +202,12 @@
     exportName:'information-flow-draft.json',loadingMsg:'Loading saved draft and Methods hierarchy…',
     seededMsg:'Draft seeded from Methods with proposed SEO foundation and parent requirements. Review, then Save draft.',
     seed:async()=>{const m=await call('getInfoFlowTable',{name:'currentmethods'});if(m.error)throw Error(m.error);return arrange(seed(m.table));}});
-  // Asset Flow (operator 2026-11-07): SANDBOX — development space, not authority. Nothing in the worker or the dash reads it as a source
-  // of truth, and it is not in the worker's GOVERNANCE_TABLES, so it saves without a governance unlock. Same model, validation, pack/unpack
-  // and revision check as Information Flow, so promoting it later is adding its key to GOVERNANCE_TABLES (port checklist), not a rebuild.
-  root.AssetFlow=create({prefix:'af',panel:'tabAssetFlow',key:'assetflowgraph',local:'hermes:assetflowgraph:v1',title:'Asset Flow — sandbox',
-    intro:'Sandbox: build the asset flow here. It governs nothing yet — no worker check, writer or cron reads it; Information Flow stays the only governing graph. Same editor, views and save as Information Flow.',
-    exportName:'asset-flow-draft.json',loadingMsg:'Loading the saved Asset Flow draft…',
+  // Asset Flow (operator 2026-11-11: "It is authority") — THE authority for asset types and their parent → child relations (was a sandbox
+  // 2026-11-07). Read by the Hub asset modal's parent groups, the hub asset-row order and the Asset Type renames (ASSET_TYPE_RENAMES).
+  // Not in the worker's GOVERNANCE_TABLES yet, so it still saves without a governance unlock; code-locking it = adding its key there.
+  root.AssetFlow=create({prefix:'af',panel:'tabAssetFlow',key:'assetflowgraph',local:'hermes:assetflowgraph:v1',title:'Asset Flow',
+    intro:'Authority for asset types and their parent → child relations. The Hub asset modal (parent groups), the hub asset rows (parent → child order) and the Asset Type names follow this graph. Same editor, views and save as Information Flow.',
+    exportName:'asset-flow.json',loadingMsg:'Loading the saved Asset Flow…',
     seededMsg:'Starter draft (asset lifecycle + the East Bay core cluster). Every node and connection is editable — reshape it, then Save draft.',
     // + one node per asset type Weekly Goals shows right now (operator 2026-11-07) — the same rule (hubPlanGoals) over the live Content Plan
     seed:async()=>{const r=await call('getInfoFlowTable',{name:'content-plan-assets'});if(r.error)throw Error(r.error);

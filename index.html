@@ -764,7 +764,7 @@
     <div class="tab" onclick="switchTab('keywords')">Keywords</div>
     <div class="tab" onclick="switchTab('globals')">Globals</div>
     <div class="tab" onclick="switchTab('informationFlow')">Information Flow</div>
-    <div class="tab" onclick="switchTab('assetFlow')" title="Sandbox graph — governs nothing yet">Asset Flow</div>
+    <div class="tab" onclick="switchTab('assetFlow')" title="Authority — asset types and their parent → child relations">Asset Flow</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -4330,7 +4330,7 @@
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script src="shared/governance.js?v=2026102202"></script>
-<script src="shared/information-flow.js?v=2026110801"></script>
+<script src="shared/information-flow.js?v=2026111101"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -9892,7 +9892,7 @@ function loadTabContentNow(name) {
   if (name === 'dev2') { restoreAllOutputTables(); }   // the review / interview flag strips were removed (2026-10-22) — interview flagging moves into the hub assets table
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
-  if (name === 'assetFlow') window.AssetFlow.load();   // sandbox graph (2026-11-07) — KV infoflow:table:assetflowgraph, read by nothing else
+  if (name === 'assetFlow') window.AssetFlow.load();   // authority graph (operator 2026-11-11) — KV infoflow:table:assetflowgraph; read by the Hub asset modal + hub asset rows
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
     startTradesAutoRefresh();
