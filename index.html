@@ -7264,7 +7264,9 @@ function pubDraw() {
 // topic header shows its signal — a summary label from existing status + counts only, never a status and never written anywhere.
 const HD_SEQ = ['AI Implementation', 'Sunflower Acres', 'Build Watcher', 'Sustainable Aquarium', 'Home Services', 'Surf Vacations', 'Creative Flow Guitar',
   'Mountainwize', 'The Care Gap', 'Multifamily Acquisitions', 'Construction Project Management', 'Medicare Services Consulting'];
-const HD_HIDDEN = /^(idea|research|planning|archived|paused)$/i;   // hidden by default — a filter only
+const HD_HIDDEN = /^(idea|research|planning|archived|paused)$/i
+// a PRODUCT shows at Planning / Research (operator 2026-11-11: "I just created wood crafts product … but I cant see the product in the hub dashboard" — new products start at Planning); Idea / Archived / Paused stay hidden
+const hdHidden = x => (x && x.kind === 'product' ? /^(idea|archived|paused)$/i : HD_HIDDEN).test(hdSt(x).trim());   // hidden by default — a filter only
 const HD_SIGNALS = ['Ready to publish', 'Interview needed', 'Live, in development', 'Live', 'In development, nothing live yet', 'No content yet'];
 let HD = { rows: null, err: '', only: '', hub: '', path: [], closed: new Set(), topicOpen: new Set(), showAll: new Set(), showAllGlobal: false };
 const hdNid = x => String(x || '').replace(/-/g, '');
@@ -8137,7 +8139,7 @@ function hdRender() {
   if (!h) {   // TOP LEVEL: every hub as a card, in sequence order, with the newest thing created inside it
     HD._keys = []; HD._sets = [];
     const cardsTop = hubs.map(hb => { const c = hdNid(hb.campaignId), rowsH = HD.rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
-      const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !HD_HIDDEN.test(hdSt(x).trim())), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
+      const vis = HD.showAllGlobal ? rowsH : rowsH.filter(x => !hdHidden(x)), tr = hdTree(hb, vis, HD.rows), nw = tr.map(x => x.newest).filter(Boolean).sort().pop() || '', i = HD._keys.push(c) - 1;
       const nA = vis.filter(x => x.kind === 'asset').length, nT = vis.filter(x => x.kind === 'title').length;
       return { nw, html: `<div onclick="hdPickKey(${i})" class="hd-row" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);flex-wrap:wrap;">
         <b style="font-size:13.5px;flex:0 1 auto;min-width:0;overflow-wrap:anywhere;">${hb.seq ? hb.seq + ' · ' : ''}${esc(hb.name)}</b><span style="font-size:11px;color:var(--text3);flex:1 1 auto;min-width:0;">${tr.reduce((n, x) => n + x.topics.length, 0)} topics · ${nT} titles · ${nA} assets · ${nw ? 'newest ' + esc(nw) : 'no date'}</span>
@@ -8149,7 +8151,7 @@ function hdRender() {
   }
   const all = HD.rows, cid = HD.hub;
   const mineAll = all.filter(x => (x.hubCids || []).map(hdNid).includes(cid) || (!x.hubCids && hdNid(x.campId) === cid));
-  const mine = HD.showAllGlobal ? mineAll : mineAll.filter(x => !HD_HIDDEN.test(hdSt(x).trim()));
+  const mine = HD.showAllGlobal ? mineAll : mineAll.filter(x => !hdHidden(x));
   const byNew = (a, b) => (b.newest || '').localeCompare(a.newest || '') || String(a.name).localeCompare(String(b.name));
   // Initiative first (operator 2026-11-09: "sorted first by initiative"): hub → initiative → topic → product → title → asset. An asset is in
   // its own Initiative; a title / product shows under each initiative its assets are in ("No initiative" also keeps the ones with no assets).
