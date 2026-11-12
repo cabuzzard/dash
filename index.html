@@ -7316,12 +7316,11 @@ function hdSeqKey(x) { return String(x.datePublished || '') + '|' + String(x.dat
 function hdDate(x) { return String((x.kind === 'asset' ? x.dateCreated : x.kind === 'title' ? x.titleCreated : x.kind === 'product' ? x.productCreated : x.dateCreated) || '').slice(0, 10); }
 function hdTree(hub, rows, all) {
   const tName = {}, tCluster = {}; all.forEach(x => { if (x.keywordTopicId && x.keywordTopic) { tName[x.keywordTopicId] = x.keywordTopic; if (x.keywordCluster) tCluster[x.keywordTopicId] = x.keywordCluster; } });
-  const ownOf = x => x.kind !== 'product' && x.titleTopicId ? (hdNid(x.titleTopicId) === '__main' ? '__main' : hdNid(x.titleTopicId)) : '';
-  const topicOf = x => ownOf(x) || x.keywordTopicId || '__none';
+  const topicOf = x => x.keywordTopicId || (x.titleTopicId && tName[hdNid(x.titleTopicId)] ? hdNid(x.titleTopicId) : '') || '__none';
   const clusters = new Map(), node = (m, k, mk) => { if (!m.has(k)) m.set(k, mk()); return m.get(k); };
-  const topicNode = x => { const tk = topicOf(x), own = !!ownOf(x), cl = tk === '__none' ? 'No topic assigned' : tk === '__main' ? '★ Main' : (tCluster[tk] || (own ? '' : x.keywordCluster) || '(no cluster)');
+  const topicNode = x => { const tk = topicOf(x), cl = tk === '__none' ? 'No topic assigned' : tk === '__main' ? '★ Main' : (tCluster[tk] || x.keywordCluster || '(no cluster)');
     const C = node(clusters, cl, () => ({ name: cl, topics: new Map() }));
-    return node(C.topics, tk, () => ({ key: tk, name: tk === '__none' ? 'No topic assigned' : tName[tk] || (own ? '' : x.keywordTopic) || tk, products: new Map(), rows: [] })); };
+    return node(C.topics, tk, () => ({ key: tk, name: tk === '__none' ? 'No topic assigned' : tName[tk] || x.keywordTopic || tk, products: new Map(), rows: [] })); };
   const prodNode = (T, x) => { const pk = x.productId ? hdNid(x.productId) : '__none'; return node(T.products, pk, () => ({ key: pk, row: null, name: pk === '__none' ? '(no product)' : x.product || '(product)', titles: new Map() })); };
   const titleNode = (P, x) => { const tk = x.titleId ? hdNid(x.titleId) : '__none'; return node(P.titles, tk, () => ({ key: tk, row: null, name: tk === '__none' ? '(no title)' : x.title || '(title)', assets: [] })); };
   for (const x of rows) {
@@ -7576,7 +7575,7 @@ function hdCardHtml(g, where, ctx) { ctx = ctx || {}; const cnt = hdCardCnt, anc
         ${g.kind === 'Product' && g.productId ? `<a href="#" title="Delete this product — and its titles + their assets (refused if anything is Published)" onclick="event.preventDefault();event.stopPropagation();hdProductDelete('${esc(g.productId)}', HD._cards[${ci}].name)" style="font-size:12px;text-decoration:none;flex:0 0 auto;">🗑</a>` : ''}
         ${g.kind === 'Product' && !ctx.topic ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Initiative' ? hdInitEditLink(g.I, g.h, g.ik) + `<a href="#" title="Put this initiative in another keyword topic" onclick="event.preventDefault();event.stopPropagation();hdTopicMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
-        ${g.kind === 'Title' && g.titleId ? `<a href="#" title="Edit title — rename it or move it to another keyword topic (or drag the card onto a Topic row)" onclick="event.preventDefault();event.stopPropagation();hdTitleEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;flex:0 0 auto;">✎</a>` + aiPlus(g.titleId) : ''}
+        ${g.kind === 'Title' && g.titleId ? `<a href="#" title="Edit title — rename it or give it another product (or drag the card onto a Product row)" onclick="event.preventDefault();event.stopPropagation();hdTitleEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;flex:0 0 auto;">✎</a><a href="#" title="Delete this title and its assets (refused if any asset is Published)" onclick="event.preventDefault();event.stopPropagation();hdTitleDelete('${esc(g.titleId)}', HD._cards[${ci}].name)" style="font-size:12px;text-decoration:none;flex:0 0 auto;">🗑</a>` + aiPlus(g.titleId) : ''}
         ${g.color && !g.autoColor ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${nm}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; }
 // a heading + the cards; hidden ones (🙈, operator 2026-11-10) are left out unless "n hidden — show" is on, then dimmed with 👁 to unhide
@@ -7592,17 +7591,16 @@ function hdPinTopic(k, v) { HD.cardPrefs = HD.cardPrefs || { order: {}, color: {
 function hdMinRel(v) { HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; v = Number(v) || 0; if (v) HD.cardPrefs.minRel = v; else delete HD.cardPrefs.minRel; HD.showLow = false; hdRender(); hdCardSave(); }
 function hdCardHide(i) { const g = (HD._cards || [])[i]; if (!g) return; HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; const H = HD.cardPrefs.hidden = HD.cardPrefs.hidden || {}; if (H[g.ck]) delete H[g.ck]; else H[g.ck] = true; hdRender(); hdCardSave(); }
 function hdArrange(on) { HD.cardPrefs = HD.cardPrefs || { order: {}, color: {} }; if (on) HD.cardPrefs.arrange = true; else delete HD.cardPrefs.arrange; hdRender(); hdCardSave(); }
-// ── ✎ Edit title (operator 2026-11-11) — name + keyword topic. Topic = the title's own Topic ID (setTitleTopic; blank = follow its product's
-// topic). Changing it marks the title's keywords Out of Sync (re-run its keywords / research from its new topic).
+// ── ✎ Edit title (operator 2026-11-11) — name + product (title → product → topic: the title sits in its product's topic)
 let HTE = null;
 function hdTitleRow(titleId) { return (HD.rows || []).find(x => x.kind === 'title' && hdNid(x.titleId) === hdNid(titleId)) || null; }
-async function hdTitleEdit(ci) {
+function hdHubProducts() { return [...new Map(hiRows().filter(x => x.kind === 'product' && x.productId && !/^archived$/i.test(hdSt(x))).map(x => [hdNid(x.productId), x])).values()].sort((a, b) => String(a.product).localeCompare(String(b.product))); }
+function hdTitleEdit(ci) {
   const g = (HD._cards || [])[ci], h = hiHub(); if (!g || !g.titleId || !h) return;
   const r = hdTitleRow(g.titleId) || {};
-  HTE = { titleId: hdNid(g.titleId), name: r.title || g.name, topic: r.titleTopicId ? hdNid(r.titleTopicId) : '', prodTopic: r.keywordTopic || '', topics: null, busy: false, msg: '', h };
+  HTE = { titleId: hdNid(g.titleId), name: r.title || g.name, pid: r.productId ? hdNid(r.productId) : '', busy: false, msg: '' };
   let bg = document.getElementById('hteBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'hteBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="htePanel" style="max-width:520px;width:94vw;"></div>'; document.body.appendChild(bg); }
   bg.classList.add('open'); hteDraw();
-  kwTopicsFor(h.campaignId).then(d => { if (HTE) { HTE.topics = d; hteDraw(); } }).catch(e => { if (HTE) { HTE.msg = '✗ Topics not loaded: ' + e.message; hteDraw(); } });
 }
 function hteClose() { if (HTE && HTE.busy) return; const bg = document.getElementById('hteBg'); if (bg) bg.classList.remove('open'); HTE = null; }
 function hteDraw() {
@@ -7610,31 +7608,52 @@ function hteDraw() {
   const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
   const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`;
   const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
-  const opts = T.topics ? kwTopicOptions(T.topics, T.topic).replace('— pick a keyword topic —', '— follow its product’s topic' + (T.prodTopic ? ' (' + esc(T.prodTopic) + ')' : '') + ' —') : '<option>loading topics…</option>';
+  const prods = hdHubProducts();
   P.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">✎ Edit title</b><button style="${B('var(--border2)')}color:var(--text);" ${dis} onclick="hteClose()">✕</button></div>
     ${lab('Title')}<input id="hteName" style="${IN}" ${dis} value="${esc(T.name)}">
-    ${lab('Keyword topic')}<select id="hteTopic" style="${IN}" ${dis || (!T.topics ? 'disabled' : '')}>${opts}</select>
-    <div style="font-size:11px;color:var(--text3);margin-top:4px;">The title moves to this topic on the dashboard and takes its keywords from it; its product (offer / CTA) stays the same. A topic change marks the title's keywords out of sync.</div>
+    ${lab('Product')}<select id="hteProd" style="${IN}" ${dis}>${T.pid ? '' : '<option value="">— no product —</option>'}${prods.map(x => `<option value="${hdNid(x.productId)}" ${T.pid === hdNid(x.productId) ? 'selected' : ''}>${esc(x.product || '(product)')}${x.keywordTopic ? ' · ' + esc(x.keywordTopic) : ''}</option>`).join('')}</select>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px;">The title (and its assets) sits wherever its product sits — to move it to another topic, give it a product in that topic, or move the product.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:14px;"><button style="${B('#4ade80')}" ${dis} onclick="hteSave()">${T.busy ? '⏳ Saving…' : '💾 Save'}</button>
       <span style="font-size:12px;color:${/^✗/.test(T.msg) ? '#f87171' : 'var(--text2)'};">${esc(T.msg)}</span></div>`;
 }
 async function hteSave() {
   const T = HTE; if (!T || T.busy) return;
-  const name = (document.getElementById('hteName').value || '').trim(), sel = document.getElementById('hteTopic'), topic = sel && !sel.disabled ? sel.value : T.topic;
+  const name = (document.getElementById('hteName').value || '').trim(), pid = document.getElementById('hteProd').value;
   if (!name) { T.msg = '✗ The title can’t be empty'; return hteDraw(); }
   T.busy = true; T.msg = ''; hteDraw();
   try {
     if (name !== T.name) { const r = await call('updateAllOutputField', { kind: 'title', field: 'title', titleId: T.titleId, value: name }); if (!r || r.error) throw new Error((r && r.error) || 'name not saved');
       (HD.rows || []).forEach(x => { if (x.titleId && hdNid(x.titleId) === T.titleId) x.title = name; }); }
-    if (topic !== T.topic) await hdTitleMove(T.titleId, topic, sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '', true);
+    if (pid && pid !== T.pid) await hdTitleToProduct(T.titleId, pid, true);
     T.busy = false; hteClose(); hdRender(); showToast('✓ Title saved', 'success');
   } catch (e) { T.busy = false; T.msg = '✗ ' + e.message; hteDraw(); }
 }
-async function hdTitleMove(titleId, topicId, topicName, quiet) {
-  const tid = hdNid(titleId), r = await call('setTitleTopic', { titleId: tid, topicId: topicId || '' }).catch(e => ({ error: e.message }));
-  if (!r || r.error) { if (quiet) throw new Error((r && r.error) || 'topic not saved'); return showToast('✗ Not moved: ' + ((r && r.error) || 'no response'), 'error'); }
-  (HD.rows || []).forEach(x => { if (x.titleId && hdNid(x.titleId) === tid) x.titleTopicId = topicId || ''; });
-  if (!quiet) { hdRender(); showToast('✓ Title moved' + (topicName ? ' to ' + topicName : '') + ' — its keywords are marked out of sync', 'success'); }
+// the title (and its assets) take the product's name + topic locally, so the dashboard redraws without a reload
+async function hdTitleToProduct(titleId, productId, quiet) {
+  const tid = hdNid(titleId), pid = hdNid(productId), P = (HD.rows || []).find(x => x.kind === 'product' && hdNid(x.productId) === pid);
+  const r = await call('updateTitleStrategy', { titleId: tid, productId: pid }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { if (quiet) throw new Error((r && r.error) || 'product not saved'); return showToast('✗ Not moved: ' + ((r && r.error) || 'no response'), 'error'); }
+  (HD.rows || []).forEach(x => { if (x.titleId && hdNid(x.titleId) === tid) { x.productId = pid; if (P) Object.assign(x, { product: P.product, keywordTopicId: P.keywordTopicId, keywordTopic: P.keywordTopic, keywordCluster: P.keywordCluster, productStack: P.productStack }); } });
+  if (!quiet) { hdRender(); showToast('✓ Title moved to ' + (P ? P.product : 'that product'), 'success'); }
+}
+async function hdProductToTopic(productId, topicId, topicName, productName) {
+  const pid = hdNid(productId), h = hiHub(); if (!h) return;
+  const r = await call('attachProductToTopic', { productId: pid, topicId, campaignId: hdNid(h.campaignId), markOutOfSync: true }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('✗ Not moved: ' + ((r && r.error) || 'no response'), 'error');
+  (HD.rows || []).forEach(x => { if (hdNid(x.productId) === pid) Object.assign(x, { keywordTopicId: topicId, keywordTopic: topicName || x.keywordTopic, keywordCluster: '' }); });
+  if (typeof _kwTopicCache !== 'undefined') delete _kwTopicCache[hdNid(h.campaignId)];
+  hdRender(); showToast('✓ ' + (productName || 'Product') + ' moved to ' + (topicName || 'that topic') + ' — with its titles; its keywords are marked out of sync', 'success');
+}
+async function hdTitleDelete(titleId, name) {
+  const tid = hdNid(titleId); if (!tid) return;
+  const d = await devAssetsTable().catch(e => ({ error: e.message })); if (!d || d.error) return showToast('Could not check for Published assets — not deleted', 'error');
+  const mine = (d.rows || []).filter(r => r.kind === 'asset' && hdNid(r.titleId) === tid), pub = mine.filter(r => /^published$/i.test(r.assetStatus || ''));
+  if (pub.length) return showToast('Not deleted — ' + pub.length + ' Published asset' + (pub.length === 1 ? '' : 's') + ' on “' + name + '” (published assets are never deleted): ' + pub.slice(0, 3).map(r => r.assetName).join(' · '), 'error');
+  if (!confirm('Delete the title “' + name + '”?\n\nIt and its ' + mine.length + ' asset' + (mine.length === 1 ? '' : 's') + ' go to Notion’s trash.')) return;
+  const r = await call('deleteTitle', { titleId: tid }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('✗ Not deleted: ' + ((r && r.error) || 'no response'), 'error');
+  HD.rows = (HD.rows || []).filter(x => !(x.titleId && hdNid(x.titleId) === tid));
+  hdRender(); showToast('✓ “' + name + '” deleted — ' + (r.assetsGone || 0) + ' assets to trash', 'success');
 }
 async function hdProductDelete(productId, name) {
   const pid = hdNid(productId), h = hiHub(); if (!pid || !h) return;
@@ -7656,9 +7675,11 @@ function hdCardSave() { clearTimeout(HD_CARD_T); HD_CARD_T = setTimeout(() => ca
 function hdCardDrag(ev, i) { HD_CARD_DRAG = (HD._cards || [])[i] || null; try { ev.dataTransfer.setData('text/plain', 'card'); ev.dataTransfer.effectAllowed = 'move'; } catch (e) {} }
 function hdCardDrop(ev, i) {
   ev.preventDefault(); const from = HD_CARD_DRAG, to = (HD._cards || [])[i]; HD_CARD_DRAG = null;
-  if (from && to && from.kind === 'Title' && from.titleId && to.kind === 'Topic' && to.T) { const tid = to.T.kid ? kwNid(to.T.kid) : to.T.key;
-    if (!tid || tid === '__none' || /^ip:/.test(tid)) return showToast('That topic has no keyword-topic id yet — use ✎ on the title instead', 'error');
-    return hdTitleMove(from.titleId, tid === '__main' ? '__main' : tid, to.T.name || to.name); }
+  const pidOf = g => g && (g.productId || (g.P && g.P.key !== '__none' ? g.P.key : '')) || '';
+  if (from && to && from.kind === 'Title' && from.titleId && to.kind === 'Product') { const pid = pidOf(to); if (!pid) return showToast('Drop it on a real product', 'error'); return hdTitleToProduct(from.titleId, pid); }
+  if (from && to && from.kind === 'Product' && pidOf(from) && to.kind === 'Topic' && to.T) { const tid = to.T.kid ? kwNid(to.T.kid) : to.T.key;
+    if (!tid || tid === '__none' || /^ip:/.test(tid)) return showToast('That topic has no keyword-topic id yet', 'error');
+    return hdProductToTopic(pidOf(from), tid, to.T.name || to.name, from.name); }
   if (from && to && from.kind === 'Product' && to.kind === 'Sub-initiative' && from.gk.split('|').slice(0, 2).join('|') === to.gk.split('|').slice(0, 2).join('|')) return hdSubSet(from, to.none ? '' : to.name);
   if (!from || !to || from === to || from.gk !== to.gk) return;   // only within its own group (Products / Sub-initiatives of this initiative)
   const L = HD._cards.filter(g => g.gk === to.gk).map(g => g.name.trim().toLowerCase()), a = L.indexOf(from.name.trim().toLowerCase()), b = L.indexOf(to.name.trim().toLowerCase());
