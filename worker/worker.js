@@ -20091,7 +20091,7 @@ export default {
           const tw = [body.assetType || "", ASSET_TYPE_RENAMES[body.assetType] || "", ASSET_TYPE_KEYS[body.assetType] || ""].filter(Boolean).map(cpcNorm), type = types.find(x => tw.includes(cpcNorm(x))) || flowTypes.find(x => tw.includes(cpcNorm(x)));
           if (!type) return json({ error: `"${body.assetType || "(blank)"}" is neither an Asset Type option in Notion nor an asset node of the Asset Flow` }, 400);
           const kk = "import:key:" + tid + ":" + key, had = await env.TRADES.get(kk);
-          if (had) { const pg = await getPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return json({ ok: true, existing: true, assetId: had }); }
+          if (had) { const pg = await getPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return json({ ok: true, existing: true, assetId: had, images: (pg.properties?.Images?.files || []).length }); }   // images: a re-import adds a missing thumbnail (2026-11-11)
           if (run) await runEnsureProps(env);
           const assetTitle = String(body.assetTitle || "").trim().slice(0, 300) || type;
           const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: body.productId ? hubAssetId(body.productId) : undefined, assetTitle, assetType: type,

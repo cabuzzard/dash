@@ -8422,7 +8422,13 @@ async function aiRun() {
       if (/rate.?limit|429/i.test((r && r.error) || '')) { A.log.push('✗ Stopped: Notion rate limit — run the import again later; done posts are skipped'); break; }
       continue;
     }
-    if (r.existing) { skipped++; A.log.push('↷ ' + name + ' — already imported, skipped'); A.done = i + 1; aiDraw(); continue; }
+    if (r.existing) {   // already imported: only a missing thumbnail is added (operator 2026-11-11: "I did the import without the thumbnails but now I have them")
+      const im0 = aiImgOf(p); let line0 = '↷ ' + name + ' — already imported, skipped';
+      if (im0 && !r.images) { try { const d0 = await aiFileData(im0), u0 = await call('uploadAssetImage', { assetId: r.assetId, imageData: d0.data, fileName: im0.name, mimeType: d0.mime });
+          line0 = u0 && !u0.error ? '🖼 ' + name + ' — already imported, thumbnail added' : '⚠ ' + name + ' — already imported, thumbnail not saved: ' + ((u0 && u0.error) || 'no response'); }
+        catch (e) { line0 = '⚠ ' + name + ' — already imported, thumbnail not saved: ' + e.message; } }
+      else if (im0) line0 = '↷ ' + name + ' — already imported, already has an image';
+      skipped++; A.log.push(line0); A.done = i + 1; aiDraw(); continue; }
     made++; let line = '✓ ' + name + (r.warning ? ' (' + r.warning + ')' : '');
     const im = aiImgOf(p);
     if (im) {
