@@ -19903,7 +19903,7 @@ export default {
         return json({ ok: true, assetId: id, field, before, after });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
     }
-    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRemoveAssets" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset") {
+    if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRemoveAssets" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset" || body.action === "importAssetItem") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
@@ -19933,6 +19933,33 @@ export default {
           await env.TRADES.put("initiative:build:log:" + Date.now().toString(36) + "-" + id, JSON.stringify(entry), { expirationTtl: 60 * 60 * 24 * 365 });   // one key per asset — no hot key
           if (!r.ok) { const d = await r.json().catch(() => ({})); return json({ ok: true, ...entry, warning: "Made, but its Initiative / directions were not saved: " + (d.message || r.status) }); }
           return json({ ok: true, ...entry, ...(a.flowWarnings ? { flowWarnings: a.flowWarnings } : {}) });
+        }
+        // importAssetItem {titleId, campaignId, productId?, parentAssetId?, run, key, assetTitle, assetType, prewrite}
+        // (operator 2026-11-11, hub dashboard 📥 Asset import: "takes a json on upload … asks what title … and what parent asset — title required,
+        // parent not"). ONE asset per call, the modal loops: createAsset (flow guards apply, Development) → its Run → the posts' already-written copy
+        // as the asset's PRE-WRITE (KV prewrite:<id>, what ✍ Write starts from). Joined by the post's own key per title (KV import:key:<tid>:<key>):
+        // a key already imported (asset not trashed) is skipped, never made twice. The thumbnail is uploaded after by the modal (uploadAssetImage).
+        if (body.action === "importAssetItem") {
+          const tid = hubAssetId(String(body.titleId || "")), cid = hubAssetId(String(body.campaignId || "")), key = String(body.key || "").trim().toLowerCase().slice(0, 120), run = String(body.run || "").trim().slice(0, 200);
+          if (!/^[0-9a-f]{32}$/i.test(tid) || !/^[0-9a-f]{32}$/i.test(cid)) return json({ error: "titleId and campaignId required" }, 400);
+          if (!key) return json({ error: "every post needs a key" }, 400);
+          const types = await cpcTypeOptions(), type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
+          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
+          const kk = "import:key:" + tid + ":" + key, had = await env.TRADES.get(kk);
+          if (had) { const pg = await getPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return json({ ok: true, existing: true, assetId: had }); }
+          if (run) await runEnsureProps(env);
+          const assetTitle = String(body.assetTitle || "").trim().slice(0, 300) || type;
+          const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: body.productId ? hubAssetId(body.productId) : undefined, assetTitle, assetType: type,
+            ...(body.parentAssetId ? { parentAssetId: hubAssetId(body.parentAssetId) } : {}) });
+          if (!a || a.error || !a.id) return json({ error: "Not created: " + ((a && a.error) || "no response") }, 502);
+          const id = hubAssetId(a.id), warn = [];
+          await env.TRADES.put(kk, id);
+          if (run) { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(run) } } }) });
+            if (!r.ok) warn.push("Run not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); }
+          const pw = body.prewrite, text = pw == null ? "" : typeof pw === "string" ? pw.trim() : JSON.stringify(pw, null, 2);
+          if (text) await env.TRADES.put("prewrite:" + id, JSON.stringify({ text: text.slice(0, 40000), json: typeof pw !== "string", at: new Date().toISOString(), fromImport: run || key }));
+          else warn.push("no pre-write in this post");
+          return json({ ok: true, assetId: id, title: assetTitle, type, prewrite: !!text, ...(warn.length ? { warning: warn.join(" · ") } : {}), ...(a.flowWarnings ? { flowWarnings: a.flowWarnings } : {}) });
         }
         if (body.action === "cplanCreateAsset") {
           const { t } = await cplanLoad(env), row = t && (t.rows || []).find(r => r.id === String(body.rowId || ""));
