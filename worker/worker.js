@@ -3413,6 +3413,121 @@ async function runEnsureProps(env) {
 async function runHold(env, key, reason, payload) {
   await env.TRADES.put("run:held:" + key, JSON.stringify({ reason, payload, at: new Date().toISOString() }), { expirationTtl: 90 * 86400 });
 }
+// ══ TREND PARENT (Asset Flow node, operator 2026-11-10; built 2026-11-11 "build out to suit asset flow"): idea generation, not asset
+// formation. Input = keyword(s) + platforms (Etsy, KDP). One research run writes the MARKET (what sells, price bands, saturation, review
+// pain points, white space) and a SCORED list of item ideas (item, platform, form, keywords, score, why). Evidence: Etsy Open API active
+// listings + their low-star reviews (Etsy), Bing RSS of amazon.com (KDP), then ONE Claude call with web search. Re-run refreshes the list
+// (the previous one kept in KV trend:parent:history:<id>:<at>) and never touches existing children. State: KV trend:parent:<id>; the
+// market + ideas are also written to the parent's Body so its children's writers read them. Ticking ideas into children is not built yet.
+const TREND_PLATFORMS = ["Etsy", "KDP"];
+const TREND_FORMS = { Etsy: ["Physical", "POD", "Digital"], KDP: ["Paperback", "eBook", "Low-content"] };
+async function trendEtsyEvidence(env, keywords) {
+  const out = { items: [], counts: {}, reviews: [], errors: [] };
+  if (!env.ETSY_KEYSTRING || !env.ETSY_SHARED_SECRET) { out.errors.push("Etsy API credentials unavailable"); return out; }
+  const headers = { "x-api-key": env.ETSY_KEYSTRING.trim() + ":" + env.ETSY_SHARED_SECRET.trim() };
+  for (const kw of keywords.slice(0, 5)) {
+    try {
+      const r = await fetch("https://openapi.etsy.com/v3/application/listings/active?limit=8&sort_on=score&keywords=" + encodeURIComponent(kw), { headers, signal: AbortSignal.timeout(10000) });
+      if (!r.ok) throw new Error("Etsy search HTTP " + r.status); const d = await r.json();
+      out.counts[kw] = d.count || 0;
+      const ls = d.results || [];
+      ls.forEach(l => out.items.push({ keyword: kw, title: String(l.title || "").slice(0, 160), price: l.price && l.price.divisor ? (l.price.amount / l.price.divisor).toFixed(2) + " " + l.price.currency_code : "",
+        favorites: l.num_favorers || 0, tags: (l.tags || []).slice(0, 13), url: l.url || "https://www.etsy.com/listing/" + l.listing_id }));
+      for (const l of ls.slice(0, 2)) {
+        try { const rr = await fetch("https://openapi.etsy.com/v3/application/listings/" + l.listing_id + "/reviews?limit=10", { headers, signal: AbortSignal.timeout(8000) });
+          if (rr.ok) ((await rr.json()).results || []).filter(x => x.rating <= 3 && x.review).slice(0, 3).forEach(x => out.reviews.push({ keyword: kw, rating: x.rating, review: String(x.review).slice(0, 300) })); }
+        catch (e) { out.errors.push("reviews " + l.listing_id + ": " + e.message); }
+      }
+    } catch (e) { out.errors.push(kw + ": " + e.message); }
+  }
+  return out;
+}
+async function trendKdpEvidence(keywords) {
+  const out = { items: [], errors: [] };
+  for (const kw of keywords.slice(0, 4)) {
+    try {
+      const r = await fetch("https://www.bing.com/search?format=rss&q=" + encodeURIComponent("site:amazon.com " + kw + " book"), { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!r.ok) throw new Error("search HTTP " + r.status); const xml = await r.text();
+      [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 6).forEach(m => out.items.push({ keyword: kw, title: fnDecode((m[1].match(/<title>([\s\S]*?)<\/title>/) || [])[1] || "").slice(0, 200),
+        snippet: fnDecode((m[1].match(/<description>([\s\S]*?)<\/description>/) || [])[1] || "").slice(0, 300), url: fnDecode((m[1].match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "") }));
+    } catch (e) { out.errors.push(kw + ": " + e.message); }
+  }
+  return out;
+}
+function trendBodyText(st) {
+  const m = st.market || {}, L = [];
+  L.push("TREND RESEARCH — " + (st.inputs.keywords || []).join(", ") + " · " + (st.inputs.platforms || []).join(" + ") + " · " + String(st.at || "").slice(0, 10));
+  for (const [k, n] of [["whatSells", "What sells"], ["priceBands", "Price bands"], ["saturation", "Saturation"], ["reviewPainPoints", "Review pain points"], ["whiteSpace", "White space"]]) if (m[k]) L.push("\n" + n.toUpperCase() + "\n" + m[k]);
+  L.push("\nIDEAS (scored)");
+  (st.ideas || []).forEach((x, i) => L.push((i + 1) + ". [" + x.score + "] " + x.item + " — " + x.platform + " · " + x.form + "\n   keywords: " + x.keywords.join(", ") + "\n   why: " + x.why));
+  return L.join("\n");
+}
+async function trendParentRunJob(env, id, inputs) {
+  const key = "trend:parent:" + id, prev = (await env.TRADES.get(key, "json")) || {};
+  const fail = async msg => { await env.TRADES.put(key, JSON.stringify({ ...prev, inputs, status: "error", error: msg, runAt: new Date().toISOString() })); };
+  try {
+    const page = await ivPage(id), pp = page.properties || {};
+    const tid = ivRid(pp, "Content Strategy"), cid = ivRid(pp, "Campaign"), pid = ivRid(pp, "Product");
+    const [tp, prod] = await Promise.all([tid ? ivPage(tid).catch(() => null) : null, pid ? ivPage(pid).catch(() => null) : null]);
+    await hubSitesMerge(env).catch(() => {});
+    const hub = (HUB_SITES.find(h => hubAssetId(h.campaignId || "") === cid) || {}).name || "";
+    const title = tp ? hubRichText(tp.properties?.Title?.title) : "", product = prod ? hubRichText(prod.properties?.Name?.title) : "";
+    const ev = { etsy: inputs.platforms.includes("Etsy") ? await trendEtsyEvidence(env, inputs.keywords) : null, kdp: inputs.platforms.includes("KDP") ? await trendKdpEvidence(inputs.keywords) : null };
+    const formsTxt = inputs.platforms.map(p => p + " forms: " + TREND_FORMS[p].join(" | ")).join("; ");
+    const prompt = "You research a marketplace trend for an independent seller and propose items to make and list.\n"
+      + "Hub: " + (hub || "(none)") + "\nTitle (the cluster these items belong to): " + (title || "(none)") + "\nProduct: " + (product || "(none)")
+      + "\nKeywords: " + inputs.keywords.join("; ") + "\nPlatforms: " + inputs.platforms.join(", ") + "\n" + formsTxt
+      + (inputs.notes ? "\nOperator notes: " + inputs.notes : "")
+      + "\n\nEVIDENCE (fetched now; counts are Etsy's active-listing totals per keyword = saturation signal; low-star reviews = pain points):\n" + JSON.stringify(ev).slice(0, 60000)
+      + "\n\nYou may search the web to confirm what is selling now. Write the MARKET from evidence only — cite numbers you saw (prices, listing counts, favorites); "
+      + "never invent a statistic. Then propose 8–15 specific item IDEAS a single maker could produce, each: item (specific, buyer-facing), platform (one of the platforms above), "
+      + "form (exactly one of that platform's forms), keywords (3–6 buyer search phrases), score 0–100 (demand vs saturation vs fit to the title and the maker), why (one or two sentences tied to the evidence: the gap, the pain point it fixes, the price room).";
+    const schema = { type: "object", required: ["market", "ideas"], properties: {
+      market: { type: "object", required: ["whatSells", "priceBands", "saturation", "reviewPainPoints", "whiteSpace"], properties: Object.fromEntries(["whatSells", "priceBands", "saturation", "reviewPainPoints", "whiteSpace"].map(k => [k, { type: "string" }])) },
+      ideas: { type: "array", items: { type: "object", required: ["item", "platform", "form", "keywords", "score", "why"], properties: {
+        item: { type: "string" }, platform: { type: "string", enum: inputs.platforms }, form: { type: "string" }, keywords: { type: "array", items: { type: "string" } }, score: { type: "integer" }, why: { type: "string" } } } } } };
+    let usage = null;
+    const g = await hcClaude(env, prompt, "trend_research", schema, 8000, u => { usage = u; }, { search: true, maxUses: 4, stream: true });
+    const ideas = (Array.isArray(g.ideas) ? g.ideas : []).filter(x => x && x.item && inputs.platforms.includes(x.platform)).map(x => ({
+      id: "i" + Math.random().toString(36).slice(2, 9), item: String(x.item).slice(0, 200), platform: x.platform,
+      form: TREND_FORMS[x.platform].find(f => f.toLowerCase() === String(x.form || "").toLowerCase()) || TREND_FORMS[x.platform][0],
+      keywords: (Array.isArray(x.keywords) ? x.keywords : []).map(k => String(k).trim()).filter(Boolean).slice(0, 6),
+      score: Math.max(0, Math.min(100, Math.round(Number(x.score) || 0))), why: String(x.why || "").slice(0, 600) })).sort((a, b) => b.score - a.score).slice(0, 20);
+    if (!ideas.length) return fail("The research returned no usable ideas — nothing changed");
+    const m = g.market || {}, market = Object.fromEntries(["whatSells", "priceBands", "saturation", "reviewPainPoints", "whiteSpace"].map(k => [k, String(m[k] || "").slice(0, 4000)]));
+    if (prev.at) await env.TRADES.put("trend:parent:history:" + id + ":" + prev.at, JSON.stringify(prev), { expirationTtl: 365 * 86400 });
+    const st = { inputs, market, ideas, at: new Date().toISOString(), status: "done", usage,
+      evidence: { etsyCounts: ev.etsy ? ev.etsy.counts : null, etsyListings: ev.etsy ? ev.etsy.items.length : 0, etsyReviews: ev.etsy ? ev.etsy.reviews.length : 0, kdpResults: ev.kdp ? ev.kdp.items.length : 0 },
+      errors: [...(ev.etsy ? ev.etsy.errors : []), ...(ev.kdp ? ev.kdp.errors : [])].slice(0, 20) };
+    await env.TRADES.put(key, JSON.stringify(st));
+    try { await kwNotionPatch(env, id, { Body: { rich_text: ivRt(trendBodyText(st).slice(0, 190000)) } }); }
+    catch (e) { st.errors.push("Body not written: " + e.message); await env.TRADES.put(key, JSON.stringify(st)); }
+  } catch (e) { await fail(e.message); }
+  finally { await env.TRADES.delete("trend:lock:" + id).catch(() => {}); }
+}
+async function trendParentAction(env, ctx, body) {
+  const id = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/.test(id)) return { error: "assetId required" };
+  const key = "trend:parent:" + id, st = (await env.TRADES.get(key, "json")) || { inputs: { keywords: [], platforms: ["Etsy"], notes: "" } };
+  const running = !!(await env.TRADES.get("trend:lock:" + id));
+  if (!body.op || body.op === "get") return { ok: true, ...st, running };
+  const kws = [...new Set(String(body.keywords == null ? (st.inputs.keywords || []).join("\n") : body.keywords).split(/[\n;,]+/).map(s => s.trim()).filter(Boolean))].slice(0, 8);
+  const plats = (Array.isArray(body.platforms) ? body.platforms : st.inputs.platforms || []).filter(p => TREND_PLATFORMS.includes(p));
+  const inputs = { keywords: kws, platforms: plats.length ? plats : ["Etsy"], notes: String(body.notes == null ? st.inputs.notes || "" : body.notes).slice(0, 2000) };
+  if (body.op === "inputs") { await env.TRADES.put(key, JSON.stringify({ ...st, inputs })); return { ok: true, ...st, inputs, running }; }
+  if (body.op === "run") {
+    if (!env.ANTHROPIC_API_KEY) return { error: "ANTHROPIC_API_KEY not configured" };
+    if (!inputs.keywords.length) return { error: "Add at least one keyword" };
+    if (running) return { error: "A run is already going for this Trend Parent" };
+    const page = await ivPage(id).catch(() => null);
+    if (!page || page.archived || page.in_trash) return { error: "Asset not found" };
+    if (!/^trend parent$/i.test(page.properties?.["Asset Type"]?.select?.name || "")) return { error: "Not a Trend Parent asset" };
+    await env.TRADES.put("trend:lock:" + id, "1", { expirationTtl: 600 });
+    await env.TRADES.put(key, JSON.stringify({ ...st, inputs, status: "running", runAt: new Date().toISOString() }));
+    ctx.waitUntil(trendParentRunJob(env, id, inputs));
+    return { ok: true, started: true };
+  }
+  return { error: "op must be get · inputs · run" };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -57076,6 +57191,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // rules row + live violations, and the EXACT packet writeAsset would send (dry run: no model call, no writes).
       // writeRuleGuidanceSave {assetId, text}: the operator's guidance on that asset's writing-rules row (every asset of the row).
       // saveAssetFields {assetId, fields}: saves only this asset's own contract fields (never status / routing / method).
+      if (body.action === "trendParentRun") { try { return json(await trendParentAction(env, ctx, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "createRunAssets") { try { return json(await createRunAssets(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "setRunStatus") { try { return json(await setRunStatus(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getRun") { const runId = String(body.runId || "").trim(); return json({ ok: true, runId, log: (await env.TRADES.get("run:log:" + runId, "json")) || [] }); }

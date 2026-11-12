@@ -5951,10 +5951,10 @@ async function amLoad() {
   const id = AM && AM.id; if (!id) return;
   const r = await call('assetModal', { assetId: id }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return;
-  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } }
+  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } if (!AM.trendTabSet && amIsTrend()) { AM.tab = 'trend'; AM.trendTabSet = true; } }
   amDraw(); if (AM && AM.data && !AM.ctx && !AM.ctxBusy) amCtxLoad();
 }
-function amTab(t) { if (!AM) return; AM.tab = t; amDraw(); }
+function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; amDraw(); }
 function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
   const cf = (d.packet && d.packet.currentFields) || {}; if (name in cf) return cf[name];
   return ({ 'Platform Title': a.platformTitle, 'Post Caption': a.postCaption, Hashtags: a.hashtags, Body: a.body })[name] || ''; }
@@ -5968,7 +5968,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
@@ -5987,6 +5987,7 @@ function amDraw() {
         <select onchange="amSecPick(this)" style="font-size:12.5px;padding:5px 7px;border:1px solid ${ps ? '#4ade80' : '#f59e0b'};border-radius:6px;background:var(--surface2);color:var(--text);">${ps ? '' : '<option value="" selected>— choose section —</option>'}${amHubSections(a).map(x => `<option value="${x}" ${x === ps ? 'selected' : ''}>${esc(AM_SEC_LABEL[x] || x)}</option>`).join('')}</select></label>`; })() : '')
     + (a.status === 'Published' && !hubA ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" title="${a.status === 'Published' ? 'Live already — republishing rewrites its hub page in the section picked (moves it when the section changed)' : ''}" onclick="amSaveAndPublish(this)">${hubA ? (a.status === 'Published' ? '🔄 Republish to ' : '💾 Save & Publish to ') + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
+  if (AM.tab === 'trend' && amIsTrend()) { P.innerHTML = hd + `<div class="amf-bd">${amTrendHtml()}</div>` + foot; return; }
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'interview' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : AM.tab === 'interview' ? amIvHtml() : amVisualsHtml()}</div>` + foot; if (AM.tab === 'interview') amIvAttach(); return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
@@ -6386,6 +6387,55 @@ function amDigestBtn() {
   const h = c && c.campaignId && HUB_SITES.find(s => kwNid(s.campaignId) === kwNid(c.campaignId));
   if (!h) return `<span title="${c ? 'This digest’s campaign isn’t a content hub' : 'Loading its hub…'}" style="font-size:11.5px;padding:2px 9px;border:1px solid var(--border2);border-radius:6px;color:var(--text3);">📰 Digest</span>`;
   return `<button title="This Digest parent’s records, runs, model and ⚙ Disseminate" style="font-size:11.5px;padding:2px 9px;border:1px solid #60a5fa;border-radius:6px;background:var(--surface2);color:#60a5fa;cursor:pointer;" onclick="hubDigestRowOpen('${h.slug}','${esc(AM.id)}')">📰 Digest</button>`;
+}
+// ── 📈 Trend tab (Asset Flow "Trend Parent", built 2026-11-11): keywords + platforms → ▶ Run research (worker trendParentRun, background,
+// polled) → the market + a scored idea list. Re-run refreshes the list and never touches children. Ticking ideas into children: not built yet.
+function amIsTrend() { const a = AM && AM.data && AM.data.asset; return !!a && /^trend parent$/i.test(a.type || ''); }
+function amTrendHtml() {
+  const T = AM.trend;
+  if (!T) { amTrendLoad(); return '<div style="font-size:12px;color:var(--text3);">Loading the trend research…</div>'; }
+  if (T.error && !T.inputs) return `<div style="font-size:12px;color:#f87171;">✗ ${esc(T.error)}</div>`;
+  const I = T.inputs || { keywords: [], platforms: ['Etsy'], notes: '' }, busy = T.running || T.status === 'running';
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+  const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`;
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const m = T.market || {}, ideas = T.ideas || [];
+  const sec = (k, n) => m[k] ? `<div style="margin-top:8px;"><div style="font-size:11px;font-weight:700;color:var(--text2);">${n}</div><div style="font-size:12.5px;white-space:pre-wrap;line-height:1.5;">${esc(m[k])}</div></div>` : '';
+  const scol = s => s >= 75 ? '#4ade80' : s >= 50 ? '#f5c542' : '#f87171';
+  return `<div style="font-size:12px;color:var(--text3);">Idea generation for this title's cluster: keywords + platforms → the market and a scored list of item ideas. A re-run refreshes the list; it never touches existing children.</div>
+    ${lab('Keywords (one per line)')}<textarea id="trKw" rows="3" style="${IN}" ${busy ? 'disabled' : ''}>${esc((I.keywords || []).join('\n'))}</textarea>
+    ${lab('Platforms')}<div style="display:flex;gap:14px;font-size:12.5px;">${['Etsy', 'KDP'].map(p => `<label style="display:flex;gap:5px;align-items:center;"><input type="checkbox" class="trPl" value="${p}" ${(I.platforms || []).includes(p) ? 'checked' : ''} ${busy ? 'disabled' : ''}> ${p}</label>`).join('')}</div>
+    ${lab('Notes for the research (optional — what you make, tools, constraints)')}<textarea id="trNotes" rows="2" style="${IN}" ${busy ? 'disabled' : ''}>${esc(I.notes || '')}</textarea>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;"><button style="${B('#4ade80')}" ${busy ? 'disabled' : ''} onclick="amTrendRun()">${busy ? '⏳ Researching… (1–3 min)' : T.at ? '↻ Re-run research' : '▶ Run research'}</button>
+      <button style="${B('var(--text2)')}" ${busy ? 'disabled' : ''} onclick="amTrendSave()">💾 Save inputs</button>
+      <span style="font-size:11.5px;color:var(--text3);">One Claude call with web search + Etsy / Amazon lookups per run.</span></div>
+    ${T.status === 'error' ? `<div style="font-size:12px;color:#f87171;margin-top:8px;">✗ Last run: ${esc(T.error || 'failed')}</div>` : ''}
+    ${T.at ? `${lab('Market · ' + esc(String(T.at).slice(0, 16).replace('T', ' ')))}
+      ${T.evidence ? `<div style="font-size:11px;color:var(--text3);">Evidence: ${T.evidence.etsyListings || 0} Etsy listings${T.evidence.etsyCounts ? ' (' + Object.entries(T.evidence.etsyCounts).map(([k, n]) => esc(k) + ': ' + Number(n).toLocaleString() + ' live').join(' · ') + ')' : ''} · ${T.evidence.etsyReviews || 0} low-star reviews · ${T.evidence.kdpResults || 0} Amazon results${(T.errors || []).length ? ' · ⚠ ' + T.errors.length + ' lookup issue' + (T.errors.length === 1 ? '' : 's') : ''}</div>` : ''}
+      ${sec('whatSells', 'What sells')}${sec('priceBands', 'Price bands')}${sec('saturation', 'Saturation')}${sec('reviewPainPoints', 'Review pain points')}${sec('whiteSpace', 'White space')}
+      ${lab('Ideas · ' + ideas.length + ' (scored)')}<div style="border:1px solid var(--border);border-radius:8px;">${ideas.map((x, i) => `<div style="padding:7px 10px;border-top:${i ? '1px solid var(--border)' : '0'};">
+        <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><b style="color:${scol(x.score)};min-width:28px;">${x.score}</b><b style="font-size:13px;flex:1;min-width:180px;">${esc(x.item)}</b><span style="font-size:11px;color:var(--text3);">${esc(x.platform)} · ${esc(x.form)}</span></div>
+        <div style="font-size:12px;color:var(--text2);margin:3px 0 0 36px;">${esc(x.why)}</div>
+        <div style="font-size:11px;color:var(--text3);margin:2px 0 0 36px;">${(x.keywords || []).map(esc).join(' · ')}</div></div>`).join('')}</div>` : ''}`;
+}
+function amTrendInputs() { return { keywords: (document.getElementById('trKw') || {}).value || '', notes: (document.getElementById('trNotes') || {}).value || '', platforms: [...document.querySelectorAll('.trPl')].filter(x => x.checked).map(x => x.value) }; }
+async function amTrendLoad() {
+  if (!AM || AM._trendBusy) return; AM._trendBusy = true; const id = AM.id;
+  const r = await call('trendParentRun', { assetId: id, op: 'get' }).catch(e => ({ error: e.message }));
+  AM._trendBusy = false; if (!AM || AM.id !== id) return;
+  AM.trend = r || { error: 'no response' }; if (AM.tab === 'trend') amDraw();
+  if (r && (r.running || r.status === 'running')) { clearTimeout(AM._trendPoll); AM._trendPoll = setTimeout(() => { if (AM && AM.id === id && AM.tab === 'trend') { AM.trend = AM.trend; amTrendLoad(); } }, 6000); }
+}
+async function amTrendSave() {
+  const r = await call('trendParentRun', { assetId: AM.id, op: 'inputs', ...amTrendInputs() }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.trend = r; AM.log = '✓ Trend inputs saved'; amDraw();
+}
+async function amTrendRun() {
+  const r = await call('trendParentRun', { assetId: AM.id, op: 'run', ...amTrendInputs() }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.log = '⏳ Trend research started — this tab updates when it is done'; AM.trend = { ...(AM.trend || {}), status: 'running', running: true, inputs: { ...(AM.trend && AM.trend.inputs), ...amTrendInputs(), keywords: amTrendInputs().keywords.split(/[\n;,]+/).map(s => s.trim()).filter(Boolean) } };
+  amDraw(); setTimeout(amTrendLoad, 6000);
 }
 function amIsSeries() { const a = AM && AM.data && AM.data.asset; return !!a && (/^series$/i.test(a.type || '') || /^series$/i.test(a.pillarType || '')); }
 // 🎬 Video (operator 2026-10-30): on video assets only — a single post story / HyperFrames reel with a Video Spec renders through the
