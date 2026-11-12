@@ -7573,6 +7573,7 @@ function hdCardHtml(g, where, ctx) { ctx = ctx || {}; const cnt = hdCardCnt, anc
         <a href="#" title="${g.hidden ? 'Hidden — click to show this card again' : 'Hide this card (bring it back with “hidden — show” above the cards)'}" onclick="event.preventDefault();event.stopPropagation();hdCardHide(${ci})" style="font-size:12px;text-decoration:none;flex:0 0 auto;">${g.hidden ? '👁' : '🙈'}</a>
         <a href="#" title="${g.kind === 'Title' && g.titleId ? esc('Status: ' + (g.status || 'none') + ' — click to change it') : 'Highlight colour — click to cycle: amber → orange → purple → dark green → slate grey → none'}" onclick="event.preventDefault();event.stopPropagation();hdCardCycle(${ci})" style="display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border2);background:${g.color || 'conic-gradient(#eab308,#ff7a00,#c084fc,#16a34a,#94a3b8,#eab308)'};flex:0 0 auto;"></a>
         ${g.kind === 'Sub-initiative' && !g.none ? `<a href="#" title="Rename this sub-initiative" onclick="event.preventDefault();event.stopPropagation();hdSubEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">✎</a><a href="#" title="Move this whole sub-initiative to another initiative" onclick="event.preventDefault();event.stopPropagation();hdMoveMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
+        ${g.kind === 'Product' && g.productId ? `<a href="#" title="Delete this product — and its titles + their assets (refused if anything is Published)" onclick="event.preventDefault();event.stopPropagation();hdProductDelete('${esc(g.productId)}', HD._cards[${ci}].name)" style="font-size:12px;text-decoration:none;flex:0 0 auto;">🗑</a>` : ''}
         ${g.kind === 'Product' && !ctx.topic ? `<a href="#" title="Put this product's rows in a sub-initiative (or drag the card onto a sub-initiative card)" onclick="event.preventDefault();event.stopPropagation();hdSubMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Initiative' ? hdInitEditLink(g.I, g.h, g.ik) + `<a href="#" title="Put this initiative in another keyword topic" onclick="event.preventDefault();event.stopPropagation();hdTopicMenu(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;">⇄</a>` : ''}
         ${g.kind === 'Title' && g.titleId ? `<a href="#" title="Edit title — rename it or move it to another keyword topic (or drag the card onto a Topic row)" onclick="event.preventDefault();event.stopPropagation();hdTitleEdit(${ci})" style="font-size:12px;color:var(--text3);text-decoration:none;flex:0 0 auto;">✎</a>` + aiPlus(g.titleId) : ''}
@@ -7634,6 +7635,20 @@ async function hdTitleMove(titleId, topicId, topicName, quiet) {
   if (!r || r.error) { if (quiet) throw new Error((r && r.error) || 'topic not saved'); return showToast('✗ Not moved: ' + ((r && r.error) || 'no response'), 'error'); }
   (HD.rows || []).forEach(x => { if (x.titleId && hdNid(x.titleId) === tid) x.titleTopicId = topicId || ''; });
   if (!quiet) { hdRender(); showToast('✓ Title moved' + (topicName ? ' to ' + topicName : '') + ' — its keywords are marked out of sync', 'success'); }
+}
+async function hdProductDelete(productId, name) {
+  const pid = hdNid(productId), h = hiHub(); if (!pid || !h) return;
+  const d = await devAssetsTable().catch(e => ({ error: e.message })); if (!d || d.error) return showToast('Could not check for Published assets — not deleted', 'error');
+  const rows = d.rows || [], titleIds = new Set(rows.filter(r => r.titleId && hdNid(r.productId) === pid).map(r => hdNid(r.titleId)));
+  const mine = rows.filter(r => r.kind === 'asset' && (hdNid(r.productId) === pid || hdNid(r.assetProductId) === pid || titleIds.has(hdNid(r.titleId))));
+  const pub = mine.filter(r => /^published$/i.test(r.assetStatus || ''));
+  if (pub.length) return showToast('Not deleted — ' + pub.length + ' Published asset' + (pub.length === 1 ? '' : 's') + ' on “' + name + '” (published assets are never deleted): ' + pub.slice(0, 3).map(r => r.assetName).join(' · '), 'error');
+  if (!confirm('Delete “' + name + '”?\n\nThe product is archived and taken off the hub’s ★ main offerings — AND its ' + titleIds.size + ' title' + (titleIds.size === 1 ? '' : 's') + ' and ' + mine.length + ' asset' + (mine.length === 1 ? '' : 's') + ' go to Notion’s trash.')) return;
+  const r = await call('archiveProduct', { productId: pid, campaignId: hdNid(h.campaignId) }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('✗ Not deleted: ' + ((r && r.error) || 'no response'), 'error');
+  HD.rows = (HD.rows || []).filter(x => hdNid(x.productId) !== pid && !(x.titleId && titleIds.has(hdNid(x.titleId))));
+  if (typeof _kwTopicCache !== 'undefined') delete _kwTopicCache[hdNid(h.campaignId)];
+  hdRender(); showToast('✓ “' + name + '” deleted — ' + (r.titlesGone || 0) + ' titles, ' + (r.assetsGone || 0) + ' assets to trash', 'success');
 }
 // card order / colour — saved through hdCardPrefs (one KV record), a moment after the last change
 let HD_CARD_DRAG = null, HD_CARD_T = null;
@@ -7963,7 +7978,7 @@ function hdClustersHtml(h, tree, initList, planAll, planRowsAll, under, where, i
       if (!o) return r;
       const gkB = cid + '|topic:' + nk(T.name) + '|', tw = where + ' › ' + T.name, ti = HD._tpNames.indexOf(T.name);
       const iCards = ordered(ins.map(({ I, pinned }) => Object.assign(mk('Initiative', I.name, I.assets, planAll.filter(x => ik(x.init) === I.key), planRowsAll.filter(x => ik(x.init) === I.key).map(x => x.rowId), gkB + 'Initiative'), { ikey: I.key, I, h, ik, pinned })));
-      const pCards = ordered(T.products.filter(p => p.key !== '__none').map(Pn => mk('Product', Pn.name, hdAssetsOf(Pn), under([T.key, Pn.key]), [], gkB + 'Product')));
+      const pCards = ordered(T.products.filter(p => p.key !== '__none').map(Pn => Object.assign(mk('Product', Pn.name, hdAssetsOf(Pn), under([T.key, Pn.key]), [], gkB + 'Product'), { productId: Pn.key })));
       const add = ` · <a href="#" onclick="event.preventDefault();event.stopPropagation();hdTopicAdd(${ti})" title="Put an initiative in this topic — pick one or name a new one" style="color:#4ade80;text-transform:none;letter-spacing:0;">＋ Add initiative here</a>`;
       return r + `<div style="padding:8px 4px 2px 18px;">${hdCardGrid('Initiatives', iCards, tw, { anchor: T.name, topic: true }, add)}${iCards.length ? '' : '<div style="font-size:11.5px;color:var(--text3);margin:0 2px 10px;">No initiative in this topic yet.</div>'}${hdCardGrid('Products', pCards, tw, { anchor: T.name, topic: true })}</div>`; }).join('') + `</div>`; }).join('');
   const note = ip && !ip.none ? '' : `<div style="font-size:11.5px;color:var(--text3);padding:8px 10px;">Initiatives land in a topic when you add them there, or by their best keyword score — press <b>🎯 Score initiatives</b> for the auto placement.</div>`;
@@ -8114,7 +8129,8 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
         const t = {}; titles.forEach(x => { if (H[x.ck]) nHid++; else t[x.color] = (t[x.color] || 0) + 1; });
         const where = [h.name, C.name, T.name, P.name].join(' › ');
         const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, { noHidLink: true }) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';
-        const pa = KM && T.kid && P.key !== '__none' ? act('＋', 'Add a title to this product', () => { hubKwTitleAdd(h.slug, T.kid, P.key); hdKwWatch(true); }, '#4ade80') : '';
+        const pa = (KM && T.kid && P.key !== '__none' ? act('＋', 'Add a title to this product', () => { hubKwTitleAdd(h.slug, T.kid, P.key); hdKwWatch(true); }, '#4ade80') : '')
+          + (P.key !== '__none' ? act('🗑', 'Delete this product — and its titles + their assets (refused if anything is Published)', () => hdProductDelete(P.key, P.name)) : '');
         return { g: pg, t, sel: titles.filter(x => !H[x.ck] && x.color), html: row(pg, 2, oP, t, `${P.titles.length} title${P.titles.length === 1 ? '' : 's'}`, pa) + cards }; });
       const ta = KM && T.kid ? act('🔑', 'Keywords — seed & re-run (Google ideas + a best-guess pick), edit the list', () => { hubKwKwModal(h.slug, T.kid); hdKwWatch(false); })
         + act('⚙', 'Topic — rename, move to another cluster, isolate, delete', () => { ao2TopicModalFor(h.campaignId, T.kid, T.name); hdKwWatch(false); })
