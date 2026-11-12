@@ -8163,12 +8163,21 @@ let AI = null;
 function aiOpen() {
   const h = hiHub(); if (!h) return;
   let bg = document.getElementById('aiBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'aiBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="aiPanel" style="max-width:760px;width:94vw;max-height:90vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
-  bg.classList.add('open'); AI = { hub: h, data: null, err: '', imgs: {}, tid: '', parent: '', run: '', type: '', types: null, busy: false, log: [], done: 0 };
+  bg.classList.add('open'); AI = { hub: h, data: null, err: '', imgs: {}, tid: '', parent: '', run: '', type: '', types: null, busy: false, log: [], done: 0, flow: { nodes: [], edges: [] } };
   aiDraw();
+  call('getInfoFlowTable', { name: 'assetflowgraph' }).then(r => { if (!AI) return; const rows = (r && r.table && r.table.rows) || [];
+    AI.flow = { nodes: rows.filter(x => x.cells && x.cells.kind === 'node').map(x => ({ id: x.id, label: String(x.cells.label || '').trim(), role: x.cells.role || '' })),
+      edges: rows.filter(x => x.cells && x.cells.kind === 'edge').map(x => ({ s: x.cells.source, t: x.cells.target, rel: x.cells.relation || '' })) }; aiDraw(); }).catch(() => {});
   (typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES && CPLAN_ATYPES.length ? Promise.resolve({ types: CPLAN_ATYPES }) : call('getAssetTypes', { all: true }))
     .then(r => { if (!AI) return; AI.types = (r && r.types) || []; if (!AI.type) AI.type = AI.types.find(t => /^single post$/i.test(t)) || AI.types.find(t => /single post/i.test(t)) || ''; aiDraw(); })
     .catch(() => { if (AI) { AI.types = []; aiDraw(); } });
 }
+// Asset Flow (the authority): asset-type nodes not yet a Notion option, and a parent type's children (its "feeds" edges)
+function aiFlowTypes() { const have = new Set((AI.types || []).map(t => t.toLowerCase())); return AI.flow.nodes.filter(n => /asset/i.test(n.role) && n.label && !have.has(n.label.toLowerCase())).map(n => n.label); }
+function aiFlowKids(label) { const n = AI.flow.nodes.find(x => x.label.toLowerCase() === String(label || '').toLowerCase()); if (!n) return [];
+  return AI.flow.edges.filter(e => e.s === n.id && /feeds/i.test(e.rel)).map(e => (AI.flow.nodes.find(x => x.id === e.t) || {}).label).filter(Boolean); }
+function aiParentType() { if (AI.parent === '__trend') return 'Trend Parent'; const p = hiRows().find(x => x.kind === 'asset' && hdNid(x.assetId) === AI.parent); return p ? (p.rawAssetType || p.assetType || '') : ''; }
+function aiSetParent(v) { AI.parent = v; const kids = aiFlowKids(aiParentType()); if (kids.length) AI.type = kids[0]; aiDraw(); }
 function aiClose() { if (AI && AI.busy) return; const bg = document.getElementById('aiBg'); if (bg) bg.classList.remove('open'); AI = null; }
 const AI_FENCE = /^```(?:json)?\s*|\s*```$/g;
 async function aiJson(input) {
@@ -8178,7 +8187,7 @@ async function aiJson(input) {
     if (!posts || !posts.length) throw Error('expected {"posts": [ … ]}');
     AI.data = Object.assign({}, Array.isArray(d) ? {} : d, { posts, file: file.name }); AI.err = ''; AI.log = []; AI.done = 0;
     if (!AI.run) AI.run = String(AI.data.run || '');
-    if (AI.data.assetType && AI.types && AI.types.includes(AI.data.assetType)) AI.type = AI.data.assetType;
+    if (AI.data.assetType && ((AI.types || []).includes(AI.data.assetType) || aiFlowTypes().includes(AI.data.assetType))) AI.type = AI.data.assetType;
     if (!AI.tid && AI.data.title) { const want = String(AI.data.title).trim().toLowerCase(), t = aiTitles().find(x => String(x.title || '').trim().toLowerCase() === want); if (t) AI.tid = hdNid(t.titleId); }
   } catch (e) { AI.data = null; AI.err = 'Could not read ' + file.name + ': ' + e.message; }
   aiDraw();
@@ -8205,7 +8214,8 @@ function aiDraw() {
   const A = AI, dis = A.busy ? 'disabled' : '', B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
   const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
   const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`;
-  const titles = aiTitles(), parents = A.tid ? hiRows().filter(x => x.kind === 'asset' && x.assetId && hdNid(x.titleId) === A.tid) : [];
+  const titles = aiTitles(), parents = A.tid ? hiRows().filter(x => x.kind === 'asset' && x.assetId && hdNid(x.titleId) === A.tid && /^pillar$/i.test(x.assetClass || '')) : [];
+  const hasTrend = parents.some(x => /^trend parent$/i.test(x.rawAssetType || x.assetType || '')), kids = aiFlowKids(aiParentType()), fT = aiFlowTypes();
   const posts = (A.data && A.data.posts) || [], withImg = posts.filter(p => aiImgOf(p)).length, noImg = posts.filter(p => p.thumbnail && !aiImgOf(p)).length;
   const ready = posts.length && A.tid && A.type && !A.busy;
   const pwOf = p => p.prewrite != null && String(typeof p.prewrite === 'string' ? p.prewrite : JSON.stringify(p.prewrite)).trim() !== '';
@@ -8216,9 +8226,10 @@ function aiDraw() {
     ${lab('Thumbnails (pick all the image files — matched to each post by file name)')}<input type="file" accept="image/*" multiple ${dis} onchange="aiImgs(this)" style="font-size:12px;">
     ${posts.length ? `<div style="font-size:12px;margin-top:4px;color:${noImg ? '#f59e0b' : 'var(--text2)'};">${withImg} of ${posts.length} matched${noImg ? ' · ' + noImg + ' named in the JSON but not picked' : ''}</div>` : ''}
     ${lab('Title (required)')}<select style="${IN}" ${dis} onchange="AI.tid=this.value;AI.parent='';aiDraw()"><option value="">— pick a title —</option>${titles.map(x => `<option value="${hdNid(x.titleId)}" ${A.tid === hdNid(x.titleId) ? 'selected' : ''}>${esc(x.title || '(title)')}${x.product ? ' · ' + esc(x.product) : ''}${hdSt(x) ? ' · ' + esc(hdSt(x)) : ''}</option>`).join('')}</select>
-    ${lab('Parent asset (optional)')}<select style="${IN}" ${dis || (!A.tid ? 'disabled' : '')} onchange="AI.parent=this.value"><option value="">— none —</option>${parents.map(x => `<option value="${hdNid(x.assetId)}" ${A.parent === hdNid(x.assetId) ? 'selected' : ''}>${esc(hdName(x))} · ${esc(x.rawAssetType || x.assetType || '')}</option>`).join('')}</select>
+    ${lab('Parent asset (optional)')}<select style="${IN}" ${dis || (!A.tid ? 'disabled' : '')} onchange="aiSetParent(this.value)"><option value="">— none —</option>${parents.map(x => `<option value="${hdNid(x.assetId)}" ${A.parent === hdNid(x.assetId) ? 'selected' : ''}>${esc(hdName(x))} · ${esc(x.rawAssetType || x.assetType || '')}</option>`).join('')}${hasTrend ? '' : `<option value="__trend" ${A.parent === '__trend' ? 'selected' : ''}>＋ New Trend Parent on this title</option>`}</select>
+    ${kids.length ? `<div style="font-size:11px;color:var(--text3);margin-top:3px;">Asset Flow: ${esc(aiParentType())} → ${esc(kids.join(' / '))}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;"><div style="flex:1 1 220px;">${lab('Run')}<input style="${IN}" ${dis} placeholder="Run name" value="${esc(A.run)}" oninput="AI.run=this.value"></div>
-      <div style="flex:1 1 220px;">${lab('Asset type')}<select style="${IN}" ${dis} onchange="AI.type=this.value">${A.types ? '<option value="">— pick —</option>' + A.types.map(t => `<option ${A.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('') : '<option>loading…</option>'}</select></div></div>
+      <div style="flex:1 1 220px;">${lab('Asset type')}<select style="${IN}" ${dis} onchange="AI.type=this.value">${A.types ? '<option value="">— pick —</option>' + (fT.length ? `<optgroup label="Asset Flow — new to Notion">${fT.map(t => `<option ${A.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</optgroup><optgroup label="Notion">` : '') + A.types.map(t => `<option ${A.type === t ? 'selected' : ''}>${esc(t)}</option>`).join('') + (fT.length ? '</optgroup>' : '') : '<option>loading…</option>'}</select></div></div>
     ${posts.length ? `${lab('Posts')}<div style="border:1px solid var(--border);border-radius:8px;max-height:260px;overflow:auto;">${posts.map((p, i) => { const im = aiImgOf(p), pw = pwOf(p);
       return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-top:${i ? '1px solid var(--border)' : '0'};font-size:12px;"><span style="color:var(--text3);width:22px;">${i + 1}</span><span style="flex:1;min-width:0;overflow-wrap:anywhere;">${esc(p.line || p.key || '(no line)')}</span>
         <span title="Pre-write" style="color:${pw ? '#4ade80' : '#f87171'};">✏${pw ? '✓' : '✗'}</span><span title="${esc(p.thumbnail || 'no thumbnail named')}" style="color:${im ? '#4ade80' : p.thumbnail ? '#f59e0b' : 'var(--text3)'};">🖼${im ? '✓' : p.thumbnail ? '?' : '–'}</span></div>`; }).join('')}</div>` : ''}
@@ -8231,6 +8242,12 @@ async function aiRun() {
   const t = aiTitles().find(x => hdNid(x.titleId) === A.tid) || {}, posts = A.data.posts;
   A.busy = true; A.done = 0; A.log = []; aiDraw();
   let made = 0, skipped = 0, failed = 0;
+  if (A.parent === '__trend') {
+    const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, key: '__trend-parent', asPillar: true,
+      assetTitle: 'Trend Parent — ' + (t.title || 'title'), assetType: 'Trend Parent' }).catch(e => ({ error: e.message }));
+    if (!r || r.error || !r.assetId) { A.busy = false; A.log.push('✗ Trend Parent not made — ' + ((r && r.error) || 'no response') + '. Nothing else was imported.'); return aiDraw(); }
+    A.parent = hdNid(r.assetId); A.log.push((r.existing ? '↷ Trend Parent already on this title — using it' : '✓ Trend Parent made') + ' (parent of this run)'); aiDraw();
+  }
   for (let i = 0; i < posts.length; i++) {
     const p = posts[i], key = aiKey(p, i), name = p.line || key;
     const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, parentAssetId: A.parent || undefined,

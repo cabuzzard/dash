@@ -19943,16 +19943,21 @@ export default {
           const tid = hubAssetId(String(body.titleId || "")), cid = hubAssetId(String(body.campaignId || "")), key = String(body.key || "").trim().toLowerCase().slice(0, 120), run = String(body.run || "").trim().slice(0, 200);
           if (!/^[0-9a-f]{32}$/i.test(tid) || !/^[0-9a-f]{32}$/i.test(cid)) return json({ error: "titleId and campaignId required" }, 400);
           if (!key) return json({ error: "every post needs a key" }, 400);
-          const types = await cpcTypeOptions(), type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
-          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
+          // the type is a Notion Asset Type option OR a node of the Asset Flow graph (the authority, 2026-11-11) — a graph type not yet in
+          // Notion becomes an option on its first create (Notion adds a select option when a page uses it)
+          const types = await cpcTypeOptions(), flow = await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null);
+          const flowTypes = ((flow && flow.rows) || []).filter(r => r.cells?.kind === "node" && /asset/i.test(r.cells?.role || "")).map(r => String(r.cells.label || "").trim()).filter(Boolean);
+          const type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || "")) || flowTypes.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
+          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is neither an Asset Type option in Notion nor an asset node of the Asset Flow` }, 400);
           const kk = "import:key:" + tid + ":" + key, had = await env.TRADES.get(kk);
           if (had) { const pg = await getPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return json({ ok: true, existing: true, assetId: had }); }
           if (run) await runEnsureProps(env);
           const assetTitle = String(body.assetTitle || "").trim().slice(0, 300) || type;
           const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: body.productId ? hubAssetId(body.productId) : undefined, assetTitle, assetType: type,
-            ...(body.parentAssetId ? { parentAssetId: hubAssetId(body.parentAssetId) } : {}) });
+            ...(body.asPillar ? { assetClass: "Pillar", pillarType: "Generic" } : {}), ...(body.parentAssetId ? { parentAssetId: hubAssetId(body.parentAssetId) } : {}) });
           if (!a || a.error || !a.id) return json({ error: "Not created: " + ((a && a.error) || "no response") }, 502);
           const id = hubAssetId(a.id), warn = [];
+          if (body.asPillar) { await env.TRADES.put(kk, id); return json({ ok: true, assetId: id, title: assetTitle, type, pillar: true }); }   // a parent made here: no run, no pre-write
           await env.TRADES.put(kk, id);
           if (run) { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(run) } } }) });
             if (!r.ok) warn.push("Run not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); }
