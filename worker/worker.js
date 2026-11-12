@@ -2528,7 +2528,7 @@ async function writeContractAsset(env,assetId,opts={}) {
     +(String(opts.guidance||'').trim()?'\n\nOPERATOR GUIDANCE FOR THIS RUN (follow it within the contract):\n'+String(opts.guidance).trim().slice(0,4000):'');
   const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
-    +(packet.routedInput?'\n\nROUTED INPUT: the packet\'s "routedInput" is information routed to this asset from a '+(packet.routedInput.fromType||'source')+' (run "'+(packet.routedInput.run||'')+'") — it is NOT this asset\'s parent. Its idea is this asset\'s subject; its market notes (what sells, price bands, review pain points, white space) are sourced facts you may use. Do not invent details the item or market notes do not give.':'')
+    +(packet.routedInput?'\n\nROUTED INPUT: the packet\'s "routedInput" is information routed to this asset from a '+(packet.routedInput.fromType||'source')+' (run "'+(packet.routedInput.run||'')+'") — it is NOT this asset\'s parent. What it carries (an idea, a listing, market notes) is this asset\'s subject and sourced facts you may use — e.g. a promo post sells the routed listing. Do not invent details it does not give.':'')
     +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'')
     +(packet.assetDirections?'\n\nTHIS ASSET\'S DIRECTIONS (the packet\'s "assetDirections" — the operator\'s own directions saved on this asset, the LAST input in the chain): follow them within the contract. They decide emphasis, this asset\'s relation to its parent / children / siblings, which input to lean on and which keywords to focus on, and they win over earlier sources on those choices. They never add facts the other sources do not support.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
@@ -20088,7 +20088,7 @@ export default {
           // Notion becomes an option on its first create (Notion adds a select option when a page uses it)
           const types = await cpcTypeOptions(), flow = await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null);
           const flowTypes = ((flow && flow.rows) || []).filter(r => r.cells?.kind === "node" && /asset/i.test(r.cells?.role || "")).map(r => String(r.cells.label || "").trim()).filter(Boolean);
-          const type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || "")) || flowTypes.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
+          const tw = [body.assetType || "", ASSET_TYPE_RENAMES[body.assetType] || "", ASSET_TYPE_KEYS[body.assetType] || ""].filter(Boolean).map(cpcNorm), type = types.find(x => tw.includes(cpcNorm(x))) || flowTypes.find(x => tw.includes(cpcNorm(x)));
           if (!type) return json({ error: `"${body.assetType || "(blank)"}" is neither an Asset Type option in Notion nor an asset node of the Asset Flow` }, 400);
           const kk = "import:key:" + tid + ":" + key, had = await env.TRADES.get(kk);
           if (had) { const pg = await getPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return json({ ok: true, existing: true, assetId: had }); }
@@ -20105,6 +20105,9 @@ export default {
           const pw = body.prewrite, text = pw == null ? "" : typeof pw === "string" ? pw.trim() : JSON.stringify(pw, null, 2);
           if (text) await env.TRADES.put("prewrite:" + id, JSON.stringify({ text: text.slice(0, 40000), json: typeof pw !== "string", at: new Date().toISOString(), fromImport: run || key }));
           else warn.push("no pre-write in this post");
+          const rt = body.route; if (rt && typeof rt === "object" && /^[0-9a-f]{32}$/i.test(hubAssetId(String(rt.from || ""))))   // information routing, not a parent (2026-11-11)
+            await env.TRADES.put("route:" + id, JSON.stringify({ from: hubAssetId(rt.from), fromType: String(rt.fromType || "").slice(0, 60), run, at: new Date().toISOString(),
+              ...(rt.listing && typeof rt.listing === "object" ? { listing: JSON.parse(JSON.stringify(rt.listing).slice(0, 20000) || "null") } : {}) }));
           return json({ ok: true, assetId: id, title: assetTitle, type, prewrite: !!text, ...(warn.length ? { warning: warn.join(" · ") } : {}), ...(a.flowWarnings ? { flowWarnings: a.flowWarnings } : {}) });
         }
         if (body.action === "cplanCreateAsset") {

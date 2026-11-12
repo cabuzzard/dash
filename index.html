@@ -8248,8 +8248,14 @@ const AI_FENCE = /^```(?:json)?\s*|\s*```$/g;
 async function aiJson(input) {
   const file = input.files && input.files[0]; if (!file || !AI) return;
   try {
-    const d = JSON.parse((await file.text()).trim().replace(AI_FENCE, '')), posts = Array.isArray(d) ? d : d && Array.isArray(d.posts) ? d.posts : null;
-    if (!posts || !posts.length) throw Error('expected {"posts": [ … ]}');
+    const d = JSON.parse((await file.text()).trim().replace(AI_FENCE, ''));
+    // items[] (listing + its single post) expand to two posts each: the listing first, then its stand-alone promo post
+    const posts = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items.flatMap(it => [
+        ...(it.listing ? [{ key: it.key, line: it.line, thumbnail: it.thumbnail, assetType: d.assetType || 'Etsy Listing', prewrite: it.listing }] : []),
+        ...(it.singlePost ? [{ key: String(it.key || it.line || '') + '-post', line: (it.line || it.key) + ' — Single Post', thumbnail: it.singlePost.thumbnail || it.thumbnail, assetType: 'single post', standalone: true, promotes: it.listing ? it.key : '',
+          prewrite: Object.fromEntries(Object.entries(it.singlePost).filter(([k]) => k !== 'thumbnail')) }] : [])])
+      : d && Array.isArray(d.posts) ? d.posts : null;
+    if (!posts || !posts.length) throw Error('expected {"items": [ … ]} or {"posts": [ … ]}');
     AI.data = Object.assign({}, Array.isArray(d) ? {} : d, { posts, file: file.name }); AI.err = ''; AI.log = []; AI.done = 0;
     if (!AI.run) AI.run = String(AI.data.run || '');
     if (AI.data.assetType && ((AI.types || []).includes(AI.data.assetType) || aiFlowTypes().includes(AI.data.assetType))) AI.type = AI.data.assetType;
@@ -8306,7 +8312,7 @@ async function aiRun() {
   const A = AI; if (!A || A.busy || !A.data || !A.tid || !A.type) return;
   const t = aiTitles().find(x => hdNid(x.titleId) === A.tid) || {}, posts = A.data.posts;
   A.busy = true; A.done = 0; A.log = []; aiDraw();
-  let made = 0, skipped = 0, failed = 0;
+  let made = 0, skipped = 0, failed = 0; const byKey = {};
   if (A.parent === '__trend') {
     const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, key: '__trend-parent', asPillar: true,
       assetTitle: 'Trend Parent — ' + (t.title || 'title'), assetType: 'Trend Parent' }).catch(e => ({ error: e.message }));
@@ -8315,8 +8321,11 @@ async function aiRun() {
   }
   for (let i = 0; i < posts.length; i++) {
     const p = posts[i], key = aiKey(p, i), name = p.line || key;
-    const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, parentAssetId: A.parent || undefined,
-      run: A.run.trim(), key, assetTitle: p.line || (p.prewrite && p.prewrite['Platform Title']) || key, assetType: p.assetType || A.type, prewrite: p.prewrite }).catch(e => ({ error: e.message }));
+    const src = p.promotes ? posts.find(q => aiKey(q, posts.indexOf(q)) === p.promotes) : null;
+    const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, parentAssetId: p.standalone ? undefined : (A.parent || undefined),
+      run: A.run.trim(), key, assetTitle: p.line || (p.prewrite && p.prewrite['Platform Title']) || key, assetType: p.assetType || A.type, prewrite: p.prewrite,
+      ...(p.promotes && byKey[p.promotes] ? { route: { from: byKey[p.promotes], fromType: 'Etsy Listing', listing: src ? src.prewrite : null } } : {}) }).catch(e => ({ error: e.message }));
+    if (r && r.assetId) byKey[key] = r.assetId;
     if (!r || r.error) {
       failed++; A.log.push('✗ ' + name + ' — ' + ((r && r.error) || 'no response')); A.done = i + 1; aiDraw();
       if (/rate.?limit|429/i.test((r && r.error) || '')) { A.log.push('✗ Stopped: Notion rate limit — run the import again later; done posts are skipped'); break; }
