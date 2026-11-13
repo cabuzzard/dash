@@ -7735,7 +7735,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   const mineRows = (t.rows || []).filter(r => { const c = r.cells || {}, x = hubPlanHub(c.hub); if (/^archived$/i.test(String(c.status || '').trim()) || !x || x.slug !== h.slug) return false;
     const aid = ai ? kwNid(String(c[ai] || '').trim()) : '', a = aid && allA.get(aid); if (aid) byAid.set(aid, c); return ik(a ? a.initiative : c.init) === I.key; });
   (t.rows || []).forEach(r => { const c = r.cells || {}, aid = ai ? kwNid(String(c[ai] || '').trim()) : ''; if (aid && !byAid.has(aid)) byAid.set(aid, c); });
-  const subOfA = a => (sc ? (byAid.get(hdNid(a.assetId)) || {})[sc] : '') || a.subInitiative || '';
+  const subOfA = a => a.subInitiative || (sc ? (byAid.get(hdNid(a.assetId)) || {})[sc] : '') || '';   // the asset's own field first (strict 1:1, operator 2026-11-13)
   const nk = v => String(v || '').trim().toLowerCase(), groups = (kind, of, ofRow, none) => {
     const m = new Map(), get = v => { const k = nk(v) || '__none'; if (!m.has(k)) m.set(k, { kind, name: k === '__none' ? none : String(v).trim(), none: k === '__none', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [] }); return m.get(k); };
     assets.forEach(a => { const g = get(of(a)), s = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
@@ -7777,7 +7777,13 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
       ${lowSubs.length ? `<a href="#" onclick="event.preventDefault();HD.showLow=!HD.showLow;hdRender()" style="color:#f59e0b;">${HD.showLow ? 'hide the ' + lowSubs.length + ' below ' + minRel : lowSubs.length + ' sub-initiative' + (lowSubs.length === 1 ? '' : 's') + ' below ' + minRel + ' hidden — show'}</a>` : ''}
       <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — while this is on, the score sets every card's colour; off, your own order and colours come back</span></div>`;
   const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>` + hdStackChips(h, I.name);
-  return strip + ren + anchorBar + hdCardGrid('Sub-initiatives', subs, where, { anchor }) + hint + hdCardGrid('Products', prods, where, { anchor });
+  // strict tree (operator 2026-11-13: "one product … per one initiative one sub initiative"): Initiative → Sub-initiative → its Products. Each product
+  // sits under the sub-initiative most of its assets carry (all of them, once enforced); products with none sit directly under the initiative.
+  const aOf = id => allA.get(hdNid(id)), subOfP = g => { const c = {}; g.allIds.forEach(id => { const a = aOf(id); const v = a ? String(subOfA(a) || '').trim().toLowerCase() : ''; c[v] = (c[v] || 0) + 1; }); return Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0] || ''; };
+  const pSub = new Map(prods.map(g => [g, subOfP(g)])), real = subs.filter(g => !g.none), direct = prods.filter(g => !pSub.get(g) || !real.some(sg => nk(sg.name) === pSub.get(g)));
+  hdCardSort(real);
+  const nested = real.map(sg => { const ps = prods.filter(g => pSub.get(g) === nk(sg.name)); return `<div style="border-left:3px solid ${sg.color || '#c084fc'};padding:2px 0 2px 10px;margin:4px 0 14px;">${hdCardGrid('Sub-initiative', [sg], where, { anchor, noHidLink: true })}${ps.length ? hdCardGrid('Products', ps, where, { anchor, noHidLink: true }) : '<div style="font-size:11.5px;color:var(--text3);margin:-4px 2px 6px;">No products in this sub-initiative yet</div>'}</div>`; }).join('');
+  return strip + ren + anchorBar + (direct.length ? hdCardGrid('Products — directly under ' + I.name, direct, where, { anchor }) : '') + nested + (real.length ? '' : hint);
 }
 // One card, the same everywhere (operator 2026-11-10: "inside of topics have initiative and product cards same exact cards with show hide and al the
 // same functionality"): sub-initiative / product cards inside an initiative, initiative / product cards inside a keyword topic. Drag to reorder,
