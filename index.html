@@ -7810,7 +7810,15 @@ function hdCardHtml(g, where, ctx) { ctx = ctx || {}; if (!g.color) { const pc =
         ${g.color && !g.autoColor ? `<a href="#" title="Remove the highlight" onclick="event.preventDefault();event.stopPropagation();hdCardColor(${ci},'')" style="font-size:11px;color:var(--text3);text-decoration:none;">×</a>` : ''}</span><div style="font-size:13px;font-weight:700;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${nm}</div></div>
       <div style="display:flex;justify-content:space-between;gap:2px;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; }
 // a heading + the cards; hidden ones (🙈, operator 2026-11-10) are left out unless "n hidden — show" is on, then dimmed with 👁 to unhide
+// Default card order (operator 2026-11-13: "set the drag order of all the cards … by color, then by number of assets in card"): green, amber, orange,
+// purple, grey, no colour; then most assets first. A group you have dragged keeps your order; Arrange by keyword relevance keeps its own.
+const HD_COL_RANK = ['#16a34a', '#4ade80', '#eab308', '#ff7a00', '#c084fc', '#94a3b8'];
+function hdCardSort(L) { if (!L.length || (HD.cardPrefs || {}).arrange || (L[0].gk && (((HD.cardPrefs || {}).order || {})[L[0].gk] || []).length)) return L;
+  L.forEach(g => { if (!g.color) { const pc = hdPlanCol(g); if (pc) { g.color = pc; g.autoColor = true; } } });
+  const rk = g => { const i = HD_COL_RANK.indexOf(String(g.color || '').toLowerCase()); return g.none ? 99 : i < 0 ? (g.color ? 6 : 7) : i; }, cnt = g => new Set(g.allIds || []).size;
+  return L.sort((a, b) => rk(a) - rk(b) || cnt(b) - cnt(a) || String(a.name).localeCompare(String(b.name))); }
 function hdCardGrid(head, L, where, ctx, extra) {
+  hdCardSort(L);
   const H = (HD.cardPrefs || {}).hidden || {}, vis = []; let n = 0;
   L.forEach(g => { g.hidden = !!H[g.ck]; if (g.hidden) n++; if (!g.hidden || HD.showHidden) vis.push(g); });
   if (!vis.length && !n && !extra) return '';
