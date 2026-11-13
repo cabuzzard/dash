@@ -1729,7 +1729,7 @@
       <div class="dom-collapse">
         <div class="dom-col-hdr" onclick="domToggle('domsBody','domsArrow')">
           <span class="dom-col-title">Domains</span>
-          <span class="dom-col-count" id="domsCount">65</span>
+          <span class="dom-col-count" id="domsCount">71</span>
           <button onclick="event.stopPropagation();openDomainModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
           <span class="dom-col-arrow" id="domsArrow">▼</span>
         </div>
@@ -12707,9 +12707,81 @@ function domToggle(bodyId, arrowId) {
   arrow.style.transform = open ? '' : 'rotate(-90deg)';
 }
 
-// Auto-renew per domain, as set in the registrar account. true / false; missing = not yet confirmed (shows ?).
-// Expiry dates above were re-checked against the public registry (RDAP) on 2026-11-13.
-const DOMAIN_AUTORENEW = {};
+// Auto-renew per domain, as set in the Bluehost account (Domains list, read 2026-11-13). Missing = not confirmed (shows ?).
+// Expiry dates were re-checked against the public registry (RDAP) the same day.
+const DOMAIN_AUTORENEW = {
+  'accessiblefarms.com': true,
+  'accessyourpassion.com': true,
+  'aisystemimplementation.com': true,
+  'aisystemimplementation.online': false,
+  'barefoothike.com': true,
+  'bayareaoriginalmusic.com': true,
+  'bestoutdoorsandals.com': true,
+  'bestrealestateliquidation.com': true,
+  'blankslatebranding.site': true,
+  'brandingminicourse.com': true,
+  'buildtosuitinvestment.com': true,
+  'buildtosuitinvestment.online': false,
+  'cabuzzard.com': true,
+  'cabuzzard.online': false,
+  'creativeflowguitar.com': true,
+  'energyfocuscoaching.com': true,
+  'energyfocuscoaching.online': false,
+  'facttracking.com': true,
+  'focusingenergycoaching.com': true,
+  'focusingenergycoaching.online': false,
+  'foundationfuturesllc.com': true,
+  'foundationfuturesllc.online': false,
+  'generalservice2020.com': true,
+  'generalservices2020.com': true,
+  'growthcoachmindset.com': true,
+  'growthcoachmindset.online': false,
+  'homepondaquarium.com': true,
+  'homepondaquarium.online': false,
+  'homestructionconsulting.com': true,
+  'homestructionconsulting.online': false,
+  'intentionwarrior.com': true,
+  'intentionwarrior.online': false,
+  'introdatevert.com': true,
+  'liketotallydude.com': true,
+  'liketotallydude.online': false,
+  'maiandros-investments.com': true,
+  'modernactivehome.com': true,
+  'mountainwize.com': true,
+  'naturalanxietyrelief.info': true,
+  'naturalspirithealing.com': true,
+  'naturalspiritualscience.com': true,
+  'naturebasedcoach.com': true,
+  'naturebasedcoach.online': false,
+  'naturewellnesscoach.com': true,
+  'naturewellnesscoach.online': false,
+  'online-personalcoach.com': true,
+  'outsidesessions.com': true,
+  'personalcoach-ca.com': true,
+  'petrichorpodcast.com': true,
+  'rad80schild.com': true,
+  'rad80schild.online': false,
+  'relievestressquick.com': true,
+  'rockrgear.com': true,
+  'roi-systems.com': true,
+  'sellhousefastagent.com': true,
+  'somaticspirit.com': true,
+  'spiritual-energy-coach.com': true,
+  'spiritual-energy-coach.online': false,
+  'stablehomefoundation.com': true,
+  'stablehomefoundation.online': false,
+  'sustainableaquarium.com': true,
+  'theuniversoulgame-exchange.com': true,
+  'theuniversoulgame-exchange.online': false,
+  'thirdpathcoaching.com': true,
+  'webguyleadgeneration.com': true,
+  'caregiver4home.com': true,
+  'dreamfinancialfreedom.com': true,
+  'internalhealingarts.com': true,
+  'mindclarityflow.com': true,
+  'visionaryattitude.com': true,
+  'visionaryattitude.online': false,
+};
 
 function initDomainsTab() {
   const today = new Date(); today.setHours(0,0,0,0);
@@ -12779,6 +12851,12 @@ function initDomainsTab() {
     ['theuniversoulgame-exchange.online','04/03/2027','Bluehost','Steven Richardson'],
     ['thirdpathcoaching.com','10/10/2027','Bluehost','Steven Richardson'],
     ['webguyleadgeneration.com','12/12/2026','Bluehost','Steven Richardson'],
+    ['caregiver4home.com','07/06/2027','Bluehost',''],
+    ['dreamfinancialfreedom.com','07/06/2027','Bluehost',''],
+    ['internalhealingarts.com','07/06/2027','Bluehost',''],
+    ['mindclarityflow.com','07/06/2027','Bluehost',''],
+    ['visionaryattitude.com','07/06/2027','Bluehost',''],
+    ['visionaryattitude.online','07/06/2027','Bluehost',''],
   ];
 
   // Merge localStorage additions
