@@ -23431,7 +23431,7 @@ Return: {
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
           assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/\bparent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
@@ -23484,7 +23484,7 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/\bparent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
+              assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
