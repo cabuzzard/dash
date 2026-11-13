@@ -11322,6 +11322,43 @@ async function etsyPushState(env, cid, onlyAsset) {
     log: ((await env.TRADES.get('etsypush:log:' + cid, 'json').catch(() => null)) || []).slice(0, 20) };
 }
 
+// ── FACEBOOK MARKETPLACE LISTING (operator 2026-11-12: "a new type of listing called facebook marketplace listing which is basically all of
+// the fields and info necessary for facebook marketplace"). Facebook has no listing API for individual Marketplace sellers, so this type
+// HOLDS everything a Marketplace post needs and the Asset modal's 📘 Marketplace tab shows it ready to copy, field by field. Written fields
+// (the writing-rules row "Facebook Marketplace Listing"): Platform Title · Body (description) · Search Tags (product tags). Operator fields:
+// Marketplace Price / Condition / Category / Delivery / Location / Availability / Quantity, photos = the asset's Images. Once it is posted
+// the operator pastes the listing link into Marketplace URL (Product Link too, so a hub slider can point at it).
+const FB_FIELDS = { price: ['Marketplace Price', 'number'], condition: ['Marketplace Condition', 'select'], category: ['Marketplace Category', 'text'], delivery: ['Marketplace Delivery', 'select'],
+  location: ['Marketplace Location', 'text'], availability: ['Marketplace Availability', 'select'], quantity: ['Marketplace Quantity', 'number'], url: ['Marketplace URL', 'url'] };
+const FB_OPTIONS = { condition: ['New', 'Used - Like New', 'Used - Good', 'Used - Fair'], delivery: ['Local pickup', 'Shipping', 'Local pickup + Shipping'], availability: ['Single item', 'In stock'] };
+const isFbType = t => /^facebook marketplace listing$/i.test(String(t || '').trim());
+function fbState(page) {
+  const p = page.properties || {}, c = etsyCopy(p), v = {};
+  for (const [k, [name, type]] of Object.entries(FB_FIELDS)) v[k] = type === 'number' ? (p[name]?.number ?? null) : type === 'select' ? (p[name]?.select?.name || '') : type === 'url' ? (p[name]?.url || '') : hubRichText(p[name]?.rich_text);
+  const tags = (hubRichText(p['Search Tags']?.rich_text).trim() || String(extFields(hubRichText(p['External Write']?.rich_text), [{ name: 'Search Tags' }])['Search Tags'] || '')).split(/[\n,]+/).map(x => x.trim()).filter(Boolean).slice(0, 20);
+  const images = etsyImages(p), missing = [!c.title && 'title', !c.description && 'description', !(v.price >= 0 && v.price !== null) && 'price', !v.condition && 'condition', !v.category && 'category', !v.delivery && 'delivery', !v.location && 'location', !images.length && 'photo'].filter(Boolean);
+  return { id: hubAssetId(page.id), name: hubRichText(p['Asset Title']?.title), status: p['Asset Status']?.select?.name || '', title: hubRichText(p['Platform Title']?.rich_text).trim() || c.title, description: hubRichText(p.Body?.rich_text).trim() || c.description,
+    tags, images, ...v, missing, options: FB_OPTIONS, written: !!(hubRichText(p['Platform Title']?.rich_text).trim() && hubRichText(p.Body?.rich_text).trim()) };
+}
+// fbListing {assetId, op: get | save, price?, condition?, category?, delivery?, location?, availability?, quantity?, url?}
+async function fbListingAction(env, body) {
+  const aid = hubAssetId(body.assetId || ''); if (!/^[a-f0-9]{32}$/i.test(aid)) return { error: 'assetId required' };
+  const page = await ivPage(aid); if (!page?.properties || page.archived || page.in_trash) return { error: 'Asset unavailable' };
+  if (!isFbType(page.properties['Asset Type']?.select?.name)) return { error: 'Not a Facebook Marketplace Listing' };
+  if (body.op === 'save') {
+    const props = {};
+    for (const [k, [name, type]] of Object.entries(FB_FIELDS)) { if (!(k in body)) continue; const raw = body[k];
+      if (type === 'number') { const n = raw === '' || raw == null ? null : Number(raw); if (n !== null && !(n >= 0)) return { error: name + ' must be a number' }; props[name] = { number: n }; }
+      else if (type === 'select') { if (raw && !FB_OPTIONS[k].includes(raw)) return { error: name + ' is one of ' + FB_OPTIONS[k].join(', ') }; props[name] = { select: raw ? { name: raw } : null }; }
+      else if (type === 'url') { const u = String(raw || '').trim(); if (u && !/^https:\/\//i.test(u)) return { error: 'The listing link must start with https://' }; props[name] = { url: u || null }; if (u) props['Product Link'] = { url: u }; }
+      else props[name] = { rich_text: ivRt(String(raw || '').trim().slice(0, 300)) }; }
+    const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+    if (!r.ok) return { error: (await r.json().catch(() => ({}))).message || 'Notion ' + r.status };
+    return { ok: true, ...fbState(await ivPage(aid)) };
+  }
+  return { ok: true, ...fbState(page) };
+}
+
 // ── PIN brute-force lockout ─────────────────────────────────────────────
 // The 250ms per-request delay on auth/pinUpdate slows a single client but
 // does nothing against parallel requests. This adds a real per-IP lockout,
@@ -57600,7 +57637,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
             storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
             poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
-            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name), etsy: /^etsy listing$/i.test(p["Asset Type"]?.select?.name || ""),
+            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name), etsy: /^etsy listing$/i.test(p["Asset Type"]?.select?.name || ""), fb: isFbType(p["Asset Type"]?.select?.name),
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text), directions: hubRichText(p["Writer Directions"]?.rich_text), initiative: hubRichText(p.Initiative?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
           prewrite: await extWriteGet(env, hubAssetId(body.assetId), w.page).catch(() => null), extKeepLevels: Object.keys(EXT_KEEP),
@@ -57629,6 +57666,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "fbListing") { try { const r = await fbListingAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "etsyPush") { try { const r = await etsyPushAction(env, body); return json(r, r.error && !r.rows ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "hubWidget") { try { const r = await hubWidgetAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "assetPrewrite") {
