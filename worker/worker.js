@@ -7507,7 +7507,7 @@ async function hubWidgetAction(env, body) {
     if (pid) await env.TRADES.delete(widgetCacheKey(pid));
   }
   const fresh = await ivPage(aid), fp = fresh.properties, pid = ivRid(fp, 'Parent Asset');
-  const subs = cid ? (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'Sub Page' } }] } }).catch(() => []))
+  const subs = cid ? (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { or: [{ property: 'Asset Type', select: { equals: 'sub page' } }, { property: 'Asset Type', select: { equals: 'Sub Page' } }] }] } }).catch(() => []))
     .filter(x => !x.archived && !x.in_trash).map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.['Platform Title']?.rich_text) || hubRichText(x.properties?.['Asset Title']?.title), status: x.properties?.['Asset Status']?.select?.name || '', url: x.properties?.['Content URL']?.url || '' })) : [];
   const runs = cid ? [...new Set((await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'single post' } }, { property: 'Run', rich_text: { is_not_empty: true } }] } }).catch(() => []))
     .map(x => hubRichText(x.properties?.Run?.rich_text).trim()).filter(Boolean))].sort() : [];
