@@ -8324,7 +8324,7 @@ function hdKwAll(lv, open) { const L = ['Cluster', 'Topic', 'Product'], i = L.in
   L.forEach((k, j) => (A[k] || []).forEach(ck => { if (open && j <= i) O.add(ck); if (!open && j >= i) O.delete(ck); })); hdRender(); }
 // ── 🗂 TITLE PAGE (operator 2026-11-12: "a title page that shows all of the images and counts of all the asset types and blurb copy of the
 // assets like a title assets hub card … after clicking through from the product level on the title cards"). Worker titlePage (read-only).
-function hdTpOpen(titleId) { HD.tp = { id: hdNid(titleId), d: null, type: '', status: '' }; hdRender(); window.scrollTo(0, 0); hdTpLoad(); }
+function hdTpOpen(titleId) { HD.tp = { id: hdNid(titleId), d: null, type: '', status: '', tab: (HD.tp && HD.tp.tab) || 'cards' }; hdRender(); window.scrollTo(0, 0); hdTpLoad(); }
 function hdTpClose() { HD.tp = null; hdRender(); }
 async function hdTpLoad() { const T = HD.tp; if (!T) return; const r = await call('titlePage', { titleId: T.id }).catch(e => ({ error: e.message })); if (HD.tp !== T) return; T.d = r || { error: 'no response' }; hdRender(); }
 function hdTpHtml(h) {
@@ -8356,10 +8356,25 @@ function hdTpHtml(h) {
       <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:20px;">${esc(d.title.name)}</b><span style="font-size:12px;color:${stCol(d.title.status)};">${esc(d.title.status)}</span><a href="https://www.notion.so/${esc(d.title.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);">Notion ↗</a></div>
       ${d.title.notes ? `<div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${esc(d.title.notes)}</div>` : ''}
       <div style="font-size:12px;color:var(--text2);margin-top:8px;">${all.length} assets · ${types.length} types · ${nPub(all)} live</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${chip('all', all.length, nPub(all), !T.type, "HD.tp.type='';hdRender()")}${types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t); return chip(t, l.length, nPub(l), T.type === t, `HD.tp.type=${JSON.stringify(t).replace(/"/g, '&quot;')};hdRender()`); }).join('')}</div>
-      <div style="display:flex;gap:6px;margin-top:8px;font-size:11.5px;">${[['', 'every status'], ['live', 'live only'], ['notlive', 'not live yet']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.status='${k}';hdRender()" style="padding:2px 9px;border-radius:999px;border:1px solid ${T.status === k ? 'var(--accent)' : 'var(--border2)'};text-decoration:none;color:var(--text2);">${l}</a>`).join('')}</div>
+      ${T.tab === 'counts' ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${chip('all', all.length, nPub(all), !T.type, "HD.tp.type='';hdRender()")}${types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t); return chip(t, l.length, nPub(l), T.type === t, `HD.tp.type=${JSON.stringify(t).replace(/"/g, '&quot;')};hdRender()`); }).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;font-size:11.5px;">${[['', 'every status'], ['live', 'live only'], ['notlive', 'not live yet']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.status='${k}';hdRender()" style="padding:2px 9px;border-radius:999px;border:1px solid ${T.status === k ? 'var(--accent)' : 'var(--border2)'};text-decoration:none;color:var(--text2);">${l}</a>`).join('')}</div>`}
     </div>
-    ${groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>'}`;
+    <div style="display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid var(--border2);">${[['cards', '🖼 Cards'], ['counts', '📊 Counts']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.tab='${k}';hdRender()" style="padding:7px 14px;font-size:12.5px;text-decoration:none;border:1px solid ${T.tab === k ? 'var(--border2)' : 'transparent'};border-bottom:${T.tab === k ? '1px solid var(--bg)' : '0'};border-radius:8px 8px 0 0;margin-bottom:-1px;background:${T.tab === k ? 'var(--surface)' : 'transparent'};color:${T.tab === k ? 'var(--text)' : 'var(--text3)'};font-weight:${T.tab === k ? 700 : 400};">${l}</a>`).join('')}</div>
+    ${T.tab === 'counts' ? hdTpCounts(all, types) : (groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>')}`;
+}
+// 📊 Counts: one row per asset type — Development (+ Review / Planning / Idea), Publish, Published, total; a row opens Cards on that type
+function hdTpCounts(all, types) {
+  const bucket = s => /^published$/i.test(s) ? 'pubd' : /^publish$/i.test(s) ? 'pub' : 'dev';
+  const rows = types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t), c = { dev: 0, pub: 0, pubd: 0 }; l.forEach(a => c[bucket(a.status)]++); return { t, n: l.length, ...c }; });
+  const tot = rows.reduce((o, r) => ({ dev: o.dev + r.dev, pub: o.pub + r.pub, pubd: o.pubd + r.pubd, n: o.n + r.n }), { dev: 0, pub: 0, pubd: 0, n: 0 });
+  const cell = (v, col) => `<td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${v ? col : 'var(--text3)'};font-weight:${v ? 700 : 400};">${v}</td>`;
+  const th = (l, right) => `<th style="padding:8px 12px;text-align:${right ? 'right' : 'left'};font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;">${l}</th>`;
+  return `<div style="border:1px solid var(--border2);border-top:0;border-radius:0 0 12px 12px;background:var(--surface);overflow:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border2);">${th('Asset type')}${th('Development', 1)}${th('Publish', 1)}${th('Published', 1)}${th('Total', 1)}</tr></thead>
+    <tbody>${rows.map(r => `<tr onclick="HD.tp.tab='cards';HD.tp.type=${JSON.stringify(r.t).replace(/"/g, '&quot;')};hdRender()" title="Show these as cards" style="border-bottom:1px solid var(--border);cursor:pointer;">
+      <td style="padding:8px 12px;font-weight:600;">${esc(r.t)}</td>${cell(r.dev, '#ff7a00')}${cell(r.pub, '#8ab4f8')}${cell(r.pubd, '#4ade80')}${cell(r.n, 'var(--text)')}</tr>`).join('')}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--border2);"><td style="padding:8px 12px;font-weight:700;">All types</td>${cell(tot.dev, '#ff7a00')}${cell(tot.pub, '#8ab4f8')}${cell(tot.pubd, '#4ade80')}${cell(tot.n, 'var(--text)')}</tr></tfoot></table>
+    <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">Development counts every status before Publish (Idea, Planning, Development, Review). Click a row to see those assets as cards.</div></div>`;
 }
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
