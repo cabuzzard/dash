@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handmade Wood Crafts from the Garden Shop — Sunflower Acres</title>
+<meta name="description" content="Simple pine pieces for the garden, the house and Christmas, each made to order by hand in the Sunflower Acres garden shop.">
+<meta property="og:title" content="Handmade Wood Crafts from the Garden Shop">
+<meta property="og:description" content="Simple pine pieces for the garden, the house and Christmas, each made to order by hand in the Sunflower Acres garden shop.">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#fdfaf0; --ink:#29230f; --accent:#3c6b30; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+header.site { max-width:1100px; margin:0 auto; padding:22px 24px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
+header.site .brand { color:var(--ink); text-decoration:none; font-family:"Fraunces", Georgia, serif; font-weight:700; font-size:1.15rem; margin-right:auto; }
+header.site nav { display:flex; gap:18px; flex-wrap:wrap; }
+header.site nav a { color:var(--ink); opacity:.75; text-decoration:none; font-size:.82rem; letter-spacing:.06em; text-transform:uppercase; }
+header.site nav a:hover, header.site nav a[aria-current] { opacity:1; color:var(--accent); }
+.feature { max-width:1100px; margin:28px auto 0; padding:0 24px; }
+.feature img { width:100%; aspect-ratio:21/9; object-fit:cover; border-radius:14px; display:block; }
+.wrap { max-width:760px; margin:0 auto; padding:40px 24px 80px; }
+h1, h2, h3 { font-family:"Fraunces", Georgia, serif; color:var(--ink); line-height:1.25; }
+h1 { font-size:2.3rem; margin:0 0 18px; }
+h2 { font-size:1.45rem; margin:40px 0 14px; color:var(--accent); }
+h3 { font-size:1.15rem; margin:28px 0 10px; }
+p, li { font-size:1.08rem; }
+p { margin:0 0 18px; }
+a { color:var(--accent); }
+.lede { font-size:1.2rem; opacity:.85; margin-bottom:28px; }
+.cta a { display:inline-block; background:var(--accent); color:#fff; padding:14px 28px; border-radius:8px; text-decoration:none; font-weight:700; margin-top:14px; }
+footer.site { max-width:1100px; margin:0 auto; padding:24px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+@media (max-width:640px) { h1 { font-size:1.8rem; } .feature img { aspect-ratio:16/9; } }
+.widget-area:empty { display:none; }
+.wslider { margin:34px 0; }
+.wslider h2 { margin:0 0 14px; }
+.wslider .track { display:flex; gap:16px; overflow-x:auto; scroll-snap-type:x mandatory; padding:4px 2px 14px; -webkit-overflow-scrolling:touch; }
+.wslider .slide { flex:0 0 min(78%, 260px); scroll-snap-align:start; border:1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; background:color-mix(in srgb, var(--bg) 92%, var(--ink)); }
+.wslider .slide img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:color-mix(in srgb, var(--ink) 8%, transparent); }
+.wslider .slide .t { font-family:"Fraunces", Georgia, serif; font-weight:700; font-size:1.05rem; margin:12px 14px 4px; line-height:1.3; }
+.wslider .slide .b { font-size:.95rem; margin:0 14px 12px; opacity:.85; line-height:1.5; flex:1; }
+.wslider .slide a.go { margin:0 14px 14px; text-align:center; background:var(--accent); color:#fff; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:.95rem; }
+.wslider .nav { display:flex; gap:8px; justify-content:flex-end; }
+.wslider .nav button { border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); background:transparent; color:var(--ink); border-radius:50%; width:36px; height:36px; font-size:1rem; cursor:pointer; }
+</style>
+</head>
+<body>
+<header class="site"><a class="brand" href="../">Sunflower Acres</a><nav id="subnav"><a href="../">Home</a><a href="../wood-crafts/" aria-current="page">Wood Crafts</a></nav></header>
+
+<main class="wrap">
+<h1>Handmade Wood Crafts from the Garden Shop</h1>
+<p class="lede">Simple pine pieces for the garden, the house and Christmas, each made to order by hand in the Sunflower Acres garden shop.</p>
+<div class="widget-area" data-area="Top"></div>
+<p>Everything here is cut from pine in the Sunflower Acres garden shop and made to order, one piece at a time.</p>
+<h2>What I'm making</h2>
+<p>Pieces for the garden, like raised bed kits and a birdhouse. Things for the house: shelves, a key holder, coasters, a serving tray. And a run of simple Christmas pieces: ornaments, a nativity set and a little tiered tree.</p>
+<h2>How ordering works</h2>
+<p>Every piece is made to order. The pictures are mock-ups of the designs; real photos replace them as the first pieces come off the bench. Tap Order now on any piece to go to the shop.</p>
+
+
+<div class="widget-area" data-area="Bottom"></div>
+</main>
+<footer class="site">Sunflower Acres</footer>
+<script>
+// the hub's current Sub Pages (pages added after this one was built show here too)
+fetch('../pages.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(list => {
+  if (!Array.isArray(list) || !list.length) return;
+  const here = "wood-crafts", nav = document.getElementById('subnav'), e = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  nav.innerHTML = '<a href="../">Home</a>' + list.filter(x => x && /^[a-z0-9-]+$/.test(x.slug || '')).map(x => '<a href="../' + x.slug + '/"' + (x.slug === here ? ' aria-current="page"' : '') + '>' + e(x.label || x.title) + '</a>').join('');
+}).catch(() => {});
+// widgets published to this page's areas (Post Slider …) — loaded live, so a published / changed widget shows without a re-render
+fetch('https://jolly-darkness-5dcc.trailnotes2026.workers.dev/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'getHubWidgets', pageId: "4171f7d3a4bb81eca358e22f13338fc3" }) })
+  .then(r => r.ok ? r.json() : null).then(d => {
+    const ws = (d && d.widgets) || [], e = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const okUrl = u => String(u || '').toLowerCase().startsWith('https:') ? u : '';
+    for (const w of ws) { const area = document.querySelector('.widget-area[data-area="' + (w.area === 'Bottom' ? 'Bottom' : 'Top') + '"]'); if (!area || !(w.slides || []).length) continue;
+      const box = document.createElement('section'); box.className = 'wslider';
+      box.innerHTML = (w.title ? '<h2>' + e(w.title) + '</h2>' : '') + '<div class="track">' + w.slides.map(x => '<div class="slide">' + (okUrl(x.image) ? '<img loading="lazy" src="' + e(x.image) + '" alt="' + e(x.title) + '">' : '') +
+        '<div class="t">' + e(x.title) + '</div><div class="b">' + e(x.blurb) + '</div>' + (okUrl(x.link) ? '<a class="go" href="' + e(x.link) + '" target="_blank" rel="noopener">' + e(w.cta || 'Order now') + '</a>' : '') + '</div>').join('') + '</div>' +
+        (w.slides.length > 1 ? '<div class="nav"><button type="button" aria-label="Previous">‹</button><button type="button" aria-label="Next">›</button></div>' : '');
+      const tr = box.querySelector('.track'), bs = box.querySelectorAll('.nav button');
+      if (bs.length) { bs[0].onclick = () => tr.scrollBy({ left: -tr.clientWidth * 0.8, behavior: 'smooth' }); bs[1].onclick = () => tr.scrollBy({ left: tr.clientWidth * 0.8, behavior: 'smooth' }); }
+      area.appendChild(box); }
+  }).catch(() => {});
+</script>
+</body>
+</html>
