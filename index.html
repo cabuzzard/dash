@@ -6565,7 +6565,8 @@ function amWidgetHtml() {
     ${page && page.url ? `<div style="font-size:11.5px;margin-top:3px;"><a href="${esc(page.url)}" target="_blank" rel="noopener">${esc(page.url)} ↗</a></div>` : page ? '<div style="font-size:11.5px;color:#f5c542;margin-top:3px;">That Sub Page is not published yet — the widget shows once it is.</div>' : ''}
     ${lab('Area')}<select id="wgArea" style="${IN}" ${dis}>${(W.areas || ['Top', 'Bottom']).map(x => `<option ${x === W.area ? 'selected' : ''}>${x}</option>`).join('')}</select>
     <div style="font-size:11px;color:var(--text3);margin-top:3px;">Top = under the page's opening lines · Bottom = after the page body.</div>
-    ${lab('Run (its single posts become the slides)')}<select id="wgRun" style="${IN}" ${dis}><option value="">— pick a run —</option>${(W.runs || []).map(x => `<option ${x === W.run ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+    ${lab('Order on the page (1 = first; blank = after the numbered ones)')}<input id="wgOrder" style="${IN}width:90px;" ${dis} value="${W.order ?? ''}">
+    ${lab('Run (the single posts on this slider\'s title, narrowed to this run — blank = every single post on its title)')}<select id="wgRun" style="${IN}" ${dis}><option value="">— pick a run —</option>${(W.runs || []).map(x => `<option ${x === W.run ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
     ${lab('Heading (optional)')}<input id="wgTitle" style="${IN}" ${dis} value="${esc(W.title || '')}">
     ${lab('Button label')}<input id="wgCta" style="${IN}" ${dis} value="${esc(W.cta || '')}" placeholder="Order now">
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
@@ -6585,7 +6586,7 @@ async function amWidgetLoad() {
 }
 async function amWidgetDo(op) {
   if (!AM || AM._widgetBusy) return; const v = id => (document.getElementById(id) || {}).value;
-  const fields = { pageId: v('wgPage') || '', area: v('wgArea') || 'Top', run: v('wgRun') || '', title: v('wgTitle') || '', cta: v('wgCta') || '' };
+  const fields = { pageId: v('wgPage') || '', area: v('wgArea') || 'Top', run: v('wgRun') || '', title: v('wgTitle') || '', cta: v('wgCta') || '', order: v('wgOrder') ?? '' };
   AM._widgetBusy = true; amDraw();
   let r = op === 'unpublish' ? null : await call('hubWidget', { assetId: AM.id, op: 'save', ...fields }).catch(e => ({ error: e.message }));
   if (!r || !r.error) { if (op !== 'save') r = await call('hubWidget', { assetId: AM.id, op }).catch(e => ({ error: e.message })); }

@@ -7508,7 +7508,9 @@ fetch('https://jolly-darkness-5dcc.trailnotes2026.workers.dev/', { method: 'POST
 // A widget is an asset of a WIDGET type whose Parent Asset is the Sub Page it sits on; Widget Area says where (Top = under the page
 // intro, Bottom = after the body). Publishing it = Asset Status Published — nothing is re-rendered: every Sub Page carries the two areas
 // and loads its Published widgets at view time from the public getHubWidgets read (cached 5 min), so links and slides stay live.
-// POST SLIDER: every single post of one Run (asset Run) as a slide — title, thumbnail, blurb, an order button. The button's link is
+// POST SLIDER (2026-11-12: one per category title): the single posts ON THE SLIDER'S OWN TITLE (its Content Strategy), narrowed to its Run
+// when one is set — a Holiday slider on the Holiday title shows the Holiday posts. Widget Order sets the order on the page (then created).
+// Before 2026-11-12: every single post of one Run (asset Run) as a slide — title, thumbnail, blurb, an order button. The button's link is
 // read at load: the post's routed Etsy Listing → its Product Link (set to the shop link until the listing is pushed to Etsy, then the
 // listing URL), else the post's own Product Link, else the hub's Etsy shop (Logins "Etsy Shop Name" on the campaign).
 const WIDGET_TYPES = ['Post Slider'], WIDGET_AREAS = ['Top', 'Bottom'];
@@ -7527,9 +7529,9 @@ async function widgetShopLink(cid) {   // the hub's Etsy shop, from the campaign
   return shop ? 'https://www.etsy.com/shop/' + encodeURIComponent(shop) : '';
 }
 const widgetImg = p => { const f = (p.Images?.files || [])[0]; return (f && (f.external?.url || f.file?.url)) || p['Post Image']?.url || p.Thumbnail?.url || ''; };
-async function postSliderSlides(env, run, cid) {
-  if (!run) return [];
-  const byRun = { property: 'Run', rich_text: { equals: run } }, inCamp = cid ? [{ property: 'Campaign', relation: { contains: ivDash(cid) } }] : [];
+async function postSliderSlides(env, run, cid, titleId) {
+  if (!run && !titleId) return [];
+  const byRun = { and: [...(run ? [{ property: 'Run', rich_text: { equals: run } }] : []), ...(titleId ? [{ property: 'Content Strategy', relation: { contains: ivDash(titleId) } }] : [])] }, inCamp = cid ? [{ property: 'Campaign', relation: { contains: ivDash(cid) } }] : [];
   const [posts, listings, shop] = await Promise.all([
     notionQuery(ASSETS_DB, { filter: { and: [byRun, ...inCamp, { property: 'Asset Type', select: { equals: 'single post' } }] }, sorts: [{ timestamp: 'created_time', direction: 'ascending' }] }),
     notionQuery(ASSETS_DB, { filter: { and: [byRun, ...inCamp, { property: 'Asset Type', select: { equals: 'Etsy Listing' } }] } }).catch(() => []),
@@ -7544,9 +7546,9 @@ async function postSliderSlides(env, run, cid) {
 }
 async function widgetRender(env, page, cid) {
   const p = page.properties || {}, type = p['Asset Type']?.select?.name || '';
-  const base = { id: hubAssetId(page.id), type, area: WIDGET_AREAS.includes(p['Widget Area']?.select?.name) ? p['Widget Area'].select.name : 'Top',
+  const base = { id: hubAssetId(page.id), type, area: WIDGET_AREAS.includes(p['Widget Area']?.select?.name) ? p['Widget Area'].select.name : 'Top', order: p['Widget Order']?.number ?? null,
     title: hubRichText(p['Platform Title']?.rich_text).trim(), cta: hubRichText(p['CTA Label']?.rich_text).trim() || 'Order now' };
-  if (/^post slider$/i.test(type)) { const run = hubRichText(p.Run?.rich_text).trim(); return { ...base, run, slides: await postSliderSlides(env, run, cid) }; }
+  if (/^post slider$/i.test(type)) { const run = hubRichText(p.Run?.rich_text).trim(), tid = ivRid(p, 'Content Strategy'); return { ...base, run, titleId: tid, slides: await postSliderSlides(env, run, cid, tid) }; }
   return { ...base, slides: [] };
 }
 async function hubWidgetsFor(env, pageId) {   // the Published widgets on one Sub Page (public read; cached 5 min)
@@ -7557,7 +7559,8 @@ async function hubWidgetsFor(env, pageId) {   // the Published widgets on one Su
   const cid = ivRid(page.properties, 'Campaign');
   const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Parent Asset', relation: { contains: ivDash(pid) } }, { property: 'Asset Status', select: { equals: 'Published' } }] },
     sorts: [{ timestamp: 'created_time', direction: 'ascending' }] });
-  const widgets = await Promise.all(rows.filter(x => !x.archived && !x.in_trash && isWidgetType(x.properties?.['Asset Type']?.select?.name)).map(x => widgetRender(env, x, cid)));
+  const widgets = (await Promise.all(rows.filter(x => !x.archived && !x.in_trash && isWidgetType(x.properties?.['Asset Type']?.select?.name)).map(x => widgetRender(env, x, cid))))
+    .map((w, i) => ({ w, i })).sort((a, b) => (a.w.order ?? 1e9) - (b.w.order ?? 1e9) || a.i - b.i).map(x => x.w);
   const out = { widgets, at: new Date().toISOString() };
   await env.TRADES.put(widgetCacheKey(pid), JSON.stringify(out), { expirationTtl: 300 });
   return out;
@@ -7579,6 +7582,7 @@ async function hubWidgetAction(env, body) {
     if ('run' in body) props.Run = { rich_text: ivRt(String(body.run || '').trim().slice(0, 200)) };
     if ('title' in body) props['Platform Title'] = { rich_text: ivRt(String(body.title || '').trim().slice(0, 200)) };
     if ('cta' in body) props['CTA Label'] = { rich_text: ivRt(String(body.cta || '').trim().slice(0, 40)) };
+    if ('order' in body) { const o = body.order === '' || body.order == null ? null : Number(body.order); if (o !== null && !Number.isFinite(o)) return { error: 'Order must be a number' }; props['Widget Order'] = { number: o }; }
     if ('run' in body && String(body.run || '').trim()) await runEnsureProps(env);
     await patch(props);
     for (const id of [pageNow, body.pageId].filter(Boolean)) await env.TRADES.delete(widgetCacheKey(id));
@@ -7586,7 +7590,7 @@ async function hubWidgetAction(env, body) {
   if (body.op === 'publish' || body.op === 'unpublish') {
     const cur = await ivPage(aid), pid = ivRid(cur.properties, 'Parent Asset');
     if (body.op === 'publish') { if (!pid) return { error: 'Pick the Sub Page it goes on first' };
-      if (/^post slider$/i.test(type) && !hubRichText(cur.properties.Run?.rich_text).trim()) return { error: 'Pick the run whose posts it shows first' }; }
+      if (/^post slider$/i.test(type) && !hubRichText(cur.properties.Run?.rich_text).trim() && !ivRid(cur.properties, 'Content Strategy')) return { error: 'Pick the run whose posts it shows first (or put the slider on a title)' }; }
     await patch({ 'Asset Status': { select: { name: body.op === 'publish' ? 'Published' : 'Development' } } });
     if (pid) await env.TRADES.delete(widgetCacheKey(pid));
   }
@@ -7596,7 +7600,7 @@ async function hubWidgetAction(env, body) {
   const runs = cid ? [...new Set((await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'single post' } }, { property: 'Run', rich_text: { is_not_empty: true } }] } }).catch(() => []))
     .map(x => hubRichText(x.properties?.Run?.rich_text).trim()).filter(Boolean))].sort() : [];
   const w = await widgetRender(env, fresh, cid);
-  return { ok: true, type, status: fp['Asset Status']?.select?.name || '', pageId: pid || '', area: w.area, run: w.run || '', title: w.title, cta: hubRichText(fp['CTA Label']?.rich_text).trim(), pages: subs, runs, slides: w.slides, areas: WIDGET_AREAS };
+  return { ok: true, type, status: fp['Asset Status']?.select?.name || '', pageId: pid || '', area: w.area, order: w.order, run: w.run || '', title: w.title, cta: hubRichText(fp['CTA Label']?.rich_text).trim(), pages: subs, runs, slides: w.slides, areas: WIDGET_AREAS };
 }
 async function removeSubPage(env, hdr, page) {
   const p = page.properties || {}, hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id)); if (!hub) return null;
