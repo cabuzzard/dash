@@ -5954,7 +5954,7 @@ async function amLoad() {
   AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } if (!AM.trendTabSet && amIsTrend()) { AM.tab = 'trend'; AM.trendTabSet = true; } if (!AM.widgetTabSet && amIsWidget()) { AM.tab = 'widget'; AM.widgetTabSet = true; } }
   amDraw(); if (AM && AM.data && !AM.ctx && !AM.ctxBusy) amCtxLoad();
 }
-function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; if (t === 'widget') AM.widget = null; amDraw(); }
+function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; if (t === 'widget') AM.widget = null; if (t === 'etsy') AM.etsy = null; amDraw(); }
 function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
   const cf = (d.packet && d.packet.currentFields) || {}; if (name in cf) return cf[name];
   return ({ 'Platform Title': a.platformTitle, 'Post Caption': a.postCaption, Hashtags: a.hashtags, Body: a.body })[name] || ''; }
@@ -5968,7 +5968,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ...(amIsWidget() ? [['widget', '🧩 Widget']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ...(amIsWidget() ? [['widget', '🧩 Widget']] : []), ...(amIsEtsy() ? [['etsy', '🛒 Etsy']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
@@ -5989,6 +5989,7 @@ function amDraw() {
   AM._seriesMount = seriesTab;
   if (AM.tab === 'trend' && amIsTrend()) { P.innerHTML = hd + `<div class="amf-bd">${amTrendHtml()}</div>` + foot; return; }
   if (AM.tab === 'widget' && amIsWidget()) { P.innerHTML = hd + `<div class="amf-bd">${amWidgetHtml()}</div>` + foot; return; }
+  if (AM.tab === 'etsy' && amIsEtsy()) { P.innerHTML = hd + `<div class="amf-bd">${amEtsyHtml()}</div>` + foot; return; }
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'interview' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : AM.tab === 'interview' ? amIvHtml() : amVisualsHtml()}</div>` + foot; if (AM.tab === 'interview') amIvAttach(); return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
@@ -6393,6 +6394,118 @@ function amDigestBtn() {
 // polled) → the market + a scored idea list. Re-run refreshes the list and never touches children. Ticking ideas into children: not built yet.
 // 🧩 Widget (operator 2026-11-12): a widget asset (Post Slider) sits in an area of a Sub Page — pick the page, the area and (slider) the run;
 // 🚀 Publish = Asset Status Published and it shows on that page at the next view (the page loads its widgets live; no re-render).
+// ── 🛒 ETSY (operator 2026-11-12: "push these all to etsy on a schedule … and manual"; "push only published … whichever are set to published
+// and not marked as live on etsy"). Published = approved; the push never changes a status. Worker etsyPush (get / saveCfg / saveSpecs / push).
+let ETQ = null, ETQ_TAX = null;
+async function etqTaxonomy() {
+  if (ETQ_TAX) return ETQ_TAX; const r = await call('getEtsyTaxonomy', {}).catch(() => null);
+  ETQ_TAX = (r && r.nodes) || []; return ETQ_TAX;
+}
+function etqTaxList() { return `<datalist id="etqTax">${(ETQ_TAX || []).map(n => `<option value="${esc(n.path)}"></option>`).join('')}</datalist>`; }
+function etqTaxId(v) { const t = String(v || '').trim(); if (/^\d+$/.test(t)) return { id: +t, name: '' }; const n = (ETQ_TAX || []).find(x => x.path === t); return n ? { id: n.id, name: n.path } : null; }
+const ETQ_IN = 'box-sizing:border-box;font-size:12px;padding:4px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);font-family:inherit;';
+function etqState(r, d) {
+  if (r.live) return `<a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:#4ade80;">● live on Etsy ↗</a>`;
+  if (r.missing.length) return `<span style="color:#f87171;">needs ${esc(r.missing.join(', '))}</span>`;
+  if (r.status !== 'Published') return '<span style="color:var(--text3);">ready — mark it Published to queue it</span>';
+  return (d && d.cfgMissing && d.cfgMissing.length) ? '<span style="color:#f5c542;">queued — shop settings incomplete</span>' : `<span style="color:#f59e0b;">queued — goes live ${esc(((d && d.cfg && d.cfg.days) || []).join(' / ') || '(no push days)')}</span>`;
+}
+function etqFields(r, k) {   // one listing's Etsy fields — k = a unique prefix for the input ids
+  const cat = r.categoryName || (r.category ? String(r.category) : '');
+  return `<input id="${k}p" style="${ETQ_IN}width:70px;" placeholder="price $" value="${r.price ?? ''}">
+    <input id="${k}w" style="${ETQ_IN}width:70px;" placeholder="weight" value="${r.weight ?? ''}">
+    <input id="${k}s" style="${ETQ_IN}width:96px;" placeholder="L x W x H" value="${esc(r.size || '')}">
+    <input id="${k}c" list="etqTax" style="${ETQ_IN}width:220px;" placeholder="category — type to search" value="${esc(cat)}">`;
+}
+async function etqSaveRow(id, k, after) {
+  const v = x => (document.getElementById(k + x) || {}).value, c = v('c'), cat = c ? etqTaxId(c) : { id: '', name: '' };
+  if (c && !cat) { showToast('Pick the category from the list (type to search)', 'error'); return false; }
+  const r = await call('etsyPush', { assetId: id, op: 'saveSpecs', price: v('p'), weight: v('w'), size: v('s'), category: cat.id, categoryName: cat.name }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('✗ ' + ((r && r.error) || 'not saved'), 'error'); return false; }
+  showToast('✓ Etsy fields saved', 'success'); if (after) await after(r); return true;
+}
+async function etqPush(id, k, after) {
+  if (k && !(await etqSaveRow(id, k))) return;
+  if (!confirm('Push this listing to Etsy now? It goes LIVE right away — Etsy charges your shop its listing fee ($0.20).')) return;
+  showToast('⏳ Pushing to Etsy…', 'info');
+  const r = await call('etsyPush', { assetId: id, op: 'push' }).catch(e => ({ error: e.message }));
+  if (!r || r.error) showToast('✗ ' + ((r && r.error) || 'no response'), 'error'); else showToast('✓ Live on Etsy — the hub slider links to it now', 'success');
+  if (after) await after(r);
+}
+async function etqOpen() {
+  const h = hiHub(); if (!h) return;
+  ETQ = { cid: hdNid(h.campaignId), hub: h, d: null, opts: null, busy: '' };
+  let bg = document.getElementById('etqBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'etqBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="etqPanel" style="max-width:1100px;width:96vw;max-height:92vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
+  bg.classList.add('open'); etqDraw(); etqTaxonomy().then(() => etqDraw()); await etqLoad();
+}
+function etqClose() { const bg = document.getElementById('etqBg'); if (bg) bg.classList.remove('open'); ETQ = null; }
+async function etqLoad() {
+  if (!ETQ) return; const r = await call('etsyPush', { campaignId: ETQ.cid, op: 'get' }).catch(e => ({ error: e.message }));
+  if (!ETQ) return; ETQ.d = r; etqDraw();
+  if (r && r.cfg && r.cfg.loginId && !ETQ.opts) { const L = r.cfg.loginId;
+    const [sp, rs, rp] = await Promise.all(['getEtsyShippingProfiles', 'getEtsyReadinessStates', 'getEtsyReturnPolicies'].map(a => call(a, { loginId: L }).catch(e => ({ error: e.message }))));
+    if (ETQ) { ETQ.opts = { sp, rs, rp }; etqDraw(); } }
+}
+function etqDraw() {
+  const P = document.getElementById('etqPanel'); if (!P || !ETQ) return; const d = ETQ.d, B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const head = `<div style="display:flex;align-items:center;gap:10px;"><b style="font-size:15px;flex:1;">🛒 Etsy queue — ${esc(ETQ.hub.name)}${d && d.shop ? ' · shop ' + esc(d.shop.name || d.shop.shopId) : ''}</b><button style="${B('var(--border2)')}color:var(--text);" onclick="etqClose()">✕</button></div>`;
+  if (!d) { P.innerHTML = head + '<div style="font-size:12px;color:var(--text3);margin-top:10px;">Loading…</div>'; return; }
+  if (d.error && !d.rows) { P.innerHTML = head + `<div style="font-size:12px;color:#f87171;margin-top:10px;">✗ ${esc(d.error)}</div>`; return; }
+  const c = d.cfg || {}, o = ETQ.opts || {}, sel = (id, list, cur, ph) => `<select id="${id}" style="${ETQ_IN}">${list ? '' : '<option>loading…</option>'}<option value="">— ${ph} —</option>${(list || []).map(x => `<option value="${esc(x.id)}" ${String(x.id) === String(cur) ? 'selected' : ''}>${esc(x.label || x.title || x.id)}</option>`).join('')}</select>`;
+  const optErr = ['sp', 'rs', 'rp'].map(k => o[k] && o[k].error).filter(Boolean);
+  const S = (id, opts, cur) => `<select id="${id}" style="${ETQ_IN}">${opts.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const rows = d.rows || [], live = rows.filter(r => r.live).length, queued = rows.filter(r => r.eligible).length;
+  P.innerHTML = head + etqTaxList() + `
+    <div style="font-size:12px;color:var(--text3);margin:6px 0 10px;">Mark a listing <b>Published</b> to approve it. On each push day (Pacific time) every Published listing with all its Etsy fields filled and not yet on Etsy goes <b>live</b> — up to 3 per half hour — and its Etsy link replaces the shop link on the hub slider. Etsy charges your shop $0.20 per listing. Statuses are never changed by the push.</div>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;gap:10px 16px;flex-wrap:wrap;align-items:center;font-size:12px;">
+      <label style="display:flex;gap:5px;align-items:center;font-weight:600;"><input type="checkbox" id="etqOn" ${c.on ? 'checked' : ''}> Schedule on</label>
+      <span>Push days: ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(x => `<label style="margin-right:6px;"><input type="checkbox" class="etqDay" value="${x}" ${(c.days || []).includes(x) ? 'checked' : ''}> ${x}</label>`).join('')}</span>
+      <span>Shipping ${sel('etqSp', o.sp && o.sp.profiles && o.sp.profiles.map(x => ({ id: x.id, label: x.title })), c.shippingProfileId, 'shipping profile')}</span>
+      <span>Processing ${sel('etqRs', o.rs && o.rs.states, c.readinessStateId, 'processing profile')}</span>
+      <span>Returns ${sel('etqRp', o.rp && o.rp.policies, c.returnPolicyId, 'return policy')}</span>
+      <span>Who made ${S('etqWho', [['i_did', 'I did'], ['someone_else', 'Someone else'], ['collective', 'A member of my shop']], c.whoMade)}</span>
+      <span>When made ${S('etqWhen', [['made_to_order', 'Made to order'], ['2020_2026', '2020–2026'], ['2010_2019', '2010–2019']], c.whenMade)}</span>
+      <span>Qty <input id="etqQty" style="${ETQ_IN}width:50px;" value="${esc(c.quantity || 1)}"></span>
+      <span>Units ${S('etqWu', [['oz', 'oz'], ['lb', 'lb'], ['g', 'g'], ['kg', 'kg']], c.weightUnit)} ${S('etqSu', [['in', 'in'], ['ft', 'ft'], ['cm', 'cm'], ['mm', 'mm']], c.sizeUnit)}</span>
+      <span>Materials <input id="etqMat" style="${ETQ_IN}width:140px;" placeholder="pine, wood glue" value="${esc(c.materials || '')}"></span>
+      <button style="${B('#4ade80')}" onclick="etqSaveCfg()">💾 Save settings</button>
+      ${(d.cfgMissing || []).length ? `<span style="color:#f5c542;">Still needed: ${esc(d.cfgMissing.join(', '))}</span>` : '<span style="color:#4ade80;">✓ shop settings complete</span>'}
+      ${optErr.length ? `<span style="color:#f87171;">✗ ${esc(optErr[0])}</span>` : ''}</div>
+    <div style="font-size:12px;margin:12px 0 6px;color:var(--text2);">${rows.length} listings · ${live} live · ${queued} queued for the next push day · today is ${esc(d.today || '')}</div>
+    <div style="border:1px solid var(--border);border-radius:8px;">${rows.map((r, i) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;border-top:${i ? '1px solid var(--border)' : '0'};">
+      ${r.image ? `<img src="${esc(r.image)}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">` : '<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);"></div>'}
+      <div style="width:200px;min-width:0;"><a href="#" onclick="event.preventDefault();amOpen('${esc(r.id)}')" style="font-size:12.5px;font-weight:600;color:var(--text);text-decoration:none;">${esc(r.name)}</a><div style="font-size:10.5px;color:${r.status === 'Published' ? '#4ade80' : 'var(--text3)'};">${esc(r.status)}</div></div>
+      ${r.live ? '' : etqFields(r, 'etq' + i)}
+      ${r.live ? '' : `<button style="${B('var(--text2)')}" onclick="etqSaveRow('${esc(r.id)}','etq${i}',etqLoad)">💾</button><button style="${B('#f59e0b')}" onclick="etqPush('${esc(r.id)}','etq${i}',etqLoad)" title="Save, then push this one to Etsy now (goes live)">🛒 Push now</button>`}
+      <span style="font-size:11.5px;flex:1;min-width:160px;">${etqState(r, d)}</span></div>`).join('') || '<div style="padding:10px;font-size:12px;color:var(--text3);">No Etsy Listings on this hub yet.</div>'}</div>
+    ${(d.log || []).length ? `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">Push log</div>${d.log.map(x => `<div style="font-size:11.5px;color:${x.ok ? 'var(--text2)' : '#f87171'};">${esc(new Date(x.at).toLocaleString())} · ${esc(x.how || '')} · ${esc(x.title || x.assetId)} · ${x.ok ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">live ↗</a>' : '✗ ' + esc(x.error || '')}</div>`).join('')}` : ''}`;
+}
+async function etqSaveCfg() {
+  if (!ETQ) return; const v = id => (document.getElementById(id) || {}).value;
+  const cfg = { on: !!(document.getElementById('etqOn') || {}).checked, days: [...document.querySelectorAll('.etqDay')].filter(x => x.checked).map(x => x.value),
+    shippingProfileId: v('etqSp'), readinessStateId: v('etqRs'), returnPolicyId: v('etqRp'), whoMade: v('etqWho'), whenMade: v('etqWhen'), quantity: v('etqQty'), weightUnit: v('etqWu'), sizeUnit: v('etqSu'), materials: v('etqMat') };
+  const r = await call('etsyPush', { campaignId: ETQ.cid, op: 'saveCfg', cfg }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('✗ ' + ((r && r.error) || 'not saved'), 'error');
+  showToast('✓ Etsy settings saved', 'success'); ETQ.d = r; etqDraw();
+}
+function amIsEtsy() { const a = AM && AM.data && AM.data.asset; return !!a && !!a.etsy; }
+function amEtsyHtml() {
+  const E = AM.etsy;
+  if (!E) { (async () => { const id = AM.id; await etqTaxonomy(); const r = await call('etsyPush', { assetId: id, op: 'get' }).catch(e => ({ error: e.message })); if (AM && AM.id === id) { AM.etsy = r || { error: 'no response' }; if (AM.tab === 'etsy') amDraw(); } })();
+    AM.etsy = { loading: true }; return '<div style="font-size:12px;color:var(--text3);">Loading…</div>'; }
+  if (E.loading) return '<div style="font-size:12px;color:var(--text3);">Loading…</div>';
+  if (E.error && !E.rows) return `<div style="font-size:12px;color:#f87171;">✗ ${esc(E.error)}</div>`;
+  const r = (E.rows || [])[0]; if (!r) return '<div style="font-size:12px;color:var(--text3);">Not found.</div>';
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const re = async () => { AM.etsy = null; amDraw(); };
+  window._amEtsyRe = re;
+  return etqTaxList() + `<div style="font-size:12px;color:var(--text3);">Mark this listing <b>Published</b> to queue it: on the hub's push days (${esc(((E.cfg || {}).days || []).join(' / ') || 'none set')}) it goes live on Etsy${E.shop ? ' (shop ' + esc(E.shop.name) + ')' : ''} once these are filled. Push now sends it immediately. Shop settings live in the hub dashboard's 🛒 Etsy queue.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;">${r.live ? '' : etqFields(r, 'ame')}
+      ${r.live ? '' : `<button style="${B('var(--text2)')}" onclick="etqSaveRow('${esc(r.id)}','ame',window._amEtsyRe)">💾 Save</button><button style="${B('#f59e0b')}" onclick="etqPush('${esc(r.id)}','ame',window._amEtsyRe)">🛒 Push now</button>`}</div>
+    <div style="font-size:12.5px;margin-top:10px;">${etqState(r, E)}</div>
+    ${(E.cfgMissing || []).length ? `<div style="font-size:12px;color:#f5c542;margin-top:6px;">Shop settings still needed (🛒 Etsy queue on the hub dashboard): ${esc(E.cfgMissing.join(', '))}</div>` : ''}
+    <div style="font-size:11.5px;color:var(--text3);margin-top:8px;">Weight in ${esc((E.cfg || {}).weightUnit || 'oz')}, size L x W x H in ${esc((E.cfg || {}).sizeUnit || 'in')} (the packed item). The listing's title, description and tags come from its written fields, else its External Write.</div>`;
+}
 function amIsWidget() { const a = AM && AM.data && AM.data.asset; return !!a && !!a.widget; }
 function amWidgetHtml() {
   const W = AM.widget;
@@ -8282,7 +8395,7 @@ function hdRender() {
     <label style="display:flex;gap:4px;align-items:center;color:var(--text2);"><input type="checkbox" ${HD.showAllGlobal ? 'checked' : ''} onchange="HD.showAllGlobal=this.checked;hdRender()"> Show all (incl. Idea / Research / Planning / Archived / Paused)</label>
     <button style="${B('var(--text2)')}" onclick="HD.rows=null;hdLoad(true)">↻ Refresh</button>
     <button style="${B(HD.fit ? '#f59e0b' : '#8ab4f8')}" onclick="HD.fit=!HD.fit;if(HD.fit){HD.hub='';HD.path=[];}hdRender()" title="Every hub's products scored against its keyword topics — read-only">🎯 Keyword fit${HD.fit ? ' ✓' : ''}</button>
-    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B('#4ade80')}" onclick="aiOpen('')" title="Upload a JSON of already-written posts (+ their thumbnails) as assets on one title, all in one run">📥 Asset import</button><button ${HD.ipBusy ? 'disabled' : ''} style="${B('#8ab4f8')}" onclick="hdIpRun('${esc(hdNid(h.campaignId))}')" title="Score every initiative of this hub against its keyword topics — placement 45 · words & meaning 35 · intent 20 (read-only)">🎯 ${HD.ipBusy ? 'Scoring…' : 'Score initiatives'}</button>${(HD.ip || {})[hdNid(h.campaignId)] && HD.ip[hdNid(h.campaignId)].at ? `<span style="font-size:10.5px;color:var(--text3);">scored ${esc(new Date(HD.ip[hdNid(h.campaignId)].at).toLocaleString())}</span>` : ''}${HD.ipMsg ? `<span style="font-size:11px;color:#f87171;">${esc(HD.ipMsg)}</span>` : ''}<button style="${B(HD.matrix ? '#f59e0b' : 'var(--text2)')}" onclick="HD.matrix=!HD.matrix;hdRender()" title="Cluster → topic (rows) × initiative → sub-initiative (columns): where the keyword structure and the plan disagree">▦ Matrix${HD.matrix ? ' ✓' : ''}</button><button style="${B(HD.view === 'init' ? '#f59e0b' : 'var(--text2)')}" onclick="HD.view=HD.view==='init'?'':'init';HD.matrix=false;hdRender()" title="Switch between the keyword cards (cluster → topic → product → title) and the initiative view">${HD.view === 'init' ? '🗂 Keyword cards' : '⚑ Initiative view'}</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
+    ${h ? `<button style="${B('var(--accent)')}" onclick="hdOpenCh2('${esc(h.slug)}')" title="Placement in the hub still happens there">Open in Content Hubs 2</button><button style="${B('#4ade80')}" onclick="aiOpen('')" title="Upload a JSON of already-written posts (+ their thumbnails) as assets on one title, all in one run">📥 Asset import</button><button style="${B('#f59e0b')}" onclick="etqOpen()" title="This hub's Etsy Listings: price / weight / size / category, the push schedule (Published listings go live on the push days) and Push now">🛒 Etsy queue</button><button ${HD.ipBusy ? 'disabled' : ''} style="${B('#8ab4f8')}" onclick="hdIpRun('${esc(hdNid(h.campaignId))}')" title="Score every initiative of this hub against its keyword topics — placement 45 · words & meaning 35 · intent 20 (read-only)">🎯 ${HD.ipBusy ? 'Scoring…' : 'Score initiatives'}</button>${(HD.ip || {})[hdNid(h.campaignId)] && HD.ip[hdNid(h.campaignId)].at ? `<span style="font-size:10.5px;color:var(--text3);">scored ${esc(new Date(HD.ip[hdNid(h.campaignId)].at).toLocaleString())}</span>` : ''}${HD.ipMsg ? `<span style="font-size:11px;color:#f87171;">${esc(HD.ipMsg)}</span>` : ''}<button style="${B(HD.matrix ? '#f59e0b' : 'var(--text2)')}" onclick="HD.matrix=!HD.matrix;hdRender()" title="Cluster → topic (rows) × initiative → sub-initiative (columns): where the keyword structure and the plan disagree">▦ Matrix${HD.matrix ? ' ✓' : ''}</button><button style="${B(HD.view === 'init' ? '#f59e0b' : 'var(--text2)')}" onclick="HD.view=HD.view==='init'?'':'init';HD.matrix=false;hdRender()" title="Switch between the keyword cards (cluster → topic → product → title) and the initiative view">${HD.view === 'init' ? '🗂 Keyword cards' : '⚑ Initiative view'}</button><button style="${B('#c084fc')}" onclick="hiOpen()" title="Build a cluster of Development assets under an initiative — on a new or existing product and title. Nothing is written.">＋ Add initiative</button>` : ''}
     <span style="color:var(--text3);font-size:11px;">G = goal (Content Plan — All Assets) · D = Development + Review · P = Publish + Published. Newest first.</span></div>`;
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }

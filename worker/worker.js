@@ -11188,6 +11188,140 @@ async function getValidEtsyAccessToken(env, loginId) {
   return await refreshEtsyToken(env, loginId, v.etsyRefreshToken);
 }
 
+// ── ETSY PUSH QUEUE (operator 2026-11-12: "push these all to etsy on a schedule … two per week … and manual"; then: "push only
+// published, keep all as development. run the push cron on every increment and push whichever are set to published and not marked as
+// live on etsy"). Asset Status = Published is the operator's approval to push — the push never changes a status. A listing is pushed when
+// it is an Etsy Listing · Published · has no Etsy Listing URL yet · its Etsy fields are complete (Etsy Price, Etsy Weight, Etsy Size
+// "L x W x H", Etsy Category) · it has an image · the hub's shop settings are set. SCHEDULE: the 30-min cron, on the hub's push days
+// (Tue + Fri, Pacific time) — every eligible listing, at most ETSY_PUSH_CAP per tick. MANUAL: 🛒 Push now (hub queue panel, Asset modal).
+// A push creates the listing, uploads its images, ACTIVATES it (live — Etsy charges the shop its listing fee), then writes the URL to
+// Etsy Listing URL and Product Link (the hub Post Slider's order button switches to it by itself). Copy: Platform Title / Body / Search
+// Tags, else the same fields from the asset's External Write. A draft whose activation failed is kept (KV etsypush:draft:<id>) and only
+// re-activated next time — never created twice. Log: KV etsypush:log:<campaignId> (last 100).
+const ETSY_PUSH_CAP = 3, ETSY_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const etsyCfgKey = cid => 'etsypush:cfg:' + hubAssetId(cid);
+async function etsyEnsureProps(env) {
+  if (await env.TRADES.get('etsypush:props:v1')) return;
+  const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
+    'Etsy Price': { number: { format: 'dollar' } }, 'Etsy Weight': { number: {} }, 'Etsy Size': { rich_text: {} }, 'Etsy Category': { number: {} },
+    'Etsy Category Name': { rich_text: {} }, 'Etsy Listing URL': { url: {} }, 'Product Link': { url: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error('Could not add the Etsy fields: ' + (d.message || r.status)); }
+  await env.TRADES.put('etsypush:props:v1', '1');
+}
+async function etsyCfg(env, cid) {
+  const saved = await env.TRADES.get(etsyCfgKey(cid), 'json').catch(() => null) || {};
+  let loginId = saved.loginId || '';
+  if (!loginId) { const rows = await notionQuery(LOGINS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Etsy Shop ID', number: { is_not_empty: true } }] } }).catch(() => []);
+    loginId = rows[0] ? hubAssetId(rows[0].id) : ''; }
+  return { on: true, days: ['Tue', 'Fri'], whoMade: 'i_did', whenMade: 'made_to_order', quantity: 1, weightUnit: 'oz', sizeUnit: 'in', materials: '', isSupply: false,
+    shippingProfileId: '', readinessStateId: '', returnPolicyId: '', ...saved, loginId };
+}
+const etsyCfgMissing = c => [!c.loginId && 'an Etsy shop login', !c.shippingProfileId && 'shipping profile', !c.readinessStateId && 'processing profile', !c.returnPolicyId && 'return policy'].filter(Boolean);
+const etsySize = t => { const n = String(t || '').split(/[x×*,\s]+/i).map(Number).filter(x => x > 0); return n.length === 3 ? n : null; };
+function etsyCopy(p) {
+  const own = { 'Platform Title': hubRichText(p['Platform Title']?.rich_text).trim(), Body: hubRichText(p.Body?.rich_text).trim(), 'Search Tags': hubRichText(p['Search Tags']?.rich_text).trim() };
+  const ext = extFields(hubRichText(p['External Write']?.rich_text), [{ name: 'Platform Title' }, { name: 'Body' }, { name: 'Search Tags' }]);
+  const pick = k => own[k] || String(ext[k] || '').trim();
+  return { title: pick('Platform Title').slice(0, 140), description: pick('Body'), tags: pick('Search Tags').split(/[\n,]+/).map(x => x.trim()).filter(x => x && x.length <= 20).slice(0, 13) };
+}
+const etsyImages = p => [...(p.Images?.files || []), ...(p['Listing Photos']?.files || [])].map(f => f.external?.url || f.file?.url).filter(Boolean);
+function etsyRow(page, cfg) {
+  const p = page.properties || {}, c = etsyCopy(p), size = hubRichText(p['Etsy Size']?.rich_text).trim(), imgs = etsyImages(p);
+  const row = { id: hubAssetId(page.id), name: hubRichText(p['Asset Title']?.title), status: p['Asset Status']?.select?.name || '', title: c.title, image: imgs[0] || '',
+    price: p['Etsy Price']?.number ?? null, weight: p['Etsy Weight']?.number ?? null, size, category: p['Etsy Category']?.number ?? null,
+    categoryName: hubRichText(p['Etsy Category Name']?.rich_text), url: p['Etsy Listing URL']?.url || '', productLink: p['Product Link']?.url || '' };
+  row.missing = [!c.title && 'title', !c.description && 'description', !(row.price > 0) && 'price', !(row.weight > 0) && 'weight', !etsySize(size) && 'size L x W x H', !(row.category > 0) && 'category', !imgs.length && 'image'].filter(Boolean);
+  row.live = !!row.url; row.ready = !row.live && !row.missing.length; row.eligible = row.ready && row.status === 'Published' && !etsyCfgMissing(cfg).length;
+  return row;
+}
+async function etsyListings(cid) {
+  return (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'Etsy Listing' } }] },
+    sorts: [{ timestamp: 'created_time', direction: 'ascending' }] })).filter(x => !x.archived && !x.in_trash);
+}
+async function etsyLog(env, cid, entry) {
+  const K = 'etsypush:log:' + hubAssetId(cid), log = (await env.TRADES.get(K, 'json').catch(() => null)) || [];
+  await env.TRADES.put(K, JSON.stringify([{ at: new Date().toISOString(), ...entry }, ...log].slice(0, 100)));
+}
+async function etsyPushAsset(env, aid, cid, how) {
+  aid = hubAssetId(aid); const cfg = await etsyCfg(env, cid), miss = etsyCfgMissing(cfg);
+  if (miss.length) throw new Error('Set the shop settings first: ' + miss.join(', '));
+  const page = await ivPage(aid); if (!page?.properties || page.archived || page.in_trash) throw new Error('Listing unavailable');
+  const row = etsyRow(page, cfg); if (row.live) throw new Error('Already live on Etsy: ' + row.url);
+  if (row.missing.length) throw new Error('Missing: ' + row.missing.join(', '));
+  const p = page.properties, c = etsyCopy(p), [L, W, H] = etsySize(row.size), imgs = etsyImages(p).slice(0, 10);
+  const login = await ivPage(cfg.loginId), shopId = login?.properties?.['Etsy Shop ID']?.number; if (!shopId) throw new Error('The shop login has no connected Etsy shop');
+  const token = await getValidEtsyAccessToken(env, cfg.loginId), H0 = { 'x-api-key': (env.ETSY_KEYSTRING || '').trim() + ':' + (env.ETSY_SHARED_SECRET || '').trim(), Authorization: 'Bearer ' + token };
+  const base = 'https://api.etsy.com/v3/application/shops/' + shopId + '/listings';
+  const DK = 'etsypush:draft:' + aid; let draft = await env.TRADES.get(DK, 'json').catch(() => null), listingId = draft && draft.listingId;
+  if (!listingId) {
+    const fb = new URLSearchParams({ quantity: String(cfg.quantity || 1), title: c.title, description: c.description, price: String(row.price), who_made: cfg.whoMade, when_made: cfg.whenMade,
+      taxonomy_id: String(row.category), shipping_profile_id: String(cfg.shippingProfileId), readiness_state_id: String(cfg.readinessStateId), return_policy_id: String(cfg.returnPolicyId),
+      is_supply: cfg.isSupply ? 'true' : 'false', type: 'physical', item_weight: String(row.weight), item_length: String(L), item_width: String(W), item_height: String(H),
+      item_weight_unit: cfg.weightUnit || 'oz', item_dimensions_unit: cfg.sizeUnit || 'in' });
+    c.tags.forEach(t => fb.append('tags', t)); String(cfg.materials || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 13).forEach(m => fb.append('materials', m));
+    const cr = await fetch(base, { method: 'POST', headers: { ...H0, 'Content-Type': 'application/x-www-form-urlencoded' }, body: fb }), cd = await cr.json().catch(() => ({}));
+    if (!cr.ok || !cd.listing_id) throw new Error('Etsy did not create the listing: ' + (cd.error || cr.status));
+    listingId = cd.listing_id; let up = 0;
+    for (let i = 0; i < imgs.length; i++) { try { const ir = await fetch(imgs[i]); if (!ir.ok) continue; const fd = new FormData(); fd.append('image', await ir.blob(), 'photo-' + (i + 1) + '.jpg'); fd.append('rank', String(i + 1));
+      const u = await fetch(base + '/' + listingId + '/images', { method: 'POST', headers: H0, body: fd }); if (u.ok) up++; } catch (e) {} }
+    draft = { listingId, images: up, at: new Date().toISOString() }; await env.TRADES.put(DK, JSON.stringify(draft));
+    if (!up) { await etsyLog(env, cid, { assetId: aid, title: c.title, how, ok: false, error: 'draft made, no image uploaded', listingId }); throw new Error('Draft ' + listingId + ' made on Etsy but no image uploaded — it stays a draft; the next push retries'); }
+  }
+  const ar = await fetch(base + '/' + listingId, { method: 'PATCH', headers: { ...H0, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ state: 'active', return_policy_id: String(cfg.returnPolicyId) }) });
+  const ad = await ar.json().catch(() => ({}));
+  if (!ar.ok) { await etsyLog(env, cid, { assetId: aid, title: c.title, how, ok: false, error: 'activation: ' + (ad.error || ar.status), listingId }); throw new Error('Draft ' + listingId + ' is on Etsy but did not go live: ' + (ad.error || ar.status) + ' — the next push retries activating it'); }
+  const url = ad.url || 'https://www.etsy.com/listing/' + listingId;
+  await etsyEnsureProps(env);
+  const pr = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: { 'Etsy Listing URL': { url }, 'Product Link': { url } } }) });
+  await env.TRADES.delete(DK);
+  try { const { keys } = await env.TRADES.list({ prefix: 'hubwidgets:cache:' }); for (const k of keys) await env.TRADES.delete(k.name); } catch (e) {}   // the slider's order button switches now
+  await etsyLog(env, cid, { assetId: aid, title: c.title, how, ok: true, url, ...(pr.ok ? {} : { warning: 'live, but the URL was not saved on the asset' }) });
+  return { ok: true, listingId, url };
+}
+async function etsyPushTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || '').trim();
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short' }).format(new Date()), out = [];
+  const { keys } = await env.TRADES.list({ prefix: 'etsypush:cfg:' });
+  for (const k of keys) { const cid = k.name.slice(13), cfg = await etsyCfg(env, cid);
+    if (!cfg.on || !(cfg.days || []).includes(day) || etsyCfgMissing(cfg).length) continue;
+    const due = (await etsyListings(cid)).map(pg => etsyRow(pg, cfg)).filter(r => r.eligible).slice(0, ETSY_PUSH_CAP);
+    for (const r of due) { try { out.push({ cid, ...(await etsyPushAsset(env, r.id, cid, 'schedule')) }); } catch (e) { out.push({ cid, assetId: r.id, error: e.message }); } } }
+  return out;
+}
+// etsyPush {campaignId, op: get | saveCfg | saveSpecs | push | log, …} — the hub dashboard's 🛒 Etsy queue and the Asset modal's 🛒 Etsy tab
+async function etsyPushAction(env, body) {
+  let cid = hubAssetId(body.campaignId || '');
+  if (!/^[a-f0-9]{32}$/i.test(cid) && body.assetId) { const pg = await ivPage(hubAssetId(body.assetId)).catch(() => null); cid = pg ? ivRid(pg.properties, 'Campaign') : ''; }
+  if (!/^[a-f0-9]{32}$/i.test(cid)) return { error: 'campaignId required' };
+  if (body.op === 'saveCfg') {
+    const cur = await env.TRADES.get(etsyCfgKey(cid), 'json').catch(() => null) || {}, c = body.cfg || {}, next = { ...cur };
+    for (const k of ['loginId', 'shippingProfileId', 'readinessStateId', 'returnPolicyId', 'whoMade', 'whenMade', 'weightUnit', 'sizeUnit', 'materials']) if (k in c) next[k] = String(c[k] || '').trim().slice(0, 200);
+    if ('quantity' in c) next.quantity = Math.max(1, Math.min(999, parseInt(c.quantity, 10) || 1));
+    if ('on' in c) next.on = !!c.on; if ('isSupply' in c) next.isSupply = !!c.isSupply;
+    if ('days' in c) next.days = (Array.isArray(c.days) ? c.days : []).filter(d => ETSY_DAYS.includes(d));
+    await env.TRADES.put(etsyCfgKey(cid), JSON.stringify(next));
+  }
+  if (body.op === 'saveSpecs') {
+    const aid = hubAssetId(body.assetId || ''); if (!/^[a-f0-9]{32}$/i.test(aid)) return { error: 'assetId required' };
+    await etsyEnsureProps(env); const props = {}, num = v => v === '' || v == null ? null : Number(v);
+    if ('price' in body) props['Etsy Price'] = { number: num(body.price) }; if ('weight' in body) props['Etsy Weight'] = { number: num(body.weight) };
+    if ('size' in body) props['Etsy Size'] = { rich_text: ivRt(String(body.size || '').trim().slice(0, 60)) };
+    if ('category' in body) props['Etsy Category'] = { number: num(body.category) }; if ('categoryName' in body) props['Etsy Category Name'] = { rich_text: ivRt(String(body.categoryName || '').slice(0, 300)) };
+    for (const [k, v] of Object.entries(props)) if (v.number !== undefined && v.number !== null && !(v.number > 0)) return { error: k + ' must be a positive number' };
+    const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+    if (!r.ok) return { error: (await r.json().catch(() => ({}))).message || 'Notion ' + r.status };
+  }
+  if (body.op === 'push') { try { const r = await etsyPushAsset(env, body.assetId, cid, 'manual'); return { ...r, ...(await etsyPushState(env, cid, body.assetId)) }; } catch (e) { return { error: e.message, ...(await etsyPushState(env, cid, body.assetId).catch(() => ({}))) }; } }
+  return { ok: true, ...(await etsyPushState(env, cid, body.assetId)) };
+}
+async function etsyPushState(env, cid, onlyAsset) {
+  const cfg = await etsyCfg(env, cid), pages = onlyAsset ? [await ivPage(hubAssetId(onlyAsset))] : await etsyListings(cid);
+  const login = cfg.loginId ? await ivPage(cfg.loginId).catch(() => null) : null;
+  return { campaignId: cid, cfg, cfgMissing: etsyCfgMissing(cfg), shop: login ? { loginId: cfg.loginId, name: hubRichText(login.properties?.['Etsy Shop Name']?.rich_text), shopId: login.properties?.['Etsy Shop ID']?.number || null } : null,
+    today: new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short' }).format(new Date()), rows: pages.filter(Boolean).map(pg => ({ ...etsyRow(pg, cfg), draft: null })),
+    log: ((await env.TRADES.get('etsypush:log:' + cid, 'json').catch(() => null)) || []).slice(0, 20) };
+}
+
 // ── PIN brute-force lockout ─────────────────────────────────────────────
 // The 250ms per-request delay on auth/pinUpdate slows a single client but
 // does nothing against parallel requests. This adds a real per-IP lockout,
@@ -57466,7 +57600,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
             storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
             poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
-            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name),
+            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name), etsy: /^etsy listing$/i.test(p["Asset Type"]?.select?.name || ""),
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text), directions: hubRichText(p["Writer Directions"]?.rich_text), initiative: hubRichText(p.Initiative?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
           prewrite: await extWriteGet(env, hubAssetId(body.assetId), w.page).catch(() => null), extKeepLevels: Object.keys(EXT_KEEP),
@@ -57495,6 +57629,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "etsyPush") { try { const r = await etsyPushAction(env, body); return json(r, r.error && !r.rows ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "hubWidget") { try { const r = await hubWidgetAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "assetPrewrite") {
         const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
@@ -58614,6 +58749,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/30 * * * *") {
       cw("hubCheckGoals", hubCheckGoalsBuild(env).then(r => { if (r.changed) console.log("hubCheckGoals: rewritten"); }).catch(e => console.error("hubCheckGoals failed:", e.message)));
+      cw("etsyPushTick", etsyPushTick(env).then(r => { if (r.length) console.log("etsyPush:", JSON.stringify(r).slice(0, 400)); }).catch(e => console.error("etsyPushTick failed:", e.message)));   // Tue + Fri: Published Etsy Listings → live (2026-11-12)
       cw("hubRepublishSweep", hubRepublishTick(env).then(r => console.log('hubRepublishSweep:', JSON.stringify(r))).catch(e => console.error('hubRepublishSweep failed:',e.message)));
       cw("productStageBackfill", productStageBackfill(env).catch(e => console.error("productStageBackfill failed:", e.message)));
       if (await env.TRADES.get("titleidle:runnow")) { await env.TRADES.delete("titleidle:runnow");
