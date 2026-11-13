@@ -5951,10 +5951,10 @@ async function amLoad() {
   const id = AM && AM.id; if (!id) return;
   const r = await call('assetModal', { assetId: id }).catch(e => ({ error: e.message }));
   if (!AM || AM.id !== id) return;
-  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } if (!AM.trendTabSet && amIsTrend()) { AM.tab = 'trend'; AM.trendTabSet = true; } }
+  AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } if (!AM.trendTabSet && amIsTrend()) { AM.tab = 'trend'; AM.trendTabSet = true; } if (!AM.widgetTabSet && amIsWidget()) { AM.tab = 'widget'; AM.widgetTabSet = true; } }
   amDraw(); if (AM && AM.data && !AM.ctx && !AM.ctxBusy) amCtxLoad();
 }
-function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; amDraw(); }
+function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; if (t === 'widget') AM.widget = null; amDraw(); }
 function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
   const cf = (d.packet && d.packet.currentFields) || {}; if (name in cf) return cf[name];
   return ({ 'Platform Title': a.platformTitle, 'Post Caption': a.postCaption, Hashtags: a.hashtags, Body: a.body })[name] || ''; }
@@ -5968,7 +5968,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ...(amIsWidget() ? [['widget', '🧩 Widget']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
@@ -5988,6 +5988,7 @@ function amDraw() {
     + (a.status === 'Published' && !hubA ? '' : `<button style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;" title="${a.status === 'Published' ? 'Live already — republishing rewrites its hub page in the section picked (moves it when the section changed)' : ''}" onclick="amSaveAndPublish(this)">${hubA ? (a.status === 'Published' ? '🔄 Republish to ' : '💾 Save & Publish to ') + esc(AM_SEC_LABEL[amPubSec()] || amPubSec() || 'hub') : '💾 Save & Publish'}</button>`) + `</div>`;
   AM._seriesMount = seriesTab;
   if (AM.tab === 'trend' && amIsTrend()) { P.innerHTML = hd + `<div class="amf-bd">${amTrendHtml()}</div>` + foot; return; }
+  if (AM.tab === 'widget' && amIsWidget()) { P.innerHTML = hd + `<div class="amf-bd">${amWidgetHtml()}</div>` + foot; return; }
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'interview' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : AM.tab === 'interview' ? amIvHtml() : amVisualsHtml()}</div>` + foot; if (AM.tab === 'interview') amIvAttach(); return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
@@ -6390,6 +6391,53 @@ function amDigestBtn() {
 }
 // ── 📈 Trend tab (Asset Flow "Trend Parent", built 2026-11-11): keywords + platforms → ▶ Run research (worker trendParentRun, background,
 // polled) → the market + a scored idea list. Re-run refreshes the list and never touches children. Ticking ideas into children: not built yet.
+// 🧩 Widget (operator 2026-11-12): a widget asset (Post Slider) sits in an area of a Sub Page — pick the page, the area and (slider) the run;
+// 🚀 Publish = Asset Status Published and it shows on that page at the next view (the page loads its widgets live; no re-render).
+function amIsWidget() { const a = AM && AM.data && AM.data.asset; return !!a && !!a.widget; }
+function amWidgetHtml() {
+  const W = AM.widget;
+  if (!W) { amWidgetLoad(); return '<div style="font-size:12px;color:var(--text3);">Loading the widget…</div>'; }
+  if (W.error && !W.type) return `<div style="font-size:12px;color:#f87171;">✗ ${esc(W.error)}</div>`;
+  const busy = !!AM._widgetBusy, dis = busy ? 'disabled' : '', live = W.status === 'Published';
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+  const lab = t => `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:12px 0 4px;">${t}</div>`;
+  const B = c => `font-size:12px;padding:5px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const page = (W.pages || []).find(x => x.id === W.pageId), slides = W.slides || [];
+  const src = { listing: 'listing link', post: 'post link', shop: 'Etsy shop' };
+  return `<div style="font-size:12px;color:var(--text3);">A <b>${esc(W.type)}</b> widget. It sits in an area of a Sub Page; once Published it shows there at the next page view — the page loads its widgets live, so a changed link or a new post in the run shows without re-publishing the page (up to 5 min cache).</div>
+    ${lab('Sub Page')}<select id="wgPage" style="${IN}" ${dis}><option value="">— pick the Sub Page —</option>${(W.pages || []).map(x => `<option value="${esc(x.id)}" ${x.id === W.pageId ? 'selected' : ''}>${esc(x.title)} · ${esc(x.status || '—')}</option>`).join('')}</select>
+    ${page && page.url ? `<div style="font-size:11.5px;margin-top:3px;"><a href="${esc(page.url)}" target="_blank" rel="noopener">${esc(page.url)} ↗</a></div>` : page ? '<div style="font-size:11.5px;color:#f5c542;margin-top:3px;">That Sub Page is not published yet — the widget shows once it is.</div>' : ''}
+    ${lab('Area')}<select id="wgArea" style="${IN}" ${dis}>${(W.areas || ['Top', 'Bottom']).map(x => `<option ${x === W.area ? 'selected' : ''}>${x}</option>`).join('')}</select>
+    <div style="font-size:11px;color:var(--text3);margin-top:3px;">Top = under the page's opening lines · Bottom = after the page body.</div>
+    ${lab('Run (its single posts become the slides)')}<select id="wgRun" style="${IN}" ${dis}><option value="">— pick a run —</option>${(W.runs || []).map(x => `<option ${x === W.run ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+    ${lab('Heading (optional)')}<input id="wgTitle" style="${IN}" ${dis} value="${esc(W.title || '')}">
+    ${lab('Button label')}<input id="wgCta" style="${IN}" ${dis} value="${esc(W.cta || '')}" placeholder="Order now">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+      <button style="${B('var(--text2)')}" ${dis} onclick="amWidgetDo('save')">💾 Save</button>
+      ${live ? `<button style="${B('#f5c542')}" ${dis} onclick="amWidgetDo('unpublish')">⏸ Unpublish</button>` : `<button style="${B('#4ade80')}" ${dis} onclick="amWidgetDo('publish')">🚀 Save &amp; publish to the page</button>`}
+      <span style="font-size:12px;color:${live ? '#4ade80' : 'var(--text3)'};">${busy ? '⏳ …' : live ? '● Published' : '○ ' + esc(W.status || 'Development')}</span></div>
+    ${lab('Slides · ' + slides.length)}<div style="border:1px solid var(--border);border-radius:8px;max-height:340px;overflow:auto;">${slides.length ? slides.map((x, i) => `<div style="display:flex;gap:10px;padding:7px 10px;border-top:${i ? '1px solid var(--border)' : '0'};align-items:center;">
+      ${x.image ? `<img src="${esc(x.image)}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex:0 0 auto;">` : '<div style="width:44px;height:44px;border-radius:6px;background:var(--surface2);flex:0 0 auto;"></div>'}
+      <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:600;">${esc(x.title)}</div><div style="font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(x.blurb)}</div></div>
+      <div style="font-size:11px;text-align:right;flex:0 0 auto;">${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(src[x.linkFrom] || 'link')} ↗</a>` : '<span style="color:#f87171;">no link</span>'}</div></div>`).join('') : '<div style="padding:10px;font-size:12px;color:var(--text3);">No single posts in this run yet.</div>'}</div>`;
+}
+async function amWidgetLoad() {
+  if (!AM || AM._widgetLoading) return; AM._widgetLoading = true; const id = AM.id;
+  const r = await call('hubWidget', { assetId: id, op: 'get' }).catch(e => ({ error: e.message }));
+  AM._widgetLoading = false; if (!AM || AM.id !== id) return;
+  AM.widget = r || { error: 'no response' }; if (AM.tab === 'widget') amDraw();
+}
+async function amWidgetDo(op) {
+  if (!AM || AM._widgetBusy) return; const v = id => (document.getElementById(id) || {}).value;
+  const fields = { pageId: v('wgPage') || '', area: v('wgArea') || 'Top', run: v('wgRun') || '', title: v('wgTitle') || '', cta: v('wgCta') || '' };
+  AM._widgetBusy = true; amDraw();
+  let r = op === 'unpublish' ? null : await call('hubWidget', { assetId: AM.id, op: 'save', ...fields }).catch(e => ({ error: e.message }));
+  if (!r || !r.error) { if (op !== 'save') r = await call('hubWidget', { assetId: AM.id, op }).catch(e => ({ error: e.message })); }
+  AM._widgetBusy = false;
+  if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); return amDraw(); }
+  AM.widget = r; AM.log = op === 'publish' ? '✓ Published — it shows on the Sub Page at the next view' : op === 'unpublish' ? '✓ Taken off the page (Development)' : '✓ Widget saved';
+  if (AM.data && AM.data.asset) AM.data.asset.status = r.status; amDraw();
+}
 function amIsTrend() { const a = AM && AM.data && AM.data.asset; return !!a && /^trend parent$/i.test(a.type || ''); }
 function amTrendHtml() {
   const T = AM.trend;

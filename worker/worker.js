@@ -7363,6 +7363,17 @@ a { color:var(--accent); }
 .cta a { display:inline-block; background:var(--accent); color:#fff; padding:14px 28px; border-radius:8px; text-decoration:none; font-weight:700; margin-top:14px; }
 footer.site { max-width:1100px; margin:0 auto; padding:24px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
 @media (max-width:640px) { h1 { font-size:1.8rem; } .feature img { aspect-ratio:16/9; } }
+.widget-area:empty { display:none; }
+.wslider { margin:34px 0; }
+.wslider h2 { margin:0 0 14px; }
+.wslider .track { display:flex; gap:16px; overflow-x:auto; scroll-snap-type:x mandatory; padding:4px 2px 14px; -webkit-overflow-scrolling:touch; }
+.wslider .slide { flex:0 0 min(78%, 260px); scroll-snap-align:start; border:1px solid color-mix(in srgb, var(--ink) 14%, transparent); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; background:color-mix(in srgb, var(--bg) 92%, var(--ink)); }
+.wslider .slide img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:color-mix(in srgb, var(--ink) 8%, transparent); }
+.wslider .slide .t { font-family:${headlineStack}; font-weight:700; font-size:1.05rem; margin:12px 14px 4px; line-height:1.3; }
+.wslider .slide .b { font-size:.95rem; margin:0 14px 12px; opacity:.85; line-height:1.5; flex:1; }
+.wslider .slide a.go { margin:0 14px 14px; text-align:center; background:var(--accent); color:#fff; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; font-size:.95rem; }
+.wslider .nav { display:flex; gap:8px; justify-content:flex-end; }
+.wslider .nav button { border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); background:transparent; color:var(--ink); border-radius:50%; width:36px; height:36px; font-size:1rem; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -7371,7 +7382,9 @@ ${hero ? `<div class="feature"><img src="${esc(hero)}" alt="${esc(title)}"></div
 <main class="wrap">
 <h1>${esc(title)}</h1>
 ${desc ? `<p class="lede">${esc(desc)}</p>` : ''}
+<div class="widget-area" data-area="Top"></div>
 ${body}
+<div class="widget-area" data-area="Bottom"></div>
 </main>
 <footer class="site">${esc(campName)}</footer>
 <script>
@@ -7381,6 +7394,20 @@ fetch('../pages.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).
   const here = ${JSON.stringify(slug)}, nav = document.getElementById('subnav'), e = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   nav.innerHTML = '<a href="../">Home</a>' + list.filter(x => x && /^[a-z0-9-]+$/.test(x.slug || '')).map(x => '<a href="../' + x.slug + '/"' + (x.slug === here ? ' aria-current="page"' : '') + '>' + e(x.label || x.title) + '</a>').join('');
 }).catch(() => {});
+// widgets published to this page's areas (Post Slider …) — loaded live, so a published / changed widget shows without a re-render
+fetch('https://jolly-darkness-5dcc.trailnotes2026.workers.dev/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'getHubWidgets', pageId: ${JSON.stringify(aid)} }) })
+  .then(r => r.ok ? r.json() : null).then(d => {
+    const ws = (d && d.widgets) || [], e = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const okUrl = u => String(u || '').toLowerCase().startsWith('https:') ? u : '';
+    for (const w of ws) { const area = document.querySelector('.widget-area[data-area="' + (w.area === 'Bottom' ? 'Bottom' : 'Top') + '"]'); if (!area || !(w.slides || []).length) continue;
+      const box = document.createElement('section'); box.className = 'wslider';
+      box.innerHTML = (w.title ? '<h2>' + e(w.title) + '</h2>' : '') + '<div class="track">' + w.slides.map(x => '<div class="slide">' + (okUrl(x.image) ? '<img loading="lazy" src="' + e(x.image) + '" alt="' + e(x.title) + '">' : '') +
+        '<div class="t">' + e(x.title) + '</div><div class="b">' + e(x.blurb) + '</div>' + (okUrl(x.link) ? '<a class="go" href="' + e(x.link) + '" target="_blank" rel="noopener">' + e(w.cta || 'Order now') + '</a>' : '') + '</div>').join('') + '</div>' +
+        (w.slides.length > 1 ? '<div class="nav"><button type="button" aria-label="Previous">‹</button><button type="button" aria-label="Next">›</button></div>' : '');
+      const tr = box.querySelector('.track'), bs = box.querySelectorAll('.nav button');
+      if (bs.length) { bs[0].onclick = () => tr.scrollBy({ left: -tr.clientWidth * 0.8, behavior: 'smooth' }); bs[1].onclick = () => tr.scrollBy({ left: tr.clientWidth * 0.8, behavior: 'smooth' }); }
+      area.appendChild(box); }
+  }).catch(() => {});
 </script>
 </body>
 </html>`;
@@ -7392,6 +7419,100 @@ fetch('../pages.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).
     body: JSON.stringify({ properties: { 'Content URL': { url: liveUrl }, 'Deployment Status': { select: { name: 'Deployed' } } } }) });
   if (!saved.ok) throw new Error('Sub page published but asset fields could not be saved');
   return { published: true, liveUrl, slug, navLabel: label };
+}
+// ── WIDGETS (operator 2026-11-12: "put widget areas on sub pages and then an ability to publish widget type asset types to those areas").
+// A widget is an asset of a WIDGET type whose Parent Asset is the Sub Page it sits on; Widget Area says where (Top = under the page
+// intro, Bottom = after the body). Publishing it = Asset Status Published — nothing is re-rendered: every Sub Page carries the two areas
+// and loads its Published widgets at view time from the public getHubWidgets read (cached 5 min), so links and slides stay live.
+// POST SLIDER: every single post of one Run (asset Run) as a slide — title, thumbnail, blurb, an order button. The button's link is
+// read at load: the post's routed Etsy Listing → its Product Link (set to the shop link until the listing is pushed to Etsy, then the
+// listing URL), else the post's own Product Link, else the hub's Etsy shop (Logins "Etsy Shop Name" on the campaign).
+const WIDGET_TYPES = ['Post Slider'], WIDGET_AREAS = ['Top', 'Bottom'];
+const isWidgetType = t => WIDGET_TYPES.some(w => w.toLowerCase() === String(t || '').trim().toLowerCase());
+const widgetCacheKey = pageId => 'hubwidgets:cache:' + hubAssetId(pageId);
+async function widgetEnsureProps(env) {
+  if (await env.TRADES.get('widget:props:v1')) return;
+  const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
+    'Widget Area': { select: { options: WIDGET_AREAS.map(name => ({ name })) } }, 'Product Link': { url: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error('Could not add the widget fields: ' + (d.message || r.status)); }
+  await env.TRADES.put('widget:props:v1', '1');
+}
+async function widgetShopLink(cid) {   // the hub's Etsy shop, from the campaign's Etsy login
+  const rows = await notionQuery(LOGINS_DB, { filter: { property: 'Campaign', relation: { contains: ivDash(cid) } } }).catch(() => []);
+  const shop = rows.map(r => hubRichText(r.properties?.['Etsy Shop Name']?.rich_text).trim()).find(Boolean);
+  return shop ? 'https://www.etsy.com/shop/' + encodeURIComponent(shop) : '';
+}
+const widgetImg = p => { const f = (p.Images?.files || [])[0]; return (f && (f.external?.url || f.file?.url)) || p['Post Image']?.url || p.Thumbnail?.url || ''; };
+async function postSliderSlides(env, run, cid) {
+  if (!run) return [];
+  const byRun = { property: 'Run', rich_text: { equals: run } }, inCamp = cid ? [{ property: 'Campaign', relation: { contains: ivDash(cid) } }] : [];
+  const [posts, listings, shop] = await Promise.all([
+    notionQuery(ASSETS_DB, { filter: { and: [byRun, ...inCamp, { property: 'Asset Type', select: { equals: 'single post' } }] }, sorts: [{ timestamp: 'created_time', direction: 'ascending' }] }),
+    notionQuery(ASSETS_DB, { filter: { and: [byRun, ...inCamp, { property: 'Asset Type', select: { equals: 'Etsy Listing' } }] } }).catch(() => []),
+    cid ? widgetShopLink(cid) : '']);
+  const link = new Map(listings.filter(x => !x.archived && !x.in_trash).map(x => [hubAssetId(x.id), x.properties?.['Product Link']?.url || '']));
+  const live = posts.filter(x => !x.archived && !x.in_trash && !/^(delete|idea)$/i.test(x.properties?.['Asset Status']?.select?.name || ''));
+  return Promise.all(live.map(async x => { const p = x.properties || {}, route = await env.TRADES.get('route:' + hubAssetId(x.id), 'json').catch(() => null);
+    const title = hubRichText(p['Platform Title']?.rich_text).trim() || hubRichText(p['Asset Title']?.title).replace(/\s*[—-]\s*single post$/i, '').trim();
+    const fromListing = route && route.from ? link.get(hubAssetId(route.from)) || '' : '';
+    return { id: hubAssetId(x.id), title, image: widgetImg(p), blurb: hubRichText(p.Body?.rich_text).trim().slice(0, 300),
+      link: fromListing || p['Product Link']?.url || shop || '', linkFrom: fromListing ? 'listing' : p['Product Link']?.url ? 'post' : shop ? 'shop' : '' }; }));
+}
+async function widgetRender(env, page, cid) {
+  const p = page.properties || {}, type = p['Asset Type']?.select?.name || '';
+  const base = { id: hubAssetId(page.id), type, area: WIDGET_AREAS.includes(p['Widget Area']?.select?.name) ? p['Widget Area'].select.name : 'Top',
+    title: hubRichText(p['Platform Title']?.rich_text).trim(), cta: hubRichText(p['CTA Label']?.rich_text).trim() || 'Order now' };
+  if (/^post slider$/i.test(type)) { const run = hubRichText(p.Run?.rich_text).trim(); return { ...base, run, slides: await postSliderSlides(env, run, cid) }; }
+  return { ...base, slides: [] };
+}
+async function hubWidgetsFor(env, pageId) {   // the Published widgets on one Sub Page (public read; cached 5 min)
+  const pid = hubAssetId(pageId); if (!/^[a-f0-9]{32}$/i.test(pid)) return { widgets: [] };
+  const hit = await env.TRADES.get(widgetCacheKey(pid), 'json').catch(() => null); if (hit) return hit;
+  const page = await ivPage(pid).catch(() => null);
+  if (!page?.properties || page.archived || page.in_trash || !isSubPageType(page.properties['Asset Type']?.select?.name)) return { widgets: [] };
+  const cid = ivRid(page.properties, 'Campaign');
+  const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Parent Asset', relation: { contains: ivDash(pid) } }, { property: 'Asset Status', select: { equals: 'Published' } }] },
+    sorts: [{ timestamp: 'created_time', direction: 'ascending' }] });
+  const widgets = await Promise.all(rows.filter(x => !x.archived && !x.in_trash && isWidgetType(x.properties?.['Asset Type']?.select?.name)).map(x => widgetRender(env, x, cid)));
+  const out = { widgets, at: new Date().toISOString() };
+  await env.TRADES.put(widgetCacheKey(pid), JSON.stringify(out), { expirationTtl: 300 });
+  return out;
+}
+// hubWidget {assetId, op: get | save | publish | unpublish, pageId?, area?, run?, title?, cta?} — the Asset modal's 🧩 Widget tab
+async function hubWidgetAction(env, body) {
+  const aid = hubAssetId(body.assetId || ''); if (!/^[a-f0-9]{32}$/i.test(aid)) return { error: 'assetId required' };
+  const page = await ivPage(aid); if (!page?.properties || page.archived || page.in_trash) return { error: 'Asset unavailable' };
+  const p = page.properties, type = p['Asset Type']?.select?.name || ''; if (!isWidgetType(type)) return { error: '"' + type + '" is not a widget type (' + WIDGET_TYPES.join(', ') + ')' };
+  const cid = ivRid(p, 'Campaign'), patch = async props => { const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Notion ' + r.status); };
+  const pageNow = ivRid(p, 'Parent Asset');
+  if (body.op === 'save') {
+    await widgetEnsureProps(env);
+    const props = {};
+    if ('pageId' in body) { const pid = hubAssetId(body.pageId || ''); if (pid) { const sp = await ivPage(pid).catch(() => null); if (!sp?.properties || !isSubPageType(sp.properties['Asset Type']?.select?.name)) return { error: 'That page is not a Sub Page' }; }
+      props['Parent Asset'] = { relation: pid ? [{ id: ivDash(pid) }] : [] }; }
+    if ('area' in body) props['Widget Area'] = { select: WIDGET_AREAS.includes(body.area) ? { name: body.area } : null };
+    if ('run' in body) props.Run = { rich_text: ivRt(String(body.run || '').trim().slice(0, 200)) };
+    if ('title' in body) props['Platform Title'] = { rich_text: ivRt(String(body.title || '').trim().slice(0, 200)) };
+    if ('cta' in body) props['CTA Label'] = { rich_text: ivRt(String(body.cta || '').trim().slice(0, 40)) };
+    if ('run' in body && String(body.run || '').trim()) await runEnsureProps(env);
+    await patch(props);
+    for (const id of [pageNow, body.pageId].filter(Boolean)) await env.TRADES.delete(widgetCacheKey(id));
+  }
+  if (body.op === 'publish' || body.op === 'unpublish') {
+    const cur = await ivPage(aid), pid = ivRid(cur.properties, 'Parent Asset');
+    if (body.op === 'publish') { if (!pid) return { error: 'Pick the Sub Page it goes on first' };
+      if (/^post slider$/i.test(type) && !hubRichText(cur.properties.Run?.rich_text).trim()) return { error: 'Pick the run whose posts it shows first' }; }
+    await patch({ 'Asset Status': { select: { name: body.op === 'publish' ? 'Published' : 'Development' } } });
+    if (pid) await env.TRADES.delete(widgetCacheKey(pid));
+  }
+  const fresh = await ivPage(aid), fp = fresh.properties, pid = ivRid(fp, 'Parent Asset');
+  const subs = cid ? (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'Sub Page' } }] } }).catch(() => []))
+    .filter(x => !x.archived && !x.in_trash).map(x => ({ id: hubAssetId(x.id), title: hubRichText(x.properties?.['Platform Title']?.rich_text) || hubRichText(x.properties?.['Asset Title']?.title), status: x.properties?.['Asset Status']?.select?.name || '', url: x.properties?.['Content URL']?.url || '' })) : [];
+  const runs = cid ? [...new Set((await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Campaign', relation: { contains: ivDash(cid) } }, { property: 'Asset Type', select: { equals: 'single post' } }, { property: 'Run', rich_text: { is_not_empty: true } }] } }).catch(() => []))
+    .map(x => hubRichText(x.properties?.Run?.rich_text).trim()).filter(Boolean))].sort() : [];
+  const w = await widgetRender(env, fresh, cid);
+  return { ok: true, type, status: fp['Asset Status']?.select?.name || '', pageId: pid || '', area: w.area, run: w.run || '', title: w.title, cta: hubRichText(fp['CTA Label']?.rich_text).trim(), pages: subs, runs, slides: w.slides, areas: WIDGET_AREAS };
 }
 async function removeSubPage(env, hdr, page) {
   const p = page.properties || {}, hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(p.Campaign?.relation?.[0]?.id)); if (!hub) return null;
@@ -19654,6 +19775,14 @@ export default {
     // duplicating the list — see the Care Gap template's Hub tab.
     if (body.action === "getContentHubs") {
       return json({ hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name, campaignId: h.campaignId, domain: h.domain || null })) });
+    }
+
+    // ── getHubWidgets ── public, no token. A Sub Page calls this on load with { pageId } (its own asset id) and renders the
+    // Published widgets placed on it (Post Slider …) into its Top / Bottom areas. Cached 5 min; content only, never ids of anything private.
+    if (body.action === "getHubWidgets") {
+      try { const d = await hubWidgetsFor(env, body.pageId); return json({ widgets: (d.widgets || []).map(w => ({ type: w.type, area: w.area, title: w.title, cta: w.cta,
+        slides: (w.slides || []).map(x => ({ title: x.title, image: x.image, blurb: x.blurb, link: x.link })) })) }); }
+      catch (e) { return json({ widgets: [], error: e.message }); }
     }
 
     // ── getHubProducts ── public, no token. A content hub calls this on load
@@ -57253,7 +57382,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
             storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
             poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
-            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "",
+            parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name),
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text), directions: hubRichText(p["Writer Directions"]?.rich_text), initiative: hubRichText(p.Initiative?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
           prewrite: await env.TRADES.get("prewrite:" + hubAssetId(body.assetId), "json").catch(() => null),
@@ -57282,6 +57411,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "hubWidget") { try { const r = await hubWidgetAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "assetPrewrite") {
         const aid = hubAssetId(body.assetId || ""); if (!/^[a-f0-9]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
         try {
