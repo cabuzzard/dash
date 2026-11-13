@@ -11354,9 +11354,12 @@ async function fbListingAction(env, body) {
       else props[name] = { rich_text: ivRt(String(raw || '').trim().slice(0, 300)) }; }
     const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
     if (!r.ok) return { error: (await r.json().catch(() => ({}))).message || 'Notion ' + r.status };
-    return { ok: true, ...fbState(await ivPage(aid)) };
+    return fbListingAction(env, { assetId: aid, op: 'get' });
   }
-  return { ok: true, ...fbState(page) };
+  const st = fbState(page);
+  if (!st.images.length) { const rt = await env.TRADES.get("route:" + aid, "json").catch(() => null);   // no photo of its own: the routed Etsy listing's photos
+    if (rt && rt.from) { const src = await ivPage(hubAssetId(rt.from)).catch(() => null); if (src?.properties) { st.images = etsyImages(src.properties); st.imagesFrom = "the Etsy listing"; st.missing = st.missing.filter(x => x !== "photo" || !st.images.length); } } }
+  return { ok: true, ...st };
 }
 
 // ── PIN brute-force lockout ─────────────────────────────────────────────
