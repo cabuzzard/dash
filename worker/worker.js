@@ -2258,7 +2258,7 @@ function writingRows(table) {
   const id=name=>table.columns.find(c=>ivNorm(c.name)===ivNorm(name))?.id;
   return table.rows.map(r=>{const c=r.cells||{};return {id:r.id,name:c.cname01||c.cmuzq36hb77sq||c.c1||'',aliases:String(c.cmatch01||'').split(';').map(ivNorm),
     contractText:String(c[id('contract')]||''),inputs:String(c[id('inputs')]||''),mapped:String(c[id('mapped')]||'').trim(),
-    keep:String(c[id('keep my words')]||'').trim(),purpose:String(c[id('purpose')]||'').trim()};});
+    keep:String(c[id('keep my words')]||'').trim(),purpose:String(c[id('purpose')]||'').trim(),extKeep:String(c[id('external keep')]||'').trim()};});
 }
 // ── WRITE STYLE (operator 2026-10-24: "a rewrite style choice like % rewriting … add SEO … some assets are for SEO, others for
 // engagement or pure information"): two controls on every interview-informed write. KEEP MY WORDS = how much of the operator's
@@ -2306,6 +2306,81 @@ async function writeStyleEnsureProps(env) {
     'Interview Kept %': { number: {} } } }) });
   if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error('Could not add the write-style fields: ' + (d.message || r.status)); }
   await env.TRADES.put('writestyle:props:v1', '1');
+}
+// ── EXTERNAL WRITE (operator 2026-11-12: "we should have an external write import field"). Copy written OUTSIDE the dash (ChatGPT, an
+// imported run, a pasted pre-write) lives ON the asset: External Write (the copy — JSON of contract fields, or "Field: value" lines) ·
+// External Source (where it came from) · External Keep (how closely the writer follows it) · External Kept % (measured after each write).
+// It is an input like the interview, with its own keep levels, rule, measurement and one corrective pass. Keep: the asset's External Keep,
+// else the writing-rules row's "external keep" cell, else Rewrite (the old pre-write behaviour). LITERAL pins every field of the external
+// write that passes its contract rule — the model only touches the fields that break one, and none at all when every field passes.
+// KV prewrite:<id> was the old hidden store: read as a fallback and moved onto the asset by extWriteMigrateTick (cron), then deleted.
+const EXT_KEEP = {
+  'Literal': { band: [95, 100], rule: "LITERAL: the external write IS this asset's copy. Copy each field from it word for word. Change a field only where it breaks its contract rule, and then only the words that break it. Add nothing, reorder nothing, drop nothing it says." },
+  'Verbatim': { band: [85, 100], rule: "VERBATIM: keep at least 85-90% of the external write's wording — fix grammar and fit each field to its rule, nothing more. Never paraphrase a line that already works." },
+  'Light edit': { band: [55, 80], rule: "LIGHT EDIT: the external write leads each field in its own words, tightened — aim to keep 60-70% of its wording — with the packet sources added for accuracy and completeness." },
+  'Rewrite': { band: [0, 100], rule: "REWRITE: the external write is a starting draft, not a source of facts. Keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support." },
+};
+const EXT_KEEP_DEFAULT = 'Rewrite';
+async function extEnsureProps(env) {
+  if (await env.TRADES.get('extwrite:props:v1')) return;
+  const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
+    'External Write': { rich_text: {} }, 'External Source': { rich_text: {} },
+    'External Keep': { select: { options: Object.keys(EXT_KEEP).map(name => ({ name })) } }, 'External Kept %': { number: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error('Could not add the External Write fields: ' + (d.message || r.status)); }
+  await env.TRADES.put('extwrite:props:v1', '1');
+}
+const extIsJson = t => { try { JSON.parse(String(t || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); return true; } catch (e) { return false; } };
+async function extWriteGet(env, aid, page) {
+  aid = hubAssetId(aid); const pg = page || await ivPage(aid).catch(() => null), p = pg?.properties || {};
+  const text = hubRichText(p['External Write']?.rich_text);
+  const base = { source: hubRichText(p['External Source']?.rich_text), keep: p['External Keep']?.select?.name || '', kept: p['External Kept %']?.number ?? null };
+  if (text.trim()) return { ...base, text, json: extIsJson(text), at: pg.last_edited_time || '', where: 'asset' };
+  const kv = await env.TRADES.get('prewrite:' + aid, 'json').catch(() => null);
+  if (kv && String(kv.text || '').trim()) return { ...base, text: kv.text, json: !!kv.json, at: kv.at || '', source: base.source || kv.fromImport || (kv.fromRun ? 'Series run' : ''), fromRun: kv.fromRun || '', where: 'legacy' };
+  return null;
+}
+async function extWriteSet(env, aid, text, source) {
+  aid = hubAssetId(aid); await extEnsureProps(env);
+  const t = String(text || '').trim().slice(0, 150000), props = { 'External Write': { rich_text: ivRt(t) } };
+  if (source != null) props['External Source'] = { rich_text: ivRt(String(source).slice(0, 300)) };
+  const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+  if (!r.ok) throw new Error('External Write not saved: ' + ((await r.json().catch(() => ({}))).message || r.status));
+  await env.TRADES.delete('prewrite:' + aid);
+  return { text: t, json: extIsJson(t), at: new Date().toISOString(), source: source || '' };
+}
+async function extWriteClear(env, aid) {
+  aid = hubAssetId(aid); await extEnsureProps(env);
+  await fetch('https://api.notion.com/v1/pages/' + ivDash(aid), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: { 'External Write': { rich_text: [] }, 'External Source': { rich_text: [] } } }) });
+  await env.TRADES.delete('prewrite:' + aid);
+}
+// contract field → its value in the external write: a JSON object (top level or its "fields"), keys matched loosely, or "Field: value" blocks
+function extFields(text, contract) {
+  const norm = k => String(k || '').toLowerCase().replace(/[^a-z0-9]+/g, ''), want = new Map(contract.map(f => [norm(f.name), f.name])), out = {};
+  let o = null; try { o = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch (e) {}
+  if (o && typeof o === 'object' && !Array.isArray(o)) { const src = o.fields && typeof o.fields === 'object' ? { ...o, ...o.fields } : o;
+    for (const [k, v] of Object.entries(src)) { const n = want.get(norm(k)); if (n && v != null && typeof v !== 'object') out[n] = String(v); else if (n && Array.isArray(v)) out[n] = v.join('\n'); }
+    return out; }
+  let cur = null;
+  for (const line of String(text || '').split(/\r?\n/)) { const m = /^\s*([A-Za-z][A-Za-z0-9 %/&()-]{1,48}):\s*(.*)$/.exec(line), n = m && want.get(norm(m[1]));
+    if (n) { cur = n; out[n] = m[2]; } else if (cur) out[cur] += '\n' + line; }
+  for (const k of Object.keys(out)) out[k] = out[k].trim();
+  return out;
+}
+// the move off KV: up to 15 legacy pre-writes per cron tick go onto their assets' External Write; done once the prefix is empty
+async function extWriteMigrateTick(env) {
+  if (await env.TRADES.get('extwrite:migrated:v1')) return { done: true };
+  NOTION_TOKEN = (env.NOTION_TOKEN || '').trim();
+  const { keys } = await env.TRADES.list({ prefix: 'prewrite:', limit: 15 }), moved = [], failed = [];
+  if (!keys.length) { await env.TRADES.put('extwrite:migrated:v1', new Date().toISOString()); return { done: true }; }
+  for (const k of keys) { const aid = k.name.slice(9);
+    try { const rec = await env.TRADES.get(k.name, 'json').catch(() => null), pg = await ivPage(aid).catch(() => null);
+      if (!rec || !String(rec.text || '').trim() || !pg?.properties || pg.archived || pg.in_trash) { await env.TRADES.delete(k.name); continue; }
+      if (hubRichText(pg.properties['External Write']?.rich_text).trim()) { await env.TRADES.delete(k.name); continue; }   // the asset already has its own
+      await extWriteSet(env, aid, rec.text, rec.fromImport || (rec.fromRun ? 'Series run' : 'pre-write (moved from the old store)')); moved.push(aid);
+    } catch (e) { failed.push(aid + ': ' + e.message); } }
+  const log = (await env.TRADES.get('extwrite:migrate:log', 'json').catch(() => null)) || [];
+  await env.TRADES.put('extwrite:migrate:log', JSON.stringify([{ at: new Date().toISOString(), moved: moved.length, failed }, ...log].slice(0, 50)));
+  return { moved: moved.length, failed };
 }
 // the operator's answers only (ivBlock's "THEIR ANSWER:" lines, or plain "A:" lines), never the questions or labels
 function ivAnswersOnly(text) {
@@ -2521,31 +2596,38 @@ async function writeContractAsset(env,assetId,opts={}) {
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
   const assetDir=hubRichText(p['Writer Directions']?.rich_text).trim();if(assetDir)packet.assetDirections=assetDir.slice(0,WRITER_DIRECTIONS_MAX);   // last in the chain (2026-11-09)
   const routed=await env.TRADES.get('route:'+hubAssetId(page.id),'json').catch(()=>null);if(routed)packet.routedInput=routed;   // information ROUTED to this asset (2026-11-11) — not a parent
-  const pre=await env.TRADES.get('prewrite:'+hubAssetId(page.id),'json').catch(()=>null);   // the asset's PRE-WRITE (external LLM draft, pasted in the Asset modal)
-  if(pre&&String(pre.text||'').trim())packet.prewrite=String(pre.text).slice(0,14000);
+  const ext=await extWriteGet(env,hubAssetId(page.id),page).catch(()=>null);   // EXTERNAL WRITE (2026-11-12): the asset's External Write field (old KV pre-write as fallback)
+  if(ext&&String(ext.text||'').trim())packet.externalWrite=String(ext.text).slice(0,14000);
+  const extKeep=EXT_KEEP[p['External Keep']?.select?.name]?p['External Keep'].select.name:EXT_KEEP[row.extKeep]?row.extKeep:EXT_KEEP_DEFAULT,extBand=EXT_KEEP[extKeep].band;
+  const extLit=packet.externalWrite?extFields(packet.externalWrite,contract):{},extPlain=Object.keys(extLit).length?Object.values(extLit).join('\n'):(packet.externalWrite||'');
   const runScope=(only?'\n\nTHIS RUN WRITES ONLY these contract fields: '+contract.map(f=>f.name).join(', ')+'. The packet\'s currentFields show the asset\'s other fields — keep consistent with them, do not rewrite them.':'')
     +(Array.isArray(opts.sources)?'\n\nSOURCES FOR THIS RUN (operator choice): '+(packet.sourcesChosen.join(', ')||'none beyond the method, voice and hub')+'. Write from these only.':'')
     +(String(opts.guidance||'').trim()?'\n\nOPERATOR GUIDANCE FOR THIS RUN (follow it within the contract):\n'+String(opts.guidance).trim().slice(0,4000):'');
   const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
     +(packet.routedInput?'\n\nROUTED INPUT: the packet\'s "routedInput" is information routed to this asset from a '+(packet.routedInput.fromType||'source')+' (run "'+(packet.routedInput.run||'')+'") — it is NOT this asset\'s parent. What it carries (an idea, a listing, market notes) is this asset\'s subject and sourced facts you may use — e.g. a promo post sells the routed listing. Do not invent details it does not give.':'')
-    +(packet.prewrite?'\n\nPRE-WRITE: the packet\'s "prewrite" is the operator\'s starting draft from an external model, written to this type\'s spec. Start from it: keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support — it is a draft, not a source of facts.':'')
+    +(packet.externalWrite?'\n\nEXTERNAL WRITE — KEEP: '+extKeep+'. The packet\'s "externalWrite" is copy written for this asset outside the dash'+(ext&&ext.source?' ('+String(ext.source).slice(0,120)+')':'')+', to this type\'s fields. '+EXT_KEEP[extKeep].rule:'')
     +(packet.assetDirections?'\n\nTHIS ASSET\'S DIRECTIONS (the packet\'s "assetDirections" — the operator\'s own directions saved on this asset, the LAST input in the chain): follow them within the contract. They decide emphasis, this asset\'s relation to its parent / children / siblings, which input to lean on and which keywords to focus on, and they win over earlier sources on those choices. They never add facts the other sources do not support.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
     rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A',
+    external:packet.externalWrite?{keep:extKeep,band:extBand,rule:EXT_KEEP[extKeep].rule,source:(ext&&ext.source)||'',where:(ext&&ext.where)||'',fields:Object.keys(extLit)}:null,
     styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
     process:{model:'claude-sonnet-4-6',maxTokens:8000,tool:'write_contract_fields (one string per contract field, all required)',correction:'one corrective pass when a contract rule fails, a keyword is not placed or the kept % is outside the band ±15 — kept only if it scores better',trim:'a field over its ≤ N characters rule (and under 600 chars) is trimmed at a sentence, else word, boundary',protected:['Status','Asset Status','Hub Section','Content Hub','Publishing Date','Deployment Status','Site URL','Content URL','Method'],saves:'only the contract fields + Method (+ Interview Kept %, and Interview Sync = In Sync when interview answers were used); never status or publishing',enforcement:'advisory — violations reported, fields still saved; written = no violations',log:'writeasset:log (last 200 runs)'}};
-  let generated=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
+  const litPass=extKeep==='Literal'?Object.fromEntries(contract.filter(f=>String(extLit[f.name]||'').trim()&&!validateWritingContract([f],{[f.name]:String(extLit[f.name])}).length).map(f=>[f.name,String(extLit[f.name])])):{};
+  const litAll=extKeep==='Literal'&&contract.length>0&&contract.every(f=>f.name in litPass);   // every field of the external write passes: nothing for the model to do
+  const pin=f=>{for(const [k,v] of Object.entries(litPass))f[k]=v;return f;};
+  let generated=litAll?Object.fromEntries(contract.map((f,i)=>[keyOf[i],litPass[f.name]])):await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema);
   const fieldsOf=g=>writeImgResolve(Object.fromEntries(contract.map((f,i)=>{const v=g[keyOf[i]]??g[f.name];return [f.name,typeof v==='string'?v:''];})),titleImages);
   const band=WRITE_KEEP[style.keep].band,mainOf=f=>f['Offer Page']||f.Body||Object.values(f).sort((a,b)=>b.length-a.length)[0]||'';
-  const check=f=>{const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=!only&&seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=!only&&kept!==null&&(kept<band[0]-15||kept>band[1]+15);
+  const check=f=>{const extKept=packet.externalWrite&&!only?ivKeptPct(extPlain,Object.values(f).join('\n')):null,extOff=extKeep!=='Rewrite'&&extKept!==null&&(extKept<extBand[0]-15||extKept>extBand[1]+15);
+    const kept=ivKeptPct(answersOnly,Object.values(f).join('\n')),seo=!only&&seoList.length?seoCoverage(seoKws,mainOf(f),f['Platform Title']):null,violations=validateWritingContract(contract,f),off=!only&&kept!==null&&(kept<band[0]-15||kept>band[1]+15);
     const placed=titleImages.length?(mainOf(f).match(/^!\[[^\]\n]*\]\(https:\/\/[^)\s]+\)$/gm)||[]).length:0,need=Math.min(4,titleImages.length);
-    const problems=[...violations,...(placed<need?['only '+placed+' of the titleImages are placed — place at least '+need+', each as its ref alone on its own line, e.g. [[img1]] (the worker inserts the picture)']:[]),...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[])];
-    return {kept,seo,violations,problems,score:violations.length*2+Math.max(0,need-placed)*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)};};
-  let fields=fieldsOf(generated),c=check(fields),corrected=false;
-  if(c.problems.length){
+    const problems=[...violations,...(placed<need?['only '+placed+' of the titleImages are placed — place at least '+need+', each as its ref alone on its own line, e.g. [[img1]] (the worker inserts the picture)']:[]),...(off?['it kept '+kept+'% of the operator\'s interview wording; the target is '+band[0]+'-'+band[1]+'%']:[]),...(seo&&seo.missing.length?['these keywords are not in the title, an H2 or the first paragraph: '+seo.missing.join(', ')]:[]),...(extOff?['it kept '+extKept+'% of the external write\'s wording; the target is '+extBand[0]+'-'+extBand[1]+'% ('+extKeep+')']:[])];
+    return {kept,extKept,seo,violations,problems,score:violations.length*2+Math.max(0,need-placed)*2+(seo?seo.missing.length:0)+(off?Math.abs(kept-(band[0]+band[1])/2)/10:0)+(extOff?Math.abs(extKept-(extBand[0]+extBand[1])/2)/10:0)};};
+  let fields=pin(fieldsOf(generated)),c=check(fields),corrected=false;
+  if(c.problems.length&&!litAll){
     const again=await hcClaude(env,instruction+'\n\n'+styleFull+'\n\nYOUR PREVIOUS DRAFT has these problems — fix exactly these, changing nothing else:\n- '+c.problems.join('\n- ')+'\n\nPREVIOUS DRAFT\n'+JSON.stringify(fields)+'\n\nWRITING PACKET\n'+JSON.stringify(packet),'write_contract_fields',schema).catch(()=>null);
-    if(again){const f2=fieldsOf(again),c2=check(f2);if(c2.score<c.score){fields=f2;c=c2;corrected=true;}}
+    if(again){const f2=pin(fieldsOf(again)),c2=check(f2);if(c2.score<c.score){fields=f2;c=c2;corrected=true;}}
   }
   // a short field over its "≤ N characters" rule (a meta Description) is trimmed at a sentence, else a word, boundary — 2026-10-24
   let trimmed=false;for(const {name:fn,rule} of contract){const m=/≤\s*(\d+)\s+characters/i.exec(rule),v=fields[fn];if(!m||typeof v!=='string'||Array.from(v).length<=+m[1]||v.length>600)continue;
@@ -2563,12 +2645,14 @@ async function writeContractAsset(env,assetId,opts={}) {
   const properties=await assetMethodProp(methodId,p['Asset Type']?.select?.name);
   for(const [key,value] of Object.entries(fields)){const type=db.properties?.[key]?.type||'rich_text';if(value.length>190000)throw new Error(`${key}: exceeds Notion text capacity`);properties[key]=type==='select'?{select:value?{name:value}:null}:{[type]:ivRt(value)};}
   try{await writeStyleEnsureProps(env);properties['Interview Kept %']={number:keptPct};}catch(e){console.error('write style props:',e.message);}
+  if(packet.externalWrite&&!only){try{await extEnsureProps(env);properties['External Kept %']={number:c.extKept};}catch(e){console.error('external write props:',e.message);}}
   // a write that used the interview answers brings the asset back In Sync (clears ↻ rewrite due / 'written without interview') — 2026-10-24
   if(answersOnly.trim()&&!only){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
   await saveExistingAssetWriting(page,properties,[]);
-  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{}),...(titleImages.length?{titleImages:titleImages.length}:{}),...(productImages?{productImages:{placed:productImages.placed||0,made:productImages.made||0,failed:productImages.failed||[],...(productImages.error?{error:productImages.error}:{})}}:{})};
+  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{}),...(titleImages.length?{titleImages:titleImages.length}:{}),...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,modelSkipped:litAll}}:{}),...(productImages?{productImages:{placed:productImages.placed||0,made:productImages.made||0,failed:productImages.failed||[],...(productImages.error?{error:productImages.error}:{})}}:{})};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
-  return {ok:true,fields:Object.keys(fields),values:only?fields:undefined,violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo}};
+  return {ok:true,fields:Object.keys(fields),values:only?fields:undefined,violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo},
+    ...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,band:extBand,pinned:Object.keys(litPass),modelSkipped:litAll}}:{})};
 }
 
 // Campaign Research (the IF graph's campaign-level research) for the writer: the richest Research record of the campaign, its filled text fields.
@@ -20232,8 +20316,8 @@ export default {
           if (run) { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(run) } } }) });
             if (!r.ok) warn.push("Run not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); }
           const pw = body.prewrite, text = pw == null ? "" : typeof pw === "string" ? pw.trim() : JSON.stringify(pw, null, 2);
-          if (text) await env.TRADES.put("prewrite:" + id, JSON.stringify({ text: text.slice(0, 40000), json: typeof pw !== "string", at: new Date().toISOString(), fromImport: run || key }));
-          else warn.push("no pre-write in this post");
+          if (text) { try { await extWriteSet(env, id, text, run || key); } catch (e) { warn.push(e.message); } }   // EXTERNAL WRITE on the asset (2026-11-12)
+          else warn.push("no external write in this post");
           const rt = body.route; if (rt && typeof rt === "object" && /^[0-9a-f]{32}$/i.test(hubAssetId(String(rt.from || ""))))   // information routing, not a parent (2026-11-11)
             await env.TRADES.put("route:" + id, JSON.stringify({ from: hubAssetId(rt.from), fromType: String(rt.fromType || "").slice(0, 60), run, at: new Date().toISOString(),
               ...(rt.listing && typeof rt.listing === "object" ? { listing: JSON.parse(JSON.stringify(rt.listing).slice(0, 20000) || "null") } : {}) }));
@@ -57385,7 +57469,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             parentType: parent ? (parent.properties?.["Asset Type"]?.select?.name || "") : "", interviewKeep: p["Interview Keep"]?.select?.name || "", writePurpose: p["Write Purpose"]?.select?.name || "", widget: isWidgetType(p["Asset Type"]?.select?.name),
             keywordSeed: hubRichText(p["Keyword Seed"]?.rich_text), outline: hubRichText(p.Outline?.rich_text), directions: hubRichText(p["Writer Directions"]?.rich_text), initiative: hubRichText(p.Initiative?.rich_text) },
           dry, fieldTypes: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, v.type])), spec: await specState(env, await specContext(env, body.assetId)).catch(e => ({ error: e.message })),
-          prewrite: await env.TRADES.get("prewrite:" + hubAssetId(body.assetId), "json").catch(() => null),
+          prewrite: await extWriteGet(env, hubAssetId(body.assetId), w.page).catch(() => null), extKeepLevels: Object.keys(EXT_KEEP),
           specRow: await (async () => {   // 📋 Spec tab (operator 2026-10-30): the asset type's whole Current Methods row, literally, + how it was matched
             try { const t = await writingMethodsTable(env), m = await writingMethod(env, w.page), type = p['Asset Type']?.select?.name || '';
               const all = writingRows(t), on = r => /^yes$/i.test(r.mapped || ''), cand = all.filter(r => ivNorm(r.name) === ivNorm(m.name) || r.aliases.includes(ivNorm(m.name)) || r.aliases.includes(ivNorm(type)));
@@ -57418,8 +57502,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (body.op === "prompt") return json({ ok: true, ...(await assetPrewritePrompt(env, aid)) });
           if (body.op === "save") { const text = String(body.text || "").trim().slice(0, 40000); if (!text) return json({ error: "nothing to save" }, 400);
             let parsed = null; try { parsed = JSON.parse(text.replace(/^\`\`\`(?:json)?\s*|\s*\`\`\`$/g, "")); } catch (e) {}
-            const rec = { text, json: !!parsed, at: new Date().toISOString() }; await env.TRADES.put("prewrite:" + aid, JSON.stringify(rec)); return json({ ok: true, ...rec }); }
-          if (body.op === "clear") { await env.TRADES.delete("prewrite:" + aid); return json({ ok: true }); }
+            return json({ ok: true, ...(await extWriteSet(env, aid, text, String(body.source || "pasted in the Asset modal"))) }); }
+          if (body.op === "clear") { await extWriteClear(env, aid); return json({ ok: true }); }
+          if (body.op === "keep") { const k = String(body.keep || ""); if (k && !EXT_KEEP[k]) return json({ error: "keep is one of " + Object.keys(EXT_KEEP).join(", ") }, 400);
+            await extEnsureProps(env); const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "External Keep": { select: k ? { name: k } : null } } }) });
+            if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "Notion " + r.status }, 502); return json({ ok: true, keep: k }); }
           if (body.op === "runPrompt") return json({ ok: true, ...(await seriesRunPrewritePrompt(env, aid)) });
           if (body.op === "runSave") {   // the pasted array → each child's own pre-write
             let parsed; try { parsed = JSON.parse(String(body.text || "").trim().replace(/^\`\`\`(?:json)?\s*|\s*\`\`\`$/g, "")); } catch (e) { return json({ error: "Not valid JSON: " + e.message }, 400); }
@@ -57427,10 +57514,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             if (!posts) return json({ error: 'Expected {"posts": [ … ]}' }, 400);
             const saved = [], skipped = [];
             for (const x of posts) { const id = hubAssetId(String((x && x.assetId) || "")); if (!/^[a-f0-9]{32}$/i.test(id)) { skipped.push("an item with no assetId"); continue; }
-              await env.TRADES.put("prewrite:" + id, JSON.stringify({ text: JSON.stringify(x, null, 2), json: true, at: new Date().toISOString(), fromRun: aid })); saved.push(id); }
+              try { await extWriteSet(env, id, JSON.stringify(x, null, 2), "Series run"); saved.push(id); } catch (e) { skipped.push(id + ": " + e.message); } }
             return json({ ok: true, saved, skipped });
           }
-          return json({ ok: true, prewrite: await env.TRADES.get("prewrite:" + aid, "json") });
+          return json({ ok: true, prewrite: await extWriteGet(env, aid).catch(() => null) });
         } catch (e) { return json({ error: e.message }, 400); }
       }
       if (body.action === "assetSpec") {
@@ -58576,6 +58663,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
+      cw("extWriteMigrateTick", extWriteMigrateTick(env).then(r => { if (r && !r.done) console.log("extWrite migrate:", JSON.stringify(r).slice(0, 300)); }));   // old KV pre-writes → External Write (2026-11-12)
       cw("contentPlanCronTick", (async () => { if ((await env.TRADES.get(CPC_ON)) !== "1") return;   // Content Plan cron — off unless switched on
         const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
