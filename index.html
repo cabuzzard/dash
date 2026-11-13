@@ -8383,19 +8383,41 @@ function hdTpHtml(h) {
     <div style="display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid var(--border2);">${[['cards', '🖼 Cards'], ['counts', '📊 Counts']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.tab='${k}';hdRender()" style="padding:7px 14px;font-size:12.5px;text-decoration:none;border:1px solid ${T.tab === k ? 'var(--border2)' : 'transparent'};border-bottom:${T.tab === k ? '1px solid var(--bg)' : '0'};border-radius:8px 8px 0 0;margin-bottom:-1px;background:${T.tab === k ? 'var(--surface)' : 'transparent'};color:${T.tab === k ? 'var(--text)' : 'var(--text3)'};font-weight:${T.tab === k ? 700 : 400};">${l}</a>`).join('')}</div>
     ${T.tab === 'counts' ? hdTpCounts(all, types) : (groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>')}`;
 }
-// 📊 Counts: one row per asset type — Development (+ Review / Planning / Idea), Publish, Published, total; a row opens Cards on that type
+// 📊 Counts (operator 2026-11-13: "this column should expand to have all parents and childs on AF whether or not the count is zero … arranged in
+// parent child relation. the counts should open the records in the content plan"): one row per Asset Flow asset type — each Parent / Upstream
+// Asset with the asset types it leads to (through research steps such as run / Clipping) indented under it, then the asset types no parent
+// leads to, then this title's types the graph doesn't have. A child under several parents shows under the first. Development = every status
+// before Publish. Every number opens those assets in Content Plan — All Assets; a type name opens them as cards.
+function hdTpAfTree() {
+  const t = HD.afT; if (!t || !t.rows) return null; const N = new Map(t.rows.filter(r => r.cells && r.cells.kind === 'node').map(r => [r.id, r.cells])), out = new Map();
+  t.rows.filter(r => r.cells && r.cells.kind === 'edge').forEach(e => { if (!out.has(e.cells.source)) out.set(e.cells.source, []); out.get(e.cells.source).push(e.cells.target); });
+  const isA = c => /asset|widget/i.test(c.role || '') && !/development/i.test(c.role || ''), isP = c => /^(parent|upstream) asset$/i.test(String(c.role || '').trim()), lab = id => String((N.get(id) || {}).label || '').trim();
+  const kidsOf = id => { const k = [], seen = new Set([id]), walk = n => (out.get(n) || []).forEach(x => { if (seen.has(x)) return; seen.add(x); const c = N.get(x); if (!c) return; if (isA(c) && !isP(c)) k.push(x); else if (!isA(c) && !/^records$/i.test(c.role || '')) walk(x); }); walk(id); return k; };
+  const rows = [], placed = new Set(), parents = [...N.entries()].filter(([, c]) => isP(c)).map(([id]) => id).sort((a, b) => /upstream/i.test(N.get(a).role) - /upstream/i.test(N.get(b).role) || lab(a).localeCompare(lab(b)));   // the specific parents first, External Parent last
+  parents.forEach(p => { rows.push({ label: lab(p), depth: 0, parent: true }); placed.add(p); kidsOf(p).forEach(k => { if (placed.has(k)) return; placed.add(k); rows.push({ label: lab(k), depth: 1 }); }); });
+  [...N.entries()].filter(([id, c]) => isA(c) && !placed.has(id)).forEach(([id]) => rows.push({ label: lab(id), depth: 0, loose: true }));
+  return rows;
+}
 function hdTpCounts(all, types) {
+  if (!HD.afT && !HD.afTBusy) { HD.afTBusy = true; call('getInfoFlowTable', { name: 'assetflowgraph' }).then(r => { HD.afT = (r && r.table) || { rows: [] }; }).catch(() => { HD.afT = { rows: [] }; }).finally(() => { HD.afTBusy = false; hdRender(); }); }
+  const tree = hdTpAfTree(), norm = v => String(v || '').trim().toLowerCase(), used = new Set();
+  const typesOf = label => { const l = norm(label), old = norm(HI_AF_LEGACY[l]); return types.filter(t => { const n = norm(t); return n === l || (old && n === old) || n === l + ' parent'; }); };
   const bucket = s => /^published$/i.test(s) ? 'pubd' : /^publish$/i.test(s) ? 'pub' : 'dev';
-  const rows = types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t), c = { dev: 0, pub: 0, pubd: 0 }; l.forEach(a => c[bucket(a.status)]++); return { t, n: l.length, ...c }; });
-  const tot = rows.reduce((o, r) => ({ dev: o.dev + r.dev, pub: o.pub + r.pub, pubd: o.pubd + r.pubd, n: o.n + r.n }), { dev: 0, pub: 0, pubd: 0, n: 0 });
-  const cell = (v, col) => `<td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:${v ? col : 'var(--text3)'};font-weight:${v ? 700 : 400};">${v}</td>`;
+  const count = (label, ts) => { const l = all.filter(a => ts.includes(a.type || '(no type)')), c = { dev: [], pub: [], pubd: [] }; l.forEach(a => c[bucket(a.status)].push(a.id)); return { label, ts, all: l.map(a => a.id), ...c }; };
+  const rows = tree ? tree.map(r => { const ts = typesOf(r.label); ts.forEach(t => used.add(t)); return { ...r, ...count(r.label, ts) }; }) : [];
+  const extra = types.filter(t => !used.has(t)).map(t => ({ label: t, depth: 0, extra: true, ...count(t, [t]) }));
+  const tot = count('All types', types), title = (HD.tp && HD.tp.d && HD.tp.d.title && HD.tp.d.title.name) || 'Title';
+  const cell = (ids, col, lab) => `<td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:${ids.length ? 700 : 400};color:${ids.length ? col : 'var(--text3)'};">${ids.length ? hdLink(ids.length, ids, lab, col) : 0}</td>`;
   const th = (l, right) => `<th style="padding:8px 12px;text-align:${right ? 'right' : 'left'};font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);font-weight:600;">${l}</th>`;
+  const tr = r => { const lab = title + ' · ' + r.label, click = r.ts.length === 1 ? `HD.tp.tab='cards';HD.tp.type=${JSON.stringify(r.ts[0]).replace(/"/g, '&quot;')};hdRender()` : '';
+    return `<tr style="border-bottom:1px solid var(--border);${r.all.length ? '' : 'opacity:.55;'}"><td style="padding:8px 12px ${r.depth ? '8px ' + (12 + r.depth * 18) + 'px' : ''};font-weight:${r.parent ? 700 : 500};">${r.depth ? '<span style="color:var(--text3);">↳ </span>' : ''}${click ? `<a href="#" onclick="event.preventDefault();${click}" title="Show these as cards" style="color:var(--text);text-decoration:none;">${esc(r.label)}</a>` : esc(r.label)}${r.ts.length && norm(r.ts.join()) !== norm(r.label) ? ` <span style="font-size:11px;color:var(--text3);font-weight:400;">(${esc(r.ts.join(', '))})</span>` : ''}${r.extra ? ' <span style="font-size:11px;color:#f59e0b;font-weight:400;">not on Asset Flow</span>' : ''}</td>${cell(r.dev, '#ff7a00', lab + ' · Development')}${cell(r.pub, '#8ab4f8', lab + ' · Publish')}${cell(r.pubd, '#4ade80', lab + ' · Published')}${cell(r.all, 'var(--text)', lab + ' · All')}</tr>`; };
+  const sec = l => `<tr><td colspan="5" style="padding:10px 12px 4px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${l}</td></tr>`;
+  const loose = rows.filter(r => r.loose), main = rows.filter(r => !r.loose);
   return `<div style="border:1px solid var(--border2);border-top:0;border-radius:0 0 12px 12px;background:var(--surface);overflow:auto;">
-    <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border2);">${th('Asset type')}${th('Development', 1)}${th('Publish', 1)}${th('Published', 1)}${th('Total', 1)}</tr></thead>
-    <tbody>${rows.map(r => `<tr onclick="HD.tp.tab='cards';HD.tp.type=${JSON.stringify(r.t).replace(/"/g, '&quot;')};hdRender()" title="Show these as cards" style="border-bottom:1px solid var(--border);cursor:pointer;">
-      <td style="padding:8px 12px;font-weight:600;">${esc(r.t)}</td>${cell(r.dev, '#ff7a00')}${cell(r.pub, '#8ab4f8')}${cell(r.pubd, '#4ade80')}${cell(r.n, 'var(--text)')}</tr>`).join('')}</tbody>
-    <tfoot><tr style="border-top:2px solid var(--border2);"><td style="padding:8px 12px;font-weight:700;">All types</td>${cell(tot.dev, '#ff7a00')}${cell(tot.pub, '#8ab4f8')}${cell(tot.pubd, '#4ade80')}${cell(tot.n, 'var(--text)')}</tr></tfoot></table>
-    <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">Development counts every status before Publish (Idea, Planning, Development, Review). Click a row to see those assets as cards.</div></div>`;
+    <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border2);">${th('Asset type (Asset Flow: parent → child)')}${th('Development', 1)}${th('Publish', 1)}${th('Published', 1)}${th('Total', 1)}</tr></thead>
+    <tbody>${!tree ? `<tr><td colspan="5" style="padding:10px 12px;color:var(--text3);font-size:12px;">Loading the Asset Flow…</td></tr>` : main.map(tr).join('') + (loose.length ? sec('Asset types no parent leads to') + loose.map(tr).join('') : '') + (extra.length ? sec('On this title, not on Asset Flow') + extra.map(tr).join('') : '')}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--border2);"><td style="padding:8px 12px;font-weight:700;">All types</td>${cell(tot.dev, '#ff7a00', title + ' · Development')}${cell(tot.pub, '#8ab4f8', title + ' · Publish')}${cell(tot.pubd, '#4ade80', title + ' · Published')}${cell(tot.all, 'var(--text)', title + ' · All')}</tr></tfoot></table>
+    <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">Rows follow the Asset Flow graph: each parent with the types it leads to, zeros included. Development = every status before Publish (Idea, Planning, Development, Review). A number opens those assets in Content Plan — All Assets; a type name shows them as cards.</div></div>`;
 }
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
