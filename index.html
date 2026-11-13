@@ -8321,6 +8321,45 @@ const HD_KIND_COL = { Cluster: '#f59e0b', Topic: '#c084fc', Product: 'var(--text
 // collapsing a level also closes everything under it
 function hdKwAll(lv, open) { const L = ['Cluster', 'Topic', 'Product'], i = L.indexOf(lv), A = HD._kwAll || {}, O = HD.kwOpen = HD.kwOpen || new Set();
   L.forEach((k, j) => (A[k] || []).forEach(ck => { if (open && j <= i) O.add(ck); if (!open && j >= i) O.delete(ck); })); hdRender(); }
+// ── 🗂 TITLE PAGE (operator 2026-11-12: "a title page that shows all of the images and counts of all the asset types and blurb copy of the
+// assets like a title assets hub card … after clicking through from the product level on the title cards"). Worker titlePage (read-only).
+function hdTpOpen(titleId) { HD.tp = { id: hdNid(titleId), d: null, type: '', status: '' }; hdRender(); window.scrollTo(0, 0); hdTpLoad(); }
+function hdTpClose() { HD.tp = null; hdRender(); }
+async function hdTpLoad() { const T = HD.tp; if (!T) return; const r = await call('titlePage', { titleId: T.id }).catch(e => ({ error: e.message })); if (HD.tp !== T) return; T.d = r || { error: 'no response' }; hdRender(); }
+function hdTpHtml(h) {
+  const T = HD.tp, d = T.d, B = c => `font-size:11.5px;padding:3px 10px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const back = `<button style="${B('var(--text2)')}" onclick="hdTpClose()">← Back to ${esc(h.name)}</button>`;
+  if (!d) return `<div style="margin-bottom:10px;">${back}</div><div style="font-size:12px;color:var(--text3);">Loading the title…</div>`;
+  if (d.error) return `<div style="margin-bottom:10px;">${back}</div><div style="font-size:12px;color:#f87171;">✗ ${esc(d.error)}</div>`;
+  const stCol = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#8ab4f8' : /^review$/i.test(s) ? '#ff7a00' : 'var(--text3)';
+  const all = d.assets || [], types = [...new Set(all.map(a => a.type || '(no type)'))].sort((a, b) => all.filter(x => (x.type || '(no type)') === b).length - all.filter(x => (x.type || '(no type)') === a).length || a.localeCompare(b));
+  const shown = all.filter(a => (!T.type || (a.type || '(no type)') === T.type) && (!T.status || (T.status === 'live' ? /^published$/i.test(a.status) : !/^published$/i.test(a.status))));
+  const nPub = list => list.filter(a => /^published$/i.test(a.status)).length;
+  const chip = (label, n, p, on, click) => `<a href="#" onclick="event.preventDefault();${click}" style="display:inline-flex;gap:6px;align-items:baseline;padding:5px 10px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:999px;text-decoration:none;color:var(--text);background:${on ? 'var(--surface2)' : 'transparent'};font-size:12px;"><b>${n}</b> ${esc(label)}${p ? ` <span style="color:#4ade80;font-size:11px;">${p} live</span>` : ''}</a>`;
+  const linkLab = { live: 'live', etsy: 'Etsy', marketplace: 'Marketplace', order: 'order link', design: 'design', video: 'video' };
+  const card = a => `<div style="border:1px solid var(--border2);border-radius:12px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column;">
+      <div onclick="amOpen('${esc(a.id)}')" style="cursor:pointer;aspect-ratio:1/1;background:var(--surface2);display:flex;align-items:center;justify-content:center;">${a.image ? `<img loading="lazy" src="${esc(a.image)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">` : '<span style="font-size:11px;color:var(--text3);">no image</span>'}</div>
+      <div style="padding:10px 12px;display:flex;flex-direction:column;gap:5px;flex:1;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10.5px;"><span style="text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${esc(a.type)}</span><span style="color:${stCol(a.status)};font-weight:600;">● ${esc(a.status || '—')}</span>${a.run ? `<span style="color:#c084fc;">⟲ ${esc(a.run)}</span>` : ''}</div>
+        <a href="#" onclick="event.preventDefault();amOpen('${esc(a.id)}')" style="font-weight:700;font-size:13.5px;color:var(--text);text-decoration:none;line-height:1.3;">${esc(a.title || a.name)}</a>
+        ${a.headline ? `<div style="font-size:12px;font-style:italic;color:var(--text2);">${esc(a.headline)}</div>` : ''}
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;">${esc(a.blurb) || '<span style="color:var(--text3);">not written yet</span>'}</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:auto;padding-top:4px;">${Object.entries(a.links || {}).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${linkLab[k] || k} ↗</a>`).join('')}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="color:var(--text3);">Notion ↗</a></div>
+      </div></div>`;
+  const groups = (T.type ? [T.type] : types).map(t => { const list = shown.filter(a => (a.type || '(no type)') === t); if (!list.length) return '';
+    return `<div style="margin:18px 0 8px;display:flex;gap:10px;align-items:baseline;"><b style="font-size:14px;">${esc(t)}</b><span style="font-size:11.5px;color:var(--text3);">${list.length}${nPub(list) ? ' · ' + nPub(list) + ' live' : ''}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;">${list.map(card).join('')}</div>`; }).join('');
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">${back}<button style="${B('var(--text2)')}" onclick="HD.tp.d=null;hdRender();hdTpLoad()">↻</button>${aiPlus(T.id)}</div>
+    <div style="border:1px solid var(--border2);border-radius:12px;padding:14px 16px;background:var(--surface);">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">Title · ${esc(h.name)}</div>
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:20px;">${esc(d.title.name)}</b><span style="font-size:12px;color:${stCol(d.title.status)};">${esc(d.title.status)}</span><a href="https://www.notion.so/${esc(d.title.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);">Notion ↗</a></div>
+      ${d.title.notes ? `<div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${esc(d.title.notes)}</div>` : ''}
+      <div style="font-size:12px;color:var(--text2);margin-top:8px;">${all.length} assets · ${types.length} types · ${nPub(all)} live</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${chip('all', all.length, nPub(all), !T.type, "HD.tp.type='';hdRender()")}${types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t); return chip(t, l.length, nPub(l), T.type === t, `HD.tp.type=${JSON.stringify(t).replace(/"/g, '&quot;')};hdRender()`); }).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;font-size:11.5px;">${[['', 'every status'], ['live', 'live only'], ['notlive', 'not live yet']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.status='${k}';hdRender()" style="padding:2px 9px;border-radius:999px;border:1px solid ${T.status === k ? 'var(--accent)' : 'var(--border2)'};text-decoration:none;color:var(--text2);">${l}</a>`).join('')}</div>
+    </div>
+    ${groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>'}`;
+}
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const cid = hdNid(h.campaignId), nk = v => String(v || '').trim().toLowerCase(), ip = (HD.ip || {})[cid];
@@ -8353,7 +8392,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal) {
   const nums = t => COLS.map(c => `<span style="min-width:24px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${c};">${t[c] || ''}</span>`).join('');
   // faded = open with an open heading under it (operator 2026-11-10: the lowest open headings stay full strength)
   const row = (g, depth, open, t, sub, acts, faded) => { const ci = HD._cards.push(g) - 1, ki = HD._kwKeys.push(g.ck) - 1; HD._kwAll[g.kind].push(g.ck);
-    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="hdKwTog(${ki})" class="hd-row" title="Click to open / close · drag to reorder" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : faded ? 'opacity:.6;' : ''}">
+    return `<div draggable="true" ondragstart="hdCardDrag(event,${ci})" ondragover="event.preventDefault()" ondrop="hdCardDrop(event,${ci})" onclick="${g.kind === 'Title' && g.titleId ? `hdTpOpen('${esc(g.titleId)}')` : `hdKwTog(${ki})`}" class="hd-row" title="${g.kind === 'Title' && g.titleId ? 'Click to open the title page — every asset under it · drag to reorder' : 'Click to open / close · drag to reorder'}" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:8px 10px 8px ${10 + depth * 18}px;border-bottom:1px solid var(--border);${g.hidden ? 'opacity:.45;' : faded ? 'opacity:.6;' : ''}">
       <span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span>
       <div style="flex:1 1 auto;min-width:0;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:${HD_KIND_COL[g.kind]};margin-right:6px;">${g.kind}</span><b style="font-size:13px;overflow-wrap:anywhere;${g.none ? 'color:var(--text3);font-style:italic;' : ''}">${esc(g.name)}</b>${acts ? `<span style="display:inline-flex;gap:9px;align-items:center;margin-left:10px;vertical-align:middle;">${acts}</span>` : ''}</div>
       <span style="display:inline-flex;gap:2px;flex:0 0 auto;">${open && g.kind !== 'Product' ? nums({}) : nums(t)}</span>
@@ -8443,6 +8482,7 @@ function hdRender() {
   if (HD.err) { el.innerHTML = tabs + tools + `<div style="font-size:12px;color:#f87171;">Not loaded: ${esc(HD.err)}</div>`; return; }
   if (!HD.rows) { el.innerHTML = tabs + tools; return; }
   if (HD.fit && !h) { el.innerHTML = tools + hdFitHtml(hubs); if (!HD.fitData) hdFitLoad(hubs); return; }
+  if (HD.tp && h) { el.innerHTML = tools + hdTpHtml(h); return; }   // 🗂 Title page
   if (!h) {   // TOP LEVEL: every hub as a card, in sequence order, with the newest thing created inside it
     HD._keys = []; HD._sets = [];
     const cardsTop = hubs.map(hb => { const c = hdNid(hb.campaignId), rowsH = HD.rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));

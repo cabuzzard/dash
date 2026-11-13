@@ -11362,6 +11362,28 @@ async function fbListingAction(env, body) {
   return { ok: true, ...st };
 }
 
+// titlePage {titleId} — the hub dashboard's 🗂 Title page (operator 2026-11-12): every asset under one title with its image, blurb, status
+// and links, so the title reads like a hub card of everything made for it. Read-only. An asset with no image of its own shows the image of
+// the asset its information is routed from (KV route:<id>, e.g. a Marketplace listing ← its Etsy listing) when that asset is on the title.
+async function titlePageData(env, titleId) {
+  const tid = hubAssetId(titleId || ''); if (!/^[a-f0-9]{32}$/i.test(tid)) return { error: 'titleId required' };
+  const [title, rows] = await Promise.all([ivPage(tid).catch(() => null), notionQuery(ASSETS_DB, { filter: { property: 'Content Strategy', relation: { contains: ivDash(tid) } }, sorts: [{ timestamp: 'created_time', direction: 'ascending' }] })]);
+  if (!title?.properties) return { error: 'Title unavailable' };
+  const tp = title.properties, txt = (p, k) => hubRichText(p[k]?.rich_text).trim();
+  const img = p => { const f = (p.Images?.files || [])[0]; return (f && (f.external?.url || f.file?.url)) || p['Post Image']?.url || p.Thumbnail?.url || p['Instagram Background']?.url || ''; };
+  const live = rows.filter(x => !x.archived && !x.in_trash);
+  const assets = live.map(x => { const p = x.properties || {}, type = p['Asset Type']?.select?.name || '';
+    const blurb = txt(p, 'Body') || txt(p, 'Description') || txt(p, 'Post Caption') || txt(p, 'Offer Page') || txt(p, 'Story Areas') || txt(p, 'External Write').replace(/^\s*\{[\s\S]*?"Body"\s*:\s*"/, '').slice(0, 600);
+    return { id: hubAssetId(x.id), name: hubRichText(p['Asset Title']?.title), type, status: p['Asset Status']?.select?.name || '', title: txt(p, 'Platform Title'),
+      headline: [txt(p, 'Headline Primary'), txt(p, 'Headline Accent')].filter(Boolean).join(' '), blurb: blurb.slice(0, 600), image: img(p), run: txt(p, 'Run'),
+      parentId: ivRid(p, 'Parent Asset'), created: x.created_time,
+      links: Object.fromEntries([['live', p['Content URL']?.url], ['etsy', p['Etsy Listing URL']?.url], ['marketplace', p['Marketplace URL']?.url], ['order', p['Product Link']?.url], ['design', p['Design Link']?.url], ['video', p['Video URL']?.url]].filter(([, v]) => v)) }; });
+  const byId = new Map(assets.map(a => [a.id, a]));
+  await Promise.all(assets.filter(a => !a.image).map(async a => { const rt = await env.TRADES.get('route:' + a.id, 'json').catch(() => null);
+    const src = rt && rt.from && byId.get(hubAssetId(rt.from)); if (src && src.image) { a.image = src.image; a.imageFrom = src.type; } }));
+  return { ok: true, title: { id: tid, name: hubRichText((Object.values(tp).find(v => v && v.type === 'title') || {}).title) || '', status: tp.Status?.select?.name || tp.Status?.status?.name || '', notes: txt(tp, 'Notes').slice(0, 400) }, assets };
+}
+
 // ── PIN brute-force lockout ─────────────────────────────────────────────
 // The 250ms per-request delay on auth/pinUpdate slows a single client but
 // does nothing against parallel requests. This adds a real per-IP lockout,
@@ -57669,6 +57691,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return json(await writerSave(env, body));
         } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "titlePage") { try { const r = await titlePageData(env, body.titleId); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "fbListing") { try { const r = await fbListingAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "etsyPush") { try { const r = await etsyPushAction(env, body); return json(r, r.error && !r.rows ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "hubWidget") { try { const r = await hubWidgetAction(env, body); return json(r, r.error ? 400 : 200); } catch (e) { return json({ error: e.message }, 500); } }
