@@ -1112,6 +1112,11 @@ async function assetsTextPropEnsure(env, name, flag) {
 async function initiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Initiative", "initiative:prop"); }
 // Assets "Sub Initiative" (operator 2026-11-09: "one card for each sub initiative (new column in cpaa)") — a group inside an initiative, text, set from CP AA
 async function subInitiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Sub Initiative", "subinitiative:prop"); }
+// Assets "Stack" (operator 2026-11-13: "add the stack field to assets. start tracking stacks and naming them according to hub, initiative, product")
+// — the named stack instance an asset belongs to: "Hub › Initiative › Stack type" (+ " › Product" when one initiative runs the same stack for
+// two products). Stack type = an Asset Flow stack row (kind stack). The names live in KV stack:registry (stackRegistry). Text, like Initiative.
+async function stackEnsureProp(env) { return assetsTextPropEnsure(env, "Stack", "stack:prop"); }
+function stackNameBad(n) { return !n ? "A stack needs a name" : n.length > 300 ? "A stack name is at most 300 characters" : ""; }
 // Assets "Writer Directions" (operator 2026-11-09: "assets should have an individual direction field. it becomes another input vector to asset
 // writing, the last in the chain") — the asset's own directions, saved on the asset and read by EVERY write of it (unlike a run's guidance).
 // Set by the hub dashboard's ＋ Add initiative modal and the Asset modal's Fields tab; shown in its Information flow tab.
@@ -20331,14 +20336,15 @@ export default {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const field = String(body.field || ""), items = (Array.isArray(body.items) ? body.items : []).slice(0, 25).map(x => ({ assetId: hubAssetId(String(x.assetId || "")), value: String(x.value ?? "").trim() }));
-      if (!["initiative", "subinitiative", "type", "directions"].includes(field)) return json({ error: "field must be initiative | subinitiative | type | directions" }, 400);
+      if (!["initiative", "subinitiative", "type", "directions", "stack"].includes(field)) return json({ error: "field must be initiative | subinitiative | type | directions | stack" }, 400);
       if (!items.length || items.some(x => !/^[0-9a-f]{32}$/i.test(x.assetId))) return json({ error: "items [{assetId, value}] required" }, 400);
       try {
         if (field === "initiative" || field === "subinitiative") { const bad = items.map(x => x.value && initiativeNameBad(x.value)).find(Boolean); if (bad) return json({ error: bad }, 400); await (field === "initiative" ? initiativeEnsureProp(env) : subInitiativeEnsureProp(env)); }
+        if (field === "stack") { const bad = items.map(x => x.value && stackNameBad(x.value)).find(Boolean); if (bad) return json({ error: bad }, 400); await stackEnsureProp(env); }
         if (field === "directions") { if (items.some(x => x.value.length > WRITER_DIRECTIONS_MAX)) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
         if (field === "type" && items.some(x => !x.value)) return json({ error: "An asset always keeps an Asset Type" }, 400);
         const types = field === "type" ? await cpcTypeOptions() : null;
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: hubRichText(q.Initiative?.rich_text), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join("").trim() });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: hubRichText(q.Initiative?.rich_text), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), stack: hubRichText(q.Stack?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join("").trim() });
         const nf = async (url, opt) => { for (let t = 0; ; t++) { const r = await fetch(url, { ...opt, headers: ivHdr() }); if (r.status !== 429 || t) return r;
           await new Promise(res => setTimeout(res, Math.min(3000, 1000 * (+r.headers.get("retry-after") || 1.2)))); } };
         const done = []; let stopped = null;
@@ -20350,6 +20356,7 @@ export default {
             props = { "Asset Type": { select: { name: t } } }; check = q => cpcNorm(ASSET_TYPE_KEYS[q.type] || q.type) === cpcNorm(ASSET_TYPE_KEYS[t] || t); }
           else if (field === "initiative") { props = { Initiative: { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.initiative === x.value; }
           else if (field === "subinitiative") { props = { "Sub Initiative": { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.subinitiative === x.value; }
+          else if (field === "stack") { props = { Stack: { rich_text: x.value ? [{ type: "text", text: { content: x.value } }] : [] } }; check = q => q.stack === x.value; }
           else { props = { "Writer Directions": { rich_text: richChunks(x.value) } }; check = q => q.directions === x.value; }
           const g = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), {}), pg = await g.json().catch(() => ({}));
           if (!g.ok) { stopped = { assetId: x.assetId, error: (g.status === 429 ? "Notion rate limit — " : "") + (pg.message || "Notion error " + g.status), rate: g.status === 429 }; break; }
@@ -20382,6 +20389,35 @@ export default {
       const txt = JSON.stringify(out); if (txt.length > 200000) return json({ error: "Too many card settings to save" }, 400);
       await env.TRADES.put(K, txt); return json({ ok: true, prefs: out });
     }
+    // stackRegistry {op: list | set | remove, stack?} (operator 2026-11-13) — the named stack instances, KV stack:registry:
+    // {name, cid, hub, initiative, product, type (Asset Flow stack row id), typeName, plan (Initiative Ranking row id), at}. set = add or update by
+    // name; remove = only once no asset carries that Stack. Every set / remove is logged (KV stack:registry:log).
+    if (body.action === "stackRegistry") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        const op = String(body.op || "list"), K = "stack:registry", cur = (await env.TRADES.get(K, "json")) || { stacks: [] }, L0 = cur.stacks || [], same = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+        const log = async e => { const L = (await env.TRADES.get(K + ":log", "json")) || []; L.unshift({ at: new Date().toISOString(), ...e }); await env.TRADES.put(K + ":log", JSON.stringify(L.slice(0, 500))); };
+        if (op === "list") return json({ ok: true, stacks: L0 });
+        const items = Array.isArray(body.stacks) ? body.stacks : body.stack ? [body.stack] : [];
+        if (op === "set") {
+          if (!items.length || items.length > 100) return json({ error: "stack or stacks (≤ 100) required" }, 400);
+          const t = v => String(v ?? "").trim().slice(0, 300), next = [...L0];
+          for (const x of items) { const st = { name: t(x.name), cid: hubAssetId(t(x.cid)), hub: t(x.hub), initiative: t(x.initiative), product: t(x.product), type: t(x.type).slice(0, 40), typeName: t(x.typeName), plan: t(x.plan).slice(0, 40), at: new Date().toISOString() };
+            const bad = stackNameBad(st.name); if (bad) return json({ error: bad }, 400); if (!/^[0-9a-f]{32}$/i.test(st.cid)) return json({ error: "cid (hub campaign id) required: " + st.name }, 400);
+            const i = next.findIndex(y => same(y.name, st.name)); if (i >= 0) next[i] = { ...next[i], ...st }; else next.push(st); }
+          await stackEnsureProp(env); await env.TRADES.put(K, JSON.stringify({ stacks: next, at: Date.now() })); await log({ op, names: items.map(x => x.name) });
+          return json({ ok: true, stacks: next });
+        }
+        if (op === "remove") {
+          const name = String(body.name || "").trim(); if (!name) return json({ error: "name required" }, 400);
+          await stackEnsureProp(env); const still = (await notionQuery(ASSETS_DB, { filter: { property: "Stack", rich_text: { equals: name } } })).filter(x => !x.archived && !x.in_trash);
+          if (still.length) return json({ error: `${still.length} asset${still.length === 1 ? "" : "s"} still carry “${name}” — take them out of it first`, still: still.length }, 409);
+          const next = L0.filter(y => !same(y.name, name)); await env.TRADES.put(K, JSON.stringify({ stacks: next, at: Date.now() })); await log({ op, name }); return json({ ok: true, stacks: next });
+        }
+        return json({ error: "op must be list | set | remove" }, 400);
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "initiativeNames") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -20413,14 +20449,15 @@ export default {
       try {
         const id = hubAssetId(String(body.assetId || "")), field = String(body.field || ""), value = String(body.value ?? "").trim();
         if (!/^[0-9a-f]{32}$/i.test(id)) return json({ error: "assetId required" }, 400);
-        if (!["type", "name", "title", "initiative", "subinitiative", "directions"].includes(field)) return json({ error: "field must be type | name | title | initiative | subinitiative | directions" }, 400);
-        if (!value && !["initiative", "subinitiative", "directions"].includes(field)) return json({ error: "A blank value is never written to the asset" }, 400);
+        if (!["type", "name", "title", "initiative", "subinitiative", "directions", "stack"].includes(field)) return json({ error: "field must be type | name | title | initiative | subinitiative | directions | stack" }, 400);
+        if (!value && !["initiative", "subinitiative", "directions", "stack"].includes(field)) return json({ error: "A blank value is never written to the asset" }, 400);
         if (field === "subinitiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await subInitiativeEnsureProp(env); }
+        if (field === "stack") { const bad = stackNameBad(value); if (value && bad) return json({ error: bad }, 400); await stackEnsureProp(env); }
         if (field === "directions") { if (value.length > WRITER_DIRECTIONS_MAX) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400); await writerDirectionsEnsureProp(env); }
         if (field === "initiative") { const bad = initiativeNameBad(value); if (value && bad) return json({ error: bad }, 400); await initiativeEnsureProp(env); }
         const get = async () => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { headers: ivHdr() }); const d = await r.json(); if (!r.ok) throw new Error(d.message || "Notion error " + r.status); return d; };
         const pg = await get(), pp = pg.properties || {}; if (pg.archived || pg.in_trash) return json({ error: "The asset is in the trash" }, 409);
-        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join(""), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
+        const snap = q => ({ type: q["Asset Type"]?.select?.name || "", initiative: (q.Initiative?.rich_text || []).map(x => x.plain_text).join("").trim(), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), stack: hubRichText(q.Stack?.rich_text), directions: (q["Writer Directions"]?.rich_text || []).map(x => x.plain_text).join(""), name: hubRichText(q["Asset Title"]?.title), titleId: ivRid(q, "Content Strategy") || "", campaignIds: (q.Campaign?.relation || []).map(r => hubAssetId(r.id)), productIds: (q.Product?.relation || []).map(r => hubAssetId(r.id)) });
         let props, check;
         if (field === "type") {
           const types = await cpcTypeOptions(), want = ASSET_TYPE_KEYS[value] || value, t = types.find(x => cpcNorm(x) === cpcNorm(want)) || types.find(x => cpcNorm(x) === cpcNorm(value));
@@ -20430,6 +20467,8 @@ export default {
           props = { "Writer Directions": { rich_text: richChunks(value) } }; check = q => q.directions.trim() === value;
         } else if (field === "initiative") {
           props = { Initiative: { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.initiative === value;
+        } else if (field === "stack") {
+          props = { Stack: { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.stack === value;
         } else if (field === "subinitiative") {
           props = { "Sub Initiative": { rich_text: value ? [{ type: "text", text: { content: value } }] : [] } }; check = q => q.subinitiative === value;
         } else if (field === "name") {
@@ -23304,7 +23343,7 @@ Return: {
             hubSection: p["Hub Section"]?.select?.name || "",
             hubSectionKey: hubSectionOf(p) || "",
             contentHub: p["Content Hub"]?.select?.name || "",
-            initiative: (p["Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(), subInitiative: hubRichText(p["Sub Initiative"]?.rich_text),
+            initiative: (p["Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(), subInitiative: hubRichText(p["Sub Initiative"]?.rich_text), stack: hubRichText(p.Stack?.rich_text),
             inputApp: (p["Input App"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
             writtenWithoutInterview: !!p[TOPICAL_REWRITE_PROP]?.checkbox,
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
