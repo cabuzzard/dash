@@ -7998,7 +7998,7 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
 // No Hub Section → the type's default (offer → Offers, news → News, else Articles). Only assets created on/after HUB_FIRSTPUB_SINCE — the
 // back catalogue of never-deployed Published records is left alone. One attempt per sweep, at most 3; KV hub:firstpub:<id> records it.
 const HUB_FIRSTPUB_SINCE = '2026-11-03T00:00:00Z';
-function hubDefaultSection(type) { return /offer/i.test(type) ? 'Offers' : /news/i.test(type) ? 'News' : 'Articles'; }
+function hubDefaultSection(type) { return isSubPageType(type) ? 'Sub Page' : /\boffer\b/i.test(type) ? 'Offers' : /\bnews\b/i.test(type) ? 'News' : 'Articles'; }
 async function hubFirstPublish(env, page, hub) {
   const p = page.properties || {}, aid = hubAssetId(page.id), type = p['Asset Type']?.select?.name || '';
   if (page.archived || page.in_trash || p['Asset Status']?.select?.name !== 'Published' || String(page.created_time || '') < HUB_FIRSTPUB_SINCE || !hubPublishableType(type)) return null;
@@ -23068,7 +23068,7 @@ Return: {
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name, assetProductId: a.productId || '',
           platformTitle: a.platformTitle || "",
-          assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/parent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
+          assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/\bparent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview,
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
@@ -23120,7 +23120,7 @@ Return: {
               // differently (e.g. Method "Blog - SEO - News" vs a legacy
               // Asset Type of "SEO Post") — the bulk thumbnail-generation
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
-              assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/parent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
+              assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/\bparent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
