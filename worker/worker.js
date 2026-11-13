@@ -7390,6 +7390,8 @@ async function publishSubPage(env, hdr, page, hub) {
   const label = (hubRichText(p['Nav Label']?.rich_text) || title).trim().slice(0, 40);
   const desc = hubRichText(p.Description?.rich_text).trim().slice(0, 300), hero = p.Thumbnail?.url || '';
   const parts = offerBlogParts(p, env.__hubPublication?.source?.assetId === aid ? env.__hubPublication.source.blocks : await offerBlogBlocks(hdr, page.id));
+  // the page button: the OFFER CARD's link, else the asset's own Link or CTA + CTA Label (2026-11-12 — a Body rewrite drops the card block)
+  const ownLink = String(p['Link or CTA']?.url || '').trim(), cta = parts.cta && parts.cta.href ? parts.cta : ownLink ? { href: ownLink, label: hubRichText(p['CTA Label']?.rich_text).trim() || 'Get in touch' } : null;
   const list = await hubSubPages(t, hub), mine = list.find(x => hubAssetId(x.assetId) === aid);
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   const base = slugify(label) || slugify(title) || 'page';
@@ -7414,7 +7416,7 @@ async function publishSubPage(env, hdr, page, hub) {
   const body = `${(parts.intro ? String(parts.intro).split(/\n{2,}/).map(para).join('\n') : '')}
 ${(parts.sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(para).join('\n')}`).join('\n')}
 ${parts.conclusion ? `<p>${md(parts.conclusion)}</p>` : ''}
-${(parts.cta && parts.cta.href) ? `<p class="cta"><a href="${esc(parts.cta.href)}">${esc(parts.cta.label || 'Get started')}</a></p>` : ''}`;
+${cta && cta.href ? `<p class="cta"><a href="${esc(cta.href)}">${esc(cta.label || 'Get started')}</a></p>` : ''}`;
   const html = `<!doctype html>
 <html lang="en">
 <head>
