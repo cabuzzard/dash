@@ -1729,13 +1729,13 @@
       <div class="dom-collapse">
         <div class="dom-col-hdr" onclick="domToggle('domsBody','domsArrow')">
           <span class="dom-col-title">Domains</span>
-          <span class="dom-col-count" id="domsCount">62</span>
+          <span class="dom-col-count" id="domsCount">65</span>
           <button onclick="event.stopPropagation();openDomainModal()" style="font-size:11px;padding:3px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text2);cursor:pointer;margin-left:auto;margin-right:8px;">+ Add Row</button>
           <span class="dom-col-arrow" id="domsArrow">▼</span>
         </div>
         <div class="dom-col-body open" id="domsBody">
           <table class="dtable">
-            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th><th style="width:40px;"></th></tr></thead>
+            <thead><tr><th>Domain</th><th>Expires</th><th>Days</th><th>Host</th><th>Account</th><th title="Auto-renew, as set in the registrar account (Bluehost / Network Solutions). ? = not yet confirmed.">Auto-renew</th><th style="width:40px;"></th></tr></thead>
             <tbody id="domsTableBody"></tbody>
           </table>
         </div>
@@ -12707,74 +12707,78 @@ function domToggle(bodyId, arrowId) {
   arrow.style.transform = open ? '' : 'rotate(-90deg)';
 }
 
+// Auto-renew per domain, as set in the registrar account. true / false; missing = not yet confirmed (shows ?).
+// Expiry dates above were re-checked against the public registry (RDAP) on 2026-11-13.
+const DOMAIN_AUTORENEW = {};
+
 function initDomainsTab() {
   const today = new Date(); today.setHours(0,0,0,0);
   const domains = [
     ['accessiblefarms.com','09/01/2027','Bluehost','Steven Richardson'],
-    ['accessyourpassion.com','10/07/2026','Bluehost','Steven Richardson'],
+    ['accessyourpassion.com','10/07/2027','Bluehost','Steven Richardson'],
     ['aisystemimplementation.com','09/01/2027','Bluehost','Steven Richardson'],
     ['aisystemimplementation.online','09/01/2027','Bluehost','Steven Richardson'],
-    ['barefoothike.com','10/12/2026','GreenGeeks','Evan Raymond'],
-    ['bayareaoriginalmusic.com','11/18/2026','Bluehost','Steven Richardson'],
+    ['barefoothike.com','10/12/2027','GreenGeeks','Evan Raymond'],
+    ['bayareaoriginalmusic.com','11/18/2027','Bluehost','Steven Richardson'],
     ['bestoutdoorsandals.com','12/10/2026','Bluehost','Steven Richardson'],
     ['bestrealestateliquidation.com','02/16/2027','Bluehost','Steven Richardson'],
     ['blankslatebranding.site','09/06/2027','Bluehost','Steven Richardson'],
     ['brandingminicourse.com','09/06/2027','Bluehost','Steven Richardson'],
-    ['buildtosuitinvestment.com','10/31/2026','Bluehost','Steven Richardson'],
-    ['buildtosuitinvestment.online','10/31/2026','Bluehost','Steven Richardson'],
-    ['cabuzzard.com','10/06/2026','Bluehost','Steven Richardson'],
-    ['cabuzzard.online','10/06/2026','Bluehost','Steven Richardson'],
+    ['buildtosuitinvestment.com','10/31/2027','Bluehost','Steven Richardson'],
+    ['buildtosuitinvestment.online','10/31/2027','Bluehost','Steven Richardson'],
+    ['cabuzzard.com','10/06/2027','Bluehost','Steven Richardson'],
+    ['cabuzzard.online','10/06/2027','Bluehost','Steven Richardson'],
     ['creativeflowguitar.com','01/09/2027','Bluehost','Steven Richardson'],
-    ['energyfocuscoaching.com','10/06/2026','Bluehost','Steven Richardson'],
-    ['energyfocuscoaching.online','10/06/2026','Bluehost','Steven Richardson'],
-    ['facttracking.com','10/12/2026','GreenGeeks','Evan Raymond'],
-    ['focusingenergycoaching.com','10/13/2026','Bluehost','Steven Richardson'],
-    ['focusingenergycoaching.online','10/13/2026','Bluehost','Steven Richardson'],
-    ['foundationfuturesllc.com','10/31/2026','Bluehost','Steven Richardson'],
-    ['foundationfuturesllc.online','10/31/2026','Bluehost','Steven Richardson'],
-    ['generalservice2020.com','06/30/2026','Bluehost','Steven Richardson'],
-    ['generalservices2020.com','06/30/2026','Bluehost','Steven Richardson'],
+    ['energyfocuscoaching.com','10/06/2027','Bluehost','Steven Richardson'],
+    ['energyfocuscoaching.online','10/06/2027','Bluehost','Steven Richardson'],
+    ['facttracking.com','10/12/2027','GreenGeeks','Evan Raymond'],
+    ['focusingenergycoaching.com','10/14/2027','Bluehost','Steven Richardson'],
+    ['focusingenergycoaching.online','10/14/2027','Bluehost','Steven Richardson'],
+    ['foundationfuturesllc.com','10/31/2027','Bluehost','Steven Richardson'],
+    ['foundationfuturesllc.online','10/31/2027','Bluehost','Steven Richardson'],
+    ['generalservice2020.com','06/30/2027','Bluehost','Steven Richardson'],
+    ['generalservices2020.com','06/30/2027','Bluehost','Steven Richardson'],
     ['growthcoachmindset.com','05/01/2027','Bluehost','Steven Richardson'],
     ['growthcoachmindset.online','05/01/2027','Bluehost','Steven Richardson'],
     ['homepondaquarium.com','05/17/2027','Bluehost','Steven Richardson'],
     ['homepondaquarium.online','05/17/2027','Bluehost','Steven Richardson'],
-    ['homestructionconsulting.com','09/23/2026','Bluehost','Steven Richardson'],
-    ['homestructionconsulting.online','09/23/2026','Bluehost','Steven Richardson'],
-    ['intentionwarrior.com','11/19/2026','Bluehost','Steven Richardson'],
-    ['intentionwarrior.online','11/19/2026','Bluehost','Steven Richardson'],
-    ['introdatevert.com','04/28/2027','Bluehost','Steven Richardson'],
-    ['liketotallydude.com','07/26/2026','Bluehost','Steven Richardson'],
-    ['liketotallydude.online','07/26/2026','Bluehost','Steven Richardson'],
-    ['maiandros-investments.com','07/16/2026','Bluehost','Steven Richardson'],
+    ['homestructionconsulting.com','09/23/2027','Bluehost','Steven Richardson'],
+    ['homestructionconsulting.online','09/23/2027','Bluehost','Steven Richardson'],
+    ['intentionwarrior.com','11/20/2027','Bluehost','Steven Richardson'],
+    ['intentionwarrior.online','11/20/2027','Bluehost','Steven Richardson'],
+    ['introdatevert.com','04/29/2027','Bluehost','Steven Richardson'],
+    ['liketotallydude.com','07/26/2027','Bluehost','Steven Richardson'],
+    ['liketotallydude.online','07/26/2027','Bluehost','Steven Richardson'],
+    ['maiandros-investments.com','07/16/2027','Bluehost','Steven Richardson'],
     ['modernactivehome.com','12/24/2026','Bluehost','Steven Richardson'],
-    ['mountainwize.com','08/27/2026','Bluehost','Steven Richardson'],
-    ['naturalanxietyrelief.info','06/15/2026','Bluehost','Evan Raymond'],
+    ['mountainwize.com','08/28/2027','Bluehost','Steven Richardson'],
+    ['naturalanxietyrelief.info','06/15/2027','Bluehost','Evan Raymond'],
     ['naturalspirithealing.com','04/04/2027','GreenGeeks','Evan Raymond'],
     ['naturalspiritualscience.com','05/17/2027','Bluehost','Steven Richardson'],
-    ['naturebasedcoach.com','10/21/2026','Bluehost','Steven Richardson'],
-    ['naturebasedcoach.online','10/21/2026','Bluehost','Steven Richardson'],
-    ['naturewellnesscoach.com','10/21/2026','Bluehost','Steven Richardson'],
-    ['naturewellnesscoach.online','10/21/2026','Bluehost','Steven Richardson'],
+    ['naturebasedcoach.com','10/21/2027','Bluehost','Steven Richardson'],
+    ['naturebasedcoach.online','10/21/2027','Bluehost','Steven Richardson'],
+    ['naturewellnesscoach.com','10/21/2027','Bluehost','Steven Richardson'],
+    ['naturewellnesscoach.online','10/21/2027','Bluehost','Steven Richardson'],
     ['online-personalcoach.com','05/08/2027','Bluehost','Steven Richardson'],
     ['outsidesessions.com','02/08/2027','Bluehost','Steven Richardson'],
     ['personalcoach-ca.com','05/08/2027','Bluehost','Steven Richardson'],
     ['petrichorpodcast.com','12/27/2026','GreenGeeks','Evan Raymond'],
-    ['rad80schild.com','07/26/2026','Bluehost','Steven Richardson'],
-    ['rad80schild.online','07/26/2026','Bluehost','Steven Richardson'],
+    ['rad80schild.com','07/26/2027','Bluehost','Steven Richardson'],
+    ['rad80schild.online','07/26/2027','Bluehost','Steven Richardson'],
     ['relievestressquick.com','04/21/2027','Bluehost','Steven Richardson'],
     ['rockrgear.com','12/20/2026','GreenGeeks','Evan Raymond'],
-    ['roi-systems.com','11/13/2026','Bluehost','Steven Richardson'],
+    ['roi-systems.com','11/13/2027','Bluehost','Steven Richardson'],
     ['sellhousefastagent.com','02/16/2027','Bluehost','Steven Richardson'],
-    ['somaticspirit.com','10/16/2026','GreenGeeks','Evan Raymond'],
+    ['somaticspirit.com','10/17/2027','GreenGeeks','Evan Raymond'],
     ['spiritual-energy-coach.com','05/17/2027','Bluehost','Steven Richardson'],
     ['spiritual-energy-coach.online','05/17/2027','Bluehost','Steven Richardson'],
-    ['stablehomefoundation.com','09/12/2026','Bluehost','Steven Richardson'],
-    ['stablehomefoundation.online','09/12/2026','Bluehost','Steven Richardson'],
+    ['stablehomefoundation.com','09/13/2027','Bluehost','Steven Richardson'],
+    ['stablehomefoundation.online','09/13/2027','Bluehost','Steven Richardson'],
     ['sustainableaquarium.com','01/31/2027','Bluehost','Steven Richardson'],
     ['theuniversoulgame-exchange.com','04/03/2027','Bluehost','Steven Richardson'],
     ['theuniversoulgame-exchange.online','04/03/2027','Bluehost','Steven Richardson'],
-    ['thirdpathcoaching.com','10/09/2026','Bluehost','Steven Richardson'],
-    ['webguyleadgeneration.com','12/11/2026','Bluehost','Steven Richardson'],
+    ['thirdpathcoaching.com','10/10/2027','Bluehost','Steven Richardson'],
+    ['webguyleadgeneration.com','12/12/2026','Bluehost','Steven Richardson'],
   ];
 
   // Merge localStorage additions
@@ -12804,6 +12808,7 @@ function initDomainsTab() {
       '<td style="color:' + (color||'var(--text3)') + ';font-weight:' + (color?'700':'400') + ';white-space:nowrap;">' + days + 'd</td>' +
       '<td style="color:var(--text3);">' + host + '</td>' +
       '<td style="color:var(--text3);">' + acct + '</td>' +
+      (function(){ const ar = DOMAIN_AUTORENEW[domain]; return ar === true ? '<td style="color:#22c55e;font-weight:700;">On</td>' : ar === false ? '<td style="color:#ff4444;font-weight:700;">Off</td>' : '<td style="color:var(--text3);" title="Not yet confirmed in the registrar account">?</td>'; })() +
       '<td style="text-align:center;">' + (localId ? '<span onclick="deleteDomainRow(\'' + localId + '\')" style="font-size:11px;color:var(--text3);cursor:pointer;padding:2px 6px;border:1px solid var(--border);border-radius:4px;" title="Delete">✕</span>' : '') + '</td>';
     tbody.appendChild(tr);
   });
