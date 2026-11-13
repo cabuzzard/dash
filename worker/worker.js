@@ -20332,6 +20332,43 @@ export default {
     // waits once (Retry-After, ≤ 3 s) and retries, a second 429 or any failure STOPS the batch (the rest comes back for ▶ Continue).
     // The before / after of the whole batch is logged in ONE write (KV allows ~1 write a second per key — the per-asset log write was the
     // "too many requests"). Returns {done: [{assetId, before, after}], stopped?: {assetId, error, rate}}.
+    // assetFieldsBulk {items: [{assetId, initiative?, subinitiative?, stack?}] (≤ 25)} (operator 2026-11-13: initiatives + stacks build) — the
+    // fields an item names, written in ONE PATCH per asset (a field left out is untouched; "" clears it). Same pacing / stop rules as
+    // cplanAssetBulkEdit, and the batch before / after goes to the same log (cplan:assetedit:log). Returns {done, stopped?}.
+    if (body.action === "assetFieldsBulk") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const FL = { initiative: "Initiative", subinitiative: "Sub Initiative", stack: "Stack" };
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 25).map(x => { const o = { assetId: hubAssetId(String(x.assetId || "")) }; for (const k of Object.keys(FL)) if (x[k] !== undefined) o[k] = String(x[k] ?? "").trim(); return o; });
+      if (!items.length || items.some(x => !/^[0-9a-f]{32}$/i.test(x.assetId) || Object.keys(x).length < 2)) return json({ error: "items [{assetId, initiative?, subinitiative?, stack?}] required" }, 400);
+      const bad = items.map(x => (x.initiative && initiativeNameBad(x.initiative)) || (x.subinitiative && initiativeNameBad(x.subinitiative)) || (x.stack && stackNameBad(x.stack))).find(Boolean); if (bad) return json({ error: bad }, 400);
+      try {
+        await initiativeEnsureProp(env); await subInitiativeEnsureProp(env); await stackEnsureProp(env);
+        const snap = q => ({ initiative: hubRichText(q.Initiative?.rich_text), subinitiative: hubRichText(q["Sub Initiative"]?.rich_text), stack: hubRichText(q.Stack?.rich_text) });
+        const nf = async (url, opt) => { for (let t = 0; ; t++) { const r = await fetch(url, { ...opt, headers: ivHdr() }); if (r.status !== 429 || t) return r;
+          await new Promise(res => setTimeout(res, Math.min(3000, 1000 * (+r.headers.get("retry-after") || 1.2)))); } };
+        const done = []; let stopped = null;
+        for (const [i, x] of items.entries()) {
+          if (i) await new Promise(res => setTimeout(res, 350));
+          const props = {}; for (const [k, p] of Object.entries(FL)) if (x[k] !== undefined) props[p] = { rich_text: x[k] ? [{ type: "text", text: { content: x[k] } }] : [] };
+          const g = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), {}), pg = await g.json().catch(() => ({}));
+          if (!g.ok) { stopped = { assetId: x.assetId, error: (g.status === 429 ? "Notion rate limit — " : "") + (pg.message || "Notion error " + g.status), rate: g.status === 429 }; break; }
+          if (pg.archived || pg.in_trash) { stopped = { assetId: x.assetId, error: "The asset is in the trash" }; break; }
+          const before = snap(pg.properties || {});
+          if (Object.keys(FL).every(k => x[k] === undefined || before[k] === x[k])) { done.push({ assetId: x.assetId, before, after: before, same: true }); continue; }
+          const r = await nf("https://api.notion.com/v1/pages/" + ivDash(x.assetId), { method: "PATCH", body: JSON.stringify({ properties: props }) }), saved = await r.json().catch(() => ({}));
+          if (!r.ok) { stopped = { assetId: x.assetId, error: (r.status === 429 ? "Notion rate limit — " : "Not saved: ") + (saved.message || "Notion error " + r.status), rate: r.status === 429 }; break; }
+          const after = snap(saved.properties || {});
+          if (Object.keys(FL).some(k => x[k] !== undefined && after[k] !== x[k])) { stopped = { assetId: x.assetId, error: "Notion did not confirm the change — read back: " + JSON.stringify(after) }; break; }
+          done.push({ assetId: x.assetId, before, after });
+        }
+        const changed = done.filter(d => !d.same);
+        if (changed.length) { const at = new Date().toISOString(), L = (await env.TRADES.get("cplan:assetedit:log", "json")) || [];
+          L.unshift(...changed.map(d => ({ at, assetId: d.assetId, field: "fields", value: d.after, before: d.before, bulk: true })));
+          await env.TRADES.put("cplan:assetedit:log", JSON.stringify(L.slice(0, 3000))); }
+        return json({ ok: true, done, ...(stopped ? { stopped } : {}) });
+      } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, 500); }
+    }
     if (body.action === "cplanAssetBulkEdit") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
