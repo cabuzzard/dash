@@ -7507,7 +7507,7 @@ async function hdLoad(force) {
   HD.plan = pl && !pl.error ? (pl.table || { columns: [], rows: [] }) : null; HD.planErr = pl && !pl.error ? '' : ((pl && pl.error) || 'no response');
   if (!d || d.error) { HD.err = (d && d.error) || 'no response'; HD.rows = null; return hdRender(); }
   HD.err = ''; HD.rows = d.rows || [];
-  if (!HD.cardPrefs) call('hdCardPrefs', { op: 'get' }).then(r => { if (r && r.prefs) { HD.cardPrefs = r.prefs; hdRender(); } }).catch(() => {});
+  if (!HD.cardPrefs) call('hdCardPrefs', { op: 'get' }).then(r => { if (r && r.prefs) { HD.cardPrefs = r.prefs; HD.planSet = r.plan || null; HD.stackReg = r.stacks || []; hdRender(); } }).catch(() => {});
   hdRender();
 }
 function hdOpenCh2(slug) {
@@ -7735,7 +7735,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   const mineRows = (t.rows || []).filter(r => { const c = r.cells || {}, x = hubPlanHub(c.hub); if (/^archived$/i.test(String(c.status || '').trim()) || !x || x.slug !== h.slug) return false;
     const aid = ai ? kwNid(String(c[ai] || '').trim()) : '', a = aid && allA.get(aid); if (aid) byAid.set(aid, c); return ik(a ? a.initiative : c.init) === I.key; });
   (t.rows || []).forEach(r => { const c = r.cells || {}, aid = ai ? kwNid(String(c[ai] || '').trim()) : ''; if (aid && !byAid.has(aid)) byAid.set(aid, c); });
-  const subOfA = a => sc ? (byAid.get(hdNid(a.assetId)) || {})[sc] : '';
+  const subOfA = a => (sc ? (byAid.get(hdNid(a.assetId)) || {})[sc] : '') || a.subInitiative || '';
   const nk = v => String(v || '').trim().toLowerCase(), groups = (kind, of, ofRow, none) => {
     const m = new Map(), get = v => { const k = nk(v) || '__none'; if (!m.has(k)) m.set(k, { kind, name: k === '__none' ? none : String(v).trim(), none: k === '__none', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [] }); return m.get(k); };
     assets.forEach(a => { const g = get(of(a)), s = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(s)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(s)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(s)) g.pubIds.push(a.assetId); });
@@ -7755,7 +7755,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
   const cidA = hdNid(h.campaignId), ip = (HD.ip || {})[cidA], ipOk = ip && !ip.none && ip.topicNames, pinK = cidA + '|' + I.key, pinned = ((HD.cardPrefs || {}).pins || {})[pinK] || '';
   const auto = ipOk && ip.byInit && ip.byInit[I.key] && ip.byInit[I.key].best, anchor = pinned || (auto && auto.score >= 35 ? auto.topic : ''), tai = ipOk ? ip.topicNames.indexOf(anchor) : -1;
   [...subs, ...prods].forEach(g => { const x = tai >= 0 && ip.groups && ip.groups[I.key] && ip.groups[I.key][g.kind === 'Product' ? 'prod' : 'sub'][g.none ? '' : nk(g.name)];
-    g.rel = x ? x.s[tai] : null; if (g.rel != null && (!g.color || (HD.cardPrefs || {}).arrange)) { g.color = hdRelCol(g.rel); g.autoColor = true; }   // relevance sets the highlight (operator 2026-11-10: "change the pre selected highlight color") — while Arrange is on it overrides your own colours; off, yours come back
+    g.rel = x ? x.s[tai] : null; if (g.rel != null && (HD.cardPrefs || {}).arrange) { g.color = hdRelCol(g.rel); g.autoColor = true; }   // relevance sets the highlight (operator 2026-11-10: "change the pre selected highlight color") — while Arrange is on it overrides your own colours; off, yours come back
     g.drift = x ? (x.m || []).filter(([, tp]) => tp !== anchor).map(([n, tp]) => n + (tp ? ' (on ' + tp + ')' : ' (no topic)')) : []; });
   if ((HD.cardPrefs || {}).arrange && tai >= 0) [subs, prods].forEach(L => L.sort((a, b) => (b.rel ?? -1) - (a.rel ?? -1)));
   // visibility (operator 2026-11-10: "a visibility toggle … that drops visibility of sub initiatives by a variable relevance level")
@@ -7776,7 +7776,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others) {
       <label style="display:flex;gap:4px;align-items:center;">Hide sub-initiatives below <select onchange="hdMinRel(this.value)" ${tai < 0 ? 'disabled' : ''} style="font-size:11.5px;padding:1px 4px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${[0, 20, 35, 50, 60].map(v => `<option value="${v}" ${Number((HD.cardPrefs || {}).minRel || 0) === v ? 'selected' : ''}>${v ? v : 'off'}</option>`).join('')}</select></label>
       ${lowSubs.length ? `<a href="#" onclick="event.preventDefault();HD.showLow=!HD.showLow;hdRender()" style="color:#f59e0b;">${HD.showLow ? 'hide the ' + lowSubs.length + ' below ' + minRel : lowSubs.length + ' sub-initiative' + (lowSubs.length === 1 ? '' : 's') + ' below ' + minRel + ' hidden — show'}</a>` : ''}
       <span style="color:var(--text3);font-size:10.5px;">highlight: dark green 60+ · amber 35+ · orange under 35 — while this is on, the score sets every card's colour; off, your own order and colours come back</span></div>`;
-  const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>`;
+  const ren = I.key === '__none' ? '' : `<div style="margin:0 2px 6px;">${hdInitEditLink(I, h, ik, true)}</div>` + hdStackChips(h, I.name);
   return strip + ren + anchorBar + hdCardGrid('Sub-initiatives', subs, where, { anchor }) + hint + hdCardGrid('Products', prods, where, { anchor });
 }
 // One card, the same everywhere (operator 2026-11-10: "inside of topics have initiative and product cards same exact cards with show hide and al the
@@ -7786,7 +7786,15 @@ function hdCardCnt(lab, v, col, ids, rowIds, setLabel, tip) { const k = ids.leng
   if (!v || !k) return `<span title="${tip}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:var(--text3);"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;">${lab}</span><span style="font-size:15px;font-variant-numeric:tabular-nums;">${v || 0}</span></span>`;
   const n = (HD._sets = HD._sets || []).push({ label: setLabel, ids, rowIds }) - 1;
   return `<a href="#" title="${tip} — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:flex;flex-direction:column;align-items:center;min-width:46px;color:${col};text-decoration:none;border-radius:6px;padding:2px 0;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${lab}</span><span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-decoration:underline;text-underline-offset:2px;">${v}</span></a>`; }
-function hdCardHtml(g, where, ctx) { ctx = ctx || {}; const cnt = hdCardCnt, anchor = ctx.anchor || '', lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length, ci = (HD._cards = HD._cards || []).push(g) - 1;
+// Plan colours (operator 2026-11-13: "give everything built today (or repurposed or kept) a green color in the hub dashboard, including its titles
+// and products, and sub initiatives. give everything else orange"): KV hd:plan:v1 (read with hdCardPrefs). A colour you set yourself wins; while
+// Arrange by keyword relevance is on, relevance colours win.
+function hdPlanCol(g) { const P = HD.planSet && HD.planSet.hubs && HD.planSet.hubs[HD.hub]; if (!P || !HD.hub) return ''; const n = String(g.name || '').trim().toLowerCase(), has = L => (L || []).some(x => String(x).trim().toLowerCase() === n);
+  const on = g.none ? false : g.kind === 'Initiative' ? has(P.initiatives) : g.kind === 'Sub-initiative' ? has(P.subs) : g.kind === 'Product' ? has(P.products) : g.kind === 'Title' ? !!(g.titleId && (P.titles || []).includes(hdNid(g.titleId))) : false;
+  return on ? '#16a34a' : '#ff7a00'; }
+function hdStackChips(h, init) { const cid = hdNid(h.campaignId), n = String(init || '').trim().toLowerCase(), L = (HD.stackReg || []).filter(s => hdNid(s.cid) === cid && String(s.initiative || '').split(',').some(x => x.trim().toLowerCase() === n));
+  return L.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 2px 8px;font-size:11.5px;"><span style="color:var(--text3);">Stacks:</span>${L.map(s => `<span title="${esc((s.typeName || '') + ' — Asset Flow stack; assets carry this name in their Stack field')}" style="padding:3px 9px;border:1px solid #38bdf8;border-radius:12px;color:var(--text2);">${esc(s.name)}</span>`).join('')}</div>` : ''; }
+function hdCardHtml(g, where, ctx) { ctx = ctx || {}; if (!g.color) { const pc = hdPlanCol(g); if (pc) { g.color = pc; g.autoColor = true; } } const cnt = hdCardCnt, anchor = ctx.anchor || '', lab = where + ' › ' + g.name, nP = g.planIds.length + g.planRows.length, ci = (HD._cards = HD._cards || []).push(g) - 1;
     const kc = HD_KIND_COL[g.kind] || '#c084fc';
     const bd = g.color ? g.color : g.kind === 'Product' || g.kind === 'Title' ? 'var(--border2)' : kc + '66', bg = g.color ? `linear-gradient(${g.color}26,${g.color}26),var(--surface)` : 'var(--surface)';
     const nm = g.kind === 'Initiative' ? `<a href="#" title="Open this initiative" onclick="event.preventDefault();event.stopPropagation();hdGo(null,0,HD._cards[${ci}].ikey)" style="color:var(--text);">${esc(g.name)}</a>${g.pinned ? '' : ' <span title="Placed here by its best keyword score (35+) — ⇄ to pin it to a topic" style="font-size:10px;font-weight:400;color:var(--text3);">auto</span>'}` : g.kind === 'Title' && g.titleId ? `<a href="#" title="Open the title page — every asset under this title" onclick="event.preventDefault();event.stopPropagation();hdTpOpen('${esc(g.titleId)}')" style="color:var(--text);text-decoration:underline dotted;">${esc(g.name)}</a>` : esc(g.name);

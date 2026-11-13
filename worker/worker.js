@@ -20415,7 +20415,7 @@ export default {
     if (body.action === "hdCardPrefs") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       const K = "hd:cards:v1";
-      if (String(body.op || "get") === "get") return json({ ok: true, prefs: (await env.TRADES.get(K, "json")) || { order: {}, color: {} } });
+      if (String(body.op || "get") === "get") return json({ ok: true, prefs: (await env.TRADES.get(K, "json")) || { order: {}, color: {} }, plan: await env.TRADES.get("hd:plan:v1", "json").catch(() => null), stacks: ((await env.TRADES.get("stack:registry", "json").catch(() => null)) || {}).stacks || [] });   // + the green set and the stack names (operator 2026-11-13)
       const p = body.prefs || {}, out = { order: {}, color: {} };
       for (const [k, v] of Object.entries(p.order || {})) if (Array.isArray(v)) out.order[String(k).slice(0, 300)] = v.slice(0, 300).map(x => String(x).slice(0, 300));
       for (const [k, v] of Object.entries(p.color || {})) if (/^#[0-9a-f]{6}$/i.test(String(v))) out.color[String(k).slice(0, 300)] = String(v);
