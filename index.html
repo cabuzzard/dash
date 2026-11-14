@@ -7491,7 +7491,7 @@ const HD_HIDDEN = /^(idea|research|planning|archived|paused)$/i
 // a PRODUCT shows at Planning / Research (operator 2026-11-11: "I just created wood crafts product … but I cant see the product in the hub dashboard" — new products start at Planning); Idea / Archived / Paused stay hidden
 const hdHidden = x => (x && x.kind === 'product' ? /^(idea|archived|paused)$/i : HD_HIDDEN).test(hdSt(x).trim());   // hidden by default — a filter only
 const HD_SIGNALS = ['Ready to publish', 'Interview needed', 'Live, in development', 'Live', 'In development, nothing live yet', 'No content yet'];
-let HD = { rows: null, err: '', only: '', hub: '', path: [], closed: new Set(), topicOpen: new Set(), showAll: new Set(), showAllGlobal: false };
+let HD = { view: 'init', rows: null, err: '', only: '', hub: '', path: [], closed: new Set(), topicOpen: new Set(), showAll: new Set(), showAllGlobal: false };
 const hdNid = x => String(x || '').replace(/-/g, '');
 function hdHubs() {   // one per campaign (HUB_SITES + KV-registered extras), in sequence order; any other hub after
   const seen = new Set(), list = HUB_SITES.filter(h => h.campaignId && !seen.has(hdNid(h.campaignId)) && seen.add(hdNid(h.campaignId)));
