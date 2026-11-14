@@ -7819,8 +7819,14 @@ function hdCardCnt(lab, v, col, ids, rowIds, setLabel, tip) { const k = ids.leng
 // Plan colours (operator 2026-11-13: "give everything built today (or repurposed or kept) a green color in the hub dashboard, including its titles
 // and products, and sub initiatives. give everything else orange"): KV hd:plan:v1 (read with hdCardPrefs). A colour you set yourself wins; while
 // Arrange by keyword relevance is on, relevance colours win.
+// a title is green (operator 2026-11-13: "last 7 days or anything with over 20 assets of any status") when it was created in the last 7 days
+// (rolling) or carries more than 20 assets, any status; every other title is orange
+function hdTitleGreen(tid) { if (!tid) return false; const id = hdNid(tid);
+  if (HD._tacRows !== HD.rows) { HD._tacRows = HD.rows; HD._tac = new Map(); (HD.rows || []).forEach(x => { if (x.kind === 'asset' && x.titleId) { const k = hdNid(x.titleId); HD._tac.set(k, (HD._tac.get(k) || 0) + 1); } }); }
+  if ((HD._tac.get(id) || 0) > 20) return true; const t = hdTitleRow(id), d = t && String(t.titleCreated || '').slice(0, 10);
+  return !!d && d >= new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10); }
 function hdPlanCol(g) { const P = HD.planSet && HD.planSet.hubs && HD.planSet.hubs[HD.hub]; if (!P || !HD.hub) return ''; const n = String(g.name || '').trim().toLowerCase(), has = L => (L || []).some(x => String(x).trim().toLowerCase() === n);
-  const on = g.none ? false : g.kind === 'Initiative' ? has(P.initiatives) : g.kind === 'Sub-initiative' ? has(P.subs) : g.kind === 'Product' ? has(P.products) : g.kind === 'Title' ? !!(g.titleId && (P.titles || []).includes(hdNid(g.titleId))) : false;
+  const on = g.none ? false : g.kind === 'Initiative' ? has(P.initiatives) : g.kind === 'Sub-initiative' ? has(P.subs) : g.kind === 'Product' ? has(P.products) : g.kind === 'Title' ? hdTitleGreen(g.titleId) : false;
   return on ? '#16a34a' : '#ff7a00'; }
 function hdStackChips(h, init) { const cid = hdNid(h.campaignId), n = String(init || '').trim().toLowerCase(), L = (HD.stackReg || []).filter(s => hdNid(s.cid) === cid && String(s.initiative || '').split(',').some(x => x.trim().toLowerCase() === n));
   return L.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 2px 8px;font-size:11.5px;"><span style="color:var(--text3);">Stacks:</span>${L.map(s => `<span title="${esc((s.typeName || '') + ' — Asset Flow stack; assets carry this name in their Stack field')}" style="padding:3px 9px;border:1px solid #38bdf8;border-radius:12px;color:var(--text2);">${esc(s.name)}</span>`).join('')}</div>` : ''; }
