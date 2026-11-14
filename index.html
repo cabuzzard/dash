@@ -8603,6 +8603,9 @@ function hdRender() {
   if (!HD.matrix && HD.view !== 'init') { el.innerHTML = tools + hdKwCards(h, mine, all, planAll, planRowsAll, B, !HD.plan); return; }
   if (HD.matrix) { HD.mxInits = initList.filter(I => I.key !== '__none').map(I => I.name); el.innerHTML = tools + hdMatrixHtml(h, mine, all, initList); return; }
   const P = HD.path = (HD.path || []).slice(0, 4), nodes = [];
+  // no separate initiative page (operator 2026-11-13: "take out all of this and leave the other un expanded initiatives showing"): opening an
+  // initiative opens its row in the hub table instead
+  if (P.length === 1) { (HD.ivOpen = HD.ivOpen || new Set()).add('init|' + hdNid(h.campaignId) + '|' + P[0]); P.length = 0; }
   const In = P.length ? inits.get(P[0]) : null; if (P.length && !In) P.length = 0; if (In) nodes.push(In);
   let rowsI = mine;
   if (In) { const tA = new Set(assetsH.map(a => hdNid(a.titleId))), pA = new Set(assetsH.map(a => hdNid(a.productId))), tI = new Set(In.assets.map(a => hdNid(a.titleId))), pI = new Set(In.assets.map(a => hdNid(a.productId))), none = In.key === '__none';
@@ -8628,7 +8631,7 @@ function hdRender() {
   const row = (key, name, sub, c, link, pre, extraRows, togKey, open) => { const i = HD._keys.push(key) - 1, tg = togKey ? (HD._ivKeys = HD._ivKeys || []).push(togKey) - 1 : -1;
     return `<div onclick="${tg >= 0 ? `hdIvKey(${tg})` : `hdPickKey(${i})`}" class="hd-row" title="${tg >= 0 ? 'Click to open / close' : ''}" style="display:flex;gap:8px;align-items:center;cursor:pointer;padding:9px 10px;border-bottom:1px solid var(--border);">
       ${tg >= 0 ? `<span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span>` : ''}<div style="flex:1 1 auto;min-width:0;"><b style="font-size:13px;overflow-wrap:anywhere;">${esc(name)}</b> ${link || ''}<span style="font-size:10.5px;color:var(--text3);margin-left:8px;">${sub}</span></div>
-      ${pre || ''}${hdChips(c, noGoal, where + ' › ' + name, extraRows)}${tg >= 0 ? `<a href="#" title="Open the initiative page (stacks, keyword topic, other tools)" onclick="event.preventDefault();event.stopPropagation();hdPickKey(${i})" style="color:var(--text3);text-decoration:none;">›</a>` : '<span style="color:var(--text3);">›</span>'}</div>`; };
+      ${pre || ''}${hdChips(c, noGoal, where + ' › ' + name, extraRows)}${tg >= 0 ? '<span style="width:8px;"></span>' : '<span style="color:var(--text3);">›</span>'}</div>`; };
   const planChip = (ids, label) => { if (!ids.length) return `<span title="No unbuilt plan rows" onclick="event.stopPropagation()" style="display:inline-block;min-width:52px;text-align:right;font-size:11.5px;color:var(--text3);cursor:default;"><span style="font-size:9.5px;">Plan</span> 0</span>`;
     const n = (HD._sets = HD._sets || []).push({ label, ids: [], rowIds: ids }) - 1;
     return `<a href="#" title="Every unbuilt plan row in it (goal or not) — open them in CP AA" onclick="event.preventDefault();event.stopPropagation();hdCp(${n})" style="display:inline-block;min-width:52px;text-align:right;font-size:11.5px;color:#eab308;text-decoration:none;"><span style="font-size:9.5px;color:var(--text3);">Plan</span> <span style="text-decoration:underline;text-underline-offset:2px;">${ids.length}</span></a>`; };
