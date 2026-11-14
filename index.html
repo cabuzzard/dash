@@ -6330,7 +6330,8 @@ const AM_IV_PRESETS = [
   { k: 'video', l: 'Video / podcast', re: /video|youtube|podcast|longform|avatar/i, depth: 'deep', n: 8 },
   { k: 'parent', l: 'Parent / pillar', re: /parent|digest|series|pillar/i, depth: 'standard', n: 8 },
   { k: 'other', l: 'Other', re: /./, depth: 'standard', n: 5 }];
-function amIvPreset(type) { return AM_IV_PRESETS.find(p => p.re.test(String(type || ''))) || AM_IV_PRESETS[AM_IV_PRESETS.length - 1]; }
+function amIvPreset(type) { if (/^story( parent)?$/i.test(String(type || '').trim())) return AM_IV_PRESETS.find(p => p.k === 'parent');   // the Story parent (own interview), not a social story
+  return AM_IV_PRESETS.find(p => p.re.test(String(type || ''))) || AM_IV_PRESETS[AM_IV_PRESETS.length - 1]; }
 function amIvState() {
   if (!AM.iv) { const pr = amIvPreset(AM.data && AM.data.asset && AM.data.asset.type); AM.iv = { loaded: false, busy: '', err: '', list: null, cur: null, preset: pr.k, depth: pr.depth, n: pr.n, dir: '', el: null }; }
   return AM.iv;
@@ -6372,7 +6373,8 @@ async function amIvLoad() {
   if (!AM || AM.id !== id) return; V.busy = '';
   if (!r || r.error) { V.err = (r && r.error) || 'no response'; return amDraw(); }
   const own = (r.interviews || []).filter(x => x.status !== 'Superseded').sort((x, y) => String(y.updatedAt || y.created || '').localeCompare(String(x.updatedAt || x.created || '')));
-  V.loaded = true; V.cur = own[0] || null; V.el = null; amDraw();
+  V.loaded = true; V.cur = own[0] || null; V.el = null; if (V.cur && V.cur.qs && V.cur.qs.length) V.n = V.cur.qs.length;   // the count shows the interview's real questions
+  amDraw();
 }
 async function amIvWrite() {
   const V = amIvState(), id = AM.id;
@@ -6384,7 +6386,7 @@ Answered questions are kept — carried onto the new interview. The old record i
   if (!AM || AM.id !== id) return; V.busy = '';
   const iv = r && !r.error && (r.interviews || [])[0];
   if (!iv) { V.err = (r && (r.error || r.reason)) || 'No interview came back'; return amDraw(); }
-  V.loaded = true; V.cur = iv; V.el = null; AM.log = '✓ Interview questions written — answer them below'; AM.ctx = null; amCtxLoad(); amDraw();
+  V.loaded = true; V.cur = iv; V.el = null; if (iv.qs && iv.qs.length) V.n = iv.qs.length; AM.log = '✓ Interview questions written — answer them below'; AM.ctx = null; amCtxLoad(); amDraw();
 }
 // 📰 Digest (operator 2026-11-10: "where is the digest modal in the writer?") — on a Digest parent: the same modal as the title row's 📰 digest
 // (records, runs, model, ⚙ Disseminate). Its hub comes from the writer context's campaign.
