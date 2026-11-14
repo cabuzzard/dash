@@ -8009,6 +8009,10 @@ function hdDue(o) { const W = hdWeek(), as = o.as || [], inWk = a => String(a.da
   const runFirst = {}; as.forEach(a => { if (a.run) { const d = String(a.dateCreated || ''); if (!runFirst[a.run] || d < runFirst[a.run]) runFirst[a.run] = d; } });
   const seriesDone = as.some(a => /^(series|pillar)$/.test(ty(a)) && inWk(a)) || Object.values(runFirst).some(d => d.slice(0, 10) >= W.start);
   const useD = hdUses(as, 'Digest'), useT = hdUses(as, 'Trend Parent');
+  // goals only where something is deployed (operator 2026-11-13: "when I set to development there shouldn't be any goals showing"):
+  // nothing Publish / Published under this row → no weekly Series / Trend / Digest goal (interviews still count)
+  const deployed = as.some(a => /^(publish|published)$/i.test(String(a.assetStatus || a.status || '').trim()));
+  if (!deployed) return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length], series: 0, trend: useT === false ? null : 0, digest: useD === false ? null : 0 };
   return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length],
     series: as.length ? (seriesDone ? 0 : 1) : 0, trend: useT === false ? null : (as.some(a => /^trend parent$/.test(ty(a)) && inWk(a)) ? 0 : (useT ? 1 : 0)),
     digest: useD === false ? null : (as.some(a => /^(newsletter free|newsletter issue)$/.test(ty(a)) && inWk(a)) ? 0 : (useD ? 1 : 0)) }; }
