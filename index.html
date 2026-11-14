@@ -8597,6 +8597,9 @@ async function hdTpNewAssetGo(init) { const T = HD.tp, h = hiHub(), tr = hdTitle
   const r = await call('initiativeBuildAsset', { titleId: T.id, campaignId: hdNid(h.campaignId), productId: tr && tr.productId ? hdNid(tr.productId) : undefined, assetType: document.getElementById('tpNaType').value, assetTitle: document.getElementById('tpNaName').value.trim(), initiative: init, directions: document.getElementById('tpNaDir').value.trim() }).catch(e => ({ error: e.message }));
   if (!r || r.error) { b.disabled = false; m.style.color = '#f87171'; m.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
   document.getElementById('tpNaBg').classList.remove('open'); showToast('＋ Development asset added', 'success'); T.d = null; hdRender(); hdTpLoad(); HD.rows = null; hdLoad(true); }
+function hdIvKey(i) { const k = (HD._ivKeys || [])[i]; if (k == null) return; const O = HD.ivOpen = HD.ivOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
+function hdIvTog(i) { const g = (HD._cards || [])[i]; if (!g) return; const O = HD.ivOpen = HD.ivOpen || new Set(); O.has(g.ck) ? O.delete(g.ck) : O.add(g.ck); hdRender(); }
+function hdIvAll(on) { const O = HD.ivOpen = HD.ivOpen || new Set(); (HD._cards || []).forEach(g => { if (g && ['Sub-initiative', 'Product'].includes(g.kind)) on ? O.add(g.ck) : O.delete(g.ck); }); if (on) { hdRender(); (HD._cards || []).forEach(g => { if (g && ['Sub-initiative', 'Product'].includes(g.kind)) O.add(g.ck); }); } hdRender(); }
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal, IV) {
   const cid = hdNid(h.campaignId), nk = v => String(v || '').trim().toLowerCase(), ip = (HD.ip || {})[cid];
