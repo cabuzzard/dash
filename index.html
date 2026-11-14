@@ -7967,7 +7967,7 @@ function hdCardDrop(ev, i) {
 // operator 2026-11-09: "a cycle through amber, orange, purple, dark green and slate gray" (the CP AA status colours: Planning, Development, Review, Publish(ed), Idea)
 // the colour columns of the Cluster › Topic › Product tree (operator 2026-11-13: "legend on the top row over each color … ordered by importance,
 // green left … purple to the right, same way they are ordered in the lower pages" = HD_COL_RANK order)
-const HD_TREE_COLS = ['#16a34a', '#eab308', '#ff7a00', '#c084fc', '#94a3b8'];
+const HD_TREE_COLS = ['#16a34a', '#eab308', '#ff7a00', '#c084fc'];   // Idea (grey) titles keep their cards but aren't counted (operator 2026-11-13)
 const HD_TREE_LABEL = { '#16a34a': 'Published', '#eab308': 'Planning', '#ff7a00': 'Development', '#c084fc': 'Review', '#94a3b8': 'Idea' };
 const HD_TREE_SHORT = { '#16a34a': 'Pub', '#eab308': 'Plan', '#ff7a00': 'Dev', '#c084fc': 'Rev', '#94a3b8': 'Idea' };
 // the same title-colour counts on initiative rows as on cluster / topic rows (operator 2026-11-13: "these counts on the initiatives views to function
@@ -7988,7 +7988,7 @@ function hdEntryOf(assets, tids) { const o = { iv: [], series: [], trend: [], di
   const ivs = new Set(); (HD.rows || []).forEach(x => { if (x.kind === 'interview' && x.interviewId && T.has(hdNid(x.titleId)) && !ivs.has(x.interviewId)) { ivs.add(x.interviewId); o.iv.push(x); } }); return o; }
 // the two count groups collapse sideways (operator 2026-11-13: "make the four counts (assets and inputs) horizontally collapsed and expandable"):
 // collapsed = one total column; click the group's heading in the top row to open / close it. Off by default; kept for the session.
-function hdTitleNums(tids) { if (HD.xSt) return hdTitleNumsFull(tids); const n = [...new Set(tids)].filter(id => { const r = hdTitleRow(id); return hdTitleCol(r ? hdSt(r) : ''); }).length;
+function hdTitleNums(tids) { if (HD.xSt) return hdTitleNumsFull(tids); const n = [...new Set(tids)].filter(id => { const r = hdTitleRow(id); return HD_TREE_COLS.includes(hdTitleCol(r ? hdSt(r) : '')); }).length;
   return `<span style="min-width:52px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;flex:0 0 auto;">${n || ''}</span><span style="width:16px;flex:0 0 auto;"></span>`; }
 function hdTreeLegend() { return `<span onclick="event.stopPropagation();HD.xSt=!HD.xSt;hdRender()" title="${HD.xSt ? 'Collapse the title-status columns' : 'Open the title-status columns (Pub · Plan · Dev · Rev · Idea)'}" style="display:inline-flex;align-items:center;cursor:pointer;flex:0 0 auto;">${HD.xSt ? hdTreeLegendFull() : '<span style="min-width:52px;text-align:right;color:var(--text2);font-weight:700;">Titles ▸</span><span style="width:16px;"></span>'}</span>`; }
 // ── This week (operator 2026-11-13): what remains per period, not an accumulating count. Week = Sunday → Saturday (local).
