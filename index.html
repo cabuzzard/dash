@@ -8013,11 +8013,13 @@ function hdDue(o) {   // goals come only from what is built (operator 2026-11-13
   const runFirst = {}; as.forEach(a => { if (a.run) { const d = String(a.dateCreated || ''); if (!runFirst[a.run] || d < runFirst[a.run]) runFirst[a.run] = d; } });
   const sDone = as.some(a => isS(a) && inWk(a)) || Object.values(runFirst).some(d => d.slice(0, 10) >= W.start), tDone = as.some(a => isT(a) && inWk(a)), dDone = as.some(a => /^(newsletter free|newsletter issue)$/.test(ty(a)) && inWk(a));
   const pubd = a => /^(publish|published)$/i.test(String(a.assetStatus || a.status || '').trim());   // goals apply to what is built AND published (operator 2026-11-13)
+  // a heading counts only what sits on a Published (green) title — every number in it can be found on a green card below (operator 2026-11-13)
+  const onPub = ids => (ids || []).filter(id => { const a = hdAssetById(id), t = a && hdTitleRow(a.titleId); return t && /^(publish|published|done)$/i.test(hdSt(t).trim()); });
   const has = { s: as.some(a => isS(a) && pubd(a)), t: as.some(a => isT(a) && pubd(a)), d: as.some(a => isD(a) && pubd(a)) };
-  return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length], n: { series: o.series.length, trend: o.trend.length, digest: o.digest.length },
+  return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length], n: { series: onPub(o.series).length, trend: onPub(o.trend).length, digest: onPub(o.digest).length }, ids: { series: onPub(o.series), trend: onPub(o.trend), digest: onPub(o.digest) },
     series: has.s && !sDone ? 1 : 0, trend: has.t && !tDone ? 1 : 0, digest: has.d && !dDone ? 1 : 0 }; }
 function hdEntryChipsFull(o, label, oneTitle) { const D = hdDue(o), c = (v, col, tip) => `<span title="${esc(tip)}" style="min-width:46px;text-align:right;white-space:nowrap;font-weight:700;color:${col};">${v}</span>`,
-    cnt = (k, col, nm) => { const v = D.n[k], due = D[k]; return c(`${v ? hdLink(v, o[k], label + ' · ' + nm, col) : ''}${due ? ' <span style="color:#f59e0b;">○</span>' : ''}`, col, (v ? v + ' ' + nm + ' built' : 'None built') + (due ? ' · ○ a published ' + nm + ' here — nothing new from it this week yet (goal: 1 a week)' : '')); };
+    cnt = (k, col, nm) => { const v = D.n[k], due = D[k]; return c(`${v ? hdLink(v, D.ids[k], label + ' · ' + nm, col) : ''}${due ? ' <span style="color:#f59e0b;">○</span>' : ''}`, col, (v ? v + ' ' + nm + ' on Published titles' : 'None on a Published title') + (due ? ' · ○ a published ' + nm + ' here — nothing new from it this week yet (goal: 1 a week)' : '')); };
   return `<span onclick="event.stopPropagation()" style="display:inline-flex;gap:2px;flex:0 0 auto;font-size:12px;">`
     + c(D.iv[0] + '/' + D.iv[1], '#f472b6', D.iv[0] + ' flagged (waiting for your answers) / ' + D.iv[1] + ' complete — no period')
     + cnt('series', '#c084fc', 'Series') + cnt('trend', '#facc15', 'Trend') + cnt('digest', '#38bdf8', 'Digest') + `<span style="width:14px;"></span></span>`; }
