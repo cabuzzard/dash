@@ -1109,6 +1109,16 @@ async function assetsTextPropEnsure(env, name, flag) {
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add " + name + " to Assets: " + (d.message || r.status)); } }
   await env.TRADES.put(flag, "1");
 }
+// a title's Sub Initiative (operator 2026-11-13: "just track titles to sub initiatives") — Content Strategy, text; added once
+async function titleSubEnsure(env) {
+  if (await env.TRADES.get("title:subinitiative:prop")) return;
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const db = await fetch("https://api.notion.com/v1/databases/" + CONTENT_STRATEGY_DB, { headers: hdr }).then(r => r.json()), have = db.properties?.["Sub Initiative"];
+  if (have && have.type !== "rich_text") throw new Error("Content Strategy already has a Sub Initiative property of type " + have.type);
+  if (!have) { const r = await fetch("https://api.notion.com/v1/databases/" + CONTENT_STRATEGY_DB, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Sub Initiative": { rich_text: {} } } }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Sub Initiative to Content Strategy: " + (d.message || r.status)); } }
+  await env.TRADES.put("title:subinitiative:prop", "1");
+}
 async function initiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Initiative", "initiative:prop"); }
 // Assets "Sub Initiative" (operator 2026-11-09: "one card for each sub initiative (new column in cpaa)") — a group inside an initiative, text, set from CP AA
 async function subInitiativeEnsureProp(env) { return assetsTextPropEnsure(env, "Sub Initiative", "subinitiative:prop"); }
@@ -20335,6 +20345,22 @@ export default {
     // assetFieldsBulk {items: [{assetId, initiative?, subinitiative?, stack?}] (≤ 25)} (operator 2026-11-13: initiatives + stacks build) — the
     // fields an item names, written in ONE PATCH per asset (a field left out is untouched; "" clears it). Same pacing / stop rules as
     // cplanAssetBulkEdit, and the batch before / after goes to the same log (cplan:assetedit:log). Returns {done, stopped?}.
+    // titleSubBulk {items: [{titleId, sub}] (≤ 25)} — writes titles' Sub Initiative, one PATCH each, ~0.35 s apart; logged once (title:sub:log)
+    if (body.action === "titleSubBulk") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 25).map(x => ({ titleId: hubAssetId(String(x.titleId || "")), sub: String(x.sub ?? "").trim().slice(0, 300) }));
+      if (!items.length || items.some(x => !/^[0-9a-f]{32}$/i.test(x.titleId))) return json({ error: "items [{titleId, sub}] required" }, 400);
+      try {
+        await titleSubEnsure(env); const done = []; let stopped = null;
+        for (const [i, x] of items.entries()) { if (i) await new Promise(res => setTimeout(res, 350));
+          let r; for (let t = 0; ; t++) { r = await fetch("https://api.notion.com/v1/pages/" + ivDash(x.titleId), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Sub Initiative": { rich_text: x.sub ? [{ type: "text", text: { content: x.sub } }] : [] } } }) }); if (r.status !== 429 || t) break; await new Promise(res => setTimeout(res, 1500)); }
+          const d = await r.json().catch(() => ({})); if (!r.ok) { stopped = { titleId: x.titleId, error: d.message || "Notion error " + r.status, rate: r.status === 429 }; break; }
+          done.push(x); }
+        if (done.length) { const L = (await env.TRADES.get("title:sub:log", "json")) || []; L.unshift(...done.map(d => ({ at: new Date().toISOString(), ...d }))); await env.TRADES.put("title:sub:log", JSON.stringify(L.slice(0, 3000))); }
+        return json({ ok: true, done, ...(stopped ? { stopped } : {}) });
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "assetFieldsBulk") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -23337,6 +23363,7 @@ Return: {
             kwOutOfSync: !!p["Keywords Out of Sync"]?.checkbox, pillarAt: p["Pillar Written At"]?.date?.start || "", kwAt: p["Keywords Updated At"]?.date?.start || "", hasResearch: ["Title Intent", "Title Questions", "Title Angle", "Title Audience"].some(f => (p[f]?.rich_text || []).length),
             strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
             growthStrategyId: (p["Growth Strategy"]?.relation || [])[0]?.id ? dropDash(p["Growth Strategy"].relation[0].id) : null,
+            sub: (p["Sub Initiative"]?.rich_text || []).map(x => x.plain_text).join("").trim(),   // "Initiative · angle" or a bare "Initiative"
           };
         });
 
@@ -23457,7 +23484,7 @@ Return: {
             titleId,
             titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
-            pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", titleOutOfSync: !!t.kwOutOfSync, titleHasResearch: !!t.hasResearch, pillarAt: t.pillarAt || "", kwAt: t.kwAt || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
+            pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", titleOutOfSync: !!t.kwOutOfSync, titleHasResearch: !!t.hasResearch, pillarAt: t.pillarAt || "", kwAt: t.kwAt || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null, titleSub: t.sub || "",
             ...scheduleFields(t.strategySlotId),
           };
           // operator 2026-10-22: "only put the flag on the asset that needs the interview" — an asset's own interview is listed only
@@ -23484,7 +23511,7 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: canonDigestParent(a.assetClass === "Pillar" && a.pillarType ? (/premium take/i.test(a.name || "") ? "Premium" : a.pillarType) + " parent" : a.methodId && !/\bparent$/i.test(methNames[a.methodId] || "") ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || "")),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "", initiative: a.initiative || "", subInitiative: a.subInitiative || "", stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
+              assetStatus: a.status || "", initiative: t.sub ? t.sub.split(" · ")[0].trim() : (a.initiative || ""), subInitiative: t.sub ? (t.sub.includes(" · ") ? t.sub : "") : (a.subInitiative || ""), stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
