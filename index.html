@@ -7982,7 +7982,7 @@ function hdTidsOf(assets) { const ids = new Set(), pids = new Set(); (assets || 
 // open the title page (one title) or stay plain.
 const HD_ENTRY = [['iv', '🎤', 'Interviews', '#f472b6'], ['series', 'Series', 'Series (Series / Pillar assets)', '#c084fc'], ['trend', 'Trend', 'Trend Parent assets', '#facc15'], ['digest', 'Digest', 'Digest assets', '#38bdf8']];
 function hdAssetById(id) { if (HD._abRows !== HD.rows) { HD._abRows = HD.rows; HD._ab = new Map((HD.rows || []).filter(x => x.kind === 'asset').map(x => [hdNid(x.assetId), x])); } return HD._ab.get(hdNid(id)); }
-function hdEntryOf(assets, tids) { const o = { iv: [], series: [], trend: [], digest: [], as: assets || [] }, T = new Set((tids || []).map(hdNid)), seen = new Set();
+function hdEntryOf(assets, tids) { const o = { iv: [], series: [], trend: [], digest: [], as: assets || [], tids: [...new Set((tids || []).map(hdNid))] }, T = new Set((tids || []).map(hdNid)), seen = new Set();
   (assets || []).forEach(a => { const t = String(a.rawAssetType || a.assetType || '').trim().toLowerCase(); if (seen.has(a.assetId)) return; seen.add(a.assetId);
     if (/^(series|pillar)$/.test(t)) o.series.push(a.assetId); else if (/^trend parent$/.test(t)) o.trend.push(a.assetId); else if (/^digest( parent)?$/.test(t)) o.digest.push(a.assetId); });
   const ivs = new Set(); (HD.rows || []).forEach(x => { if (x.kind === 'interview' && x.interviewId && T.has(hdNid(x.titleId)) && !ivs.has(x.interviewId)) { ivs.add(x.interviewId); o.iv.push(x); } }); return o; }
@@ -8010,8 +8010,8 @@ function hdDue(o) { const W = hdWeek(), as = o.as || [], inWk = a => String(a.da
   const seriesDone = as.some(a => /^(series|pillar)$/.test(ty(a)) && inWk(a)) || Object.values(runFirst).some(d => d.slice(0, 10) >= W.start);
   const useD = hdUses(as, 'Digest'), useT = hdUses(as, 'Trend Parent');
   // goals only where something is deployed (operator 2026-11-13: "when I set to development there shouldn't be any goals showing"):
-  // nothing Publish / Published under this row → no weekly Series / Trend / Digest goal (interviews still count)
-  const deployed = as.some(a => /^(publish|published)$/i.test(String(a.assetStatus || a.status || '').trim()));
+  // no Published (green) title under this row → no weekly Series / Trend / Digest goal (interviews still count)
+  const deployed = (o.tids || []).some(id => { const t = hdTitleRow(id); return t && /^(publish|published|done)$/i.test(hdSt(t).trim()); });   // a green (Published) title — orange Development titles carry no goals
   if (!deployed) return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length], series: 0, trend: useT === false ? null : 0, digest: useD === false ? null : 0 };
   return { W, iv: [o.iv.filter(x => /flagged/i.test(x.ivStatus || '')).length, o.iv.filter(x => /finished/i.test(x.ivStatus || '')).length],
     series: as.length ? (seriesDone ? 0 : 1) : 0, trend: useT === false ? null : (as.some(a => /^trend parent$/.test(ty(a)) && inWk(a)) ? 0 : (useT ? 1 : 0)),
