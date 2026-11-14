@@ -20346,6 +20346,17 @@ export default {
     // fields an item names, written in ONE PATCH per asset (a field left out is untouched; "" clears it). Same pacing / stop rules as
     // cplanAssetBulkEdit, and the batch before / after goes to the same log (cplan:assetedit:log). Returns {done, stopped?}.
     // titleSubBulk {items: [{titleId, sub}] (≤ 25)} — writes titles' Sub Initiative, one PATCH each, ~0.35 s apart; logged once (title:sub:log)
+    // productMap {op: get | set, cid?, productId?, product?, initiative?, sub?} (operator 2026-11-13: deploy new cards from the initiative row) —
+    // get = the strict product → initiative / sub map (KV hd:productmap:v1) + the naming keys (KV naming:keys:v1); set = add / update one product.
+    if (body.action === "productMap") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      const K = "hd:productmap:v1", pm = (await env.TRADES.get(K, "json")) || { version: 1, hubs: {} };
+      if (String(body.op || "get") === "get") return json({ ok: true, map: pm, keys: (await env.TRADES.get("naming:keys:v1", "json")) || null });
+      const cid = hubAssetId(String(body.cid || "")), pid = hubAssetId(String(body.productId || "")), init = String(body.initiative || "").trim();
+      if (!/^[0-9a-f]{32}$/i.test(cid) || !/^[0-9a-f]{32}$/i.test(pid) || initiativeNameBad(init)) return json({ error: "cid, productId and initiative required" }, 400);
+      (pm.hubs[cid] ||= {})[pid] = { product: String(body.product || "").slice(0, 300), initiative: init, sub: String(body.sub || "").trim().slice(0, 300), why: "deployed from the initiative row" }; pm.at = new Date().toISOString();
+      await env.TRADES.put(K, JSON.stringify(pm)); return json({ ok: true });
+    }
     if (body.action === "titleSubBulk") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
