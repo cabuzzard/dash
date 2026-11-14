@@ -8389,6 +8389,7 @@ function hdKwAll(lv, open) { const L = ['Cluster', 'Topic', 'Product'], i = L.in
 // ── 🗂 TITLE PAGE (operator 2026-11-12: "a title page that shows all of the images and counts of all the asset types and blurb copy of the
 // assets like a title assets hub card … after clicking through from the product level on the title cards"). Worker titlePage (read-only).
 function hdTpOpen(titleId) { HD.tp = { id: hdNid(titleId), d: null, type: '', status: '', tab: (HD.tp && HD.tp.tab) || 'cards' }; hdRender(); window.scrollTo(0, 0); hdTpLoad(); }
+function hdTpType(t) { const T = HD.tp; if (!T) return; const O = T.openTypes = T.openTypes || new Set(); O.has(t) ? O.delete(t) : O.add(t); hdRender(); }
 function hdTpClose() { HD.tp = null; hdRender(); }
 async function hdTpLoad() { const T = HD.tp; if (!T) return; const r = await call('titlePage', { titleId: T.id }).catch(e => ({ error: e.message })); if (HD.tp !== T) return; T.d = r || { error: 'no response' }; hdRender(); }
 function hdTpHtml(h) {
@@ -8411,9 +8412,13 @@ function hdTpHtml(h) {
         <div style="font-size:12px;color:var(--text2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;">${esc(a.blurb) || '<span style="color:var(--text3);">not written yet</span>'}</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-top:auto;padding-top:4px;">${Object.entries(a.links || {}).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${linkLab[k] || k} ↗</a>`).join('')}<a href="https://www.notion.so/${esc(a.id)}" target="_blank" rel="noopener" style="color:var(--text3);">Notion ↗</a></div>
       </div></div>`;
+  // asset-type sections collapse (operator 2026-11-13: "the asset type sections to be collapsed and have counts"): closed by default; the heading
+  // shows the count per status (Development = every status before Publish, Publish, Published) and the total. A type picked in the chips opens.
+  const OT = T.openTypes = T.openTypes || new Set(), bk = s => /^published$/i.test(s) ? 'pubd' : /^publish$/i.test(s) ? 'pub' : 'dev';
   const groups = (T.type ? [T.type] : types).map(t => { const list = shown.filter(a => (a.type || '(no type)') === t); if (!list.length) return '';
-    return `<div style="margin:18px 0 8px;display:flex;gap:10px;align-items:baseline;"><b style="font-size:14px;">${esc(t)}</b><span style="font-size:11.5px;color:var(--text3);">${list.length}${nPub(list) ? ' · ' + nPub(list) + ' live' : ''}</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;">${list.map(card).join('')}</div>`; }).join('');
+    const c = { dev: 0, pub: 0, pubd: 0 }; list.forEach(a => c[bk(a.status)]++); const open = !!T.type || OT.has(t), n = (v, col, l) => `<span title="${l}" style="min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${v ? col : 'var(--text3)'};">${v}<span style="display:block;font-size:9px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;">${l}</span></span>`;
+    return `<div onclick="hdTpType(${JSON.stringify(t).replace(/"/g, '&quot;')})" class="hd-row" title="Click to open / close" style="margin:10px 0 0;display:flex;gap:10px;align-items:center;cursor:pointer;padding:8px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--surface);"><span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span><b style="font-size:14px;flex:1;min-width:0;overflow-wrap:anywhere;">${esc(t)}</b>${n(c.dev, '#ff7a00', 'Dev')}${n(c.pub, '#8ab4f8', 'Publish')}${n(c.pubd, '#4ade80', 'Published')}${n(list.length, 'var(--text)', 'All')}</div>
+      ${open ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:10px 0 6px;">${list.map(card).join('')}</div>` : ''}`; }).join('');
   return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">${back}<button style="${B('var(--text2)')}" onclick="HD.tp.d=null;hdRender();hdTpLoad()">↻</button>${aiPlus(T.id)}</div>
     <div style="border:1px solid var(--border2);border-radius:12px;padding:14px 16px;background:var(--surface);">
       <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">Title · ${esc(h.name)}</div>
