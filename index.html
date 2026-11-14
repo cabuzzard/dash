@@ -8290,7 +8290,10 @@ function hdEditModal(title, note, val, go) {
 }
 function hdInitEdit(k) {
   const E = (HD._inits || [])[k]; if (!E) return; HD._edit = E; const n = E.I.assets.length;
-  hdEditModal('✎ Rename initiative', `${n} asset${n === 1 ? '' : 's'} in ${esc(E.h.name)} get the new name (each asset's Initiative is written to Notion, one at a time, logged), and its CP AA plan rows move with them. Sub-initiatives, products and titles stay as they are.`, E.I.name, 'hdInitRenameGo');
+  // "Your direction" for the hub on top (operator 2026-11-13: see it from the cards view) — the worksheet copy (KV infoflow:table:initiative-worksheet)
+  if (!HD.ws) { if (!HD.wsBusy) { HD.wsBusy = true; call('getInfoFlowTable', { name: 'initiative-worksheet' }).then(r => { HD.ws = (r && r.table && r.table.rows) || []; }).catch(() => { HD.ws = []; }).finally(() => { HD.wsBusy = false; hdInitEdit(k); }); } return; }
+  const dir = HD.ws.find(r => r.cells.kind === 'direction' && hdNid(r.cells.cid) === hdNid(E.h.campaignId)), dirHtml = dir && dir.cells.direction ? `<div style="border:1px solid var(--border2);border-radius:8px;background:var(--surface2);padding:8px 10px;margin:0 0 10px;color:var(--text);font-size:12.5px;line-height:1.5;white-space:pre-wrap;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:4px;">Your direction for ${esc(E.h.name)}</div>${esc(dir.cells.direction)}</div>` : '';
+  hdEditModal('✎ Rename initiative', dirHtml + `${n} asset${n === 1 ? '' : 's'} in ${esc(E.h.name)} get the new name (each asset's Initiative is written to Notion, one at a time, logged), and its CP AA plan rows move with them. Sub-initiatives, products and titles stay as they are.`, E.I.name, 'hdInitRenameGo');
 }
 async function hdInitRenameGo() {
   const E = HD._edit, I = E && E.I, to = String((document.getElementById('hdEdName') || {}).value || '').trim(); if (!I) return 'Nothing to rename';
