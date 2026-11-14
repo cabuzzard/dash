@@ -8713,6 +8713,40 @@ async function hdDeployGo() { const D = DA; if (!D || D.busy) return; D.busy = t
   } catch (e) { say('✗ ' + e.message); }
   if (DA) { DA.busy = false; hdDeployDraw(); } }
 function hdDeployLink(I, h) { if (!I || I.key === '__none') return ''; const i = (HD._dep = HD._dep || []).push({ I, h }) - 1; return `<a href="#" title="Deploy assets in this initiative (new product / title if needed)" onclick="event.preventDefault();event.stopPropagation();hdDeployOpen(${i})" style="font-size:13px;color:#4ade80;text-decoration:none;margin-left:8px;">＋</a>`; }
+// ＋ on a title (operator 2026-11-14: "a multi select add assets modal with the json import option"): pick asset types (Asset Flow, parent →
+// child) with a count each → Development assets on this title, in its initiative; parents are built as Pillars; children can go under an
+// existing parent of the title. "📥 JSON import instead" opens the importer (aiOpen).
+let AA = null;
+const HD_PILLAR_OF = { 'series': 'Series', 'offer': 'Long Form Sales', 'digest': 'Digest', 'story': 'Generic', 'trend parent': 'Generic', 'external parent': 'Generic' };
+function hdAddOpen(titleId) { const tid = hdNid(titleId), tr = hdTitleRow(tid); if (!tr) return aiOpen(tid);
+  const as = (HD.rows || []).filter(x => x.kind === 'asset' && hdNid(x.titleId) === tid), v = {}; as.forEach(a => { if (a.initiative) v[a.initiative] = (v[a.initiative] || 0) + 1; });
+  const init = (tr.titleSub ? tr.titleSub.split(' · ')[0].trim() : '') || (Object.entries(v).sort((a, b) => b[1] - a[1])[0] || [''])[0] || (((HD.rows || []).find(x => x.kind === 'asset' && x.productId && hdNid(x.productId) === hdNid(tr.productId) && x.initiative) || {}).initiative || '');
+  AA = { tid, tr, init, counts: {}, parent: '', types: null, busy: false, log: [] };
+  let bg = document.getElementById('aaBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'aaBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="aaPanel" style="max-width:640px;width:94vw;max-height:90vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
+  bg.classList.add('open'); hdAfLoad(); hdAddDraw();
+  ((typeof CPLAN_ATYPES !== 'undefined' && CPLAN_ATYPES && CPLAN_ATYPES.length) ? Promise.resolve({ types: CPLAN_ATYPES }) : call('getAssetTypes', { all: true })).then(r => { if (AA) { AA.types = (r && r.types) || []; hdAddDraw(); } }).catch(() => { if (AA) { AA.types = []; hdAddDraw(); } }); }
+function hdAddRows() { const t = HD.afT; if (!t || !AA || !AA.types) return null; const tree = hdTpAfTree() || [], nk = v => String(v || '').trim().toLowerCase();
+  return tree.map(r => ({ ...r, type: hiAfType(r.label, AA.types) || AA.types.find(x => nk(hdAfTypeOf(x)) === nk(r.label)) || (AA.types.find(x => nk(x) === nk(r.label)) || '') })).filter(r => r.type); }
+function hdAddDraw() { const P = document.getElementById('aaPanel'); if (!AA || !P) return; const A = AA, rows = hdAddRows(), dis = A.busy ? 'disabled' : '';
+  const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const parents = (HD.rows || []).filter(x => x.kind === 'asset' && hdNid(x.titleId) === A.tid && (/^pillar$/i.test(x.assetClass || '') || HD_PILLAR_OF[String(x.rawAssetType || '').trim().toLowerCase()]) && !/^(archived|delete)$/i.test(hdSt(x)));
+  const n = Object.values(A.counts).reduce((t, c) => t + (+c || 0), 0);
+  P.innerHTML = `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><h3 style="margin:0;flex:1;">＋ Add assets</h3><button onclick="document.getElementById('aaBg').classList.remove('open');const t=AA&&AA.tid;AA=null;aiOpen(t)" style="font-size:12px;padding:4px 10px;">📥 JSON import instead</button></div>
+    <div style="font-size:12px;color:var(--text3);margin:4px 0 10px;">On “${esc(A.tr.title)}” · ${A.init ? 'initiative ' + esc(A.init) : '<span style="color:#f87171;">no initiative found for this title</span>'} · created at Development (built, not written). Parents are built as Pillars.</div>
+    <label style="font-size:12px;color:var(--text2);">Put the child types under (optional)</label><select style="${IN}margin:4px 0 10px;" ${dis} onchange="AA.parent=this.value"><option value="">— no parent —</option>${parents.map(p => `<option value="${esc(hdNid(p.assetId))}" ${A.parent === hdNid(p.assetId) ? 'selected' : ''}>${esc((p.rawAssetType || '') + ' — ' + hdName(p))}</option>`).join('')}</select>
+    ${!rows ? '<div style="font-size:12px;color:var(--text3);">Loading asset types…</div>' : `<div style="display:grid;gap:3px;">${rows.map(r => `<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0 2px ${r.depth ? 22 : 0}px;"><input type="number" min="0" max="20" ${dis} value="${+A.counts[r.type] || 0}" onchange="AA.counts['${esc(r.type)}']=Math.max(0,Math.min(20,+this.value||0));hdAddDraw()" style="width:52px;font-size:12.5px;padding:3px 5px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);"><span style="${r.parent ? 'font-weight:700;' : ''}">${r.depth ? '↳ ' : ''}${esc(r.label)}</span>${nkEq(r.type, r.label) ? '' : `<span style="font-size:11px;color:var(--text3);">(${esc(r.type)})</span>`}${r.parent ? '<span style="font-size:10.5px;color:#fb923c;">parent</span>' : ''}</label>`).join('')}</div>`}
+    <div style="font-size:12px;color:var(--text2);margin-top:10px;">${A.log.map(esc).join('<br>')}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;"><button onclick="if(!AA||!AA.busy){document.getElementById('aaBg').classList.remove('open');AA=null;}" style="font-size:12px;padding:5px 12px;">${A.log.some(l => /^✓ Done/.test(l)) ? 'Close' : 'Cancel'}</button><button ${!A.busy && n && A.init ? '' : 'disabled'} onclick="hdAddGo()" style="font-size:12px;padding:5px 12px;border:1px solid #4ade80;color:#4ade80;background:var(--surface2);border-radius:6px;">＋ Add ${n || ''} Development asset${n === 1 ? '' : 's'}</button></div>`; }
+function nkEq(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
+async function hdAddGo() { const A = AA; if (!A || A.busy) return; A.busy = true; A.log = []; const say = t => { A.log.push(t); hdAddDraw(); }, rows = hdAddRows() || [], h = hiHub(); let n = 0;
+  try { for (const r of rows) { const c = +A.counts[r.type] || 0; for (let k = 0; k < c; k++) { if (n) await new Promise(z => setTimeout(z, typeof CPLAN_WRITE_GAP !== 'undefined' ? CPLAN_WRITE_GAP : 600));
+      const pt = HD_PILLAR_OF[String(r.label).trim().toLowerCase()] || (r.parent ? 'Generic' : '');
+      const res = await call('initiativeBuildAsset', { titleId: A.tid, campaignId: hdNid((h && h.campaignId) || A.tr.campId), productId: A.tr.productId ? hdNid(A.tr.productId) : undefined, assetType: r.type, assetTitle: A.tr.title + ' — ' + r.label + (c > 1 ? ' ' + (k + 1) : ''), initiative: A.init,
+        ...(pt ? { asPillar: true, pillarType: pt } : A.parent ? { parentAssetId: A.parent } : {}) }).catch(e => ({ error: e.message }));
+      if (!res || res.error) throw new Error('stopped after ' + n + ' — ' + r.label + ': ' + ((res && res.error) || 'no response')); n++; say('✓ ' + r.label + (c > 1 ? ' ' + (k + 1) : '')); } }
+    A.counts = {}; say(`✓ Done — ${n} Development asset${n === 1 ? '' : 's'} on “${A.tr.title}”.`); HD.rows = null; hdLoad(true); if (HD.tp && HD.tp.id === A.tid) { HD.tp.d = null; hdTpLoad(); }
+  } catch (e) { say('✗ ' + e.message); }
+  if (AA) { AA.busy = false; hdAddDraw(); } }
 function hdKwTog(i) { const k = (HD._kwKeys || [])[i]; if (k == null) return; const O = HD.kwOpen = HD.kwOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal, IV) {
   const cid = hdNid(h.campaignId), nk = v => String(v || '').trim().toLowerCase(), ip = (HD.ip || {})[cid];
@@ -8938,7 +8972,7 @@ function hdRender() {
 // createAsset at Development + Run + the post's copy saved as its PRE-WRITE), then its thumbnail (uploadAssetImage → the asset's Images).
 // A post's key is remembered per title, so re-importing the same file skips what is already there. Nothing is written or published here.
 let AI = null;
-function aiPlus(titleId) { return titleId ? `<a href="#" title="📥 Import assets onto this title (JSON + thumbnails)" onclick="event.preventDefault();event.stopPropagation();aiOpen('${esc(hdNid(titleId))}')" style="font-size:14px;font-weight:700;color:#4ade80;text-decoration:none;flex:0 0 auto;">＋</a>` : ''; }
+function aiPlus(titleId) { return titleId ? `<a href="#" title="Add assets to this title — pick asset types (or 📥 JSON import)" onclick="event.preventDefault();event.stopPropagation();hdAddOpen('${esc(hdNid(titleId))}')" style="font-size:14px;font-weight:700;color:#4ade80;text-decoration:none;flex:0 0 auto;">＋</a>` : ''; }
 function aiOpen(tid) {
   const h = hiHub(); if (!h) return;
   let bg = document.getElementById('aiBg'); if (!bg) { bg = document.createElement('div'); bg.id = 'aiBg'; bg.className = 'modal-bg'; bg.innerHTML = '<div class="modal" id="aiPanel" style="max-width:760px;width:94vw;max-height:90vh;overflow:auto;"></div>'; document.body.appendChild(bg); }
