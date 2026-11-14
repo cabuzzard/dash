@@ -41563,6 +41563,19 @@ Rules:
         if (campId)       properties["Campaign"]      = { relation: [{ id: dash(campId) }] };
         if (productId)    properties["Product"]       = { relation: [{ id: dash(productId) }] };
         Object.assign(properties, await assetMethodProp(body.methodId, assetType));
+        // strict 1:1 (operator 2026-11-13): a new asset takes its product's Initiative + Sub Initiative (KV hd:productmap:v1) and that initiative's
+        // primary stack (KV stack:registry), so new assets never land in "No initiative". The product is the one given, else the title's.
+        try {
+          let pid = productId ? String(productId).replace(/-/g, "") : "";
+          if (!pid && titleId) { const tp = await fetch("https://api.notion.com/v1/pages/" + dash(titleId), { headers: hdr }).then(r => r.json()).catch(() => ({})); pid = String(((tp.properties || {}).product?.relation || [])[0]?.id || "").replace(/-/g, ""); }
+          const pm = pid && campId ? await env.TRADES.get("hd:productmap:v1", "json").catch(() => null) : null, hit = pm && ((pm.hubs || {})[String(campId).replace(/-/g, "")] || {})[pid];
+          if (hit && hit.initiative) {
+            await initiativeEnsureProp(env); await subInitiativeEnsureProp(env); await stackEnsureProp(env);
+            const rt = v => ({ rich_text: v ? [{ type: "text", text: { content: String(v).slice(0, 300) } }] : [] });
+            const reg = ((await env.TRADES.get("stack:registry", "json").catch(() => null)) || {}).stacks || [], st = reg.find(x => String(x.cid) === String(campId).replace(/-/g, "") && String(x.initiative || "").split(", ").includes(hit.initiative));
+            properties["Initiative"] = rt(hit.initiative); properties["Sub Initiative"] = rt(hit.sub || ""); if (st) properties["Stack"] = rt(st.name);
+          }
+        } catch (e) { console.error("createAsset product map", e.message); }
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
