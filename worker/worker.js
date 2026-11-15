@@ -4675,6 +4675,7 @@ const SEO_AUDIT_CHECKLIST = `
 // (folder mapping) and the Content Hubs tab HUB_SITES[].domain (the live domain).
 const DEFAULT_ORIGIN = "https://cabuzzard.github.io";
 const HUB_ORIGINS = new Set([
+  "https://webguyleadgeneration.com",      "https://www.webguyleadgeneration.com",   // static site on Bluehost (lead form + owner SMS opt-in page)
   "https://aisystemimplementation.com",    "https://www.aisystemimplementation.com",
   "https://aisystemimplementation.online", "https://www.aisystemimplementation.online",
   "https://creativeflowguitar.com",        "https://www.creativeflowguitar.com",

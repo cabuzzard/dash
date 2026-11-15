@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner Alert Settings — Webguy Business Services</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+  :root { --bg:#080c14; --card:#0f1522; --border:#1e2a3d; --text:#e6ebf3; --muted:#94a3b8; --blue:#3b82f6; --blue-lt:#60a5fa; --ok:#4ade80; --err:#f87171; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 48px 16px; }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .lede { color: var(--muted); font-size: 15px; margin-bottom: 28px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input[type=tel], input[type=email] { width: 100%; padding: 11px 12px; font-size: 15px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 18px; font-family: inherit; }
+  .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; font-weight: 400; margin-bottom: 18px; cursor: pointer; }
+  .consent input { margin-top: 4px; width: 18px; height: 18px; flex: 0 0 auto; }
+  button { width: 100%; padding: 12px; font-size: 15px; font-weight: 600; border: 0; border-radius: 8px; background: var(--blue); color: #fff; cursor: pointer; font-family: inherit; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { display: none; margin-top: 16px; font-size: 14px; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--err); }
+  .fine { color: var(--muted); font-size: 12.5px; margin-top: 22px; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 32px; text-align: center; }
+  footer a { color: var(--blue-lt); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Owner alert settings</h1>
+  <p class="lede">Get a text when a caller leaves a voicemail or books a call on your Webguy Business Services AI receptionist line, (925) 940-0014.</p>
+
+  <div class="card">
+    <form id="alertForm" novalidate>
+      <label for="f-phone">Mobile number for alerts *</label>
+      <input type="tel" id="f-phone" required placeholder="(555) 000-0000" autocomplete="tel">
+
+      <label for="f-email">Email *</label>
+      <input type="email" id="f-email" required placeholder="you@example.com" autocomplete="email">
+
+      <label class="consent" for="f-consent">
+        <input type="checkbox" id="f-consent">
+        <span>I agree to receive voicemail and booking alert texts from Webguy Business Services. Msg &amp; data rates may apply. Reply STOP to opt out.</span>
+      </label>
+
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-theme="dark" style="margin:4px 0 16px;"></div>
+      <button type="submit" id="submitBtn">Save alert settings</button>
+    </form>
+    <div class="msg" id="formMsg"></div>
+  </div>
+
+  <p class="fine">Alerts are notifications about calls to your own business line: voicemail transcripts and booking details. Message frequency varies with call volume. Reply STOP to opt out at any time, or HELP for help. Your number is used only to send these alerts and is never sold or shared.</p>
+
+  <footer>Webguy Business Services · <a href="../">webguyleadgeneration.com</a></footer>
+</div>
+<script>
+const WORKER_URL = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+const CONSENT_TEXT = 'I agree to receive voicemail and booking alert texts from Webguy Business Services. Msg & data rates may apply. Reply STOP to opt out.';
+
+document.getElementById('alertForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  const msg = document.getElementById('formMsg');
+  const show = (t, cls) => { msg.textContent = t; msg.className = 'msg ' + cls; msg.style.display = 'block'; };
+  const phone = document.getElementById('f-phone').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const agreed = document.getElementById('f-consent').checked;
+
+  if (!/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return show('Please enter a valid mobile number.', 'err');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('Please enter a valid email address.', 'err');
+  if (!agreed) return show('Please tick the box to agree to receive alert texts.', 'err');
+
+  const tsToken = document.querySelector('[name="cf-turnstile-response"]')?.value || '';
+  const note = 'SMS OWNER ALERT OPT-IN · consent box ticked: yes · consent text: "' + CONSENT_TEXT + '" · mobile: ' + phone +
+    ' · page: ' + location.href.split('?')[0] + ' · submitted: ' + new Date().toISOString();
+
+  btn.disabled = true; btn.textContent = 'Saving…'; msg.style.display = 'none';
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'submitLead', email, phone, fraudType: 'Other', note, tsToken })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    document.getElementById('alertForm').style.display = 'none';
+    show('Saved. You will now get voicemail and booking alerts by text at ' + phone + '. Reply STOP to any alert to opt out.', 'ok');
+  } catch (err) {
+    show('Something went wrong saving your settings. Please try again.', 'err');
+    btn.disabled = false; btn.textContent = 'Save alert settings';
+  }
+});
+</script>
+</body>
+</html>
