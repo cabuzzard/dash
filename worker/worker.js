@@ -47203,6 +47203,59 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       }
 
       // â"€â"€ getLogins  -  full login records with campaignIds and platformIds â"€â"€
+      // 🧩 Offers + 🔀 Lead Routing (operator 2026-11-15): both Notion DBs, every row, read-only, for the All Output tab's two sections.
+      // Relations come back as {id, name}; related page titles are resolved once per request (small sets: Products, Logins, Offers).
+      if (body.action === "getOffersRouting") {
+        const OFFERS_DB = "4191f7d3a4bb81c899e1ca2a2e69e3d2", ROUTING_DB = "4191f7d3a4bb8196a1ccf08919e8cf86";
+        const txt = a => (a || []).map(t => t.plain_text).join("");
+        const flat = p => { const o = {}; for (const [k, v] of Object.entries(p || {})) {
+          if (v.type === "title") o[k] = txt(v.title); else if (v.type === "rich_text") o[k] = txt(v.rich_text);
+          else if (v.type === "select") o[k] = v.select?.name || ""; else if (v.type === "number") o[k] = v.number;
+          else if (v.type === "formula") o[k] = v.formula?.[v.formula?.type] ?? "";
+          else if (v.type === "relation") o[k] = (v.relation || []).map(r => r.id.replace(/-/g, ""));
+          else if (v.type === "url") o[k] = v.url || ""; else if (v.type === "checkbox") o[k] = !!v.checkbox; }
+          return o; };
+        const [offRaw, rtRaw] = await Promise.all([
+          notionQuery(OFFERS_DB, { sorts: [{ timestamp: "created_time", direction: "ascending" }] }),
+          notionQuery(ROUTING_DB, { sorts: [{ timestamp: "created_time", direction: "ascending" }] })]);
+        const offers = offRaw.map(r => ({ id: r.id.replace(/-/g, ""), url: r.url, ...flat(r.properties) }));
+        const routing = rtRaw.map(r => ({ id: r.id.replace(/-/g, ""), url: r.url, ...flat(r.properties) }));
+        const names = {}; offers.forEach(o => { names[o.id] = o.Offer || ""; });
+        const want = new Set(); [...offers, ...routing].forEach(o => ["Product", "Login", "Offers"].forEach(k => (Array.isArray(o[k]) ? o[k] : []).forEach(id => { if (!(id in names)) want.add(id); })));
+        const ids = [...want];
+        for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(async id => {
+          try { const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+            const d = await r.json(); const tp = Object.values(d.properties || {}).find(v => v.type === "title"); names[id] = tp ? txt(tp.title) : ""; }
+          catch (e) { names[id] = ""; } }));
+        const rel = o => { for (const k of ["Product", "Login", "Offers"]) if (Array.isArray(o[k])) o[k] = o[k].map(id => ({ id, name: names[id] || "(untitled)" })); return o; };
+        return json({ offers: offers.map(rel), routing: routing.map(rel),
+          offersUrl: "https://www.notion.so/" + OFFERS_DB, routingUrl: "https://www.notion.so/" + ROUTING_DB });
+      }
+      // ＋ Add from the All Output Offers / Lead Routing views: one new row, text / select / number fields only (relations are set in Notion).
+      if (body.action === "addOfferRouting") {
+        const SPEC = {
+          offers: { db: "4191f7d3a4bb81c899e1ca2a2e69e3d2", title: "Offer",
+            select: ["Type", "Tier", "Status", "Needs client A2P"], number: ["Cost / mo", "Price / mo", "Setup fee"],
+            text: ["Run", "What it does", "Includes", "Built with", "Ready now", "Who it is for", "Cost notes", "Price notes", "Notes"] },
+          routing: { db: "4191f7d3a4bb8196a1ccf08919e8cf86", title: "Route",
+            select: ["Source", "Status"], number: ["Step"],
+            text: ["Platform", "Posted by", "Call to action", "Contact point", "Stored in", "Cost", "Notes"] } };
+        const s = SPEC[body.table]; if (!s) return json({ error: "Unknown table" }, 400);
+        const f = body.fields || {}, title = String(f[s.title] || "").trim().slice(0, 200);
+        if (!title) return json({ error: s.title + " is required" }, 400);
+        const rt = v => [{ type: "text", text: { content: String(v).slice(0, 2000) } }];
+        const props = { [s.title]: { title: rt(title) } };
+        s.text.forEach(k => { if (f[k] != null && String(f[k]).trim() !== "") props[k] = { rich_text: rt(String(f[k]).trim()) }; });
+        s.select.forEach(k => { if (f[k]) props[k] = { select: { name: String(f[k]).replace(/,/g, " ").slice(0, 100) } }; });
+        s.number.forEach(k => { const n = Number(f[k]); if (f[k] !== undefined && f[k] !== "" && Number.isFinite(n)) props[k] = { number: n }; });
+        const resp = await fetch("https://api.notion.com/v1/pages", { method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: s.db }, properties: props }) });
+        const d = await resp.json();
+        if (!resp.ok) return json({ error: d.message || "Notion error" }, 500);
+        return json({ ok: true, id: d.id.replace(/-/g, ""), url: d.url });
+      }
+
       if (body.action === "getLogins") {
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const rows = await notionQuery(LOGINS_DB, { sorts: [{ property: "Name", direction: "ascending" }] });

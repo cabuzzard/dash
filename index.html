@@ -947,6 +947,16 @@
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output 2</h2>
       <span style="font-size:11.5px;color:var(--text2);">New table, built around one record. Drag a header to reorder the columns.</span></div>
     <div class="oc-bd"><div id="ao2Body"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
+    <div class="oc-sec" data-ock="offerstbl"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">🧩 Offers</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every row of the Offers database: micro services, content and traffic packages, bundles. ＋ Add creates a new row in Notion.</span>
+      <button onclick="orLoad(true)" title="Read both tables again from Notion" style="font-size:11px;padding:2px 7px;">↻ Reload</button></div>
+    <div class="oc-bd"><div id="offersTblBody"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
+    <div class="oc-sec" data-ock="routingtbl"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">🔀 Lead Routing</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every row of the Lead Routing database: where content goes, the contact point back, where the lead is stored. ＋ Add creates a new row in Notion.</span>
+      <button onclick="orLoad(true)" title="Read both tables again from Notion" style="font-size:11px;padding:2px 7px;">↻ Reload</button></div>
+    <div class="oc-bd"><div id="routingTblBody"><div style="font-size:12px;color:var(--text3);">Opens on expand…</div></div></div></div>
     </div></div>
   </div>
 
@@ -5555,6 +5565,82 @@ function ocToggle(ev, hd) {
   bd.style.display = closed ? 'none' : ''; sec.querySelector('.oc-chev').textContent = closed ? '▶' : '▼';
   if (closed) delete OC_OPEN[sec.dataset.ock]; else { OC_OPEN[sec.dataset.ock] = 1; bd.querySelectorAll('.flow-tbl textarea').forEach(flowGrow); }
   if (!closed && sec.dataset.ock === 'alloutput2') ao2Load();
+  if (!closed && (sec.dataset.ock === 'offerstbl' || sec.dataset.ock === 'routingtbl')) orLoad(false);
+}
+// ── 🧩 Offers + 🔀 Lead Routing (operator 2026-11-15): two Notion DBs shown in full in All Output, one section each.
+// Rows read via worker getOffersRouting; ＋ Add creates a row via addOfferRouting (text / select / number fields; relations are set in Notion).
+const OR_COLS = {
+  offers: [['Offer','text'],['Type','select',['App','Content','Traffic','Bundle']],['Tier','select',['Tier 1','Tier 2','Tier 3','One-time','Package']],
+    ['Status','select',['Draft','Ready to sell','Needs build','Paused']],['Product','rel'],['Run','text'],['What it does','text'],['Includes','text'],['Built with','text'],
+    ['Needs client A2P','select',['Yes','No','If SMS']],['Ready now','text'],['Who it is for','text'],['Cost notes','text'],['Cost / mo','number'],['Price / mo','number'],
+    ['Setup fee','number'],['Margin / mo','calc'],['Price notes','text'],['Notes','text']],
+  routing: [['Route','text'],['Source','select',['Organic content','Cold outreach','Inbound call','Website']],['Step','number'],['Status','select',['Live','Gap','Planned']],
+    ['Login','rel'],['Offers','rel'],['Platform','text'],['Posted by','text'],['Call to action','text'],['Contact point','text'],['Stored in','text'],['Cost','text'],['Notes','text']],
+};
+let OR_DATA = null, OR_BUSY = false;
+async function orLoad(force) {
+  if (OR_BUSY || (OR_DATA && !force)) { orRender(); return; }
+  OR_BUSY = true;
+  ['offersTblBody', 'routingTblBody'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading from Notion…</div>'; });
+  try { const r = await call('getOffersRouting', {}); if (!r || r.error) throw new Error((r && r.error) || 'no response'); OR_DATA = r; }
+  catch (e) { ['offersTblBody', 'routingTblBody'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = `<div style="font-size:12px;color:#f87171;">Couldn’t load from Notion: ${esc(e.message)}</div>`; }); OR_BUSY = false; return; }
+  OR_BUSY = false; orRender();
+}
+function orCell(v, kind) {
+  if (kind === 'rel') return (v || []).map(x => `<a href="https://www.notion.so/${esc(x.id)}" target="_blank" rel="noopener" style="color:var(--text);">${esc(x.name)}</a>`).join('<br>');
+  if (kind === 'number' || kind === 'calc') return (v === null || v === undefined || v === '') ? '' : (typeof v === 'number' ? '$' + v.toLocaleString() : esc(String(v)));
+  return esc(v == null ? '' : String(v)).replace(/\n/g, '<br>');
+}
+function orRender() {
+  if (!OR_DATA) return;
+  [['offers', 'offersTblBody', OR_DATA.offersUrl, '＋ Add offer'], ['routing', 'routingTblBody', OR_DATA.routingUrl, '＋ Add route']].forEach(([k, id, url, addLbl]) => {
+    const el = document.getElementById(id); if (!el) return;
+    const cols = OR_COLS[k], rows = OR_DATA[k] || [];
+    const th = 'padding:6px 8px;border-bottom:1px solid var(--border2);text-align:left;font-size:11px;color:var(--text3);white-space:nowrap;position:sticky;top:0;background:var(--surface);';
+    const td = 'padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top;font-size:12px;min-width:90px;max-width:280px;';
+    const head = cols.map(c => `<th style="${th}">${esc(c[0])}</th>`).join('') + `<th style="${th}"></th>`;
+    const body = rows.length ? rows.map(r => `<tr>${cols.map((c, i) => `<td style="${td}${i === 0 ? 'font-weight:600;' : ''}">${orCell(r[c[0]], c[1])}</td>`).join('')}<td style="${td}min-width:0;"><a href="${esc(r.url || '')}" target="_blank" rel="noopener" title="Open this row in Notion" style="color:#8ab4f8;font-size:11px;">Notion ↗</a></td></tr>`).join('')
+      : `<tr><td colspan="${cols.length + 1}" style="${td}color:var(--text3);">No rows yet.</td></tr>`;
+    el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <button onclick="orAddOpen('${k}')" style="font-size:12px;padding:4px 10px;border:1px solid #4ade80;color:#4ade80;background:var(--surface2);border-radius:6px;">${addLbl}</button>
+        <span style="font-size:11.5px;color:var(--text3);">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
+        <a href="${esc(url)}" target="_blank" rel="noopener" style="font-size:11.5px;color:#8ab4f8;">Open the database in Notion ↗</a></div>
+      <div id="orAdd-${k}"></div>
+      <div style="overflow-x:auto;max-height:70vh;overflow-y:auto;border:1px solid var(--border2);border-radius:6px;"><table style="border-collapse:collapse;width:100%;">
+        <thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  });
+}
+function orAddOpen(k) {
+  const box = document.getElementById('orAdd-' + k); if (!box) return;
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  const IN = 'width:100%;box-sizing:border-box;font-size:12.5px;padding:5px 7px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);';
+  const fields = OR_COLS[k].filter(c => c[1] !== 'rel' && c[1] !== 'calc').map((c, i) => {
+    const fid = `orf-${k}-${i}`;
+    const ctl = c[1] === 'select' ? `<select id="${fid}" data-name="${esc(c[0])}" data-kind="select" style="${IN}"><option value="">—</option>${c[2].map(o => `<option>${esc(o)}</option>`).join('')}</select>`
+      : `<input id="${fid}" data-name="${esc(c[0])}" data-kind="${c[1]}" type="${c[1] === 'number' ? 'number' : 'text'}" ${c[1] === 'number' ? 'step="any"' : ''} style="${IN}">`;
+    return `<label for="${fid}" style="display:grid;gap:3px;font-size:11px;color:var(--text2);">${esc(c[0])}${i === 0 ? ' *' : ''}${ctl}</label>`;
+  }).join('');
+  box.innerHTML = `<div style="border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:10px;background:var(--surface);">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;">${fields}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+        <button onclick="orAddSave('${k}',this)" style="font-size:12px;padding:4px 12px;border:1px solid #4ade80;color:#4ade80;background:var(--surface2);border-radius:6px;">Add to Notion</button>
+        <button onclick="document.getElementById('orAdd-${k}').innerHTML=''" style="font-size:12px;padding:4px 10px;">Cancel</button>
+        <span style="font-size:11px;color:var(--text3);">Links to ${k === 'offers' ? 'Products' : 'Logins and Offers'} are set in Notion.</span>
+        <span id="orAddMsg-${k}" style="font-size:12px;"></span></div></div>`;
+  const first = box.querySelector('input,select'); if (first) first.focus();
+}
+async function orAddSave(k, btn) {
+  const box = document.getElementById('orAdd-' + k), msg = document.getElementById('orAddMsg-' + k); if (!box) return;
+  const fields = {};
+  box.querySelectorAll('[data-name]').forEach(el => { const v = el.value.trim(); if (v !== '') fields[el.dataset.name] = el.dataset.kind === 'number' ? Number(v) : v; });
+  const titleName = OR_COLS[k][0][0];
+  if (!fields[titleName]) { msg.style.color = '#f87171'; msg.textContent = titleName + ' is required.'; return; }
+  btn.disabled = true; msg.style.color = 'var(--text3)'; msg.textContent = 'Adding…';
+  const r = await call('addOfferRouting', { table: k, fields }).catch(e => ({ error: e.message }));
+  btn.disabled = false;
+  if (!r || r.error) { msg.style.color = '#f87171'; msg.textContent = 'Not added: ' + ((r && r.error) || 'no response'); return; }
+  showToast('Added "' + fields[titleName] + '" to ' + (k === 'offers' ? '🧩 Offers' : '🔀 Lead Routing'), 'success');
+  box.innerHTML = ''; orLoad(true);
 }
 // ── All Output 2 (operator 2026-10-30): a new table built around one record — the ai-implementation Fiverr gigs title ──
 // Entry criteria (operator 2026-10-30): a title is in All Output 2 only when ticked "→ AO2" in All Output — the whole title set comes
