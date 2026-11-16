@@ -3820,7 +3820,7 @@ async function researchSyncTick(env, self, ctx) {
     const res = await self.fetch(new Request('https://internal.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...b, token }) }), env, ctx);
     return res.json().catch(() => ({ error: 'bad response ' + res.status })); };
   const steps = [() => call({ action: 'regenerateAllStrategyFields', productId: st.productId, campaignId: st.campaignId, force: true }),
-    () => call({ action: 'generateTitleResearch', titleId: st.titleId, campaignId: st.campaignId, force: true }),
+    () => call({ action: 'generateTitleResearch', titleId: st.titleId, campaignId: st.campaignId, force: true, ...(st.guidance ? { guidance: st.guidance } : {}) }),
     () => call({ action: 'writeTitlePillar', titleId: st.titleId })];
   let r; try { r = await steps[st.step](); } catch (e) { r = { error: e.message }; }
   const log = (await env.TRADES.get('researchsync:log', 'json').catch(() => null)) || [];
