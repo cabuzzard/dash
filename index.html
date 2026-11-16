@@ -6745,7 +6745,7 @@ async function amRwLoad(force) { const run = amRunName(); if (!run) { AM.rw = { 
 function amRwEdit(i, f, v) { const R = AM.rw, p = R.posts[i]; R.edits[p.id] = R.edits[p.id] || {}; const orig = (p.fields.find(x => x.name === f) || {}).value || '';
   if (v === orig) delete R.edits[p.id][f]; else R.edits[p.id][f] = v; if (!Object.keys(R.edits[p.id]).length) delete R.edits[p.id];
   const b = document.getElementById('amRwSave'); if (b) { const n = Object.keys(R.edits).length; b.disabled = !n; b.textContent = '💾 Save changes' + (n ? ' (' + n + ')' : ''); } }
-function amRwTick(i, on) { const R = AM.rw, id = R.posts[i].id; on ? R.sel.add(id) : R.sel.delete(id); const c = document.getElementById('amRwSelN'); if (c) c.textContent = R.sel.size; }
+function amRwTick(i, on) { const R = AM.rw, id = R.posts[i].id; on ? R.sel.add(id) : R.sel.delete(id); const c = document.getElementById('amRwSelN'); if (c) c.textContent = R.sel.size; const ab = document.getElementById('amRwAllBox'); if (ab) ab.checked = R.sel.size === R.posts.length; }
 function amRwAll(on) { const R = AM.rw; R.sel = new Set(on ? R.posts.map(p => p.id) : []); amDraw(); }
 async function amRwSave() { const R = AM.rw, ids = Object.keys(R.edits); if (!ids.length) return; let ok = 0, bad = [];
   for (const id of ids) { R.log = 'Saving ' + (ok + bad.length + 1) + ' of ' + ids.length + '…'; amDraw();
@@ -6771,7 +6771,7 @@ function amRwHtml() { const R = AM.rw; if (!R || R.loading) return '<div style="
     <b style="font-size:13px;">⟲ ${esc(R.run)}</b><span style="font-size:12px;color:var(--text3);">${R.posts.length} posts</span>
     <button id="amRwSave" ${nEd ? '' : 'disabled'} onclick="amRwSave()" style="${B('#4ade80')}font-weight:600;">💾 Save changes${nEd ? ' (' + nEd + ')' : ''}</button>
     <span style="flex:1;"></span><span style="font-size:12px;color:var(--text2);">Ticked: <b id="amRwSelN">${R.sel.size}</b></span>
-    <a href="#" onclick="event.preventDefault();amRwAll(true)" style="font-size:12px;">all</a><a href="#" onclick="event.preventDefault();amRwAll(false)" style="font-size:12px;">none</a>
+    <label style="display:inline-flex;gap:5px;align-items:center;font-size:12px;font-weight:600;cursor:pointer;padding:3px 9px;border:1px solid var(--border2);border-radius:6px;"><input type="checkbox" id="amRwAllBox" ${R.posts.length && R.sel.size === R.posts.length ? 'checked' : ''} onchange="amRwAll(this.checked)"> Select all</label>
     <button onclick="amRwBulk('write')" style="${B('#c084fc')}">✍ Write</button><button onclick="amRwBulk('images')" style="${B('#38bdf8')}">🖼 Images</button>
     <select onchange="if(this.value){amRwBulk('status',this.value);this.value=''}" style="font-size:12px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"><option value="">Status →</option>${['Development', 'Review', 'Publish'].map(s => `<option>${s}</option>`).join('')}</select>
     <button onclick="amRwLoad(true)" title="Reload" style="${B('var(--text2)')}">↻</button>${R.log ? `<span style="font-size:12px;color:var(--text2);width:100%;">${esc(R.log)}</span>` : ''}</div>`;
