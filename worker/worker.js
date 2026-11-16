@@ -3700,6 +3700,7 @@ async function trendParentAction(env, ctx, body, invoke) {
     try { await runEnsureProps(env); const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(runId) } } }) });
       if (!r.ok) warn.push("Run not saved"); } catch (e) { warn.push("Run not saved: " + e.message); }
     try { await seriesKeywordSeed(env, [aid], idea.keywords.join("; ")); } catch (e) { warn.push("Keyword Seed not saved"); }
+    try { await runAssetEnsure(env, id, runId); } catch (e) { warn.push(e.message); }   // the run's Run asset, child of this Trend Parent (2026-11-16)
     await env.TRADES.put("route:" + aid, JSON.stringify({ from: id, fromType: "Trend Parent", run: runId, at: new Date().toISOString(),
       idea: { item: idea.item, platform: idea.platform, form: idea.form, keywords: idea.keywords, why: idea.why, score: idea.score },
       market: st.market ? { whatSells: st.market.whatSells, priceBands: st.market.priceBands, reviewPainPoints: st.market.reviewPainPoints, whiteSpace: st.market.whiteSpace } : null }));
@@ -3707,6 +3708,69 @@ async function trendParentAction(env, ctx, body, invoke) {
     return { ok: true, assetId: aid, kind, ...(warn.length ? { warning: warn.join(" · ") } : {}), ...st, running };
   }
   return { error: "op must be get · inputs · run · make" };
+}
+// ── RUN ASSET (operator 2026-11-16): "the run needs the deadline … create an asset type called run. series will create the run asset. series
+// will also write the single posts … but it will produce the run asset as a timing and coordination asset for the single posts. then we are going
+// to put the counts and deadlines on the run asset type." One Run asset per run: Asset Type "Run", a child of the Series / Trend Parent that
+// produced the run, Run = the run name, title / campaign / product / initiative copied from that parent. The run's posts stay the parent's
+// children (the Series still writes them) and keep their Run name — that name is what ties them to the Run asset. The Run asset carries the
+// run's Deadline; the dashboard counts Run assets (the posts are run output and aren't counted). KV runasset:<run name, lower case> → its id.
+const RUN_ASSET_TYPE = 'Run', RUN_HEAD_RX = /^(series|trend parent)$/i;
+async function runAssetEnsure(env, parentId, runId, deadline) {
+  runId = String(runId || '').trim(); parentId = hubAssetId(parentId || '');
+  if (!runId || /^none$/i.test(runId) || !/^[a-f0-9]{32}$/.test(parentId)) return null;
+  const k = 'runasset:' + runId.toLowerCase(), had = await env.TRADES.get(k);
+  if (had) { const pg = await ivPage(had).catch(() => null); if (pg && !pg.archived && !pg.in_trash) return { id: had, existing: true }; }
+  await runEnsureProps(env);
+  const par = await ivPage(parentId).catch(() => null), pp = par?.properties || {}; if (!par) return null;
+  const tid = ivRid(pp, 'Content Strategy'), cid = ivRid(pp, 'Campaign'), pid = ivRid(pp, 'Product'), rel = id => ({ relation: [{ id: ivDash(id) }] });
+  const props = { 'Asset Title': { title: [{ text: { content: runId.slice(0, 300) } }] }, 'Asset Type': { select: { name: RUN_ASSET_TYPE } }, 'Asset Status': { select: { name: 'Development' } },
+    'Parent Asset': rel(parentId), Run: { rich_text: ivRt(runId) }, ...(tid ? { 'Content Strategy': rel(tid) } : {}), ...(cid ? { Campaign: rel(cid) } : {}), ...(pid ? { Product: rel(pid) } : {}) };
+  for (const f of ['Initiative', 'Sub Initiative']) { const t = hubRichText(pp[f]?.rich_text); if (t) props[f] = { rich_text: ivRt(t) }; }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(deadline || '')) props.Deadline = { date: { start: deadline } };
+  const r = await fetch('https://api.notion.com/v1/pages', { method: 'POST', headers: ivHdr(), body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error('Run asset not created: ' + (d.message || r.status));
+  const id = hubAssetId(d.id); await env.TRADES.put(k, id); return { id, created: true };
+}
+async function runAssetForParent(env, parentId, runId) {   // only a Series / Trend Parent produces a Run asset
+  const pg = await ivPage(hubAssetId(parentId || '')).catch(() => null);
+  return pg && RUN_HEAD_RX.test(String(pg.properties?.['Asset Type']?.select?.name || '').trim()) ? runAssetEnsure(env, parentId, runId) : null;
+}
+// one-off (cron, flag runasset:backfill:v1): a Run asset for every existing run made by a Series / Trend Parent (the parent most of its posts sit
+// under), carrying the posts' deadline; then (flag deadline:clear:v1) the blanket deadlines come off everything that isn't a Run asset —
+// operator: "take the deadline off of everything that we just gave a deadline". Log: KV runasset:backfill:log.
+async function runAssetBackfillTick(env) {
+  const log = (await env.TRADES.get('runasset:backfill:log', 'json').catch(() => null)) || [];
+  const say = async x => { log.unshift({ at: new Date().toISOString(), ...x }); await env.TRADES.put('runasset:backfill:log', JSON.stringify(log.slice(0, 300))); };
+  if (!(await env.TRADES.get('runasset:backfill:v1'))) {
+    const rows = (await notionQuery(ASSETS_DB, { filter: { property: 'Run', rich_text: { is_not_empty: true } } })).filter(x => !x.archived && !x.in_trash);
+    const runs = new Map();
+    for (const x of rows) { const p = x.properties || {}, run = hubRichText(p.Run?.rich_text).trim(), ty = p['Asset Type']?.select?.name || '';
+      if (!run || /^none$/i.test(run) || ty === RUN_ASSET_TYPE) continue;
+      const o = runs.get(run) || { parents: {}, dl: '' }; const par = ivRid(p, 'Parent Asset'); if (par) o.parents[par] = (o.parents[par] || 0) + 1;
+      const dl = p.Deadline?.date?.start || ''; if (dl > o.dl) o.dl = dl.slice(0, 10); runs.set(run, o); }
+    const ptype = {}; let made = 0;
+    for (const [run, o] of runs) {
+      if (await env.TRADES.get('runasset:' + run.toLowerCase())) continue;
+      if (await env.TRADES.get('runasset:skip:' + run.toLowerCase())) continue;
+      let head = '';
+      for (const [pid] of Object.entries(o.parents).sort((a, b) => b[1] - a[1])) {
+        if (!(pid in ptype)) { const pg = await ivPage(pid).catch(() => null); ptype[pid] = pg && !pg.archived && !pg.in_trash ? String(pg.properties?.['Asset Type']?.select?.name || '') : ''; }
+        if (RUN_HEAD_RX.test(ptype[pid].trim())) { head = pid; break; } }
+      if (!head) { await env.TRADES.put('runasset:skip:' + run.toLowerCase(), '1'); await say({ run, skipped: 'no Series / Trend Parent over its posts' }); continue; }
+      try { const r = await runAssetEnsure(env, head, run, o.dl); await say({ run, parent: head, runAsset: r && r.id, deadline: o.dl || '' }); } catch (e) { await say({ run, error: e.message }); return { done: false }; }
+      if (++made >= 8) return { done: false, made };
+    }
+    await env.TRADES.put('runasset:backfill:v1', new Date().toISOString()); await say({ backfill: 'done' });
+  }
+  if (await env.TRADES.get('deadline:clear:v1')) return { done: true };
+  const dl = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Deadline', date: { equals: '2026-11-22' } }, { property: 'Asset Type', select: { does_not_equal: RUN_ASSET_TYPE } }] } }).catch(e => { console.error('deadline clear', e.message); return null; }));
+  if (!dl) return { done: false };
+  let n = 0;
+  for (const x of dl.slice(0, 40)) { const r = await fetch('https://api.notion.com/v1/pages/' + x.id, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: { Deadline: { date: null } } }) });
+    if (r.ok) n++; await new Promise(res => setTimeout(res, 350)); }
+  if (dl.length <= 40) { await env.TRADES.put('deadline:clear:v1', new Date().toISOString()); await say({ deadlinesCleared: 'done', last: n }); return { done: true }; }
+  await say({ deadlinesCleared: n, left: dl.length - n }); return { done: false };
 }
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
@@ -3747,9 +3811,10 @@ async function createRunAssets(env, body) {
       await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Run Status": { select: { name: "Held" } } } }) }).catch(() => {}); }
     out.push({ index: i, assetId: aid, url: "https://app.notion.com/" + aid, assetType, assetStatus: status, runStatus: ok ? "Queued" : "Held", parentAssetId: parentId, titleId });
   }
+  let runAsset = null; if (out.some(x => x.assetId)) { try { runAsset = await runAssetForParent(env, parentId, runId); } catch (e) { runAsset = { error: e.message }; } }   // the run's Run asset (2026-11-16)
   const log = (await env.TRADES.get("run:log:" + runId, "json")) || [];
   await env.TRADES.put("run:log:" + runId, JSON.stringify([...log, ...out.map(x => ({ ...x, at: new Date().toISOString() }))].slice(-500)), { expirationTtl: 365 * 86400 });
-  return { ok: out.some(x => x.assetId), runId, parentAssetId: parentId, titleId, created: out.filter(x => x.assetId).length, results: out };
+  return { ok: out.some(x => x.assetId), runId, parentAssetId: parentId, titleId, created: out.filter(x => x.assetId).length, results: out, ...(runAsset ? { runAsset } : {}) };
 }
 async function setRunStatus(env, body) {
   const aid = hubAssetId(body.assetId || ""), st = String(body.runStatus || body.status || "");
@@ -59174,6 +59239,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
+      cw("runAssetBackfillTick", runAssetBackfillTick(env).then(r => { if (r && !r.done) console.log("run assets:", JSON.stringify(r).slice(0, 300)); }));   // Run assets for existing runs, then blanket deadlines off (2026-11-16)
       cw("extWriteMigrateTick", extWriteMigrateTick(env).then(r => { if (r && !r.done) console.log("extWrite migrate:", JSON.stringify(r).slice(0, 300)); }));   // old KV pre-writes → External Write (2026-11-12)
       cw("contentPlanCronTick", (async () => { if ((await env.TRADES.get(CPC_ON)) !== "1") return;   // Content Plan cron — off unless switched on
         const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
