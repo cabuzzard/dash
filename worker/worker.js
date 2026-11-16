@@ -3742,7 +3742,10 @@ async function runAssetForParent(env, parentId, runId) {   // only a Series / Tr
 async function runAssetBackfillTick(env) {
   const log = (await env.TRADES.get('runasset:backfill:log', 'json').catch(() => null)) || [];
   const say = async x => { log.unshift({ at: new Date().toISOString(), ...x }); await env.TRADES.put('runasset:backfill:log', JSON.stringify(log.slice(0, 300))); };
-  if (!(await env.TRADES.get('runasset:backfill:v1'))) {
+  // pass 1 (v1): Series / Trend Parent producers only. Pass 2 (v2, operator 2026-11-16 "build everything"): every other run gets its Run
+  // asset under the parent most of its posts sit under, whatever that parent is (External Parent, Pillar …).
+  for (const pass of [{ flag: 'runasset:backfill:v1', skip: 'runasset:skip:', any: false }, { flag: 'runasset:backfill:v2', skip: 'runasset:skip2:', any: true }]) {
+  if (!(await env.TRADES.get(pass.flag))) {
     const rows = (await notionQuery(ASSETS_DB, { filter: { property: 'Run', rich_text: { is_not_empty: true } } })).filter(x => !x.archived && !x.in_trash);
     const runs = new Map();
     for (const x of rows) { const p = x.properties || {}, run = hubRichText(p.Run?.rich_text).trim(), ty = p['Asset Type']?.select?.name || '';
@@ -3752,17 +3755,17 @@ async function runAssetBackfillTick(env) {
     const ptype = {}; let made = 0;
     for (const [run, o] of runs) {
       if (await env.TRADES.get('runasset:' + run.toLowerCase())) continue;
-      if (await env.TRADES.get('runasset:skip:' + run.toLowerCase())) continue;
+      if (await env.TRADES.get(pass.skip + run.toLowerCase())) continue;
       let head = '';
       for (const [pid] of Object.entries(o.parents).sort((a, b) => b[1] - a[1])) {
         if (!(pid in ptype)) { const pg = await ivPage(pid).catch(() => null); ptype[pid] = pg && !pg.archived && !pg.in_trash ? String(pg.properties?.['Asset Type']?.select?.name || '') : ''; }
-        if (RUN_HEAD_RX.test(ptype[pid].trim())) { head = pid; break; } }
-      if (!head) { await env.TRADES.put('runasset:skip:' + run.toLowerCase(), '1'); await say({ run, skipped: 'no Series / Trend Parent over its posts' }); continue; }
+        if (pass.any ? !!ptype[pid].trim() : RUN_HEAD_RX.test(ptype[pid].trim())) { head = pid; break; } }
+      if (!head) { await env.TRADES.put(pass.skip + run.toLowerCase(), '1'); await say({ run, skipped: pass.any ? 'no parent over its posts' : 'no Series / Trend Parent over its posts' }); continue; }
       try { const r = await runAssetEnsure(env, head, run, o.dl); await say({ run, parent: head, runAsset: r && r.id, deadline: o.dl || '' }); } catch (e) { await say({ run, error: e.message }); return { done: false }; }
       if (++made >= 8) return { done: false, made };
     }
-    await env.TRADES.put('runasset:backfill:v1', new Date().toISOString()); await say({ backfill: 'done' });
-  }
+    await env.TRADES.put(pass.flag, new Date().toISOString()); await say({ backfill: 'done', pass: pass.flag });
+  } }
   if (await env.TRADES.get('deadline:clear:v1')) return { done: true };
   const dl = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: 'Deadline', date: { equals: '2026-11-22' } }, { property: 'Asset Type', select: { does_not_equal: RUN_ASSET_TYPE } }] } }).catch(e => { console.error('deadline clear', e.message); return null; }));
   if (!dl) return { done: false };
@@ -3771,6 +3774,27 @@ async function runAssetBackfillTick(env) {
     if (r.ok) n++; await new Promise(res => setTimeout(res, 350)); }
   if (dl.length <= 40) { await env.TRADES.put('deadline:clear:v1', new Date().toISOString()); await say({ deadlinesCleared: 'done', last: n }); return { done: true }; }
   await say({ deadlinesCleared: n, left: dl.length - n }); return { done: false };
+}
+// one-off (operator 2026-11-16: "these are all runs of a woodworking asset and title. just one title and different runs"): every Woodwork R1
+// item moves onto the one title "Wood Crafts: woodworking" under its Series, and the run splits by the title it came from — Home / Garden /
+// Holiday — each with its own Run asset. Post Sliders move with their posts (title + their group's run, so the live slides stay the same) and
+// keep their Sub Page parent; the Sub Page itself goes under the Series and leaves the run (it is the hub page, not run output). Flag woodwork:move:v1.
+const WW_MOVE = { title: '4161f7d3a4bb81a0861dddbf374c84aa', series: '41a1f7d3a4bb8156a573d6a58635ea06', fallback: 'Woodwork R1 · Home',
+  groups: { '4161f7d3a4bb81779ee2c329f2fee050': 'Woodwork R1 · Home', '4171f7d3a4bb81708afdcd098024ea25': 'Woodwork R1 · Garden', '4171f7d3a4bb818799bcca20b9e2cb53': 'Woodwork R1 · Holiday' } };
+async function woodworkMoveTick(env) {
+  if (await env.TRADES.get('woodwork:move:v1')) return { done: true };
+  const rows = (await notionQuery(ASSETS_DB, { filter: { property: 'Run', rich_text: { equals: 'Woodwork R1' } } })).filter(x => !x.archived && !x.in_trash && x.properties?.['Asset Type']?.select?.name !== RUN_ASSET_TYPE);
+  if (!rows.length) { await env.TRADES.put('woodwork:move:v1', new Date().toISOString()); return { done: true }; }
+  const rel = id => ({ relation: [{ id: ivDash(id) }] }); let n = 0, bad = [];
+  for (const x of rows.slice(0, 35)) { const p = x.properties || {}, ty = String(p['Asset Type']?.select?.name || ''), run = WW_MOVE.groups[ivRid(p, 'Content Strategy')] || WW_MOVE.fallback;
+    const props = /^sub page$/i.test(ty) ? { 'Content Strategy': rel(WW_MOVE.title), 'Parent Asset': rel(WW_MOVE.series), Run: { rich_text: [] } }
+      : /^post slider$/i.test(ty) ? { 'Content Strategy': rel(WW_MOVE.title), Run: { rich_text: ivRt(run) } }
+      : { 'Content Strategy': rel(WW_MOVE.title), 'Parent Asset': rel(WW_MOVE.series), Run: { rich_text: ivRt(run) } };
+    const r = await fetch('https://api.notion.com/v1/pages/' + x.id, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+    if (r.ok) n++; else bad.push(hubAssetId(x.id)); await new Promise(res => setTimeout(res, 350)); }
+  const log = (await env.TRADES.get('runasset:backfill:log', 'json').catch(() => null)) || [];
+  await env.TRADES.put('runasset:backfill:log', JSON.stringify([{ at: new Date().toISOString(), woodworkMoved: n, left: rows.length - n, ...(bad.length ? { failed: bad } : {}) }, ...log].slice(0, 300)));
+  return { done: false, moved: n };
 }
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
@@ -59239,6 +59263,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
+      cw("woodworkMoveTick", woodworkMoveTick(env).then(r => { if (r && !r.done) console.log("woodwork move:", JSON.stringify(r)); }));   // Woodwork R1 → one title, runs by former title (2026-11-16)
       cw("runAssetBackfillTick", runAssetBackfillTick(env).then(r => { if (r && !r.done) console.log("run assets:", JSON.stringify(r).slice(0, 300)); }));   // Run assets for existing runs, then blanket deadlines off (2026-11-16)
       cw("extWriteMigrateTick", extWriteMigrateTick(env).then(r => { if (r && !r.done) console.log("extWrite migrate:", JSON.stringify(r).slice(0, 300)); }));   // old KV pre-writes → External Write (2026-11-12)
       cw("contentPlanCronTick", (async () => { if ((await env.TRADES.get(CPC_ON)) !== "1") return;   // Content Plan cron — off unless switched on
