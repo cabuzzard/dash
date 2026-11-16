@@ -7736,7 +7736,9 @@ function hdPlace(plan, topics) {   // most specific match wins: title, then prod
 // Run members aren't counted (operator 2026-11-16: "we just exclude anything with a run reference in it from counts … not the runs themselves but
 // anything that belongs to a run by the definition that it references a run in its run reference field"). They stay full assets everywhere
 // (editing, images, sub-asset fields); only the card counts (Plan / Dev / Pub / All) skip them. Their titles still show.
-function hdSP(a) { const r = a ? String(a.run || '').trim() : ''; return !!r && !/^none$/i.test(r); }
+// External Parents never belong to a run (operator 2026-11-16: "external parents shouldnt belong to runs. but they might have directions in them to
+// create runs") — a Run name on one is a direction, not membership, so they always count.
+function hdSP(a) { const r = a ? String(a.run || '').trim() : ''; return !!r && !/^none$/i.test(r) && !/^external parent$/i.test(String(a.rawAssetType || a.assetType || '').trim()); }
 const hdAssetsOf = n => n.assets ? n.assets : n.titles ? n.titles.flatMap(hdAssetsOf) : n.products ? n.products.flatMap(hdAssetsOf) : [];
 function hdCount(assets, planRows) {   // per asset type → { label, goal, dev, pub }, plus the total
   const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], goalIds: [] }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
