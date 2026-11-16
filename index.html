@@ -9219,7 +9219,7 @@ function hdRender() {
 }
 // ── 📥 Asset import (operator 2026-11-11: "an asset import link on the hub dashboard — it takes a json on upload and asks what title to upload to
 // and what parent asset; title required, parent not"). The JSON (the external writer's format): {run, title?, assetType?, posts:[{key, line, thumbnail,
-// prewrite:{…}, assetType?}]}. Thumbnails are picked as files and matched by name. One asset per post, one at a time (worker importAssetItem:
+// prewrite:{…}, assetType?, keep?}], keep?} — keep = how good the copy is (Literal / Verbatim / Light edit / Rewrite → External Keep). Thumbnails are picked as files and matched by name. One asset per post, one at a time (worker importAssetItem:
 // createAsset at Development + Run + the post's copy saved as its PRE-WRITE), then its thumbnail (uploadAssetImage → the asset's Images).
 // A post's key is remembered per title, so re-importing the same file skips what is already there. Nothing is written or published here.
 let AI = null;
@@ -9250,7 +9250,7 @@ async function aiJson(input) {
     const d = JSON.parse((await file.text()).trim().replace(AI_FENCE, ''));
     // items[] (listing + its single post) expand to two posts each: the listing first, then its stand-alone promo post
     const posts = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items.flatMap(it => [
-        ...(it.listing ? [{ key: it.key, line: it.line, thumbnail: it.thumbnail, assetType: d.assetType || 'Etsy Listing', prewrite: it.listing }] : []),
+        ...(it.listing ? [{ key: it.key, line: it.line, thumbnail: it.thumbnail, assetType: d.assetType || 'Etsy Listing', prewrite: it.listing, keep: it.keep }] : []),
         ...(it.singlePost ? [{ key: String(it.key || it.line || '') + '-post', line: (it.line || it.key) + ' — Single Post', thumbnail: it.singlePost.thumbnail || it.thumbnail, assetType: 'single post', standalone: true, promotes: it.listing ? it.key : '',
           prewrite: Object.fromEntries(Object.entries(it.singlePost).filter(([k]) => k !== 'thumbnail')) }] : [])])
       : d && Array.isArray(d.posts) ? d.posts : null;
@@ -9333,7 +9333,7 @@ async function aiRun() {
     const p = posts[i], key = aiKey(p, i), name = p.line || key;
     const src = p.promotes ? posts.find(q => aiKey(q, posts.indexOf(q)) === p.promotes) : null;
     const r = await call('importAssetItem', { titleId: A.tid, campaignId: hdNid(A.hub.campaignId), productId: t.productId ? hdNid(t.productId) : undefined, parentAssetId: p.standalone ? undefined : (A.parent || undefined),
-      run: A.run.trim(), key, assetTitle: p.line || (p.prewrite && p.prewrite['Platform Title']) || key, assetType: p.assetType || A.type, prewrite: p.prewrite,
+      run: A.run.trim(), key, assetTitle: p.line || (p.prewrite && p.prewrite['Platform Title']) || key, assetType: p.assetType || A.type, prewrite: p.prewrite, keep: p.keep || (A.data && A.data.keep) || undefined,
       ...(p.promotes && byKey[p.promotes] ? { route: { from: byKey[p.promotes], fromType: 'Etsy Listing', listing: src ? src.prewrite : null } } : {}) }).catch(e => ({ error: e.message }));
     if (r && r.assetId) byKey[key] = r.assetId;
     if (!r || r.error) {

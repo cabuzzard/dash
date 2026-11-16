@@ -2376,6 +2376,18 @@ const EXT_KEEP = {
   'Rewrite': { band: [0, 100], rule: "REWRITE: the external write is a starting draft, not a source of facts. Keep what fits the contract and the packet sources, correct whatever breaks a rule, and drop any fact the other sources do not support." },
 };
 const EXT_KEEP_DEFAULT = 'Rewrite';
+// PRE-WRITER COPY (operator 2026-11-16): "how to treat externally written assets that are pre writer … some of them might be well written …
+// the writer has to be aware of pre written material and adjust its writing". An asset with no External Write whose contract fields already
+// hold copy the writer never wrote (no Interview Kept % and no External Kept % — the writer stamps one on every whole-asset write) carries
+// copy written outside the writer. Before a whole-asset write that copy is saved onto its External Write (source "pre-writer copy …") so it is
+// kept and visible, and the writer treats it as an external write. Keep = the asset's External Keep, else the row's "external keep", else
+// LIGHT EDIT — found copy may be finished work, so it is not thrown away as a loose draft. Set External Keep on the asset to change that.
+const EXT_FOUND_KEEP = 'Light edit', EXT_FOUND_MIN = 150;
+function extFoundCopy(p, contract, cur) {
+  if (p['Interview Kept %']?.number != null || p['External Kept %']?.number != null) return null;
+  const f = Object.fromEntries(contract.map(x => [x.name, String(cur[x.name] || '').trim()]).filter(([, v]) => v));
+  return Object.values(f).join('').length >= EXT_FOUND_MIN ? f : null;
+}
 async function extEnsureProps(env) {
   if (await env.TRADES.get('extwrite:props:v1')) return;
   const r = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
@@ -2651,9 +2663,12 @@ async function writeContractAsset(env,assetId,opts={}) {
   const ruleGuide=await writeRuleGuidance(env,row.name);   // the operator's own guidance on this row's rules (Asset modal, 2026-10-30)
   const assetDir=hubRichText(p['Writer Directions']?.rich_text).trim();if(assetDir)packet.assetDirections=assetDir.slice(0,WRITER_DIRECTIONS_MAX);   // last in the chain (2026-11-09)
   const routed=await env.TRADES.get('route:'+hubAssetId(page.id),'json').catch(()=>null);if(routed)packet.routedInput=routed;   // information ROUTED to this asset (2026-11-11) — not a parent
-  const ext=await extWriteGet(env,hubAssetId(page.id),page).catch(()=>null);   // EXTERNAL WRITE (2026-11-12): the asset's External Write field (old KV pre-write as fallback)
+  let ext=await extWriteGet(env,hubAssetId(page.id),page).catch(()=>null);   // EXTERNAL WRITE (2026-11-12): the asset's External Write field (old KV pre-write as fallback)
+  let found=null;if(!(ext&&String(ext.text||'').trim())&&!only){const fc=extFoundCopy(p,fullContract,cur);if(fc){found=Object.keys(fc);   // PRE-WRITER COPY (2026-11-16)
+    ext={text:JSON.stringify(fc,null,2),source:'pre-writer copy — found in the asset \'s own fields',where:'found'};
+    if(!opts.dryRun){try{await extWriteSet(env,hubAssetId(page.id),ext.text,ext.source+' '+new Date().toISOString().slice(0,10));}catch(e){console.error('pre-writer copy save:',e.message);}}}}
   if(ext&&String(ext.text||'').trim())packet.externalWrite=String(ext.text).slice(0,14000);
-  const extKeep=EXT_KEEP[p['External Keep']?.select?.name]?p['External Keep'].select.name:EXT_KEEP[row.extKeep]?row.extKeep:EXT_KEEP_DEFAULT,extBand=EXT_KEEP[extKeep].band;
+  const extKeep=EXT_KEEP[p['External Keep']?.select?.name]?p['External Keep'].select.name:EXT_KEEP[row.extKeep]?row.extKeep:found?EXT_FOUND_KEEP:EXT_KEEP_DEFAULT,extBand=EXT_KEEP[extKeep].band;
   const extLit=packet.externalWrite?extFields(packet.externalWrite,contract):{},extPlain=Object.keys(extLit).length?Object.values(extLit).join('\n'):(packet.externalWrite||'');
   const runScope=(only?'\n\nTHIS RUN WRITES ONLY these contract fields: '+contract.map(f=>f.name).join(', ')+'. The packet\'s currentFields show the asset\'s other fields — keep consistent with them, do not rewrite them.':'')
     +(Array.isArray(opts.sources)?'\n\nSOURCES FOR THIS RUN (operator choice): '+(packet.sourcesChosen.join(', ')||'none beyond the method, voice and hub')+'. Write from these only.':'')
@@ -2661,11 +2676,11 @@ async function writeContractAsset(env,assetId,opts={}) {
   const styleFull=runScope+styleText+(seoList.length?'\nKEYWORDS TO PLACE (SEO): put each of these exact phrases, worded naturally, in the title, an H2 or the first paragraph: '+seoList.join('; ')+'.':'')
     +(ruleGuide?'\n\nOPERATOR GUIDANCE ON THESE WRITING RULES (the operator\'s own direction — follow it within the contract):\n'+ruleGuide:'')
     +(packet.routedInput?'\n\nROUTED INPUT: the packet\'s "routedInput" is information routed to this asset from a '+(packet.routedInput.fromType||'source')+' (run "'+(packet.routedInput.run||'')+'") — it is NOT this asset\'s parent. What it carries (an idea, a listing, market notes) is this asset\'s subject and sourced facts you may use — e.g. a promo post sells the routed listing. Do not invent details it does not give.':'')
-    +(packet.externalWrite?'\n\nEXTERNAL WRITE — KEEP: '+extKeep+'. The packet\'s "externalWrite" is copy written for this asset outside the dash'+(ext&&ext.source?' ('+String(ext.source).slice(0,120)+')':'')+', to this type\'s fields. '+EXT_KEEP[extKeep].rule:'')
+    +(packet.externalWrite?'\n\nEXTERNAL WRITE — KEEP: '+extKeep+'. The packet\'s "externalWrite" is copy written for this asset outside the dash'+(ext&&ext.source?' ('+String(ext.source).slice(0,120)+')':'')+', to this type\'s fields. '+EXT_KEEP[extKeep].rule+(found?' This copy was already in the asset\'s own fields before the writer ran (pre-writer copy): someone wrote it, and it may be finished work. Treat it as the asset\'s existing copy — build on it at this keep level, never replace good lines with new wording of your own.':' Pre-written material is someone\'s work for this asset: be aware of it in every field and adjust your writing to it — keep what already works at this keep level rather than writing past it.'):'')
     +(packet.assetDirections?'\n\nTHIS ASSET\'S DIRECTIONS (the packet\'s "assetDirections" — the operator\'s own directions saved on this asset, the LAST input in the chain): follow them within the contract. They decide emphasis, this asset\'s relation to its parent / children / siblings, which input to lean on and which keywords to focus on, and they win over earlier sources on those choices. They never add facts the other sources do not support.':'');
   if(opts.dryRun)return {dryRun:true,packet,instruction,style:{keep:style.keep,purpose:style.purpose,band:WRITE_KEEP[style.keep].band,text:styleFull},
     rules:{row:row.name,mapped:row.mapped,inputs:row.inputs,contract:contract.map(f=>({name:f.name,rule:f.rule})),guidance:ruleGuide},method:{id:methodId,name},qa:style.keep==='Q&A',
-    external:packet.externalWrite?{keep:extKeep,band:extBand,rule:EXT_KEEP[extKeep].rule,source:(ext&&ext.source)||'',where:(ext&&ext.where)||'',fields:Object.keys(extLit)}:null,
+    external:packet.externalWrite?{keep:extKeep,band:extBand,rule:EXT_KEEP[extKeep].rule,source:(ext&&ext.source)||'',where:(ext&&ext.where)||'',fields:Object.keys(extLit),...(found?{preWriter:found}:{})}:null,
     styleSource:{keep:style.own.keep?'this asset (Interview Keep)':style.default.from||'row / type default',purpose:style.own.purpose?'this asset (Write Purpose)':style.default.from||'row / type default',rowKeep:row.keep||'',rowPurpose:row.purpose||''},keepRule:(WRITE_KEEP[style.keep]||{}).rule||'',purposeRule:WRITE_PURPOSE[style.purpose]||'',seoKeywords:seoKws,
     process:{model:'claude-sonnet-4-6',maxTokens:8000,tool:'write_contract_fields (one string per contract field, all required)',correction:'one corrective pass when a contract rule fails, a keyword is not placed or the kept % is outside the band ±15 — kept only if it scores better',trim:'a field over its ≤ N characters rule (and under 600 chars) is trimmed at a sentence, else word, boundary',protected:['Status','Asset Status','Hub Section','Content Hub','Publishing Date','Deployment Status','Site URL','Content URL','Method'],saves:'only the contract fields + Method (+ Interview Kept %, and Interview Sync = In Sync when interview answers were used); never status or publishing',enforcement:'advisory — violations reported, fields still saved; written = no violations',log:'writeasset:log (last 200 runs)'}};
   const litPass=extKeep==='Literal'?Object.fromEntries(contract.filter(f=>String(extLit[f.name]||'').trim()&&!validateWritingContract([f],{[f.name]:String(extLit[f.name])}).length).map(f=>[f.name,String(extLit[f.name])])):{};
@@ -2704,10 +2719,10 @@ async function writeContractAsset(env,assetId,opts={}) {
   // a write that used the interview answers brings the asset back In Sync (clears ↻ rewrite due / 'written without interview') — 2026-10-24
   if(answersOnly.trim()&&!only){properties['Interview Sync']={select:{name:'In Sync'}};if(p[TOPICAL_REWRITE_PROP])properties[TOPICAL_REWRITE_PROP]={checkbox:false};}
   await saveExistingAssetWriting(page,properties,[]);
-  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{}),...(titleImages.length?{titleImages:titleImages.length}:{}),...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,modelSkipped:litAll}}:{}),...(productImages?{productImages:{placed:productImages.placed||0,made:productImages.made||0,failed:productImages.failed||[],...(productImages.error?{error:productImages.error}:{})}}:{})};
+  const run={assetId:hubAssetId(page.id),method:name,methodId,violations,written:violations.length===0,timestamp:new Date().toISOString(),...(only?{fields:contract.map(f=>f.name)}:{}),...(Array.isArray(opts.sources)?{sources:packet.sourcesChosen}:{}),...(opts.guidance?{guided:true}:{}),...(titleImages.length?{titleImages:titleImages.length}:{}),...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,modelSkipped:litAll,...(found?{preWriter:true}:{})}}:{}),...(productImages?{productImages:{placed:productImages.placed||0,made:productImages.made||0,failed:productImages.failed||[],...(productImages.error?{error:productImages.error}:{})}}:{})};
   const log=await env.TRADES.get('writeasset:log','json')||[];await env.TRADES.put('writeasset:log',JSON.stringify([run,...log].slice(0,200)));
   return {ok:true,fields:Object.keys(fields),values:only?fields:undefined,violations,written:run.written,style:{keep:style.keep,purpose:style.purpose,keptPct,band,corrected,seo},
-    ...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,band:extBand,pinned:Object.keys(litPass),modelSkipped:litAll}}:{})};
+    ...(packet.externalWrite?{external:{keep:extKeep,kept:c.extKept,band:extBand,pinned:Object.keys(litPass),modelSkipped:litAll,...(found?{preWriter:found}:{})}}:{})};
 }
 
 // Campaign Research (the IF graph's campaign-level research) for the writer: the richest Research record of the campaign, its filled text fields.
@@ -20687,6 +20702,11 @@ export default {
             if (!r.ok) warn.push("Run not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); }
           const pw = body.prewrite, text = pw == null ? "" : typeof pw === "string" ? pw.trim() : JSON.stringify(pw, null, 2);
           if (text) { try { await extWriteSet(env, id, text, run || key); } catch (e) { warn.push(e.message); } }   // EXTERNAL WRITE on the asset (2026-11-12)
+          // the external writer says how good the copy is (2026-11-16): keep = Literal (final) · Verbatim (well written) · Light edit · Rewrite (rough)
+          const kp = Object.keys(EXT_KEEP).find(k => k.toLowerCase() === String(body.keep || '').trim().toLowerCase());
+          if (body.keep && !kp) warn.push('keep "' + String(body.keep).slice(0, 30) + '" is not one of ' + Object.keys(EXT_KEEP).join(' / '));
+          if (text && kp) { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "External Keep": { select: { name: kp } } } }) });
+            if (!r.ok) warn.push("External Keep not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); }
           else warn.push("no external write in this post");
           const rt = body.route; if (rt && typeof rt === "object" && /^[0-9a-f]{32}$/i.test(hubAssetId(String(rt.from || ""))))   // information routing, not a parent (2026-11-11)
             await env.TRADES.put("route:" + id, JSON.stringify({ from: hubAssetId(rt.from), fromType: String(rt.fromType || "").slice(0, 60), run, at: new Date().toISOString(),
