@@ -2665,7 +2665,7 @@ async function writeContractAsset(env,assetId,opts={}) {
   const routed=await env.TRADES.get('route:'+hubAssetId(page.id),'json').catch(()=>null);if(routed)packet.routedInput=routed;   // information ROUTED to this asset (2026-11-11) — not a parent
   let ext=await extWriteGet(env,hubAssetId(page.id),page).catch(()=>null);   // EXTERNAL WRITE (2026-11-12): the asset's External Write field (old KV pre-write as fallback)
   let found=null;if(!(ext&&String(ext.text||'').trim())&&!only){const fc=extFoundCopy(p,fullContract,cur);if(fc){found=Object.keys(fc);   // PRE-WRITER COPY (2026-11-16)
-    ext={text:JSON.stringify(fc,null,2),source:'pre-writer copy — found in the asset \'s own fields',where:'found'};
+    ext={text:JSON.stringify(fc,null,2),source:'pre-writer copy — found in the asset\'s own fields',where:'found'};
     if(!opts.dryRun){try{await extWriteSet(env,hubAssetId(page.id),ext.text,ext.source+' '+new Date().toISOString().slice(0,10));}catch(e){console.error('pre-writer copy save:',e.message);}}}}
   if(ext&&String(ext.text||'').trim())packet.externalWrite=String(ext.text).slice(0,14000);
   const extKeep=EXT_KEEP[p['External Keep']?.select?.name]?p['External Keep'].select.name:EXT_KEEP[row.extKeep]?row.extKeep:found?EXT_FOUND_KEEP:EXT_KEEP_DEFAULT,extBand=EXT_KEEP[extKeep].band;
