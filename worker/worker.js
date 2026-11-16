@@ -47203,57 +47203,63 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       }
 
       // â"€â"€ getLogins  -  full login records with campaignIds and platformIds â"€â"€
-      // 🧩 Offers + 🔀 Lead Routing (operator 2026-11-15): both Notion DBs, every row, read-only, for the All Output tab's two sections.
-      // Relations come back as {id, name}; related page titles are resolved once per request (small sets: Products, Logins, Offers).
-      if (body.action === "getOffersRouting") {
-        const OFFERS_DB = "4191f7d3a4bb81c899e1ca2a2e69e3d2", ROUTING_DB = "4191f7d3a4bb8196a1ccf08919e8cf86";
+      // 🔀 Lead Routing (operator 2026-11-15): a blank table the operator builds out in the All Output tab.
+      // Columns = the Notion DB's properties (display order kept in KV routing:colorder); every cell is plain text.
+      // 🧩 Offers was removed the same day (micro services stay single posts in runs).
+      if (["getRouting", "routingAddColumn", "routingAddRow", "routingSetCell"].includes(body.action)) {
+        const RDB = "4191f7d3a4bb8196a1ccf08919e8cf86", OK = "routing:colorder";
+        const H = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const txt = a => (a || []).map(t => t.plain_text).join("");
-        const flat = p => { const o = {}; for (const [k, v] of Object.entries(p || {})) {
-          if (v.type === "title") o[k] = txt(v.title); else if (v.type === "rich_text") o[k] = txt(v.rich_text);
-          else if (v.type === "select") o[k] = v.select?.name || ""; else if (v.type === "number") o[k] = v.number;
-          else if (v.type === "formula") o[k] = v.formula?.[v.formula?.type] ?? "";
-          else if (v.type === "relation") o[k] = (v.relation || []).map(r => r.id.replace(/-/g, ""));
-          else if (v.type === "url") o[k] = v.url || ""; else if (v.type === "checkbox") o[k] = !!v.checkbox; }
-          return o; };
-        const [offRaw, rtRaw] = await Promise.all([
-          notionQuery(OFFERS_DB, { sorts: [{ timestamp: "created_time", direction: "ascending" }] }),
-          notionQuery(ROUTING_DB, { sorts: [{ timestamp: "created_time", direction: "ascending" }] })]);
-        const offers = offRaw.map(r => ({ id: r.id.replace(/-/g, ""), url: r.url, ...flat(r.properties) }));
-        const routing = rtRaw.map(r => ({ id: r.id.replace(/-/g, ""), url: r.url, ...flat(r.properties) }));
-        const names = {}; offers.forEach(o => { names[o.id] = o.Offer || ""; });
-        const want = new Set(); [...offers, ...routing].forEach(o => ["Product", "Login", "Offers"].forEach(k => (Array.isArray(o[k]) ? o[k] : []).forEach(id => { if (!(id in names)) want.add(id); })));
-        const ids = [...want];
-        for (let i = 0; i < ids.length; i += 6) await Promise.all(ids.slice(i, i + 6).map(async id => {
-          try { const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
-            const d = await r.json(); const tp = Object.values(d.properties || {}).find(v => v.type === "title"); names[id] = tp ? txt(tp.title) : ""; }
-          catch (e) { names[id] = ""; } }));
-        const rel = o => { for (const k of ["Product", "Login", "Offers"]) if (Array.isArray(o[k])) o[k] = o[k].map(id => ({ id, name: names[id] || "(untitled)" })); return o; };
-        return json({ offers: offers.map(rel), routing: routing.map(rel),
-          offersUrl: "https://www.notion.so/" + OFFERS_DB, routingUrl: "https://www.notion.so/" + ROUTING_DB });
-      }
-      // ＋ Add from the All Output Offers / Lead Routing views: one new row, text / select / number fields only (relations are set in Notion).
-      if (body.action === "addOfferRouting") {
-        const SPEC = {
-          offers: { db: "4191f7d3a4bb81c899e1ca2a2e69e3d2", title: "Offer",
-            select: ["Type", "Tier", "Status", "Needs client A2P"], number: ["Cost / mo", "Price / mo", "Setup fee"],
-            text: ["Run", "What it does", "Includes", "Built with", "Ready now", "Who it is for", "Cost notes", "Price notes", "Notes"] },
-          routing: { db: "4191f7d3a4bb8196a1ccf08919e8cf86", title: "Route",
-            select: ["Source", "Status"], number: ["Step"],
-            text: ["Platform", "Posted by", "Call to action", "Contact point", "Stored in", "Cost", "Notes"] } };
-        const s = SPEC[body.table]; if (!s) return json({ error: "Unknown table" }, 400);
-        const f = body.fields || {}, title = String(f[s.title] || "").trim().slice(0, 200);
-        if (!title) return json({ error: s.title + " is required" }, 400);
-        const rt = v => [{ type: "text", text: { content: String(v).slice(0, 2000) } }];
-        const props = { [s.title]: { title: rt(title) } };
-        s.text.forEach(k => { if (f[k] != null && String(f[k]).trim() !== "") props[k] = { rich_text: rt(String(f[k]).trim()) }; });
-        s.select.forEach(k => { if (f[k]) props[k] = { select: { name: String(f[k]).replace(/,/g, " ").slice(0, 100) } }; });
-        s.number.forEach(k => { const n = Number(f[k]); if (f[k] !== undefined && f[k] !== "" && Number.isFinite(n)) props[k] = { number: n }; });
-        const resp = await fetch("https://api.notion.com/v1/pages", { method: "POST",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: s.db }, properties: props }) });
-        const d = await resp.json();
-        if (!resp.ok) return json({ error: d.message || "Notion error" }, 500);
-        return json({ ok: true, id: d.id.replace(/-/g, ""), url: d.url });
+        const rt = v => String(v).trim() === "" ? [] : [{ type: "text", text: { content: String(v).slice(0, 2000) } }];
+        const schema = async () => { const r = await fetch(`https://api.notion.com/v1/databases/${RDB}`, { headers: H }); const d = await r.json();
+          if (!r.ok) throw new Error(d.message || "Notion error"); return d.properties || {}; };
+        const ordered = async props => { let order = []; try { order = (await env.TRADES.get(OK, "json")) || []; } catch (e) {}
+          const names = Object.keys(props), title = names.find(n => props[n].type === "title");
+          const cols = [title, ...order.filter(n => n !== title && names.includes(n)), ...names.filter(n => n !== title && !order.includes(n))];
+          return cols.map(n => ({ name: n, type: props[n].type })); };
+        try {
+          if (body.action === "getRouting") {
+            const props = await schema(), cols = await ordered(props);
+            const rows = (await notionQuery(RDB, { sorts: [{ timestamp: "created_time", direction: "ascending" }] })).map(p => {
+              const c = {}; for (const [k, v] of Object.entries(p.properties || {})) {
+                if (v.type === "title") c[k] = txt(v.title); else if (v.type === "rich_text") c[k] = txt(v.rich_text);
+                else if (v.type === "select") c[k] = v.select?.name || ""; else if (v.type === "number") c[k] = v.number ?? "";
+                else if (v.type === "url") c[k] = v.url || ""; else if (v.type === "checkbox") c[k] = v.checkbox ? "yes" : "";
+                else if (v.type === "formula") c[k] = String(v.formula?.[v.formula?.type] ?? ""); else c[k] = ""; }
+              return { id: p.id.replace(/-/g, ""), url: p.url, c }; });
+            return json({ cols, rows, url: "https://www.notion.so/" + RDB });
+          }
+          if (body.action === "routingAddColumn") {
+            const name = String(body.name || "").trim().slice(0, 100);
+            if (!name) return json({ error: "Column name is required" }, 400);
+            const props = await schema(); if (props[name]) return json({ error: "That column already exists" }, 400);
+            const r = await fetch(`https://api.notion.com/v1/databases/${RDB}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { [name]: { rich_text: {} } } }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Notion error" }, 500);
+            const cols = await ordered(d.properties || {}); const order = cols.slice(1).map(c => c.name);
+            await env.TRADES.put(OK, JSON.stringify(order.filter(n => n !== name).concat(name)));
+            return json({ ok: true });
+          }
+          if (body.action === "routingAddRow") {
+            const props = await schema(), title = Object.keys(props).find(n => props[n].type === "title");
+            const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: H, body: JSON.stringify({ parent: { database_id: RDB }, properties: { [title]: { title: [] } } }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Notion error" }, 500);
+            return json({ ok: true, id: d.id.replace(/-/g, ""), url: d.url });
+          }
+          if (body.action === "routingSetCell") {
+            const id = String(body.id || "").replace(/[^0-9a-f]/gi, ""), col = String(body.col || ""), v = String(body.value ?? "");
+            if (!id || !col) return json({ error: "Missing row or column" }, 400);
+            const props = await schema(), p = props[col]; if (!p) return json({ error: "Unknown column" }, 400);
+            let val;
+            if (p.type === "title") val = { title: rt(v) }; else if (p.type === "rich_text") val = { rich_text: rt(v) };
+            else if (p.type === "number") { if (v.trim() === "") val = { number: null }; else { const n = Number(v); if (!Number.isFinite(n)) return json({ error: "Not a number" }, 400); val = { number: n }; } }
+            else if (p.type === "select") val = { select: v.trim() ? { name: v.trim().replace(/,/g, " ").slice(0, 100) } : null };
+            else if (p.type === "url") val = { url: v.trim() || null }; else if (p.type === "checkbox") val = { checkbox: /^(yes|true|1|x)$/i.test(v.trim()) };
+            else return json({ error: "Edit this column in Notion" }, 400);
+            const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { [col]: val } }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Notion error" }, 500);
+            return json({ ok: true });
+          }
+        } catch (e) { return json({ error: e.message }, 500); }
       }
 
       if (body.action === "getLogins") {
