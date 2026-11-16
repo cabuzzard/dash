@@ -171,10 +171,50 @@ async function hierarchyFetchInner(url, options={}) {
     }
   }
   const scope = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore();
-  if (scope && !scope.suppressed && /^https:\/\/api\.notion\.com\/v1\/(pages|blocks)\//.test(address) && ['PATCH','DELETE'].includes(method)) {
-    return hubTrackNotionWrite(scope, address, options);
+  const actC = scope && !scope.suppressed && ['PATCH','POST'].includes(method) ? actCandidate(address, method, options.body) : null;
+  const res = (scope && !scope.suppressed && /^https:\/\/api\.notion\.com\/v1\/(pages|blocks)\//.test(address) && ['PATCH','DELETE'].includes(method))
+    ? await hubTrackNotionWrite(scope, address, options) : await globalThis.fetch(url,options);
+  if (actC && res.ok) await actNote(scope, actC, res);
+  return res;
+}
+// ── Recent activity record (operator 2026-11-15: "an official recent activity tracking mechanism"; cards not current → 20%).
+// Every request-scoped Notion write the operator (or an outside tool) makes is noted per page id: asset created, asset fields
+// changed, block edits, title status. Crons run outside a request scope and are never noted; tag-only edits (Stack, Initiative…)
+// and bulk/backfill actions don't count. Flushed once per request into KV activity:v1 {id: {t, w}} (newest 4000 kept).
+// The dash maps ids to titles (asset → parent chain → title).
+const ACT_SKIP_PROPS = new Set(['Stack','Initiative','Sub Initiative','Method','Interview Sync','Run','Last Activity']);
+const ACT_SKIP_ACTIONS = /^(write-scheduled|backfill|revert|rename|stack|bulk|migrate|repair|seed|sync|stamp)/i;
+function actCandidate(address, method, body) {
+  if (typeof body !== 'string') return null;
+  let m, payload; try { payload = JSON.parse(body); } catch (e) { return null; }
+  if (payload.archived || payload.in_trash) return null;
+  if (method === 'POST' && /^https:\/\/api\.notion\.com\/v1\/pages\/?$/.test(address)) {
+    if (!assetsParent(payload.parent)) return null;
+    const rel = k => ((payload.properties || {})[k]?.relation || []).map(r => hierarchyId(r.id));
+    return { created: true, also: [...rel('Content Strategy'), ...rel('Parent Asset')] };
   }
-  return globalThis.fetch(url,options);
+  if ((m = /^https:\/\/api\.notion\.com\/v1\/pages\/([^/?]+)$/.exec(address))) {
+    const keys = Object.keys(payload.properties || {}).filter(k => !ACT_SKIP_PROPS.has(k));
+    return keys.length ? { id: hierarchyId(m[1]) } : null;
+  }
+  if ((m = /^https:\/\/api\.notion\.com\/v1\/blocks\/([^/?]+)\/children$/.exec(address))) return { id: hierarchyId(m[1]) };
+  return null;
+}
+async function actNote(scope, c, res) {
+  try {
+    let id = c.id; if (c.created) id = hierarchyId((await res.clone().json()).id || '');
+    if (!id) return; scope.act = scope.act || new Map();
+    scope.act.set(id, c.created ? 'created' : 'edited'); (c.also || []).forEach(x => x && !scope.act.has(x) && scope.act.set(x, 'child'));
+  } catch (e) {}
+}
+async function actFlush(scope) {
+  if (!scope.act || !scope.act.size || !scope.env?.TRADES || ACT_SKIP_ACTIONS.test(scope.action || '')) return;
+  try {
+    const map = (await scope.env.TRADES.get('activity:v1', 'json')) || {}, t = new Date().toISOString(), w = String(scope.action || '');
+    for (const [id, kind] of scope.act) map[id] = { t, w: w + (kind === 'edited' ? '' : ' · ' + kind) };
+    const keep = Object.entries(map).sort((a, b) => (b[1].t > a[1].t ? 1 : -1)).slice(0, 4000);
+    await scope.env.TRADES.put('activity:v1', JSON.stringify(Object.fromEntries(keep)));
+  } catch (e) { console.error('actFlush', e.message); }
 }
 const fetch = hierarchyFetch;
 // Product → every linked title → every linked asset. No direct-product/orphan fallback.
@@ -7876,7 +7916,7 @@ async function hubWithAssetWrites(env, operation) {
         if (response.status >= 400 || result.error) scope.failed = result.error || 'Source save failed with HTTP ' + response.status;
       }
     } catch (error) { scope.failed = error.message; throw error; }
-    finally { await hubFlushAssetWrites(scope); }
+    finally { await hubFlushAssetWrites(scope); await actFlush(scope); }
     if (scope.results.length && /application\/json/.test(response?.headers.get('Content-Type') || '')) {
       const data = await response.json();
       return new Response(JSON.stringify({ ...data, hubRepublishing: scope.results }), { status: response.status, headers: response.headers });
@@ -20294,6 +20334,7 @@ export default {
         return json({ ok: true, since, rows, perDay });
       } catch (e) { return json({ ok: true, since, rows: [], perDay: [], note: /no such table/i.test(e.message) ? "nothing recorded yet" : e.message }); }
     }
+    if (body.action === "getActivity") return json({ ok: true, activity: (await env.TRADES.get("activity:v1", "json")) || {} });
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
     // CP AA → asset trace (operator 2026-11-08: "a strong trace from cpaa to actual asset records whose type reflects what is stored in cpaa").
