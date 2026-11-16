@@ -7934,7 +7934,8 @@ const HD_ACT_DAYS = 4;
 function hdActiveTitles() { if (HD._actRows === HD.rows && HD._act) return HD._act; HD._actRows = HD.rows;
   const A = (HD.rows || []).filter(x => x.kind === 'asset'), byId = new Map(A.map(a => [hdNid(a.assetId), a])), kids = new Set(A.map(a => a.parentAssetId && hdNid(a.parentAssetId)).filter(Boolean));
   const cutT = new Date(Date.now() - HD_ACT_DAYS * 864e5), cut = cutT.toISOString().slice(0, 10), cutIso = cutT.toISOString(), act = new Set();
-  const bulk = a => { const t = String(a.rawAssetType || '').trim(); return !!a.stack && String(a.dateCreated || '') >= '2026-11-13' && !kids.has(hdNid(a.assetId)) && (/^(series|story)$/i.test(t) || (/^offer$/i.test(t) && /long form sales/i.test(a.pillarType || ''))); };
+  const burst = a => { const c = String(a.createdAt || ''); return c >= '2026-11-14T18:50' && c < '2026-11-14T19:10'; };   // the Nov 14 stack bulk add — some of it never got a Stack name (operator: "definitely fade anything from the bulk add")
+  const bulk = a => { const t = String(a.rawAssetType || '').trim(); return (!!a.stack && String(a.dateCreated || '') >= '2026-11-13' || burst(a)) && !kids.has(hdNid(a.assetId)) && (/^(series|story)$/i.test(t) || (/^offer$/i.test(t) && /long form sales/i.test(a.pillarType || ''))); };
   const up = a => { let x = a, n = 0; while (x && !x.titleId && x.parentAssetId && n++ < 5) x = byId.get(hdNid(x.parentAssetId)); if (x && x.titleId) act.add(hdNid(x.titleId)); };
   A.forEach(a => { if (!a.dateCreated || a.dateCreated < cut || bulk(a)) return; up(a); });
   // the activity record (worker KV activity:v1): every real write you or an outside tool made — asset created / changed, title status

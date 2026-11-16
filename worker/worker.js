@@ -23516,7 +23516,7 @@ Return: {
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
+          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
           interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
           deploymentStatus: a.deploymentStatus || "",
@@ -23569,7 +23569,7 @@ Return: {
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
+              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
               ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
