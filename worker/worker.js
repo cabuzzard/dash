@@ -20334,6 +20334,19 @@ export default {
         return json({ ok: true, since, rows, perDay });
       } catch (e) { return json({ ok: true, since, rows: [], perDay: [], note: /no such table/i.test(e.message) ? "nothing recorded yet" : e.message }); }
     }
+    // 🏷 Catalog names (operator 2026-11-16): internal tracking names for initiatives / sub-initiatives / products / titles, keyed by the dash
+    // (t:<titleId> · i|s|p:<campaignId>:<name>). KV only — never written to Notion, assets, the writer or hub pages. {op:"get"} | {op:"set", key, name, purpose}.
+    if (body.action === "catalogNames") {
+      const K = "catalog:names:v1", cat = (await env.TRADES.get(K, "json")) || {};
+      if (body.op === "set") {
+        if (externalCaller) return json({ error: "operator only" }, 403);
+        const key = String(body.key || "").trim().slice(0, 300); if (!/^[tisp]:/.test(key)) return json({ error: "Bad key" }, 400);
+        const name = String(body.name || "").trim().slice(0, 200), purpose = String(body.purpose || "").trim().slice(0, 1000);
+        if (!name && !purpose) delete cat[key]; else cat[key] = { name, purpose, kind: String(body.kind || "").slice(0, 40), recordName: String(body.recordName || "").slice(0, 300), at: new Date().toISOString() };
+        await env.TRADES.put(K, JSON.stringify(cat));
+      }
+      return json({ ok: true, catalog: cat });
+    }
     if (body.action === "getActivity") return json({ ok: true, activity: (await env.TRADES.get("activity:v1", "json")) || {} });
     if (body.action === "getExternalLog") return json({ ok: true, log: (await env.TRADES.get("external:log", "json")) || [] });
     if (body.action === "contentPlanCron") { if (externalCaller) return json({ error: "operator only" }, 403); NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); try { return json(await contentPlanCronAction(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
