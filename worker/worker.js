@@ -3808,6 +3808,28 @@ async function patchQueueTick(env) {
   await env.TRADES.put('patchq:log', JSON.stringify({ at: new Date().toISOString(), log }));
   return { done: !left.length };
 }
+// one-off research sync (operator 2026-11-16: "sync all the upstream research all the way down to this title"): KV researchsync:v1 =
+// {productId, campaignId, titleId, step}. One step per cron tick, each through the normal action (signed internal request): 0 product research
+// (forced) → 1 title research (forced) → 2 title pillar → done. The title's assets read the pillar + research when they are written.
+// Log: researchsync:log.
+async function researchSyncTick(env, self, ctx) {
+  const st = await env.TRADES.get('researchsync:v1', 'json').catch(() => null); if (!st || st.step >= 3) return { done: true };
+  if (st.running && Date.now() - st.running < 14 * 60000) return { busy: true };
+  st.running = Date.now(); await env.TRADES.put('researchsync:v1', JSON.stringify(st));
+  const call = async b => { const token = await signToken((env.HMAC_SECRET || '').trim(), 900000);
+    const res = await self.fetch(new Request('https://internal.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+    return res.json().catch(() => ({ error: 'bad response ' + res.status })); };
+  const steps = [() => call({ action: 'regenerateAllStrategyFields', productId: st.productId, campaignId: st.campaignId, force: true }),
+    () => call({ action: 'generateTitleResearch', titleId: st.titleId, campaignId: st.campaignId, force: true }),
+    () => call({ action: 'writeTitlePillar', titleId: st.titleId })];
+  let r; try { r = await steps[st.step](); } catch (e) { r = { error: e.message }; }
+  const log = (await env.TRADES.get('researchsync:log', 'json').catch(() => null)) || [];
+  log.push({ at: new Date().toISOString(), step: st.step, ok: !!r && !r.error, error: r && r.error, gate: r && (r.gate || r.status), keys: r ? Object.keys(r).slice(0, 12) : [] });
+  await env.TRADES.put('researchsync:log', JSON.stringify(log.slice(-20)));
+  if (r && !r.error) st.step++; else st.fails = (st.fails || 0) + 1;
+  if ((st.fails || 0) >= 2) st.step = 3;   // stop after two failures on a step — see the log
+  delete st.running; await env.TRADES.put('researchsync:v1', JSON.stringify(st)); return { step: st.step };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -59291,7 +59313,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
-      cw("patchQueueTick", patchQueueTick(env));   // queued one-off property patches (2026-11-16)
+      cw("patchQueueTick", patchQueueTick(env));
+      cw("researchSyncTick", researchSyncTick(env, this, ctx));   // one-off upstream research sync for a title (2026-11-16)   // queued one-off property patches (2026-11-16)
       cw("woodworkMoveTick", woodworkMoveTick(env).then(r => { if (r && !r.done) console.log("woodwork move:", JSON.stringify(r)); }));   // Woodwork R1 → one title, runs by former title (2026-11-16)
       cw("runAssetBackfillTick", runAssetBackfillTick(env).then(r => { if (r && !r.done) console.log("run assets:", JSON.stringify(r).slice(0, 300)); }));   // Run assets for existing runs, then blanket deadlines off (2026-11-16)
       cw("extWriteMigrateTick", extWriteMigrateTick(env).then(r => { if (r && !r.done) console.log("extWrite migrate:", JSON.stringify(r).slice(0, 300)); }));   // old KV pre-writes → External Write (2026-11-12)
