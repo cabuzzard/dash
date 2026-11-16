@@ -58135,6 +58135,22 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (text) await env.TRADES.put(writeGuideKey(m.row.name), text); else await env.TRADES.delete(writeGuideKey(m.row.name));
         return json({ ok: true, row: m.row.name, guidance: text });
       }
+      // runWriter {run} (operator 2026-11-16: "can the writer screen of a run list all of the single posts of the run in one writer and provide
+      // bulk editing"): every asset carrying that Run name (not the Run asset itself) with its writing contract fields + current values, status,
+      // image and External Write flag — the Run asset's ✍ Run writer tab edits them in place and saves through saveAssetFields.
+      if (body.action === "runWriter") {
+        const run = String(body.run || "").trim(); if (!run) return json({ error: "run required" }, 400);
+        const pages = (await notionQuery(ASSETS_DB, { filter: { property: "Run", rich_text: { equals: run } }, sorts: [{ timestamp: "created_time", direction: "ascending" }] }))
+          .filter(x => !x.archived && !x.in_trash && x.properties?.["Asset Type"]?.select?.name !== RUN_ASSET_TYPE).slice(0, 80);
+        const posts = [];
+        for (let i = 0; i < pages.length; i += 6) posts.push(...await Promise.all(pages.slice(i, i + 6).map(async pg => { const p = pg.properties || {};
+          let contract = []; try { contract = (await writingMethod(env, pg)).contract || []; } catch (e) {}
+          const v = writingFieldValues(p), ty = p["Asset Type"]?.select?.name || "";
+          return { id: hubAssetId(pg.id), title: hubRichText(p["Asset Title"]?.title), type: ty, status: p["Asset Status"]?.select?.name || "", image: p["Post Image"]?.url || "",
+            publishingDate: p["Publishing Date"]?.date?.start || "", external: !!hubRichText(p["External Write"]?.rich_text).trim(),
+            fields: contract.map(f => ({ name: f.name, rule: f.rule || "", value: String(v[f.name] || "") })) }; })));
+        return json({ ok: true, run, posts });
+      }
       if (body.action === "saveAssetFields") {
         if (!/^[a-f0-9]{32}$/i.test(hubAssetId(body.assetId || ""))) return json({ error: "assetId required" }, 400);
         const page = await ivPage(body.assetId), m = await writingMethod(env, page), allowed = new Set(m.contract.map(f => f.name));
