@@ -7738,7 +7738,13 @@ function hdPlace(plan, topics) {   // most specific match wins: title, then prod
 // (editing, images, sub-asset fields); only the card counts (Plan / Dev / Pub / All) skip them. Their titles still show.
 // External Parents never belong to a run (operator 2026-11-16: "external parents shouldnt belong to runs. but they might have directions in them to
 // create runs") — a Run name on one is a direction, not membership, so they always count.
-function hdSP(a) { const r = a ? String(a.run || '').trim() : ''; return !!r && !/^none$/i.test(r) && !/^external parent$/i.test(String(a.rawAssetType || a.assetType || '').trim()); }
+// Series and Trend Parents produce runs; anything downstream of them is run output (operator 2026-11-16: "trend parent and series should both
+// produce runs. and anything downstream from those should be in a run. definitely includes anything for etsy"). So a run item = a Run name, OR an
+// Etsy / Marketplace listing, OR anything with a Series (incl. Pillar typed Series) or Trend Parent above it. The Series / Trend Parent itself counts.
+function hdRunHead(p) { const t = String(p.rawAssetType || p.assetType || '').trim(); return /^(series|trend parent)$/i.test(t) || (/^pillar$/i.test(t) && /series/i.test(p.pillarType || '')); }
+function hdSP(a) { if (!a) return false; const t = String(a.rawAssetType || a.assetType || '').trim(); if (/^external parent$/i.test(t)) return false;
+  const r = String(a.run || '').trim(); if (r && !/^none$/i.test(r)) return true; if (/^(etsy listing|facebook marketplace listing)$/i.test(t)) return true;
+  let x = a, n = 0; while (x && x.parentAssetId && n++ < 6) { x = hdAssetById(x.parentAssetId); if (x && hdRunHead(x)) return true; } return false; }
 const hdAssetsOf = n => n.assets ? n.assets : n.titles ? n.titles.flatMap(hdAssetsOf) : n.products ? n.products.flatMap(hdAssetsOf) : [];
 function hdCount(assets, planRows) {   // per asset type → { label, goal, dev, pub }, plus the total
   const m = new Map(), get = (k, label) => { if (!m.has(k)) m.set(k, { label, goal: 0, dev: 0, pub: 0, devIds: [], pubIds: [], goalIds: [] }); const o = m.get(k); if (label && o.fromPlan) { o.label = label; o.fromPlan = false; } return o; };
