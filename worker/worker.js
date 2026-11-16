@@ -3796,6 +3796,18 @@ async function woodworkMoveTick(env) {
   await env.TRADES.put('runasset:backfill:log', JSON.stringify([{ at: new Date().toISOString(), woodworkMoved: n, left: rows.length - n, ...(bad.length ? { failed: bad } : {}) }, ...log].slice(0, 300)));
   return { done: false, moved: n };
 }
+// one-off property patches queued in KV patchq:v1 ([{id, properties}] in raw Notion API shape) — used where the Notion connector can't, e.g. a
+// select value that isn't an option yet (the API adds it). Up to 20 per cron tick; the queue is deleted when empty. (2026-11-16)
+async function patchQueueTick(env) {
+  const q = await env.TRADES.get('patchq:v1', 'json').catch(() => null); if (!Array.isArray(q) || !q.length) return { done: true };
+  const left = [], log = [];
+  for (const [i, x] of q.entries()) { if (i >= 20) { left.push(x); continue; }
+    const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(hubAssetId(x.id)), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: x.properties }) });
+    log.push({ id: x.id, ok: r.ok, ...(r.ok ? {} : { error: ((await r.json().catch(() => ({}))).message || r.status) }) }); await new Promise(res => setTimeout(res, 350)); }
+  if (left.length) await env.TRADES.put('patchq:v1', JSON.stringify(left)); else await env.TRADES.delete('patchq:v1');
+  await env.TRADES.put('patchq:log', JSON.stringify({ at: new Date().toISOString(), log }));
+  return { done: !left.length };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -59279,6 +59291,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
+      cw("patchQueueTick", patchQueueTick(env));   // queued one-off property patches (2026-11-16)
       cw("woodworkMoveTick", woodworkMoveTick(env).then(r => { if (r && !r.done) console.log("woodwork move:", JSON.stringify(r)); }));   // Woodwork R1 → one title, runs by former title (2026-11-16)
       cw("runAssetBackfillTick", runAssetBackfillTick(env).then(r => { if (r && !r.done) console.log("run assets:", JSON.stringify(r).slice(0, 300)); }));   // Run assets for existing runs, then blanket deadlines off (2026-11-16)
       cw("extWriteMigrateTick", extWriteMigrateTick(env).then(r => { if (r && !r.done) console.log("extWrite migrate:", JSON.stringify(r).slice(0, 300)); }));   // old KV pre-writes → External Write (2026-11-12)
