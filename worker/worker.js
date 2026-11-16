@@ -182,7 +182,7 @@ async function hierarchyFetchInner(url, options={}) {
 // changed, block edits, title status. Crons run outside a request scope and are never noted; tag-only edits (Stack, Initiative…)
 // and bulk/backfill actions don't count. Flushed once per request into KV activity:v1 {id: {t, w}} (newest 4000 kept).
 // The dash maps ids to titles (asset → parent chain → title).
-const ACT_SKIP_PROPS = new Set(['Stack','Initiative','Sub Initiative','Method','Interview Sync','Run','Last Activity']);
+const ACT_SKIP_PROPS = new Set(['Stack','Initiative','Sub Initiative','Method','Interview Sync','Run','Last Activity','Deadline']);
 const ACT_SKIP_ACTIONS = /^(write-scheduled|backfill|revert|rename|stack|bulk|migrate|repair|seed|sync|stamp)/i;
 function actCandidate(address, method, body) {
   if (typeof body !== 'string') return null;
@@ -23484,7 +23484,7 @@ Return: {
             pillarSync: p["Pillar Sync"]?.select?.name || "",
             interviewRequired: !!p["Interview Required"]?.checkbox,
             parentAssetId: (p["Parent Asset"]?.relation || [])[0]?.id ? dropDash(p["Parent Asset"].relation[0].id) : null,
-            run: hubRichText(p.Run?.rich_text), runStatus: p["Run Status"]?.select?.name || "",
+            run: hubRichText(p.Run?.rich_text), deadline: p.Deadline?.date?.start || "", runStatus: p["Run Status"]?.select?.name || "",
             deploymentStatus: p["Deployment Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             createdTime: a.created_time || null,
@@ -23531,7 +23531,7 @@ Return: {
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
           dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
+          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "",
           deploymentStatus: a.deploymentStatus || "",
           ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
@@ -23579,7 +23579,7 @@ Return: {
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", initiative: t.sub ? t.sub.split(" · ")[0].trim() : (a.initiative || ""), subInitiative: t.sub ? (t.sub.includes(" · ") ? t.sub : "") : (a.subInitiative || ""), stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", runStatus: a.runStatus || "",
+              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "",
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
               dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
@@ -48893,6 +48893,23 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, count: children.length });
       }
 
+      // 📅 Deadline on any asset, parent or child (operator 2026-11-16). A plain date: a signal only — nothing changes status or runs on it.
+      // The Assets "Deadline" date property is added on first use. {assetId, date: "YYYY-MM-DD" | ""}
+      if (body.action === "setAssetDeadline") {
+        const ids = (Array.isArray(body.assetIds) ? body.assetIds : [body.assetId]).map(x => String(x || "").replace(/[^0-9a-f]/gi, "")).filter(Boolean).slice(0, 50), date = String(body.date || "").trim(), aid = ids[0];
+        if (!aid) return json({ error: "assetId required" }, 400);
+        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "Date must be YYYY-MM-DD" }, 400);
+        const H = { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const db = await (await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: H })).json();
+        if (!db.properties) return json({ error: db.message || "Couldn't read Assets" }, 500);
+        if (!db.properties.Deadline) { const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { Deadline: { date: {} } } }) });
+          if (!r.ok) return json({ error: "Couldn't add the Deadline column: " + ((await r.json()).message || r.status) }, 500); }
+        else if (db.properties.Deadline.type !== "date") return json({ error: "Assets already has a Deadline column that isn't a date" }, 400);
+        let done = 0;   // several (bulk "→ children" / the one-off default): one PATCH each, paced under Notion's ~3/s
+        for (const id of ids) { const r = await fetch("https://api.notion.com/v1/pages/" + id, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { Deadline: { date: date ? { start: date } : null } } }) });
+          if (!r.ok) return json({ error: ((await r.json()).message || "Update failed") + (done ? " (after " + done + ")" : ""), done }, 400); done++; if (ids.length > 1) await new Promise(res => setTimeout(res, 350)); }
+        return json({ ok: true, deadline: date, done });
+      }
       if (body.action === "setAssetLogin") {
         const { assetId, loginId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
@@ -57932,7 +57949,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const parentId = ivRid(p, "Parent Asset"), parent = parentId ? await ivPage(parentId).catch(() => null) : null;
         return json({ asset: { ...w.public, violations: w.writing.violations || [], parentId: parentId || "", parentTitle: parent ? hubRichText(parent.properties?.["Asset Title"]?.title) : "",
             platformName: p["Platform Name"]?.select?.name || "", lastEdited: w.page.last_edited_time || "",
-            loginId: (p.Login?.relation || [])[0] ? hubAssetId(p.Login.relation[0].id) : "",
+            loginId: (p.Login?.relation || [])[0] ? hubAssetId(p.Login.relation[0].id) : "", deadline: p.Deadline?.date?.start || "",
             videoSpec: hubRichText(p["Video Spec"]?.rich_text).slice(0, 4000), videoRender: hubRichText(p["Video Render"]?.rich_text).slice(0, 500),
             storyAreas: hubRichText(p["Story Areas"]?.rich_text).slice(0, 4000), postImage: p["Post Image"]?.url || "", igBackground: p["Instagram Background"]?.url || "",
             poolBackground: await (async () => { const ref = assetPresetsOf(w.page); if (!ref.background) return null; const b = (await backgroundsPool(env)).find(x => x.id === ref.background); return b ? { id: b.id, url: b.url } : null; })().catch(() => null),
