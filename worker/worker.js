@@ -47247,7 +47247,9 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // 🔀 Lead Routing (operator 2026-11-15): a blank table the operator builds out in the All Output tab.
       // Columns = the Notion DB's properties (display order kept in KV routing:colorder); every cell is plain text.
       // 🧩 Offers was removed the same day (micro services stay single posts in runs).
-      if (["getRouting", "routingAddColumn", "routingAddRow", "routingSetCell"].includes(body.action)) {
+      // Writer modal 🔀 Lead route tab (operator 2026-11-16): routingAddRoute {assetId, loginId, cells} adds one route linked to the asset
+      // and its login (relation columns made on first use); getRouting {assetId} returns only that asset's routes.
+      if (["getRouting", "routingAddColumn", "routingAddRow", "routingSetCell", "routingAddRoute"].includes(body.action)) {
         const RDB = "4191f7d3a4bb8196a1ccf08919e8cf86", OK = "routing:colorder";
         const H = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const txt = a => (a || []).map(t => t.plain_text).join("");
@@ -47266,9 +47268,34 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
                 if (v.type === "title") c[k] = txt(v.title); else if (v.type === "rich_text") c[k] = txt(v.rich_text);
                 else if (v.type === "select") c[k] = v.select?.name || ""; else if (v.type === "number") c[k] = v.number ?? "";
                 else if (v.type === "url") c[k] = v.url || ""; else if (v.type === "checkbox") c[k] = v.checkbox ? "yes" : "";
-                else if (v.type === "formula") c[k] = String(v.formula?.[v.formula?.type] ?? ""); else c[k] = ""; }
+                else if (v.type === "formula") c[k] = String(v.formula?.[v.formula?.type] ?? "");
+                else if (v.type === "relation") c[k] = (v.relation || []).map(x => x.id.replace(/-/g, "")).join(","); else c[k] = ""; }
               return { id: p.id.replace(/-/g, ""), url: p.url, c }; });
-            return json({ cols, rows, url: "https://www.notion.so/" + RDB });
+            const relTo = db => Object.keys(props).find(n => props[n].type === "relation" && String(props[n].relation?.database_id || "").replace(/-/g, "") === db) || "";
+            const assetCol = relTo(ASSETS_DB), loginCol = relTo(LOGINS_DB), aid = String(body.assetId || "").replace(/-/g, "");
+            const out = aid ? (assetCol ? rows.filter(r => String(r.c[assetCol] || "").split(",").includes(aid)) : []) : rows;
+            return json({ cols, rows: out, assetCol, loginCol, url: "https://www.notion.so/" + RDB });
+          }
+          if (body.action === "routingAddRoute") {
+            const aid = String(body.assetId || "").replace(/[^0-9a-f]/gi, ""), lid = String(body.loginId || "").replace(/[^0-9a-f]/gi, "");
+            if (!aid) return json({ error: "Missing asset" }, 400);
+            let props = await schema();
+            const relTo = db => Object.keys(props).find(n => props[n].type === "relation" && String(props[n].relation?.database_id || "").replace(/-/g, "") === db);
+            const add = {}, free = (a, b) => props[a] ? b : a;
+            if (!relTo(ASSETS_DB)) add[free("Asset", "Linked Asset")] = { relation: { database_id: ASSETS_DB, single_property: {} } };
+            if (!relTo(LOGINS_DB)) add[free("Login", "Linked Login")] = { relation: { database_id: LOGINS_DB, single_property: {} } };
+            if (Object.keys(add).length) { const r = await fetch(`https://api.notion.com/v1/databases/${RDB}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: add }) });
+              const d = await r.json(); if (!r.ok) return json({ error: "Couldn't add the Asset / Login columns: " + (d.message || "Notion error") }, 500); props = d.properties || props; }
+            const title = Object.keys(props).find(n => props[n].type === "title"), cells = body.cells || {}, P = {};
+            P[title] = { title: rt(String(cells[title] || "").trim() || String(body.defaultName || "Route").slice(0, 200)) };
+            P[relTo(ASSETS_DB)] = { relation: [{ id: aid }] }; if (lid) P[relTo(LOGINS_DB)] = { relation: [{ id: lid }] };
+            for (const [col, v0] of Object.entries(cells)) { const p = props[col], v = String(v0 ?? ""); if (!p || col === title || v.trim() === "") continue;
+              if (p.type === "rich_text") P[col] = { rich_text: rt(v) }; else if (p.type === "number" && Number.isFinite(Number(v))) P[col] = { number: Number(v) };
+              else if (p.type === "select") P[col] = { select: { name: v.trim().replace(/,/g, " ").slice(0, 100) } }; else if (p.type === "url") P[col] = { url: v.trim() };
+              else if (p.type === "checkbox") P[col] = { checkbox: /^(yes|true|1|x)$/i.test(v.trim()) }; }
+            const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: H, body: JSON.stringify({ parent: { database_id: RDB }, properties: P }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Notion error" }, 500);
+            return json({ ok: true, id: d.id.replace(/-/g, ""), url: d.url });
           }
           if (body.action === "routingAddColumn") {
             const name = String(body.name || "").trim().slice(0, 100);

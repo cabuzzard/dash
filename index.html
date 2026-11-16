@@ -5581,7 +5581,7 @@ function rtRender() {
   const td = 'padding:0;border-bottom:1px solid var(--border);border-right:1px solid var(--border);vertical-align:top;min-width:140px;';
   const ta = 'display:block;width:100%;box-sizing:border-box;min-height:30px;border:0;background:transparent;color:var(--text);font:inherit;font-size:12px;padding:6px 8px;resize:vertical;';
   const head = cols.map(c => `<th style="${th}">${esc(c.name)}</th>`).join('') + `<th style="${th}"></th>`;
-  const body = rows.length ? rows.map((r, ri) => `<tr>${cols.map((c, ci) => `<td style="${td}"><textarea rows="1" data-r="${ri}" data-c="${ci}" onfocus="this.dataset.was=this.value" onblur="rtSave(this)" style="${ta}${ci === 0 ? 'font-weight:600;' : ''}">${esc(r.c[c.name] == null ? '' : String(r.c[c.name]))}</textarea></td>`).join('')}<td style="${td}min-width:0;padding:6px 8px;"><a href="${esc(r.url || '')}" target="_blank" rel="noopener" title="Open this row in Notion" style="color:#8ab4f8;font-size:11px;">↗</a></td></tr>`).join('')
+  const body = rows.length ? rows.map((r, ri) => `<tr>${cols.map((c, ci) => c.type === 'relation' ? `<td style="${td}padding:6px 8px;font-size:11.5px;">${String(r.c[c.name] || '').split(',').filter(Boolean).map(id => `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:#8ab4f8;">${esc(c.name)} ↗</a>`).join(' ')}</td>` : `<td style="${td}"><textarea rows="1" data-r="${ri}" data-c="${ci}" onfocus="this.dataset.was=this.value" onblur="rtSave(this)" style="${ta}${ci === 0 ? 'font-weight:600;' : ''}">${esc(r.c[c.name] == null ? '' : String(r.c[c.name]))}</textarea></td>`).join('')}<td style="${td}min-width:0;padding:6px 8px;"><a href="${esc(r.url || '')}" target="_blank" rel="noopener" title="Open this row in Notion" style="color:#8ab4f8;font-size:11px;">↗</a></td></tr>`).join('')
     : `<tr><td colspan="${cols.length + 1}" style="padding:8px;font-size:12px;color:var(--text3);">No rows yet. ＋ Row adds one.</td></tr>`;
   const B = 'font-size:12px;padding:4px 10px;border:1px solid #4ade80;color:#4ade80;background:var(--surface2);border-radius:6px;';
   el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
@@ -6028,7 +6028,7 @@ async function amLoad() {
   AM.busy = ''; if (!r || r.error) { AM.log = '✗ ' + ((r && r.error) || 'no response'); AM.data = null; } else { AM.data = r; if (!AM.seriesTabSet && amIsSeries()) { AM.tab = 'series'; AM.seriesTabSet = true; } if (!AM.trendTabSet && amIsTrend()) { AM.tab = 'trend'; AM.trendTabSet = true; } if (!AM.widgetTabSet && amIsWidget()) { AM.tab = 'widget'; AM.widgetTabSet = true; } }
   amDraw(); if (AM && AM.data && !AM.ctx && !AM.ctxBusy) amCtxLoad();
 }
-function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'trend') AM.trend = null; if (t === 'widget') AM.widget = null; if (t === 'etsy') AM.etsy = null; if (t === 'fb') AM.fb = null; amDraw(); }
+function amTab(t) { if (!AM) return; AM.tab = t; if (t === 'route') AM.route = null; if (t === 'trend') AM.trend = null; if (t === 'widget') AM.widget = null; if (t === 'etsy') AM.etsy = null; if (t === 'fb') AM.fb = null; amDraw(); }
 function amFieldVal(name) { const a = AM.data.asset, d = AM.data.dry || {}; if (name in AM.dirty) return AM.dirty[name];
   const cf = (d.packet && d.packet.currentFields) || {}; if (name in cf) return cf[name];
   return ({ 'Platform Title': a.platformTitle, 'Post Caption': a.postCaption, Hashtags: a.hashtags, Body: a.body })[name] || ''; }
@@ -6042,7 +6042,7 @@ function amDraw() {
   const chip = (t, tip, col) => t ? `<span title="${esc(tip || '')}" style="font-size:11px;padding:2px 8px;border:1px solid ${col || 'var(--border2)'};border-radius:10px;color:${col || 'var(--text2)'};white-space:nowrap;">${esc(t)}</span>` : '';
   const pubBtn = !amIsHubAsset() ? '' : `<label title="${a.status === 'Published' ? 'Live on the hub — untick to take it off (status → Publish)' : 'Tick to publish to the hub: writes the live page and sets Published'}" style="font-size:11.5px;display:inline-flex;gap:4px;align-items:center;padding:2px 8px;border:1px solid ${a.status === 'Published' ? '#4ade80' : 'var(--border2)'};border-radius:10px;cursor:pointer;color:${a.status === 'Published' ? '#4ade80' : 'var(--text2)'};"><input type="checkbox" ${a.status === 'Published' ? 'checked' : ''} onchange="amHubToggle(this)" style="margin:0;">📤 On hub</label>`;
   const statusSel = `<select title="Asset Status" onchange="amSetStatus(this)" style="font-size:11.5px;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">${[...new Set([...AM_STATUSES, a.status].filter(Boolean))].map(s => `<option ${s === a.status ? 'selected' : ''} ${AM_STATUSES.includes(s) ? '' : 'disabled'}>${esc(s)}</option>`).join('')}</select>`;
-  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ...(amIsWidget() ? [['widget', '🧩 Widget']] : []), ...(amIsEtsy() ? [['etsy', '🛒 Etsy']] : []), ...(amIsFb() ? [['fb', '📘 Marketplace']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
+  const tabs = [...(amIsSeries() ? [['series', '✨ Series']] : []), ...(amIsTrend() ? [['trend', '📈 Trend']] : []), ...(amIsWidget() ? [['widget', '🧩 Widget']] : []), ...(amIsEtsy() ? [['etsy', '🛒 Etsy']] : []), ...(amIsFb() ? [['fb', '📘 Marketplace']] : []), ['pillar', '📜 Pillar'], ['hubres', '🏠 Hub · Topic'], ['research', '🔬 Product · Title'], ['interview', '🎤 Interview'], ['fields', '✎ Fields'], ['visuals', '🖼 Visuals'], ['route', '🔀 Lead route'], ['preview', '👁 Preview'], ['rules', '📏 Writing rules'], ['flow', '🧭 Information flow'], ['schema', '🧬 Schema']];
   const hd = `<div class="amf-hd">
       <div style="min-width:0;flex:1;"><div style="font-size:15px;font-weight:700;line-height:1.3;">${esc(a.assetTitle || '(untitled asset)')}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${chip(a.type || 'no Asset Type', 'Asset Type')}${statusSel}${pubBtn}${amDigestBtn()}${amLoginSel()}${amPlatformsChip()}
@@ -6065,9 +6065,49 @@ function amDraw() {
   if (AM.tab === 'widget' && amIsWidget()) { P.innerHTML = hd + `<div class="amf-bd">${amWidgetHtml()}</div>` + foot; return; }
   if (AM.tab === 'fb' && amIsFb()) { P.innerHTML = hd + `<div class="amf-bd">${amFbHtml()}</div>` + foot; return; }
   if (AM.tab === 'etsy' && amIsEtsy()) { P.innerHTML = hd + `<div class="amf-bd">${amEtsyHtml()}</div>` + foot; return; }
+  if (AM.tab === 'route') { P.innerHTML = hd + `<div class="amf-bd">${amRouteHtml()}</div>` + foot; return; }
   if (AM.tab === 'pillar' || AM.tab === 'research' || AM.tab === 'hubres' || AM.tab === 'interview' || AM.tab === 'visuals') { P.innerHTML = hd + `<div class="amf-bd">${AM.tab === 'pillar' ? amPillarHtml() : AM.tab === 'research' ? amResearchHtml() : AM.tab === 'hubres' ? amHubResHtml() : AM.tab === 'interview' ? amIvHtml() : amVisualsHtml()}</div>` + foot; if (AM.tab === 'interview') amIvAttach(); return; }
   P.innerHTML = hd + `<div class="amf-bd">${seriesTab ? amSeriesHtml() : ''}${AM.tab === 'fields' && amIsVideo() ? amVideoHtml() : ''}${AM.tab === 'fields' ? amPrewriteHtml() + amDirHtml() : ''}${!seriesTab && !schema && AM.data.spec && AM.data.spec.sections ? amSpecHtml(sec) : ''}${seriesTab ? '' : schema ? amSchemaHtml() : AM.tab === 'preview' ? amPreviewHtml() : AM.tab === 'rules' ? amRulesHtml() : AM.tab === 'flow' ? amFlowHtml() : amFieldsHtml()}</div>` + foot;
   if (AM._seriesMount) amSeriesMount();
+}
+// ── 🔀 Lead route tab (operator 2026-11-16: "a form for publishing — which login, what contact, what platform, what asset"; "add it to the writer tabs").
+// Saving adds one row to 🔀 Lead Routing linked to this asset + the login picked (routingAddRoute). The other fields are the routing table's own
+// columns — add a column there and it shows here. Records only; sending to a platform stays its own step.
+function amRouteCols(R) { return (R.cols || []).slice(1).filter(c => c.type !== 'relation' && c.type !== 'formula' && c.name !== R.assetCol && c.name !== R.loginCol); }
+function amRouteLoad() { if (!AM || AM.routeBusy) return; AM.routeBusy = true; const id = AM.id;
+  call('getRouting', { assetId: id }).then(r => { if (!AM || AM.id !== id) return; AM.routeBusy = false; AM.route = r && !r.error ? r : { error: (r && r.error) || 'no response' }; amDraw(); })
+    .catch(e => { if (AM) { AM.routeBusy = false; AM.route = { error: e.message }; amDraw(); } }); }
+function amRouteHtml() {
+  if (!AM.route) { amRouteLoad(); return '<div style="font-size:12px;color:var(--text3);">Loading routes…</div>'; }
+  if (AM.route.error) return `<div style="font-size:12px;color:#f87171;">Couldn’t load Lead Routing: ${esc(AM.route.error)}</div>`;
+  const a = AM.data.asset, R = AM.route, L = (typeof _eaAllLogins !== 'undefined' && _eaAllLogins.length) ? _eaAllLogins : [];
+  if (!L.length && !AM.loginsLoading) { AM.loginsLoading = true; call('getLogins', {}).then(d => { _eaAllLogins = (d && d.logins) || []; amDraw(); }).catch(() => {}); }
+  const lname = id => { const l = L.find(x => kwNid(x.id) === kwNid(id)); return l ? l.name : 'login'; };
+  const title = (R.cols || [])[0] ? R.cols[0].name : 'Route', own = amRouteCols(R);
+  const lab = 'font-size:11.5px;color:var(--text2);display:block;margin:10px 0 3px;', inp = 'width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const mine = L.filter(l => a.campaignId && (l.campaignIds || []).map(kwNid).includes(kwNid(a.campaignId))), rest = L.filter(l => !mine.includes(l));
+  const opt = l => `<option value="${esc(l.id)}" ${kwNid(l.id) === kwNid(a.loginId) ? 'selected' : ''}>${esc(l.name)}</option>`;
+  const have = (R.rows || []).map(r => `<div style="border:1px solid var(--border2);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12.5px;"><b>${esc(r.c[title] || '(unnamed route)')}</b>${R.loginCol && r.c[R.loginCol] ? ` <span style="color:var(--text3);">· 🔑 ${esc(String(r.c[R.loginCol]).split(',').map(lname).join(', '))}</span>` : ''} <a href="${esc(r.url)}" target="_blank" rel="noopener" style="font-size:11px;color:#8ab4f8;">↗</a>
+      ${own.filter(c => String(r.c[c.name] ?? '').trim()).map(c => `<div style="color:var(--text2);margin-top:3px;"><span style="color:var(--text3);">${esc(c.name)}:</span> ${esc(String(r.c[c.name]))}</div>`).join('')}</div>`).join('');
+  return `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Where this asset goes and where its leads land. Saving adds a row to 🔀 Lead Routing (All Output tab) linked to this asset and the login. The fields below are that table’s columns — add a column there and it shows here. This only records the route; it doesn’t post anything.</div>
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:6px;">Routes for this asset (${(R.rows || []).length})</div>${have || '<div style="font-size:12px;color:var(--text3);margin-bottom:6px;">None yet.</div>'}
+    <div style="border:1px solid #4ade80;border-radius:8px;padding:4px 12px 12px;margin-top:12px;">
+      <div style="font-size:12.5px;font-weight:700;margin-top:8px;">＋ New route</div>
+      <label style="${lab}">🔑 Login (the account it goes out on)</label><select id="amRtLogin" style="${inp}">${L.length ? (mine.length ? `<optgroup label="This hub">${mine.map(opt).join('')}</optgroup>` : '') + `<optgroup label="All logins">${rest.map(opt).join('')}</optgroup>` : '<option value="">Loading logins…</option>'}</select>
+      <label style="${lab}">${esc(title)} <span style="color:var(--text3);">(blank = “asset → login”)</span></label><input id="amRtName" style="${inp}">
+      ${own.map((c, i) => `<label style="${lab}">${esc(c.name)}</label><textarea id="amRtC${i}" rows="1" style="${inp}resize:vertical;"></textarea>`).join('')}
+      ${own.length ? '' : '<div style="font-size:11.5px;color:var(--text3);margin-top:8px;">Your Lead Routing table has no other columns yet — add some (Contact, Platform, Call to action…) in the All Output tab and they’ll appear here.</div>'}
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;"><button onclick="amRouteSave(this)" style="font-size:12.5px;padding:6px 14px;border:1px solid #4ade80;border-radius:6px;background:var(--surface2);color:#4ade80;cursor:pointer;font-weight:600;">💾 Save route</button><span id="amRtMsg" style="font-size:12px;color:var(--text3);"></span></div></div>`;
+}
+async function amRouteSave(btn) {
+  const R = AM.route, a = AM.data.asset, own = amRouteCols(R);
+  const sel = document.getElementById('amRtLogin'), loginId = sel ? sel.value : '', lnm = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+  const cells = { [(R.cols[0] || {}).name || 'Route']: (document.getElementById('amRtName') || {}).value || '' };
+  own.forEach((c, i) => { const t = document.getElementById('amRtC' + i); if (t) cells[c.name] = t.value; });
+  const msg = document.getElementById('amRtMsg'); btn.disabled = true; if (msg) msg.textContent = 'Saving…';
+  const r = await call('routingAddRoute', { assetId: AM.id, loginId, cells, defaultName: (a.assetTitle || 'Asset') + (lnm ? ' → ' + lnm : '') }).catch(e => ({ error: e.message }));
+  btn.disabled = false; if (!r || r.error) { if (msg) { msg.style.color = '#f87171'; msg.textContent = 'Not saved: ' + ((r && r.error) || 'no response'); } return; }
+  RT_DATA = null; AM.route = null; showToast('Route saved to Lead Routing'); amDraw();
 }
 // ── Writer modal: Pillar · Research tabs, per-field writing, the type's Platforms (operator 2026-11-08) ──
 // Pillar = the linked title's pillar (read from the title, never an asset field) + the parent asset; ↻ Rewrite with guidance and weighted inputs.
