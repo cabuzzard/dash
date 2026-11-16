@@ -7876,7 +7876,7 @@ function hdInitCards(I, assets, goalRows, planRows, where, h, ik, others, ivo) {
   const titlesOf = pg => { const ids = new Set(), pids = new Set(); pg.allIds.forEach(id => { const a = aOf(id); if (a) { if (a.titleId) ids.add(hdNid(a.titleId)); if (a.productId) pids.add(hdNid(a.productId)); } });
     tRows.forEach(t => { if (t.productId && pids.has(hdNid(t.productId)) && !/^archived$/i.test(hdSt(t))) ids.add(hdNid(t.titleId)); });
     const gk = hdNid(h.campaignId) + '|' + I.key + '|' + nk(pg.name) + '|Title';
-    return [...ids].map(tid => { const t = hdTitleRow(tid), as = pg.allIds.map(aOf).filter(a => a && hdNid(a.titleId) === tid), g = { kind: 'Title', name: t ? (t.title || '(untitled title)') : '(title)', titleId: tid, status: t ? hdSt(t) : '', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [], gk, ck: gk + '|' + tid }; g.color = hdTitleCol(g.status); g.autoColor = true;   // the title's status colour, as on the cluster / topic view (operator 2026-11-13)
+    return [...ids].map(tid => { const t = hdTitleRow(tid), as = pg.allIds.map(aOf).filter(a => a && hdNid(a.titleId) === tid), g = { kind: 'Title', name: t ? (t.title || '(untitled title)') : '(title)', titleId: tid, status: t ? hdSt(t) : '', goal: 0, goalIds: [], planIds: [], planRows: [], devIds: [], pubIds: [], allIds: [], allRows: [], gk, ck: gk + '|' + tid }; g.color = hdTitleColor(tid, g.status); g.autoColor = true;   // the title's status colour (or activity colour, hdTitleColor), as on the cluster / topic view (operator 2026-11-13)
       as.forEach(a => { const st = hdSt(a).trim(); g.allIds.push(a.assetId); if (/^planning$/i.test(st)) g.planIds.push(a.assetId); else if (/^(development|review)$/i.test(st)) g.devIds.push(a.assetId); else if (/^(publish|published)$/i.test(st)) g.pubIds.push(a.assetId); }); return g; }); };
   const prodRow = (pg, depth) => drop(pg, depth, () => { const ts = titlesOf(pg); return `<div style="padding:8px 10px 4px ${10 + (depth + base + 1) * 20}px;border-bottom:1px solid var(--border);">${ts.length ? hdCardGrid('Titles', ts, where + ' › ' + pg.name, { anchor, noHidLink: true }) : '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>`; });
   hdCardSort(direct);
@@ -7923,6 +7923,20 @@ function hdCardHtml(g, where, ctx) { ctx = ctx || {}; if (!g.color) { const pc =
         return `<div style="display:flex;justify-content:space-between;gap:2px;order:3;border-top:1px dashed var(--border2);padding-top:5px;">${HD_ENTRY.map(([k, l, tip, col]) => { const v = o[k].length, lab = `<span style="font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${k === 'iv' ? 'Intv' : l}</span>`;
           const num = !v ? `<span style="font-size:15px;">&nbsp;</span>` : k === 'iv' ? (() => { const ta = hdIvTarget(o.iv); return `<a href="#" title="${esc(hdIvTip(o.iv) + ' — click: ' + (ta ? 'open the interview (the asset’s 🎤 Interview tab)' : 'open the title page'))}" onclick="event.preventDefault();event.stopPropagation();${ta ? `hdIvOpen('${esc(hdNid(ta))}')` : `hdTpOpen('${esc(g.titleId)}')`}" style="font-size:15px;font-weight:700;text-decoration:none;">${hdIvPair(o.iv)}</a>`; })() : `<span style="font-size:15px;font-weight:700;">${hdRunPair(o[k], g.name, l) || '&nbsp;'}</span>`;
           return `<span title="${esc(tip)}" style="display:flex;flex-direction:column;align-items:center;min-width:46px;">${lab}${num}</span>`; }).join('')}</div>`; })() : ''}<div style="display:flex;justify-content:space-between;gap:2px;margin-top:auto;">${HD.plan ? cnt('Goal', g.goal, hdGoalCol(g.goal, g.pubIds.length), [], g.goalIds, lab + ' · Goal', 'Goal rows (Cron)') : ''}${cnt('Plan', nP, '#eab308', g.planIds, g.planRows, lab + ' · Planning', 'Unbuilt plan rows + Planning assets')}${cnt('Dev', g.devIds.length, '#ff7a00', g.devIds, [], lab + ' · Dev', 'Development + Review')}${cnt('Pub', g.pubIds.length, '#4ade80', g.pubIds, [], lab + ' · Pub', 'Publish + Published')}${(() => { const ids = [...new Set(g.allIds)], rws = [...new Set([...g.goalIds, ...g.planRows, ...g.allRows])]; return cnt('All', ids.length + rws.length, 'var(--text)', ids, rws, lab + ' · All', 'Everything in this card — every asset (any status) and every plan / goal row'); })()}</div></div>`; }
+// Activity colours (operator 2026-11-15: "set anything from last 4 days that has activity beyond the bulk add as green, everything else to orange";
+// "the color … of cards should relate somehow to recent activity"). DISPLAY ONLY — no Status is written; ◐ Status colours switches back.
+// Active = an asset created in the last 4 days under the title (or under a parent asset of the title), not counting the stack bulk add:
+// a Series / Story / Long Form Sales Offer with a Stack name, made on/after 2026-11-13, with nothing under it. Edits don't count (the
+// Nov 13 Stack stamping and nightly crons touch hundreds of assets, so last-edited isn't a real activity signal).
+const HD_ACT_DAYS = 4;
+function hdActiveTitles() { if (HD._actRows === HD.rows && HD._act) return HD._act; HD._actRows = HD.rows;
+  const A = (HD.rows || []).filter(x => x.kind === 'asset'), byId = new Map(A.map(a => [hdNid(a.assetId), a])), kids = new Set(A.map(a => a.parentAssetId && hdNid(a.parentAssetId)).filter(Boolean));
+  const cut = new Date(Date.now() - HD_ACT_DAYS * 864e5).toISOString().slice(0, 10), act = new Set();
+  const bulk = a => { const t = String(a.rawAssetType || '').trim(); return !!a.stack && String(a.dateCreated || '') >= '2026-11-13' && !kids.has(hdNid(a.assetId)) && (/^(series|story)$/i.test(t) || (/^offer$/i.test(t) && /long form sales/i.test(a.pillarType || ''))); };
+  A.forEach(a => { if (!a.dateCreated || a.dateCreated < cut || bulk(a)) return; let x = a, n = 0; while (x && !x.titleId && x.parentAssetId && n++ < 5) x = byId.get(hdNid(x.parentAssetId)); if (x && x.titleId) act.add(hdNid(x.titleId)); });
+  return (HD._act = act); }
+function hdTitleColor(tid, status) { if (HD.statusCol) return hdTitleCol(status); return hdActiveTitles().has(hdNid(tid)) ? '#16a34a' : '#ff7a00'; }
+function hdActToggle() { return ` · <a href="#" onclick="event.preventDefault();HD.statusCol=!HD.statusCol;hdRender()" title="${HD.statusCol ? 'Colour title cards by activity: green = real work in the last ' + HD_ACT_DAYS + ' days, orange = none' : 'Showing activity: green = assets made in the last ' + HD_ACT_DAYS + ' days (stack bulk add not counted), orange = none. Click for status colours.'}" style="color:#8ab4f8;text-transform:none;letter-spacing:0;">${HD.statusCol ? '◐ Status colours — show activity' : '● Activity colours (' + HD_ACT_DAYS + ' days) — show status'}</a>`; }
 // a heading + the cards; hidden ones (🙈, operator 2026-11-10) are left out unless "n hidden — show" is on, then dimmed with 👁 to unhide
 // Default card order (operator 2026-11-13: "set the drag order of all the cards … by color, then by number of assets in card"): green, amber, orange,
 // purple, grey, no colour; then most assets first. A group you have dragged keeps your order; Arrange by keyword relevance keeps its own.
@@ -7932,6 +7946,7 @@ function hdCardSort(L) { if (!L.length || (HD.cardPrefs || {}).arrange || (L[0].
   const rk = g => { const i = HD_COL_RANK.indexOf(String(g.color || '').toLowerCase()); return g.none ? 99 : i < 0 ? (g.color ? 6 : 7) : i; }, cnt = g => new Set(g.allIds || []).size;
   return L.sort((a, b) => rk(a) - rk(b) || cnt(b) - cnt(a) || String(a.name).localeCompare(String(b.name))); }
 function hdCardGrid(head, L, where, ctx, extra) {
+  if (head === 'Titles') extra = (extra || '') + hdActToggle();
   hdCardSort(L);
   const H = (HD.cardPrefs || {}).hidden || {}, vis = []; let n = 0;
   L.forEach(g => { g.hidden = !!H[g.ck]; if (g.hidden) n++; if (!g.hidden || HD.showHidden) vis.push(g); });
@@ -8887,7 +8902,7 @@ function hdKwCards(h, mine, all, planAll, planRowsAll, B, noGoal, IV) {
       const inner2 = level(ordered(T.products.map(P => Object.assign(mk('Product', P.name, P.key === '__none', [], [], cid + '|kw:' + kc + '/' + T.key + '|Product'), { P }))), pg => {
         const P = pg.P, oP = O.has(pg.ck), gkT = cid + '|kw:' + [kc, T.key, P.key].join('/') + '|Title';
         const titles = ordered(P.titles.map(t => { const x = mk('Title', t.name, t.key === '__none', t.assets, under(goal, [T.key, P.key, t.key]), gkT);
-          if (t.key !== '__none') { x.titleId = t.key; x.status = t.row ? hdSt(t.row) : ''; x.color = hdTitleCol(x.status); x.autoColor = true; } return x; }));
+          if (t.key !== '__none') { x.titleId = t.key; x.status = t.row ? hdSt(t.row) : ''; x.color = hdTitleColor(t.key, x.status); x.autoColor = true; } return x; }));
         const t = {}; titles.forEach(x => { if (H[x.ck]) nHid++; else t[x.color] = (t[x.color] || 0) + 1; });
         const where = [h.name, C.name, T.name, P.name].join(' › ');
         const cards = oP ? `<div style="padding:8px 10px 4px ${10 + 3 * 18}px;border-bottom:1px solid var(--border);">${hdCardGrid('Titles', titles, where, { noHidLink: true }) || '<div style="font-size:12px;color:var(--text3);padding:4px 0 8px;">No titles yet</div>'}</div>` : '';
