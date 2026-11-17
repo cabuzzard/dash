@@ -59254,6 +59254,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "writerCoverage") {   // read-only writer lookup per Asset Flow type (2026-11-16)
+        try { return json(await writerCoverage(env, body)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       // Keyword Research tab (kw* actions) — module-scope handleKeywordAction.
       const kwResp = await handleKeywordAction(body, env);
       if (kwResp) return kwResp;
@@ -60911,7 +60914,6 @@ async function handleKeywordAction(body, env) {
   if (a === "kwHubCleanPlan") { try { return json(await kwHubCleanPlan(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanApply") { try { return json(await kwHubCleanApply(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanUndo") { try { return json(await kwHubCleanUndo(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
-  if (a === "writerCoverage") { try { return json(await writerCoverage(env, body)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubApply") { try { return json(await kwHubApply(env, body.campaignId, Array.isArray(body.ops) ? body.ops : [], body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubUndo") { try { const u = await kwHubUndo(env, body.campaignId); return json({ ...(await kwHubLoad(env, body.campaignId, body.name)), ...u }); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
 
