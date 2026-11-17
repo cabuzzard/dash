@@ -3912,6 +3912,33 @@ async function removeAssetTypeOption(env, name) {
   const after = (await globalThis.fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: H }).then(x => x.json())).properties?.["Asset Type"]?.select?.options || [];
   return { ok: after.length === keep.length && !after.some(o => o.name === name), before: opts.length, after: after.length, backup: "assettype:options:backup:" + at };
 }
+// former Pillar children → Series Runs (operator 2026-11-16: "its not in asset flow so I want to transfer its children onto series runs"): Asset Flow is
+// Series → Run → posts. For every former Pillar (KV pillarmove:backup, now Series): its children (Parent Asset = it; not Runs, not Delete/Archived)
+// without a Run get Run "<series-slug>-r1"; every run among its children gets its Run asset under the Series (runAssetEnsure, no deadline).
+// dryRun → counts + a sample, nothing written. Log: KV pillarruns:log.
+async function pillarChildrenToRuns(env, body) {
+  const dry = body.dryRun !== false, ids = ((await env.TRADES.get("pillarmove:backup", "json").catch(() => null)) || []).map(x => x.id);
+  const slug = t => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "series";
+  const out = { parents: ids.length, withChildren: 0, children: 0, toAssign: 0, existingRuns: 0, runsEnsured: 0, sample: [], errors: [] }, used = new Set();
+  for (const pid of ids) {
+    let par, kids;
+    try { par = await ivPage(pid); kids = (await notionQuery(ASSETS_DB, { filter: { property: "Parent Asset", relation: { contains: ivDash(pid) } } }))
+      .filter(x => !x.archived && !x.in_trash && !/^run$/i.test(x.properties?.["Asset Type"]?.select?.name || "") && !/^(delete|archived)$/i.test(x.properties?.["Asset Status"]?.select?.name || "")); }
+    catch (e) { out.errors.push(pid + ": " + e.message); continue; }
+    if (!kids.length) continue; out.withChildren++; out.children += kids.length;
+    let rid = slug(hubRichText(par.properties?.["Asset Title"]?.title)) + "-r1"; if (used.has(rid)) rid = rid.slice(0, 54) + "-" + pid.slice(-5); used.add(rid);
+    const runs = new Set(), assign = [];
+    kids.forEach(k => { const r = hubRichText(k.properties?.Run?.rich_text).trim(); if (r && !/^none$/i.test(r)) runs.add(r); else assign.push(k); });
+    out.existingRuns += runs.size; out.toAssign += assign.length; if (assign.length) runs.add(rid);
+    if (out.sample.length < 8) out.sample.push({ series: hubRichText(par.properties?.["Asset Title"]?.title), children: kids.length, newRun: assign.length ? rid : "", keepRuns: [...runs].filter(r => r !== rid) });
+    if (dry) continue;
+    for (const k of assign) { const r = await fetch("https://api.notion.com/v1/pages/" + k.id, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Run: { rich_text: ivRt(rid) } } }) });
+      if (!r.ok) out.errors.push(hubAssetId(k.id) + ": " + ((await r.json().catch(() => ({}))).message || r.status)); await new Promise(res => setTimeout(res, 250)); }
+    for (const r of runs) { try { const x = await runAssetEnsure(env, pid, r); if (x) out.runsEnsured++; } catch (e) { out.errors.push(r + ": " + e.message); } }
+  }
+  await env.TRADES.put(dry ? "pillarruns:dry" : "pillarruns:log", JSON.stringify({ at: new Date().toISOString(), ...out }));
+  return { ok: true, dryRun: dry, ...out, errors: out.errors.slice(0, 20) };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -59297,6 +59324,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "pillarChildrenToRuns") {   // one-off: former Pillar children → Series Runs (2026-11-16)
+        try { return json(await pillarChildrenToRuns(env, body)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "removeAssetTypeOption") {   // remove an unused Asset Type option (2026-11-16)
         try { return json(await removeAssetTypeOption(env, body.name)); } catch (e) { return json({ error: e.message }, 500); }
       }
