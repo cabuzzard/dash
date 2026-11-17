@@ -3939,6 +3939,55 @@ async function pillarChildrenToRuns(env, body) {
   await env.TRADES.put(dry ? "pillarruns:dry" : "pillarruns:log", JSON.stringify({ at: new Date().toISOString(), ...out }));
   return { ok: true, dryRun: dry, ...out, errors: out.errors.slice(0, 20) };
 }
+// Run / Series roll-up (operator 2026-11-16: "if single posts already are built pre writer, the run should be moved to publish as should the series
+// connected to the run"). A Run's posts are built when each is at Publish / Published OR already carries its copy (Body, Post Caption, Headline
+// Primary or External Write). All posts built → the Run goes to Publish; all Published → Published; a Run at Publish+ lifts its Series / Trend
+// Parent to Publish. Promote-only (never demotes), never touches the posts. Called after each write, hourly on the cron, and by runRollupAll.
+const RUN_ROLLUP_RANK = s => /^published$/i.test(s) ? 3 : /^publish$/i.test(s) ? 2 : /^(archived|delete)$/i.test(s) ? 9 : 1;
+// upstream write queue (2026-11-16): parents the roll-up found unwritten. KV upwrite:v1 = [assetId…]; one writeAsset per cron tick through the normal
+// action (the write moves it to Publish). Log: upwrite:log.
+async function upWriteEnqueue(env, id) { id = hubAssetId(id); const q = (await env.TRADES.get("upwrite:v1", "json").catch(() => null)) || []; if (!q.includes(id)) { q.push(id); await env.TRADES.put("upwrite:v1", JSON.stringify(q)); } }
+async function upWriteTick(env, self, ctx) {
+  if (Date.now() - Number((await env.TRADES.get("upwrite:running")) || 0) < 10 * 60000) return { busy: true };
+  const q = (await env.TRADES.get("upwrite:v1", "json").catch(() => null)) || []; if (!q.length) return { done: true };
+  const id = q.shift(); await env.TRADES.put("upwrite:v1", JSON.stringify(q)); await env.TRADES.put("upwrite:running", String(Date.now()));
+  let r; try { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+    const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "writeAsset", assetId: id, token }) }), env, ctx);
+    r = await res.json().catch(() => ({ error: "bad response " + res.status })); } catch (e) { r = { error: e.message }; }
+  const log = (await env.TRADES.get("upwrite:log", "json").catch(() => null)) || []; log.push({ at: new Date().toISOString(), id, ok: !!r && !r.error && !r.skipped, error: r && (r.error || r.reason || ""), status: r && r.status });
+  await env.TRADES.put("upwrite:log", JSON.stringify(log.slice(-60))); await env.TRADES.delete("upwrite:running"); return { id };
+}
+async function runRollup(env, runName) {
+  runName = String(runName || "").trim(); if (!runName || /^none$/i.test(runName)) return null;
+  const rows = (await notionQuery(ASSETS_DB, { filter: { property: "Run", rich_text: { equals: runName } } })).filter(x => !x.archived && !x.in_trash);
+  const sel = (p, k) => p.properties?.[k]?.select?.name || "", txt = (p, k) => hubRichText(p.properties?.[k]?.rich_text).trim();
+  const runA = rows.find(p => /^run$/i.test(sel(p, "Asset Type"))), posts = rows.filter(p => !/^run$/i.test(sel(p, "Asset Type")) && !/^(delete|archived)$/i.test(sel(p, "Asset Status")));
+  if (!runA || !posts.length) return { run: runName, skipped: !runA ? "no Run asset" : "no posts" };
+  const built = p => /^(publish|published)$/i.test(sel(p, "Asset Status")) || ["Body", "Post Caption", "Headline Primary", "External Write"].some(k => txt(p, k));
+  const target = posts.every(p => /^published$/i.test(sel(p, "Asset Status"))) ? "Published" : posts.every(built) ? "Publish" : "";
+  const patch = async (id, st) => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(hubAssetId(id)), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Asset Status": { select: { name: st } } } }) });
+    return r.ok ? "" : ((await r.json().catch(() => ({}))).message || String(r.status)); };
+  const out = { run: runName, posts: posts.length, built: posts.filter(built).length };
+  let runSt = sel(runA, "Asset Status");
+  if (target && RUN_ROLLUP_RANK(target) > RUN_ROLLUP_RANK(runSt) && RUN_ROLLUP_RANK(runSt) < 9) { const e = await patch(runA.id, target); if (e) out.error = "run: " + e; else { out.run_to = target; runSt = target; } }
+  if (RUN_ROLLUP_RANK(runSt) >= 2 && RUN_ROLLUP_RANK(runSt) < 9) { const pid = ivRid(runA.properties, "Parent Asset");
+    if (pid) { const par = await ivPage(pid).catch(() => null), pst = par ? sel(par, "Asset Status") : "";
+      // upstream through the writer (operator 2026-11-16: "if they are added externally, then the upstream assets need to be moved into the right
+      // status using the writer"): an unwritten Series is queued for the writer (its write moves it to Publish); a written one, or a Trend Parent
+      // (instructions only — nothing to write), goes straight to Publish.
+      if (par && RUN_HEAD_RX.test(sel(par, "Asset Type")) && RUN_ROLLUP_RANK(pst) < 2) {
+        const written = ["Body", "Description", "External Write"].some(k => txt(par, k));
+        if (/^series$/i.test(sel(par, "Asset Type")) && !written) { await upWriteEnqueue(env, pid); out.series_to = "queued for the writer"; }
+        else { const e = await patch(pid, "Publish"); if (e) out.seriesError = e; else out.series_to = "Publish"; } } } }
+  return out;
+}
+async function runRollupAll(env) {
+  const runs = (await notionQuery(ASSETS_DB, { filter: { property: "Asset Type", select: { equals: RUN_ASSET_TYPE } } })).filter(x => !x.archived && !x.in_trash);
+  const names = [...new Set(runs.map(p => hubRichText(p.properties?.Run?.rich_text).trim() || hubRichText(p.properties?.["Asset Title"]?.title).trim()).filter(Boolean))], res = [];
+  for (const n of names) { try { const r = await runRollup(env, n); if (r && (r.run_to || r.series_to || r.error || r.seriesError)) res.push(r); } catch (e) { res.push({ run: n, error: e.message }); } }
+  await env.TRADES.put("runrollup:log", JSON.stringify({ at: new Date().toISOString(), runs: names.length, changed: res }));
+  return { ok: true, runs: names.length, changed: res.length, details: res.slice(0, 40) };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -58457,6 +58506,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (sp && sp.output === "reel") { const pg = await ivPage(body.assetId); if (/^single post story$/i.test(pg.properties?.["Asset Type"]?.select?.name || "")) return json(await storySeriesWrite(env, body.assetId)); } }
         const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}
         if(result&&result.ok&&!result.error&&!result.skipped){const st=await writtenToPublish(env,body.assetId);if(st)result.status=st;}   // written → Publish (operator 2026-11-16)
+        if(result&&result.ok&&!result.error&&!result.skipped){try{const pg=await ivPage(hubAssetId(body.assetId)),rn=hubRichText(pg.properties?.Run?.rich_text).trim();if(rn)result.runRollup=await runRollup(env,rn);}catch(e){}}   // the post's Run (and its Series) roll up
         return json(result);
       }
       if (body.action === "getAssetFullText") {
@@ -59324,6 +59374,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "runRollupAll") {   // Run / Series status roll-up across every run (2026-11-16)
+        try { return json(await runRollupAll(env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "pillarChildrenToRuns") {   // one-off: former Pillar children → Series Runs (2026-11-16)
         try { return json(await pillarChildrenToRuns(env, body)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -59446,7 +59499,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
       cw("patchQueueTick", patchQueueTick(env));
-      cw("actionQueueTick", actionQueueTick(env, this, ctx));   // action queue: Claude runs dashboard actions in order (2026-11-16)
+      cw("actionQueueTick", actionQueueTick(env, this, ctx));
+      if (new Date().getUTCMinutes() < 4) cw("runRollupAll", runRollupAll(env));
+      cw("upWriteTick", upWriteTick(env, this, ctx));   // upstream parents the roll-up found unwritten → the writer (2026-11-16)   // hourly: Run / Series status roll-up (2026-11-16)   // action queue: Claude runs dashboard actions in order (2026-11-16)
       cw("writeQueueTick", writeQueueTick(env, this, ctx));   // one-off write queue (2026-11-16)
       cw("researchSyncTick", researchSyncTick(env, this, ctx));   // one-off upstream research sync for a title (2026-11-16)   // queued one-off property patches (2026-11-16)
       cw("woodworkMoveTick", woodworkMoveTick(env).then(r => { if (r && !r.done) console.log("woodwork move:", JSON.stringify(r)); }));   // Woodwork R1 → one title, runs by former title (2026-11-16)
