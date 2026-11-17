@@ -3830,6 +3830,24 @@ async function researchSyncTick(env, self, ctx) {
   if ((st.fails || 0) >= 2) st.step = 3;   // stop after two failures on a step — see the log
   delete st.running; await env.TRADES.put('researchsync:v1', JSON.stringify(st)); return { step: st.step };
 }
+// one-off write queue (operator 2026-11-16: "I need them written"): KV writeq:v1 = {ids:[assetId...], i}. Each cron tick writes the next assets
+// in order through the normal writeAsset action (signed internal request), sequentially, for up to ~8 minutes. Log: writeq:log.
+async function writeQueueTick(env, self, ctx) {
+  const st = await env.TRADES.get('writeq:v1', 'json').catch(() => null); if (!st || !Array.isArray(st.ids) || (st.i || 0) >= st.ids.length) return { done: true };
+  if (st.running && Date.now() - st.running < 14 * 60000) return { busy: true };
+  st.i = st.i || 0; st.running = Date.now(); await env.TRADES.put('writeq:v1', JSON.stringify(st));
+  const t0 = Date.now(), log = (await env.TRADES.get('writeq:log', 'json').catch(() => null)) || [];
+  while (st.i < st.ids.length && Date.now() - t0 < 8 * 60000) {
+    const id = st.ids[st.i]; let r;
+    try { const token = await signToken((env.HMAC_SECRET || '').trim(), 900000);
+      const res = await self.fetch(new Request('https://internal.local/', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'writeAsset', assetId: id, token }) }), env, ctx);
+      r = await res.json().catch(() => ({ error: 'bad response ' + res.status })); } catch (e) { r = { error: e.message }; }
+    const ok = !!r && !r.error && !r.skipped && !r.needsInterview;
+    log.push({ at: new Date().toISOString(), id, ok, error: r && (r.error || r.reason || (r.needsInterview ? 'needs interview' : '')), status: r && (r.newStatus || r.status), keys: r ? Object.keys(r).slice(0, 10) : [] });
+    st.i++; await env.TRADES.put('writeq:log', JSON.stringify(log.slice(-60)));
+  }
+  delete st.running; await env.TRADES.put('writeq:v1', JSON.stringify(st)); return { i: st.i, of: st.ids.length };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -59314,6 +59332,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
       cw("patchQueueTick", patchQueueTick(env));
+      cw("writeQueueTick", writeQueueTick(env, this, ctx));   // one-off write queue (2026-11-16)
       cw("researchSyncTick", researchSyncTick(env, this, ctx));   // one-off upstream research sync for a title (2026-11-16)   // queued one-off property patches (2026-11-16)
       cw("woodworkMoveTick", woodworkMoveTick(env).then(r => { if (r && !r.done) console.log("woodwork move:", JSON.stringify(r)); }));   // Woodwork R1 → one title, runs by former title (2026-11-16)
       cw("runAssetBackfillTick", runAssetBackfillTick(env).then(r => { if (r && !r.done) console.log("run assets:", JSON.stringify(r).slice(0, 300)); }));   // Run assets for existing runs, then blanket deadlines off (2026-11-16)
