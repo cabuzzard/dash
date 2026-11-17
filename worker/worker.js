@@ -3964,7 +3964,9 @@ async function runRollup(env, runName) {
   const runA = rows.find(p => /^run$/i.test(sel(p, "Asset Type"))), posts = rows.filter(p => !/^run$/i.test(sel(p, "Asset Type")) && !/^(delete|archived)$/i.test(sel(p, "Asset Status")));
   if (!runA || !posts.length) return { run: runName, skipped: !runA ? "no Run asset" : "no posts" };
   const built = p => /^(publish|published)$/i.test(sel(p, "Asset Status")) || ["Body", "Post Caption", "Headline Primary", "External Write"].some(k => txt(p, k));
-  const target = posts.every(p => /^published$/i.test(sel(p, "Asset Status"))) ? "Published" : posts.every(built) ? "Publish" : "";
+  // operator 2026-11-16: "the run rows don't have to be publish for the run to be publish or published" — a Run with its posts generated is Publish
+  // whatever their statuses (Published is the operator's, or automatic once every post is Published). Promote-only, so a manual Published stands.
+  const target = posts.every(p => /^published$/i.test(sel(p, "Asset Status"))) ? "Published" : "Publish";
   const patch = async (id, st) => { const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(hubAssetId(id)), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Asset Status": { select: { name: st } } } }) });
     return r.ok ? "" : ((await r.json().catch(() => ({}))).message || String(r.status)); };
   const out = { run: runName, posts: posts.length, built: posts.filter(built).length };
