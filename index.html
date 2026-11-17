@@ -8879,11 +8879,13 @@ function hdTpHtml(h) {
 }
 // single post cards by run (operator 2026-11-16: "add sorting of single post cards by run in title detail"): grouped under a run heading,
 // runs in name order, posts with no run last; inside a run, oldest first is kept from the title page order.
-function hdTpByRun(t, list, card) { if (!/single post/i.test(t)) return list.map(card).join('');
+// any type whose cards belong to a Run is shown as runs (operator 2026-11-16: "I see direct sales emails but they should be a run of emails"): one
+// ⟲ heading per run, even a single run; inside a run the cards go in name order (Email 1 … 4) unless ⇅ sort by status is on.
+function hdTpByRun(t, list, card) { if (/^run$/i.test(String(t || '').trim()) || !list.some(a => String(a.run || '').trim() && !/^none$/i.test(String(a.run).trim()))) return list.map(card).join('');
+  if (!(HD.tp && HD.tp.ssort)) list = list.slice().sort((a, b) => String(a.title || a.name || '').localeCompare(String(b.title || b.name || ''), undefined, { numeric: true }));
   const runs = new Map(); list.forEach(a => { const r = String(a.run || '').trim(); if (!runs.has(r)) runs.set(r, []); runs.get(r).push(a); });
   const keys = [...runs.keys()].sort((a, b) => !a - !b || a.localeCompare(b, undefined, { numeric: true }));
-  if (keys.length < 2 && keys[0]) return list.map(card).join('');
-  return keys.map(r => `<div style="grid-column:1/-1;display:flex;gap:8px;align-items:baseline;margin-top:6px;padding-bottom:3px;border-bottom:1px solid var(--border);"><span style="color:#c084fc;font-weight:700;font-size:12.5px;">⟲ ${esc(r || 'No run')}</span><span style="font-size:11px;color:var(--text3);">${runs.get(r).length} post${runs.get(r).length === 1 ? '' : 's'}</span></div>` + runs.get(r).map(card).join('')).join(''); }
+  return keys.map(r => `<div style="grid-column:1/-1;display:flex;gap:8px;align-items:baseline;margin-top:6px;padding-bottom:3px;border-bottom:1px solid var(--border);"><span style="color:#c084fc;font-weight:700;font-size:12.5px;">⟲ ${esc(r || 'No run')}</span><span style="font-size:11px;color:var(--text3);">${runs.get(r).length} ${/email/i.test(t) ? 'email' : 'post'}${runs.get(r).length === 1 ? '' : 's'}</span></div>` + runs.get(r).map(card).join('')).join(''); }
 // 📊 Counts (operator 2026-11-13: "this column should expand to have all parents and childs on AF whether or not the count is zero … arranged in
 // parent child relation. the counts should open the records in the content plan"): one row per Asset Flow asset type — each Parent / Upstream
 // Asset with the asset types it leads to (through research steps such as run / Clipping) indented under it, then the asset types no parent
