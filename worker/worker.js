@@ -3880,6 +3880,19 @@ async function writerCoverage(env, body) {
   await env.TRADES.put('writercoverage:last', JSON.stringify({ at: new Date().toISOString(), out }));
   return { ok: true, n: out.length, out };
 }
+// Pillar → Series (operator 2026-11-16: "it all has to be moved into series. and total removal of pillar. pillar is only for being written to titles.
+// no assets at all."): every asset with Asset Type "Pillar" gets Asset Type "Series". Backup first (KV pillarmove:backup — id, old type, Pillar Type,
+// Asset Class, status), then the change goes on the patch queue (patchq:v1, 20 per cron tick). Re-runnable; only Pillar-typed assets are touched.
+async function pillarAssetsToSeries(env) {
+  const rows = await notionQuery(ASSETS_DB, { filter: { property: "Asset Type", select: { equals: "Pillar" } } });
+  const sel = (p, k) => p.properties?.[k]?.select?.name || "", prev = (await env.TRADES.get("pillarmove:backup", "json").catch(() => null)) || [], have = new Set(prev.map(x => x.id));
+  const add = rows.map(p => ({ id: hubAssetId(p.id), type: sel(p, "Asset Type"), pillarType: sel(p, "Pillar Type"), assetClass: sel(p, "Asset Class"), status: sel(p, "Asset Status") })).filter(x => !have.has(x.id));
+  await env.TRADES.put("pillarmove:backup", JSON.stringify([...prev, ...add]));
+  const q = (await env.TRADES.get("patchq:v1", "json").catch(() => null)) || [], queued = new Set(q.map(x => x.id));
+  rows.forEach(p => { const id = hubAssetId(p.id); if (!queued.has(id)) q.push({ id, properties: { "Asset Type": { select: { name: "Series" } } } }); });
+  await env.TRADES.put("patchq:v1", JSON.stringify(q));
+  return { ok: true, found: rows.length, backedUp: prev.length + add.length, queued: q.length };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -30088,7 +30101,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             "Asset Title": { title: [{ type: "text", text: { content: `${String(body.title || "Untitled").slice(0, 150)} — ${label}` } }] },
             "Asset Status": { select: { name: "Development" } },
             "Asset Class": { select: { name: pillar || digestParent ? "Pillar" : "Publishable" } },
-            "Asset Type": { select: { name: digestParent ? DIGEST_PARENT_TYPE : pillar ? "Pillar" : assetType } },
+            "Asset Type": { select: { name: digestParent ? DIGEST_PARENT_TYPE : pillar ? "Series" : assetType } },   // was "Pillar" — no Pillar assets (2026-11-16)
             "Content Strategy": { relation: [{ id: dashC(titleId) }] },
             ...(pillar || digestParent ? { "Pillar Type": { select: { name: digestParent ? "Digest" : assetType } } } : {}),
             ...(digestParent ? { "Pillar Readiness": { select: { name: "Unwritten" } } } : {}),
@@ -41808,6 +41821,7 @@ Rules:
       if (body.action === "createAsset") {
         if (isDigestParentType(body.assetType) || /^digest$/i.test(String(body.pillarType || "").trim()))   // retired "digest" → Digest Parent
           Object.assign(body, { assetType: DIGEST_PARENT_TYPE, assetClass: "Pillar", pillarType: "Digest", pillarReadiness: body.pillarReadiness || "Unwritten" });
+        if (/^pillar$/i.test(String(body.assetType || "").trim())) body.assetType = "Series";   // Pillar is never an asset type — it is only the pillar written to a title (operator 2026-11-16: "it all has to be moved into series. and total removal of pillar")
         const { titleId, campId, productId, assetTitle, platformName, assetType, assetStatus, content,
           assetClass, pillarType, pillarReadiness, pillarSync, interviewRequired, parentAssetId, deploymentStatus } = body;
         if (!titleId || !assetTitle) return json({ error: "titleId and assetTitle required" }, 400);
@@ -58291,7 +58305,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const src = await ivPage(aid), P = src.properties || {}, titleId = ivRid(P, "Content Strategy"); if (!titleId) return json({ error: "This asset has no title" }, 400);
         const dash = x => ivDash(x), name = hubRichText(P["Asset Title"]?.title) || "Asset";
         const props = { "Asset Title": { title: ivRt((name.replace(/ — Premium Take$/, "") + " — Premium Take").slice(0, 190)) }, "Asset Status": { select: { name: "Development" } },
-          "Asset Class": { select: { name: "Pillar" } }, "Asset Type": { select: { name: "Pillar" } }, "Pillar Type": { select: { name: "Product" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] },   // a Product parent (2026-10-24)
+          "Asset Class": { select: { name: "Pillar" } }, "Asset Type": { select: { name: "Series" } }, "Pillar Type": { select: { name: "Product" } },   // Asset Type was "Pillar" (2026-11-16) "Content Strategy": { relation: [{ id: dash(titleId) }] },   // a Product parent (2026-10-24)
           "Parent Asset": { relation: [{ id: dash(aid) }] },
           ...(ivRid(P, "Product") ? { Product: { relation: [{ id: dash(ivRid(P, "Product")) }] } } : {}), ...(ivRid(P, "Campaign") ? { Campaign: { relation: [{ id: dash(ivRid(P, "Campaign")) }] } } : {}),
           ...(P["Content Hub"]?.select?.name ? { "Content Hub": { select: { name: P["Content Hub"].select.name } } } : {}), };
@@ -59264,6 +59278,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "pillarAssetsToSeries") {   // one-off: Pillar asset type → Series (2026-11-16)
+        try { return json(await pillarAssetsToSeries(env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "writerCoverage") {   // read-only writer lookup per Asset Flow type (2026-11-16)
         try { return json(await writerCoverage(env, body)); } catch (e) { return json({ error: e.message }, 500); }
       }
