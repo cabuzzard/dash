@@ -3893,6 +3893,25 @@ async function pillarAssetsToSeries(env) {
   await env.TRADES.put("patchq:v1", JSON.stringify(q));
   return { ok: true, found: rows.length, backedUp: prev.length + add.length, queued: q.length };
 }
+// remove one Asset Type option (operator 2026-11-16: "total removal of pillar"): only when NO asset uses it. Raw Notion fetch (globalThis.fetch) so
+// the Asset Type rename boundary can't swap option names; every other option is sent back with its exact id / name / color. The full option list is
+// backed up first (KV assettype:options:backup:<at>) and the count is verified afterwards.
+async function removeAssetTypeOption(env, name) {
+  name = String(name || "").trim(); if (!name) return { error: "name required" };
+  const H = { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const q = await globalThis.fetch("https://api.notion.com/v1/databases/" + ASSETS_DB + "/query", { method: "POST", headers: H, body: JSON.stringify({ page_size: 1, filter: { property: "Asset Type", select: { equals: name } } }) }).then(r => r.json());
+  if ((q.results || []).length) return { error: "still in use — " + name + " is on at least one asset; move them first" };
+  const db = await globalThis.fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: H }).then(r => r.json());
+  const opts = db.properties?.["Asset Type"]?.select?.options || []; if (!opts.length) return { error: "could not read the Asset Type options" };
+  if (!opts.some(o => o.name === name)) return { ok: true, already: true, options: opts.length };
+  const keep = opts.filter(o => o.name !== name).map(o => ({ id: o.id, name: o.name, color: o.color }));
+  if (keep.length !== opts.length - 1) return { error: "option count check failed — nothing changed" };
+  const at = Date.now(); await env.TRADES.put("assettype:options:backup:" + at, JSON.stringify(opts));
+  const r = await globalThis.fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Asset Type": { select: { options: keep } } } }) });
+  if (!r.ok) return { error: "Notion: " + ((await r.json().catch(() => ({}))).message || r.status), backup: "assettype:options:backup:" + at };
+  const after = (await globalThis.fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: H }).then(x => x.json())).properties?.["Asset Type"]?.select?.options || [];
+  return { ok: after.length === keep.length && !after.some(o => o.name === name), before: opts.length, after: after.length, backup: "assettype:options:backup:" + at };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -59278,6 +59297,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "removeAssetTypeOption") {   // remove an unused Asset Type option (2026-11-16)
+        try { return json(await removeAssetTypeOption(env, body.name)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "pillarAssetsToSeries") {   // one-off: Pillar asset type → Series (2026-11-16)
         try { return json(await pillarAssetsToSeries(env)); } catch (e) { return json({ error: e.message }, 500); }
       }
