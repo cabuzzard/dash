@@ -3868,6 +3868,18 @@ async function actionQueueTick(env, self, ctx) {
   }
   delete st.running; await env.TRADES.put('actq:v1', JSON.stringify(st)); return { i: st.i, of: st.steps.length };
 }
+// writer coverage (operator 2026-11-16: "make sure everything is mapped by Asset Flow … so that any llm could follow the instructions from anything
+// that's in that graph"): read-only. body.pairs = [{label (Asset Flow node), types:[Asset Type names]}]. For each type it runs the writer's own
+// lookup (writingMethod: rules row + Method record) on a stub page and records what the writer would use, or why it can't write. KV writercoverage:last.
+async function writerCoverage(env, body) {
+  const pairs = Array.isArray(body.pairs) ? body.pairs.slice(0, 80) : [], out = [];
+  for (const pr of pairs) for (const t of (pr.types || []).slice(0, 8)) {
+    let m; try { m = await writingMethod(env, { properties: { 'Asset Type': { select: { name: String(t) } } } }); } catch (e) { m = { reason: 'error: ' + e.message }; }
+    out.push({ label: pr.label, type: t, row: m.row ? m.row.name : '', mapped: m.row ? m.row.mapped : '', method: m.method ? m.name : '', fields: (m.contract || []).map(f => f.name), reason: m.reason || '' });
+  }
+  await env.TRADES.put('writercoverage:last', JSON.stringify({ at: new Date().toISOString(), out }));
+  return { ok: true, n: out.length };
+}
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
   if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(runId)) return { error: "runId required: letters, digits, . _ - (3–80 chars), e.g. garden-shop-cardoon-2026-11-02" };
@@ -60899,6 +60911,7 @@ async function handleKeywordAction(body, env) {
   if (a === "kwHubCleanPlan") { try { return json(await kwHubCleanPlan(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanApply") { try { return json(await kwHubCleanApply(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanUndo") { try { return json(await kwHubCleanUndo(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "writerCoverage") { try { return json(await writerCoverage(env, body)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubApply") { try { return json(await kwHubApply(env, body.campaignId, Array.isArray(body.ops) ? body.ops : [], body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubUndo") { try { const u = await kwHubUndo(env, body.campaignId); return json({ ...(await kwHubLoad(env, body.campaignId, body.name)), ...u }); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
 
