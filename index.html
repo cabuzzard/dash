@@ -8868,6 +8868,7 @@ function hdTpHtml(h) {
       <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">${d.title.sub ? 'Sub-initiative' : 'Title'} · ${esc(h.name)}</div>
       <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;"><b style="font-size:20px;">${esc(d.title.name)}</b><span style="font-size:12px;color:${stCol(d.title.status)};">${esc(d.title.status)}</span>${d.title.sub ? '' : `<a href="https://www.notion.so/${esc(d.title.id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);">Notion ↗</a>`}</div>
       ${d.title.notes ? `<div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${esc(d.title.notes)}</div>` : ''}
+      ${hdPvBox()}
       <div style="font-size:12px;color:var(--text2);margin-top:8px;">${all.length} assets · ${types.length} types · ${nPub(all)} live</div>
       ${T.tab === 'counts' || T.tab === 'strategy' ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${chip('all', all.length, nPub(all), !T.type, "HD.tp.type='';hdRender()")}${types.map(t => { const l = all.filter(a => (a.type || '(no type)') === t); return chip(t, l.length, nPub(l), T.type === t, `HD.tp.type=${JSON.stringify(t).replace(/"/g, '&quot;')};hdRender()`); }).join('')}</div>
       <div style="display:flex;gap:6px;margin-top:8px;font-size:11.5px;flex-wrap:wrap;align-items:center;">${(() => { const sts = [...new Set([...ST_ORD.filter(s => all.some(a => stOf(a) === s)), ...all.map(stOf)])], chip = (k, l, n, on) => `<a href="#" onclick="event.preventDefault();${k ? `const S=HD.tp.stf=HD.tp.stf||new Set();S.has('${esc(k)}')?S.delete('${esc(k)}'):S.add('${esc(k)}')` : 'HD.tp.stf=new Set()'};hdRender()" style="padding:2px 9px;border-radius:999px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};background:${on ? 'var(--surface2)' : 'transparent'};text-decoration:none;color:${k ? stCol(k) : 'var(--text2)'};">${l} <b style="color:var(--text2);">${n}</b></a>`;
@@ -9000,6 +9001,33 @@ function hdTpCounts(all, types) {
     <tfoot><tr style="border-top:2px solid var(--border2);"><td style="padding:7px 10px;font-weight:700;">All types</td><td></td>${cell(tot.dev, '#ff7a00', title + ' · Development')}${cell(tot.pub, '#8ab4f8', title + ' · Publish')}${cell(tot.pubd, '#4ade80', title + ' · Published')}${cell(tot.all, 'var(--text)', title + ' · All')}${due(all, title)}<td></td></tr></tfoot></table>
     <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">One row per asset type — click any column heading to sort (again to reverse). ＋ adds a Development asset of that type to this title · 🎤 adds an interview on one of the row's assets · ▶ opens a row with several assets (🎤 = has an interview) · numbers open the assets in Content Plan — All Assets · notes save per title.</div></div>`;
 }
+// 🎨 Product visual direction (operator 2026-11-17: "a process for initiative level visual spec … or product level"): the product's own look —
+// between the hub's committed spec and an asset's Image Direction in every image prompt (worker productVisual / productVisualOf). Draft (one model
+// call, optional pasted ad references) → edit → Save. Nothing renders here.
+function hdPvPid() { const T = HD.tp; if (!T) return ''; const tr = hdTitleRow(T.id); return tr && tr.productId ? hdNid(tr.productId) : ''; }
+function hdPvBox() { const T = HD.tp, pid = hdPvPid(); if (!T || !pid) return '';
+  const V = T.pv = T.pv || {}; if (!V.loaded && !V.busy) { V.busy = true; call('productVisual', { productId: pid, op: 'get' }).then(r => { V.direction = (r && r.direction) || ''; V.draft = r && r.draft; V.text = V.draft ? V.draft.text : V.direction; }).catch(e => { V.msg = '✗ ' + e.message; }).finally(() => { V.busy = false; V.loaded = true; hdRender(); }); }
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const B = c => `font-size:11.5px;padding:3px 10px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const head = `<a href="#" onclick="event.preventDefault();HD.tp.pv.open=!HD.tp.pv.open;hdRender()" style="text-decoration:none;color:var(--text2);font-size:12px;">${V.open ? '▼' : '▶'} 🎨 Visual direction <span style="color:var(--text3);">(this product — overrides the hub's scene / subjects / mood; palette + fonts stay the hub's)</span> ${V.direction ? '<span style="color:#4ade80;">● set</span>' : '<span style="color:var(--text3);">○ hub default</span>'}${V.draft ? ' <span style="color:#f59e0b;">· draft waiting</span>' : ''}</a>`;
+  if (!V.open) return `<div style="margin-top:8px;">${head}</div>`;
+  return `<div style="margin-top:8px;border:1px solid var(--border2);border-radius:10px;padding:8px 10px;background:var(--surface2);">${head}
+    ${!V.loaded ? '<div style="font-size:12px;color:var(--text3);margin-top:6px;">Loading…</div>' : `
+    <textarea id="hdPvText" rows="10" style="${IN}margin-top:8px;" placeholder="SCENE & SETTING / SUBJECTS / MOOD & LIGHT / VISUAL METAPHORS / DO / AVOID">${esc(V.text || '')}</textarea>
+    <details style="margin-top:6px;font-size:11.5px;"><summary style="cursor:pointer;color:var(--text3);">Draft inputs — optional ad references (paste hooks / descriptions from the Meta Ad Library etc.) and guidance</summary>
+      <textarea id="hdPvRefs" rows="4" style="${IN}margin-top:6px;" placeholder="ad references you liked…">${esc(V.refs || '')}</textarea>
+      <input id="hdPvGuide" style="${IN}margin-top:6px;" placeholder="guidance for the draft (optional)" value="${esc(V.guide || '')}"></details>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+      <button style="${B('#c084fc')}" ${V.busy ? 'disabled' : ''} onclick="hdPvDraft()">✨ Draft from the product</button>
+      <button style="${B('#4ade80')}" ${V.busy ? 'disabled' : ''} onclick="hdPvSave()">💾 Save as this product's direction</button>
+      ${V.direction ? `<button style="${B('var(--text3)')}" ${V.busy ? 'disabled' : ''} onclick="if(confirm('Clear this product\'s visual direction? Its images go back to the hub defaults.')){document.getElementById('hdPvText').value='';hdPvSave()}">Clear</button>` : ''}
+      <span style="font-size:11.5px;color:var(--text3);">${esc(V.msg || (V.draft ? 'Draft from ' + String(V.draft.at || '').slice(0, 16).replace('T', ' ') + ' — edit, then Save' : ''))}</span></div>`}</div>`; }
+async function hdPvDraft() { const V = HD.tp && HD.tp.pv, pid = hdPvPid(); if (!V || !pid) return; V.refs = (document.getElementById('hdPvRefs') || {}).value || ''; V.guide = (document.getElementById('hdPvGuide') || {}).value || '';
+  V.busy = true; V.msg = '✨ Drafting (one model call)…'; hdRender(); const r = await call('productVisual', { productId: pid, op: 'draft', refs: V.refs, guidance: V.guide }).catch(e => ({ error: e.message }));
+  V.busy = false; if (!r || r.error) V.msg = '✗ ' + ((r && r.error) || 'no response'); else { V.draft = r.draft; V.text = r.draft.text; V.msg = ''; } hdRender(); }
+async function hdPvSave() { const V = HD.tp && HD.tp.pv, pid = hdPvPid(); if (!V || !pid) return; const text = (document.getElementById('hdPvText') || {}).value || '';
+  V.busy = true; V.msg = 'Saving…'; hdRender(); const r = await call('productVisual', { productId: pid, op: 'save', text }).catch(e => ({ error: e.message }));
+  V.busy = false; if (!r || r.error) V.msg = '✗ ' + ((r && r.error) || 'no response'); else { V.direction = r.direction; V.text = r.direction; V.draft = null; V.msg = r.direction ? '✓ Saved — every new image for this product follows it' : '✓ Cleared — back to the hub defaults'; } hdRender(); }
 function hdTpSort(k) { const T = HD.tp; if (!T) return; const S = T.sort = T.sort || { k: 'all', d: -1 }; if (S.k === k) S.d = -S.d; else { S.k = k; S.d = /^(label|note)$/.test(k) ? 1 : -1; } hdRender(); }
 function hdTpRowTog(k) { const T = HD.tp; if (!T) return; const O = T.rowOpen = T.rowOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 async function hdTpNote(k, v) { const T = HD.tp; if (!T) return; T.notes = T.notes || {}; T.notes[k] = String(v || '').slice(0, 2000);

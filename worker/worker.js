@@ -627,6 +627,7 @@ async function bgLayersBlock(hdr, ap, fmt) {
   ap = ap || {};
   const rt = k => (ap[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
   const direction = rt("Image Direction");
+  const productDir = await productVisualOf(hdr, ap["Product"]?.relation?.[0]?.id || "");   // product visual direction (2026-11-17)
   const platform = ap["Platform Name"]?.select?.name || "";
   const methodId = ap["Method"]?.relation?.[0]?.id || "";
   let methodName = "", methodBg = "";
@@ -653,7 +654,10 @@ PEOPLE: follow the hub design plate. If its direction or approved plate shows pe
 
 METHOD / PLATFORM BEST PRACTICE${methodName ? ` — method "${methodName}"` : ""}${platform ? `, platform ${platform}` : ""}:
 - Format: ${fmt}
-${pk ? `- ${BG_PLATFORM_PRACTICE[pk]}\n` : ""}${methodBg ? `- From the method's own notes:\n${methodBg}\n` : ""}${direction ? `
+${pk ? `- ${BG_PLATFORM_PRACTICE[pk]}\n` : ""}${methodBg ? `- From the method's own notes:\n${methodBg}\n` : ""}${productDir ? `
+PRODUCT VISUAL DIRECTION (this product's niche — follow it over the hub plate for scene, subjects and mood; palette and type stay the hub's):
+${productDir.slice(0, 1800)}
+` : ""}${direction ? `
 ASSET DIRECTION (the operator's direction for THIS asset — follow it over everything above, including the people rule and the scene choice):
 ${direction.slice(0, 1500)}
 ` : ""}`;
@@ -709,6 +713,7 @@ function plateContent(text, brief) {
   const rulesBlock=brief?.thumbnailRules?'THUMBNAIL RULES — operator-set, binding (must be obeyed):\n'+brief.thumbnailRules:'';
   if(rulesBlock&&!text.includes(rulesBlock))text+='\n\n'+rulesBlock;
   text += "\nThe spec's INSTRUCTIONS FOR THIS FORMAT block is binding - follow it over any conflicting derived choice. Committed field values and operator guidance override conflicting template defaults. Explicit asset guidance overrides hub defaults for this asset; regeneration guidance applies only to this run.";
+  if(brief?.productDirection)text+='\nPRODUCT VISUAL DIRECTION (this product / sub-initiative — overrides the hub defaults for scene, subjects and mood; the hub palette, fonts and format rules still apply):\n'+brief.productDirection;
   if(brief?.assetGuidance)text+='\nSAVED ASSET GUIDANCE (this asset only):\n'+brief.assetGuidance;
   if(brief?.runGuidance)text+='\nREGENERATION GUIDANCE (this run only; do not save as spec):\n'+brief.runGuidance;
   if (!SEND_IMAGES_TO_MODELS) return text;
@@ -747,6 +752,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override, codexDes
     contentHubSel = ap["Content Hub"]?.select?.name || "";
     titleId = norm(ap["Content Strategy"]?.relation?.[0]?.id || "");
     assetProductId = norm(ap["Product"]?.relation?.[0]?.id || "");
+    out.productDirection = await productVisualOf(hdr, assetProductId);   // product visual direction (2026-11-17)
   }
 
   out.hubSlug = contentHubSel || (HUB_SITES.find(h => norm(h.campaignId) === cid) || {}).slug || "";
@@ -3989,6 +3995,45 @@ async function runRollupAll(env) {
   for (const n of names) { try { const r = await runRollup(env, n); if (r && (r.run_to || r.series_to || r.error || r.seriesError)) res.push(r); } catch (e) { res.push({ run: n, error: e.message }); } }
   await env.TRADES.put("runrollup:log", JSON.stringify({ at: new Date().toISOString(), runs: names.length, changed: res }));
   return { ok: true, runs: names.length, changed: res.length, details: res.slice(0, 40) };
+}
+// ── PRODUCT VISUAL DIRECTION (operator 2026-11-17: "we need a process for initiative level visual spec … or topic level or product level" → product
+// level: the product is the unit — one product = one sub-initiative = one push). Products."Visual Direction" (rich text) sits between the hub's
+// committed spec and an asset's own Image Direction in every image prompt: it sets the niche's scene, subjects, mood and do / avoid; the hub's
+// palette, fonts and format rules still apply. productVisual {productId, op:get|draft|save}: draft = one model call from the product's research
+// (+ optional pasted ad references), staged in KV prodvisual:draft:<pid>; save writes the field (the operator commits). Nothing renders.
+async function productVisualOf(hdr, productId) {
+  const pid = String(productId || "").replace(/-/g, ""); if (!/^[a-f0-9]{32}$/i.test(pid)) return "";
+  try { const pg = await fetch("https://api.notion.com/v1/pages/" + ivDash(pid), { headers: hdr }).then(r => r.json());
+    return (pg.properties?.["Visual Direction"]?.rich_text || []).map(t => t.plain_text).join("").trim().slice(0, 2500); } catch (e) { return ""; }
+}
+async function productVisual(env, body) {
+  const pid = hubAssetId(body.productId || ""), op = String(body.op || "get"); if (!/^[a-f0-9]{32}$/.test(pid)) return { error: "productId required" };
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, K = "prodvisual:draft:" + pid;
+  if (op === "get") return { ok: true, direction: await productVisualOf(hdr, pid), draft: (await env.TRADES.get(K, "json").catch(() => null)) || null };
+  if (op === "save") { const text = String(body.text || "").trim().slice(0, 2500);
+    await ensureDbRichTextProperty(hdr, PRODUCTS_DB, "Visual Direction");
+    const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(pid), { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Visual Direction": { rich_text: ivRt(text) } } }) });
+    if (!r.ok) return { error: "Notion: " + ((await r.json().catch(() => ({}))).message || r.status) };
+    await env.TRADES.delete(K); return { ok: true, direction: text }; }
+  if (op === "draft") {
+    const pg = await ivPage(pid), P = pg.properties || {}, t = k => hubRichText(P[k]?.rich_text || P[k]?.title || []).trim();
+    const facts = ["Name", "Description", "Avatar", "Unique Angle", "Transformation", "Offer Structure", "Keywords"].map(k => k + ": " + (t(k) || "(blank)")).join("\n");
+    const prompt = `You write the VISUAL DIRECTION for one product's images (social posts, blog thumbnails, offer backgrounds, sales-page headers). It sits on top of the hub's design spec: the hub keeps its palette, fonts, text zones and format rules — you set what the IMAGES SHOW for this product's niche and buyer.
+PRODUCT
+${facts}
+${body.refs ? "AD REFERENCES THE OPERATOR LIKED (take the patterns, never copy brands, logos or people):\n" + String(body.refs).slice(0, 4000) + "\n" : ""}${body.guidance ? "OPERATOR GUIDANCE: " + String(body.guidance).slice(0, 1500) + "\n" : ""}
+Write plain text, these labelled sections, short lines, no preamble:
+SCENE & SETTING — where the images happen (real, specific to this niche and region).
+SUBJECTS — who or what is in frame and what they are doing (candid, mid-action, never posing for the camera).
+MOOD & LIGHT — the feeling and the light.
+VISUAL METAPHORS — 3–5 concrete images that carry the product's promise.
+DO — 4–6 short rules.
+AVOID — 4–6 short rules (clichés of the niche, stock-photo tropes, any brand or platform logos, anything that implies results that don't exist).
+Under 1800 characters. Wordless images only — never ask for text in the picture.`;
+    const text = (await drClaude(env, prompt, 1500)).trim().slice(0, 2500);
+    const draft = { at: new Date().toISOString(), text }; await env.TRADES.put(K, JSON.stringify(draft)); return { ok: true, draft };
+  }
+  return { error: "op must be get, draft or save" };
 }
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
@@ -59379,6 +59424,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
 
+      if (body.action === "productVisual") {   // product-level visual direction (2026-11-17)
+        try { return json(await productVisual(env, body)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "runRollupAll") {   // Run / Series status roll-up across every run (2026-11-16)
         try { return json(await runRollupAll(env)); } catch (e) { return json({ error: e.message }, 500); }
       }
