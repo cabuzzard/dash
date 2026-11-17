@@ -6553,6 +6553,14 @@ async function hfApi(env, method, path, body) {
   return (d && typeof d === "object" && d.data && typeof d.data === "object") ? d.data : d;
 }
 // Review (2026-10-10): a render/image save flips an asset to Publish — but never DEMOTE one already at Review or Published.
+// written → Publish (operator 2026-11-16: "after the writer is run it should set them all to publish"): a successful write moves the asset to
+// Publish — never a Run (a timing asset, not written) and never down from Publish / Published / Archived / Delete.
+async function writtenToPublish(env, assetId) {
+  try { const id = hubAssetId(assetId), pg = await ivPage(id), cur = pg.properties?.["Asset Status"]?.select?.name || "", ty = pg.properties?.["Asset Type"]?.select?.name || "";
+    if (/^(publish|published|archived|delete)$/i.test(cur) || /^run$/i.test(ty)) return "";
+    const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Publish" } } } }) });
+    return r.ok ? "Publish" : ""; } catch (e) { return ""; }
+}
 async function noDemoteStatus(assetId, props) {
   if (!props || !props["Asset Status"]) return props;
   try {
@@ -58387,7 +58395,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (dc) return json(dc.waiting ? { needsInterview: true, interviews: dc.interviews } : { ok: true, ...dc }); }
         { const sp = await env.TRADES.get("shortrun:asset:" + hubAssetId(body.assetId), "json").catch(() => null);   // a Series reel child → the approved story write path
           if (sp && sp.output === "reel") { const pg = await ivPage(body.assetId); if (/^single post story$/i.test(pg.properties?.["Asset Type"]?.select?.name || "")) return json(await storySeriesWrite(env, body.assetId)); } }
-        const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}return json(result);
+        const result=await writeContractAsset(env,body.assetId);if(result.needsInterview){const {error,...gate}=result;return json(gate);}
+        if(result&&result.ok&&!result.error&&!result.skipped){const st=await writtenToPublish(env,body.assetId);if(st)result.status=st;}   // written → Publish (operator 2026-11-16)
+        return json(result);
       }
       if (body.action === "getAssetFullText") {
         const { assetId } = body;
