@@ -4336,7 +4336,7 @@
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script src="shared/governance.js?v=2026102202"></script>
-<script src="shared/information-flow.js?v=2026111301"></script>
+<script src="shared/information-flow.js?v=2026111601"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -9507,6 +9507,16 @@ function hiPill() {
 const HI_AF_LEGACY = { 'topical seo post': 'Topical - SEO Post', 'news seo · blog': 'Blog - SEO - News', 'newsletter premium': 'Newsletter paid', 'offer blog post': 'Offer – Content Hub',
   'offer round up': 'Offer Roundup', 'sub page': 'sub page', 'single post carousel': 'carousel', 'youtube long form': 'YouTube Longform', 'resume': 'resume', 'listing': 'listing',
   'client app': 'Client Studio', 'single post run': 'single post', 'single post video short': 'social reel informative', 'digital product': 'Product', 'offer sales page': 'Landing Page' };   // graph name → the older name (worker ASSET_TYPE_RENAMES)
+// ✍ Writer check for the Asset Flow tab (operator 2026-11-16: "so that any llm could follow the instructions from anything that's in that graph"):
+// each asset node → its Asset Type names (graph name + HD_AF_TYPE / HI_AF_LEGACY aliases) → the worker runs the writer's own lookup (writerCoverage).
+// state: ok = a switched-on contract the writer can write · ops = an instructions row (kind operational: made another way) · gap = no rules.
+window.afWriterCheck = async nodes => { const nz = s => String(s || '').trim().toLowerCase(), isA = n => /asset|widget/i.test(n.role || '') && !/development/i.test(n.role || '');
+  const A = (nodes || []).filter(isA), pairs = A.map(n => { const ts = new Set([n.label]); if (HI_AF_LEGACY[nz(n.label)]) ts.add(HI_AF_LEGACY[nz(n.label)]); Object.entries(HD_AF_TYPE).forEach(([k, v]) => { if (nz(v) === nz(n.label)) ts.add(k); }); return { label: n.label, types: [...ts] }; });
+  const r = await call('writerCoverage', { pairs }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+  const by = {}, out = {}; (r.out || []).forEach(o => { (by[o.label] = by[o.label] || []).push(o); });
+  A.forEach(n => { const L = by[n.label] || [], ok = L.find(o => !o.reason), op = L.find(o => /^operational$/i.test(o.kind || ''));
+    out[n.id] = ok ? { state: 'ok', text: (ok.row || ok.type) + ' — ' + (ok.fields || []).join(', ') } : op ? { state: 'ops', text: 'instructions only: ' + (op.notes || op.row) } : { state: 'gap', text: (L[0] && L[0].reason) || 'no rules' }; });
+  return out; };
 function hiAfGroups(t) {
   const rows = (t && t.rows) || [], nodes = new Map(rows.filter(r => r.cells.kind === 'node').map(r => [r.id, r.cells])), out = new Map();
   rows.filter(r => r.cells.kind === 'edge').forEach(e => { if (!out.has(e.cells.source)) out.set(e.cells.source, []); out.get(e.cells.source).push(e.cells.target); });

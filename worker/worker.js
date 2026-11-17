@@ -3872,13 +3872,13 @@ async function actionQueueTick(env, self, ctx) {
 // that's in that graph"): read-only. body.pairs = [{label (Asset Flow node), types:[Asset Type names]}]. For each type it runs the writer's own
 // lookup (writingMethod: rules row + Method record) on a stub page and records what the writer would use, or why it can't write. KV writercoverage:last.
 async function writerCoverage(env, body) {
-  const pairs = Array.isArray(body.pairs) ? body.pairs.slice(0, 80) : [], out = [];
+  const pairs = Array.isArray(body.pairs) ? body.pairs.slice(0, 80) : [], out = [], tbl = await writingMethodsTable(env).catch(() => null), kindOf = id => ((tbl && tbl.rows || []).find(r => r.id === id) || {}).cells?.ckind01 || '';
   for (const pr of pairs) for (const t of (pr.types || []).slice(0, 8)) {
     let m; try { m = await writingMethod(env, { properties: { 'Asset Type': { select: { name: String(t) } } } }); } catch (e) { m = { reason: 'error: ' + e.message }; }
-    out.push({ label: pr.label, type: t, row: m.row ? m.row.name : '', mapped: m.row ? m.row.mapped : '', method: m.method ? m.name : '', fields: (m.contract || []).map(f => f.name), reason: m.reason || '' });
+    out.push({ label: pr.label, type: t, row: m.row ? m.row.name : '', kind: m.row ? kindOf(m.row.id) : '', notes: m.row ? String(((tbl && tbl.rows || []).find(r => r.id === m.row.id) || {}).cells?.c2 || '').slice(0, 300) : '', mapped: m.row ? m.row.mapped : '', method: m.method ? m.name : '', fields: (m.contract || []).map(f => f.name), reason: m.reason || '' });
   }
   await env.TRADES.put('writercoverage:last', JSON.stringify({ at: new Date().toISOString(), out }));
-  return { ok: true, n: out.length };
+  return { ok: true, n: out.length, out };
 }
 async function createRunAssets(env, body) {
   const runId = String(body.runId || "").trim(), parentId = hubAssetId(body.seriesAssetId || body.parentAssetId || ""), items = Array.isArray(body.items) ? body.items : [];
