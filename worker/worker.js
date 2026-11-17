@@ -41938,7 +41938,10 @@ Rules:
           const pr = await fetch(`https://api.notion.com/v1/pages/${dash(parentAssetId)}`, { headers: hdr });
           const parent = await pr.json().catch(() => ({}));
           if (!pr.ok) return json({ error: parent.message || "Parent pillar could not be loaded" }, pr.status);
-          if ((parent.properties?.["Asset Class"]?.select?.name || "") !== "Pillar") return json({ error: "The selected parent must be a Pillar asset" }, 400);
+          // any live asset can be a parent — Asset Flow decides relations, not the old Pillar class (operator 2026-11-16: "pillar is only for being
+          // written to titles. no assets at all"); a Run is a timing asset, never a content parent.
+          if (parent.archived || parent.in_trash) return json({ error: "The selected parent is archived" }, 400);
+          if (/^run$/i.test(parent.properties?.["Asset Type"]?.select?.name || "")) return json({ error: "A Run can't be a content parent — put the asset in the Run (Run field) and parent it to the Series" }, 400);
         }
 
         const flowViolations = flowAssetViolations({ assetClass, parentAssetId });
