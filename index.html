@@ -9020,7 +9020,7 @@ function hdPvBox() { const T = HD.tp, pid = hdPvPid(); if (!T || !pid) return ''
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
       <button style="${B('#c084fc')}" ${V.busy ? 'disabled' : ''} onclick="hdPvDraft()">✨ Draft from the product</button>
       <button style="${B('#4ade80')}" ${V.busy ? 'disabled' : ''} onclick="hdPvSave()">💾 Save as this product's direction</button>
-      ${V.direction ? `<button style="${B('var(--text3)')}" ${V.busy ? 'disabled' : ''} onclick="if(confirm('Clear this product\'s visual direction? Its images go back to the hub defaults.')){document.getElementById('hdPvText').value='';hdPvSave()}">Clear</button>` : ''}
+      ${V.direction ? `<button style="${B('var(--text3)')}" ${V.busy ? 'disabled' : ''} onclick="if(confirm('Clear the visual direction for this product? Its images go back to the hub defaults.')){document.getElementById('hdPvText').value='';hdPvSave()}">Clear</button>` : ''}
       <span style="font-size:11.5px;color:var(--text3);">${esc(V.msg || (V.draft ? 'Draft from ' + String(V.draft.at || '').slice(0, 16).replace('T', ' ') + ' — edit, then Save' : ''))}</span></div>`}</div>`; }
 async function hdPvDraft() { const V = HD.tp && HD.tp.pv, pid = hdPvPid(); if (!V || !pid) return; V.refs = (document.getElementById('hdPvRefs') || {}).value || ''; V.guide = (document.getElementById('hdPvGuide') || {}).value || '';
   V.busy = true; V.msg = '✨ Drafting (one model call)…'; hdRender(); const r = await call('productVisual', { productId: pid, op: 'draft', refs: V.refs, guidance: V.guide }).catch(e => ({ error: e.message }));
