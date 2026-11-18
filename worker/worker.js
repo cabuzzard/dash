@@ -1423,6 +1423,14 @@ async function hubNewsCount(env, cid) {
 // Lateral news search (operator 2026-10-23: "expand laterally through the hub keywords"): when no main product finds a readable
 // story, try the hub's OTHER placed keyword topics, each with its own name + Cluster Keywords. The post goes on the topic's own
 // placed, live product when it has one, else on the main product (still placed), and names the topic it covers.
+// ISOLATED topics (operator 2026-11-18, the Norwegian Business job-hunt research on the AI Implementation hub: "isolate it"): they live in the hub's
+// keyword tree for organisation only — no automated public hub content is made from them. KV hub:isolated:v1 = { topicIds: [], topicNames: [] }.
+async function hubIsolated(env, topicId, topicName) {
+  const iso = (globalThis.__hubIso && Date.now() - globalThis.__hubIso.at < 60000) ? globalThis.__hubIso.v : await env.TRADES.get('hub:isolated:v1', 'json').catch(() => null) || {};
+  globalThis.__hubIso = { at: Date.now(), v: iso };
+  const ids = (iso.topicIds || []).map(x => String(x).replace(/-/g, '')), names = (iso.topicNames || []).map(x => String(x).toLowerCase().trim());
+  return (topicId && ids.includes(String(topicId).replace(/-/g, ''))) || (topicName && names.includes(String(topicName).toLowerCase().trim()));
+}
 async function hubNewsTopicCandidates(env, cid, mains) {
   const dc = kwDashId(cid), model = await hierarchyForHub(env, cid).catch(() => null); if (!model) return [];
   const [topics, prods] = await Promise.all([
@@ -1433,6 +1441,7 @@ async function hubNewsTopicCandidates(env, cid, mains) {
   for (const t of topics) {
     const tid = hierarchyId(t.id); if (!model.topic(tid)) continue;   // only topics placed in a cluster
     const name = txt(t, "Name"); if (!name) continue;
+    if (await hubIsolated(env, tid, name)) continue;   // a private / isolated topic never feeds public hub news
     const kw = txt(t, "Cluster Keywords").split(/[,\n]/).map(x => x.trim()).filter(x => x && x.length < 60).slice(0, 4);
     const own = prods.find(p => hierarchyText(p.properties?.["Topic ID"]?.rich_text) === tid && model.productIds.has(hierarchyId(p.id)) && !mainIds.has(hierarchyId(p.id))
       && !["Idea", "Archived"].includes(p.properties?.Status?.select?.name || "") && !p.properties?.Archived?.checkbox);
