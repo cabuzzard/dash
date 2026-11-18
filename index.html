@@ -7842,11 +7842,15 @@ function hdCp(n) {
   m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x, innerWidth - 220))}px;top:${Math.max(8, Math.min(y + 6, innerHeight - 110))}px;min-width:200px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);overflow:hidden;`;
   m.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:7px 14px 4px;max-width:260px;overflow-wrap:anywhere;">${esc(s.label)} · ${s.ids.length + (s.rowIds || []).length}</div>
     <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdCpGo(${n})">↗ Open in CP AA</button>
-    <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdBulkOpen(${n})">✎ Bulk edit…</button>`;
+    <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdBulkOpen(${n})">✎ Bulk edit…</button>${HD.tp && s.ids.length ? `
+    <button style="${it}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" onclick="hdMenuClose();hdCardsSel(${n})">🖼 Open selected in Cards</button>` : ''}`;
   document.body.appendChild(m); setTimeout(() => document.addEventListener('click', hdMenuOut, true), 0);
 }
 function hdMenuOut(e) { const m = document.getElementById('hdMenu'); if (m && !m.contains(e.target)) hdMenuClose(); }
 function hdMenuClose() { const m = document.getElementById('hdMenu'); if (m) m.remove(); document.removeEventListener('click', hdMenuOut, true); }
+// 🖼 Open selected in Cards (operator 2026-11-17: "a third option when clicking on a count in counts which is open selected in cards"): the title /
+// sub-initiative page's Cards tab narrowed to exactly the assets that count counted, every type section open; ✕ clears it.
+function hdCardsSel(n) { const s = (HD._sets || [])[n], T = HD.tp; if (!s || !T) return; T.sel = { label: s.label, ids: new Set((s.ids || []).map(hdNid)) }; T.tab = 'cards'; T.type = ''; hdRender(); window.scrollTo(0, 0); }
 function hdCpGo(n) { const s = (HD._sets || [])[n]; if (s) cplanOpenSet(s.label, s.ids, s.rowIds); }
 let HB = null;
 async function hdBulkOpen(n) {
@@ -8844,7 +8848,7 @@ function hdTpHtml(h) {
   // show only those; several can be on), and ⇅ sort by status (Planning → Development → Review → Publish → Published, or reversed).
   const ST_ORD = ['Planning', 'Development', 'Review', 'Publish', 'Published'], stOf = a => { const s = String(a.status || '').trim(); return ST_ORD.find(x => x.toLowerCase() === s.toLowerCase()) || (s || 'No status'); };
   const SF = T.stf = T.stf || new Set(), stRank = a => { const i = ST_ORD.indexOf(stOf(a)); return i < 0 ? 99 : i; };
-  let shown = all.filter(a => (!T.type || (a.type || '(no type)') === T.type) && (!SF.size || SF.has(stOf(a))));
+  let shown = all.filter(a => (!T.type || (a.type || '(no type)') === T.type) && (!SF.size || SF.has(stOf(a))) && (!T.sel || T.sel.ids.has(hdNid(a.id))));
   if (T.ssort) shown = shown.slice().sort((a, b) => (stRank(a) - stRank(b)) * T.ssort);
   const nPub = list => list.filter(a => /^published$/i.test(a.status)).length;
   const chip = (label, n, p, on, click) => `<a href="#" onclick="event.preventDefault();${click}" style="display:inline-flex;gap:6px;align-items:baseline;padding:5px 10px;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};border-radius:999px;text-decoration:none;color:var(--text);background:${on ? 'var(--surface2)' : 'transparent'};font-size:12px;"><b>${n}</b> ${esc(label)}${p ? ` <span style="color:#4ade80;font-size:11px;">${p} live</span>` : ''}</a>`;
@@ -8862,7 +8866,7 @@ function hdTpHtml(h) {
   // shows the count per status (Development = every status before Publish, Publish, Published) and the total. A type picked in the chips opens.
   const OT = T.openTypes = T.openTypes || new Set(), bk = s => /^published$/i.test(s) ? 'pubd' : /^publish$/i.test(s) ? 'pub' : 'dev';
   const groups = (T.type ? [T.type] : types).map(t => { const list = shown.filter(a => (a.type || '(no type)') === t); if (!list.length) return '';
-    const c = { dev: 0, pub: 0, pubd: 0 }; list.forEach(a => c[bk(a.status)]++); const open = !!T.type || OT.has(t), n = (v, col, l) => `<span title="${l}" style="min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${v ? col : 'var(--text3)'};">${v}<span style="display:block;font-size:9px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;">${l}</span></span>`;
+    const c = { dev: 0, pub: 0, pubd: 0 }; list.forEach(a => c[bk(a.status)]++); const open = !!T.type || !!T.sel || OT.has(t), n = (v, col, l) => `<span title="${l}" style="min-width:44px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${v ? col : 'var(--text3)'};">${v}<span style="display:block;font-size:9px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;">${l}</span></span>`;
     return `<div onclick="hdTpType(${JSON.stringify(t).replace(/"/g, '&quot;')})" class="hd-row" title="Click to open / close" style="margin:10px 0 0;display:flex;gap:10px;align-items:center;cursor:pointer;padding:8px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--surface);"><span style="color:var(--text3);font-size:11px;width:12px;">${open ? '▼' : '▶'}</span><b style="font-size:14px;flex:1;min-width:0;overflow-wrap:anywhere;">${esc(t)}</b>${n(c.dev, '#ff7a00', 'Dev')}${n(c.pub, '#8ab4f8', 'Publish')}${n(c.pubd, '#4ade80', 'Published')}${n(list.length, 'var(--text)', 'All')}</div>
       ${open ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:10px 0 6px;">${hdTpByRun(t, list, card)}</div>` : ''}`; }).join('');
   return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">${back}<button style="${B('var(--text2)')}" onclick="HD.tp.d=null;hdRender();hdTpLoad()">↻</button>${aiPlus(T.id)}</div>
@@ -8878,7 +8882,7 @@ function hdTpHtml(h) {
           + `<span style="flex:1;"></span><a href="#" title="Sort the cards by status — click again to reverse, a third time to turn off" onclick="event.preventDefault();HD.tp.ssort=HD.tp.ssort===1?-1:HD.tp.ssort===-1?0:1;hdRender()" style="padding:2px 9px;border-radius:999px;border:1px solid ${T.ssort ? 'var(--accent)' : 'var(--border2)'};text-decoration:none;color:var(--text2);">⇅ sort by status${T.ssort === 1 ? ': Planning → Published' : T.ssort === -1 ? ': Published → Planning' : ''}</a>`; })()}</div>`}
     </div>
     <div style="display:flex;gap:4px;margin:14px 0 0;border-bottom:1px solid var(--border2);">${[['cards', '🖼 Cards'], ['counts', '📊 Counts'], ['visual', '🎨 Visual spec'], ['strategy', '🧭 Initiative strategy']].map(([k, l]) => `<a href="#" onclick="event.preventDefault();HD.tp.tab='${k}';hdRender()" style="padding:7px 14px;font-size:12.5px;text-decoration:none;border:1px solid ${T.tab === k ? 'var(--border2)' : 'transparent'};border-bottom:${T.tab === k ? '1px solid var(--bg)' : '0'};border-radius:8px 8px 0 0;margin-bottom:-1px;background:${T.tab === k ? 'var(--surface)' : 'transparent'};color:${T.tab === k ? 'var(--text)' : 'var(--text3)'};font-weight:${T.tab === k ? 700 : 400};">${l}</a>`).join('')}</div>
-    ${T.tab === 'visual' ? hdPvTab(all) : T.tab === 'strategy' ? hdTpStrategy(h, all) : T.tab === 'counts' ? hdTpCounts(all, types) : (groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>')}`;
+    ${T.tab === 'visual' ? hdPvTab(all) : T.tab === 'strategy' ? hdTpStrategy(h, all) : T.tab === 'counts' ? hdTpCounts(all, types) : (T.sel ? `<div style="margin-top:10px;padding:7px 12px;border:1px solid #8ab4f8;border-radius:8px;font-size:12px;display:flex;gap:10px;align-items:center;"><span style="flex:1;">🖼 Showing the ${T.sel.ids.size} selected from <b>${esc(T.sel.label)}</b></span><a href="#" onclick="event.preventDefault();HD.tp.sel=null;hdRender()">✕ show all</a></div>` : '') + (groups || '<div style="font-size:12px;color:var(--text3);margin-top:14px;">Nothing here with these filters.</div>')}`;
 }
 // single post cards by run (operator 2026-11-16: "add sorting of single post cards by run in title detail"): grouped under a run heading,
 // runs in name order, posts with no run last; inside a run, oldest first is kept from the title page order.
