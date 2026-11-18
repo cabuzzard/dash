@@ -7891,15 +7891,21 @@ function hbDraw() {
   const row = (lab, sub, ctl) => `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">${lab} <span style="font-weight:400;color:var(--text3);">${sub}</span></div>${ctl}</div>`;
   el.innerHTML = head + `<div style="font-size:12px;color:var(--text2);margin-bottom:12px;"><b style="color:#4ade80;">${assets.length}</b> asset row${assets.length === 1 ? '' : 's'} · <b style="color:#eab308;">${plans}</b> plan row${plans === 1 ? '' : 's'}</div>`
     + row('Status', `assets only${live ? ' — ' + live + ' Published left as they are' : ''}`, `<select style="${sel}" onchange="hbSet('status',this.value)" ${HB.busy ? 'disabled' : ''}>${opt('', '— leave as it is —', HB.status)}${CPLAN_PUB.filter(x => x !== 'Published').map(v => opt(v, v, HB.status)).join('')}</select>`)
+    + row('Due by', 'a post in a run sets the date on its Run (due dates live on Runs); anything else gets the date itself', `<div style="display:flex;gap:6px;"><select style="${sel}flex:1;" onchange="HB.dueMode=this.value;hbDraw()" ${HB.busy ? 'disabled' : ''}>${opt('__keep', '— leave as it is —', HB.dueMode || '__keep')}${opt('set', '📅 Set a due date…', HB.dueMode)}${opt('clear', '✕ Remove from Due (clear the date)', HB.dueMode)}</select>${HB.dueMode === 'set' ? `<input type="date" value="${esc(HB.due || '')}" onchange="HB.due=this.value" style="${sel}flex:0 0 160px;">` : ''}</div>`)
     + row('Initiative', 'assets + plan rows', pick('init', inits, HB.init))
     + (subC ? row(esc(T.columns.find(c => c.id === subC).name), 'assets + plan rows (the sheet column)', pick('sub', subs, HB.sub)) : '')
     + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button style="${B}border-color:#4ade80;color:#4ade80;font-weight:700;" onclick="hbApply()" ${HB.busy || !HB.rows.length ? 'disabled' : ''}>${HB.busy ? '⏳ Applying…' : 'Apply'}</button><span style="font-size:12px;color:var(--text3);">${esc(HB.msg)}</span></div>`;
 }
 async function hbApply() {
   if (!HB || HB.busy) return; const N = HUBPLAN_TABLE, S = cpS(N), T = S.t, subC = cplanSubCol(T);
-  const st = HB.status, iv = HB.init, sv = HB.sub; if (!st && iv === '__keep' && sv === '__keep') { HB.msg = 'Nothing chosen'; return hbDraw(); }
+  const st = HB.status, iv = HB.init, sv = HB.sub, dm = HB.dueMode || '__keep'; if (dm === 'set' && !HB.due) { HB.msg = 'Pick the due date'; return hbDraw(); } if (!st && iv === '__keep' && sv === '__keep' && dm === '__keep') { HB.msg = 'Nothing chosen'; return hbDraw(); }
   const aRows = HB.rows.filter(r => cplanAssetOf(S, r)), pRows = HB.rows.filter(r => !cplanAssetOf(S, r)), stRows = aRows.filter(r => (cplanAssetOf(S, r).assetStatus || '') !== 'Published');
   const say = [st && stRows.length ? `Status → ${st} on ${stRows.length} asset${stRows.length === 1 ? '' : 's'}` : '', iv !== '__keep' ? (iv ? `Initiative → “${iv}”` : 'Initiative cleared') + ` on ${HB.rows.length} row${HB.rows.length === 1 ? '' : 's'}` : '', sv !== '__keep' && subC ? (sv ? `Sub initiative → “${sv}”` : 'Sub initiative cleared') + ` on ${HB.rows.length} row${HB.rows.length === 1 ? '' : 's'}` : ''].filter(Boolean);
+  // Due by (operator 2026-11-17: "it should add to bulk edit. meaning count this as due by x date … or remove from due"): run posts → their Run
+  const dueIds = dm === '__keep' ? [] : [...new Set(aRows.map(r => { const ax = cplanAssetOf(S, r), id = hdNid((ax && (ax.assetId || ax.id)) || ''), x = hdAssetById(id) || {}, run = String(x.run || '').trim(), ty = String(x.rawAssetType || x.assetType || '');
+    if (run && !/^run$/i.test(ty)) { const ra = (HD.rows || []).find(y => y.kind === 'asset' && /^run$/i.test(String(y.rawAssetType || y.assetType || '')) && String(y.run || y.assetName || '').trim().toLowerCase() === run.toLowerCase()); if (ra) return hdNid(ra.assetId); }
+    return id; }).filter(Boolean))];
+  if (dm !== '__keep') say.push(dm === 'set' ? `Due by ${HB.due} on ${dueIds.length} run${dueIds.length === 1 ? '' : 's'} / asset${dueIds.length === 1 ? '' : 's'}` : `Removed from Due: ${dueIds.length}`);
   if (!say.length) { HB.msg = 'Nothing to change'; return hbDraw(); }
   if (!confirm(say.join('\n') + '\n\nAsset fields are written to their Notion records (one at a time, logged); plan rows and the sub initiative column are saved in CP AA.')) return;
   HB.busy = true; HB.msg = ''; hbDraw();
@@ -7908,6 +7914,7 @@ async function hbApply() {
     if (iv !== '__keep') { pRows.forEach(r => cplanEdit(N, r.id, 'init', iv)); if (pRows.length) { clearTimeout(S.timer); await cplanSave(N); }
       if (iv) await cplanInitAdd(N, iv, true); if (aRows.length) await cplanAssetBulk(N, aRows, 'initiative', iv); }
     if (st && stRows.length) await cplanAssetBulk(N, stRows, 'status', st);
+    for (const [k, id] of dueIds.entries()) { HB.msg = '📅 Due ' + (k + 1) + ' of ' + dueIds.length + '…'; hbDraw(); const r = await call('setAssetDeadline', { assetId: id, date: dm === 'set' ? HB.due : '' }).catch(e => ({ error: e.message })); if (r && r.error) throw new Error('Due date: ' + r.error); const x = hdAssetById(id); if (x) x.deadline = dm === 'set' ? HB.due : ''; }
     HB.msg = S.resume ? '⏸ Stopped part-way — open CP AA and press ▶ Continue' : '✓ Done';
   } catch (e) { HB.msg = 'Stopped: ' + e.message; }
   HB.busy = false; HD.plan = { columns: T.columns, rows: T.rows }; hbDraw(); hdRender();
