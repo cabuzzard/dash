@@ -11508,7 +11508,9 @@ function hd2Render() {
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => { const k = due(Ti.assets); return `<div class="hd2r" data-i="${ix++}" data-due="${k}" style="${K}padding:4px 0;">${dl(k)}${esc(Ti.name)}</div>`; }).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
+          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', Ti.assets.map(a => {   // asset rows: Due shows the deadline date itself
+            const d = String(a.deadline || '').slice(0, 10), dd = d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+            return `<div class="hd2r" data-i="${ix++}" data-due="${d ? 1 : 0}" style="${K}padding:4px 0;"><span class="hd2dl" title="Deadline ${esc(d)}" style="float:right;text-align:right;font-variant-numeric:tabular-nums;">${esc(dd)}</span>${esc(hdName(a))}<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(String(a.rawAssetType || a.assetType || ''))}${hdSt(a) ? ' · ' + esc(hdSt(a)) : ''}</span></div>`; }).join(''), Ti.assets)).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
   }).join('') + '</div>';
   if (_hd2Sort) hd2ApplySort();
 }
