@@ -9051,7 +9051,7 @@ function hdTpCounts(all, types) {
     <table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="border-bottom:1px solid var(--border2);">${th('Asset type', 0, 'label')}${th('Notes', 0, 'note')}${th('Dev', 1, 'dev')}${th('Publish', 1, 'pub')}${th('Published', 1, 'pubd')}${th('Due', 1, 'due')}${th('Total', 1, 'all')}${th('', 1)}</tr></thead>
     <tbody>${hierOn && !tree ? '<tr><td colspan="8" style="padding:10px 12px;color:var(--text3);font-size:12px;">Loading the Asset Flow…</td></tr>' : view.map(tr).join('') || '<tr><td colspan="8" style="padding:10px 12px;color:var(--text3);font-size:12px;">No assets yet</td></tr>'}</tbody>
     <tfoot><tr style="border-top:2px solid var(--border2);"><td style="padding:7px 10px;font-weight:700;">All types</td><td></td>${cell(tot.dev, '#ff7a00', title + ' · Development')}${cell(tot.pub, '#8ab4f8', title + ' · Publish')}${cell(tot.pubd, '#4ade80', title + ' · Published')}${due(all, title)}${cell(tot.all, 'var(--text)', title + ' · All')}<td></td></tr></tfoot></table>
-    <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">One row per asset type — click any column heading to sort (again to reverse). ＋ adds a Development asset of that type to this title · 🎤 adds an interview on one of the row's assets · ▶ opens a row with several assets (🎤 = has an interview) · numbers open the assets in Content Plan — All Assets · notes save per title.</div></div>`;
+    <div style="font-size:11px;color:var(--text3);padding:8px 12px;border-top:1px solid var(--border);">One row per asset type — click any column heading to sort (again to reverse). ＋ adds a Development asset of that type to this title · 🎤 adds an interview on one of the row's assets · ▶ opens a row with several assets (🎤 = has an interview) · numbers open the assets in Content Plan — All Assets · notes save per title.</div></div>` + hdTpTitles();
 }
 // 🎨 Product visual direction (operator 2026-11-17: "a process for initiative level visual spec … or product level"): the product's own look —
 // between the hub's committed spec and an asset's Image Direction in every image prompt (worker productVisual / productVisualOf). Draft (one model
@@ -9104,6 +9104,27 @@ function hdTpHierTog(l) { const T = HD.tp; if (!T) return; const S = T.hierOpen 
 function hdTpSelTog(id) { const T = HD.tp; if (!T) return; const S = T.cntSel = T.cntSel || new Set(); S.has(id) ? S.delete(id) : S.add(id); hdRender(); }
 function hdTpSelAll(ids, on) { const T = HD.tp; if (!T) return; const S = T.cntSel = T.cntSel || new Set(); (ids || []).forEach(id => on ? S.add(id) : S.delete(id)); hdRender(); }
 function hdTpCnt(rk, lab, ids) { const T = HD.tp; if (!T) return; T.cntOpen = T.cntOpen && T.cntOpen.lab === lab ? null : { rk, lab, ids: ids || [] }; hdRender(); }
+// Titles below Counts (operator 2026-11-17: "below counts there needs to be a drop down of the titles that are called into the initiative by the
+// assets that are there. and keyword research and renaming of titles can be done there"): the page's titles (a sub-initiative page = every title its
+// assets sit on), collapsed; each with ✎ rename (the title edit modal), 🔑 keyword research (regenerateTitleKeywords) and 🔬 title research.
+function hdTpTitles() { const T = HD.tp; if (!T) return ''; const ids = [...new Set((T.ids || [T.id]).map(hdNid))], open = !!T.titlesListOpen;
+  const nA = id => (HD.rows || []).filter(x => x.kind === 'asset' && hdNid(x.titleId || '') === id && !/^(archived|delete)$/i.test(hdSt(x))).length;
+  const B = c => `font-size:11px;padding:2px 8px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${c};cursor:pointer;`;
+  const rows = ids.map(id => { const r = hdTitleRow(id) || {}, nm = r.title || '(title)', st = hdSt(r) || '', bz = (T.tBusy || {})[id];
+    return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 12px;border-top:1px solid var(--border);font-size:12.5px;">
+      <a href="#" onclick="event.preventDefault();hdTpOpen('${esc(id)}')" title="Open this title's own page" style="flex:1;min-width:200px;color:var(--text);">${esc(nm)}</a>
+      <span style="font-size:11px;color:var(--text3);">${esc(st)} · ${nA(id)} assets</span>
+      <button style="${B('var(--text2)')}" onclick="hdTpTitleRename('${esc(id)}')">✎ Rename</button>
+      <button style="${B('#eab308')}" ${bz ? 'disabled' : ''} onclick="hdTpTitleRun('${esc(id)}','kw')" title="Keyword research for this title (one model call)">🔑 Keywords</button>
+      <button style="${B('#c084fc')}" ${bz ? 'disabled' : ''} onclick="hdTpTitleRun('${esc(id)}','research')" title="Re-run this title's research (audience, angle, intent) from its product + keywords">🔬 Research</button>
+      ${bz ? `<span style="font-size:11px;color:var(--text3);">${esc(bz)}</span>` : ''}</div>`; }).join('');
+  return `<div style="border:1px solid var(--border2);border-radius:12px;background:var(--surface);margin-top:12px;overflow:hidden;">
+    <a href="#" onclick="event.preventDefault();HD.tp.titlesListOpen=!HD.tp.titlesListOpen;hdRender()" style="display:block;padding:9px 12px;font-size:12.5px;color:var(--text2);text-decoration:none;"><span style="color:var(--text3);font-size:11px;">${open ? '▼' : '▶'}</span> <b>Titles</b> <span style="color:var(--text3);">· ${ids.length} — the titles this page's assets sit on · rename, keyword research, title research</span></a>${open ? rows : ''}</div>`; }
+function hdTpTitleRename(id) { const r = hdTitleRow(id) || {}; const ci = (HD._cards = HD._cards || []).push({ kind: 'Title', titleId: id, name: r.title || '' }) - 1; hdTitleEdit(ci); }
+async function hdTpTitleRun(id, what) { const T = HD.tp, h = hiHub(); if (!T || !h) return; const B = T.tBusy = T.tBusy || {};
+  B[id] = what === 'kw' ? '🔑 Researching keywords…' : '🔬 Researching the title…'; hdRender();
+  const r = await (what === 'kw' ? call('regenerateTitleKeywords', { titleId: id }) : call('generateTitleResearch', { titleId: id, campaignId: hdNid(h.campaignId), force: true })).catch(e => ({ error: e.message }));
+  delete B[id]; hdRender(); showToast(r && !r.error ? (what === 'kw' ? '✓ Keywords updated' : '✓ Title research updated') : 'Not done: ' + ((r && r.error) || 'no response'), r && !r.error ? 'success' : 'error'); }
 function hdTpSort(k) { const T = HD.tp; if (!T) return; const S = T.sort = T.sort || { k: 'all', d: -1 }; if (S.k === k) S.d = -S.d; else { S.k = k; S.d = /^(label|note)$/.test(k) ? 1 : -1; } hdRender(); }
 function hdTpRowTog(k) { const T = HD.tp; if (!T) return; const O = T.rowOpen = T.rowOpen || new Set(); O.has(k) ? O.delete(k) : O.add(k); hdRender(); }
 async function hdTpNote(k, v) { const T = HD.tp; if (!T) return; T.notes = T.notes || {}; T.notes[k] = String(v || '').slice(0, 2000);
