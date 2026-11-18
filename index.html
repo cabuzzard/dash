@@ -11491,20 +11491,32 @@ async function hd2Load(force) {
 }
 function hd2Render() {
   const el = document.getElementById('hd2Body'); if (!el || !_hd2Rows) return;
-  const S = 'cursor:pointer;padding:5px 0;', K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
-  // right column: how many assets anywhere under this header have a Deadline set (just the count)
-  // zero = blank; an opened heading hides its count (its children carry it)
+  // Every row is one flex line: ▶ marker · label (flex) · Type (150px) · Due (52px) — fixed columns, so spacing never depends on
+  // what a cell holds. Due = how many assets under the row have any Deadline (an asset row = 1); zero is blank; an opened
+  // heading hides its count (its children carry it). Under each title the assets are grouped by asset type (A→Z), each group
+  // its own collapsed heading.
+  const K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
   const due = assets => assets.filter(a => a && a.deadline).length;
-  // right columns (floats, rightmost first): Due (52px) then Type (150px). Headers leave Type blank.
-  const dl = k => `<span class="hd2dl" title="Assets with a deadline" style="float:right;width:52px;text-align:right;font-variant-numeric:tabular-nums;">${k || ''}</span>`;
-  const ty = t => `<span class="hd2ty" title="${esc(t)}" style="float:right;width:150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;">${esc(t)}</span>`;
+  const cols = (t, k) => `<span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
-  const node = (label, kids, w, body, assets) => { const k = due(assets); return `<details data-i="${ix++}" data-due="${k}" data-type="" style="${K}"><summary class="hd2r" style="${S}">${dl(k)}${esc(label)}${n(kids, w)}</summary>${body}</details>`; };
+  const node = (label, kids, w, body, assets, type) => { const k = due(assets);
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}" style="${K}"><summary class="hd2r"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k)}</summary>${body}</details>`; };
+  const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
+    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k)}</div>`; };
+  const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
+  const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
+    return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
+      .map(([t, L]) => node(t, L, 'asset', L.map(leaf).join(''), L, t === '(no type)' ? '' : t)).join(''); };
   const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
-  el.innerHTML = '<style>#hd2Body .hd2r{border-radius:4px;padding-left:4px;padding-right:4px}#hd2Body .hd2r:hover{background:var(--surface2)}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}</style>'
+  el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
+    + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body .hd2r:hover{background:var(--surface2)}'
+    + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
+    + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
+    + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
+    + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}</style>'
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
-    + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}width:150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
-    + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}width:52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
+    + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
+    + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
     const tree = hdTree(h, rows, _hd2Rows);
@@ -11512,10 +11524,8 @@ function hd2Render() {
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', Ti.assets.map(a => {   // asset rows: Due shows the deadline date itself
-            const d = String(a.deadline || '').slice(0, 10), dd = d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-            const t = String(a.rawAssetType || a.assetType || '').trim();
-            return `<div class="hd2r" data-i="${ix++}" data-due="${d ? 1 : 0}" data-type="${esc(t.toLowerCase())}" style="${K}padding:4px 0;"><span class="hd2dl" title="Deadline ${esc(d)}" style="float:right;width:52px;text-align:right;font-variant-numeric:tabular-nums;">${esc(dd)}</span>${ty(t)}${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</div>`; }).join(''), Ti.assets)).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
+          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets)).join(''),
+            hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
   }).join('') + '</div>';
   hd2ApplySort();
 }
