@@ -11480,14 +11480,14 @@ function loadInformationFlowTables() {
 
 // ── Hub Dash 2 (operator 2026-11-18, fresh start): one collapsed tree Hub → Cluster → Topic → Product → Title. Read-only.
 // Reuses the Hub Dashboard data (devAssetsTable rows, hdHubs, hdTree); nothing else yet.
-let _hd2Rows = null;
+let _hd2Rows = null, _hd2PM = null;
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;
   if (_hd2Rows && !force) return hd2Render();
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  const d = await devAssetsTable().catch(e => ({ error: e.message }));
+  const [d, pm] = await Promise.all([devAssetsTable().catch(e => ({ error: e.message })), call('productMap', { op: 'get' }).catch(() => null)]);
   if (!d || d.error) { el.textContent = 'Not loaded: ' + ((d && d.error) || 'no response'); return; }
-  _hd2Rows = d.rows || []; hd2Render();
+  _hd2PM = (pm && pm.map) || null; _hd2Rows = d.rows || []; hd2Render();
 }
 function hd2Render() {
   const el = document.getElementById('hd2Body'); if (!el || !_hd2Rows) return;
@@ -11497,12 +11497,22 @@ function hd2Render() {
   // its own collapsed heading.
   const K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
   const due = assets => assets.filter(a => a && a.deadline).length;
-  const cols = (t, k) => `<span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
+  // Initiative / Sub columns: an asset's own Initiative / Sub Initiative fields, else its product's entry in the product map
+  // (hd:productmap:v1). A heading shows the one value everything under it shares, or "n initiatives" when they differ.
+  const PM = (_hd2PM && _hd2PM.hubs) || {}; let pmc = {};
+  const pmOf = pid => pmc[hdNid(pid || '')] || null;
+  const iv = a => { const m = pmOf(a.productId); return [String(a.initiative || '').trim() || (m && m.initiative) || '', String(a.subInitiative || '').trim() || (m && m.sub) || '']; };
+  const one = (S, w) => S.size === 0 ? '' : S.size === 1 ? esc([...S][0]) : `<span style="color:var(--text3);">${S.size} ${w}</span>`;
+  const agg = (assets, pids) => { const I = new Set(), Su = new Set();
+    assets.forEach(a => { const [i, s] = iv(a); if (i) I.add(i); if (s) Su.add(s); });
+    (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
+    return [one(I, 'initiatives'), one(Su, 'subs'), [...I].join(' · '), [...Su].join(' · ')]; };
+  const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
-  const node = (label, kids, w, body, assets, type) => { const k = due(assets);
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}" style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k)}</summary>${body}</details>`; };
+  const node = (label, kids, w, body, assets, type, pids) => { const k = due(assets);
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}" style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
-    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k)}</div>`; };
+    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -11512,23 +11522,25 @@ function hd2Render() {
     + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body .hd2r:hover{background:var(--surface2)}'
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
+    + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
     + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}#hd2Body details[open]>summary.hd2r{font-weight:600}'
     // shading by level (operator 2026-11-18): titles (+ their type groups) = surface2; every heading above = one step lighter; asset rows stay dark
     + '#hd2Body .hd2t{background:var(--surface2)}#hd2Body .hd2h{background:#242424}#hd2Body .hd2t:hover,#hd2Body .hd2h:hover{filter:brightness(1.3)}'
     + '#hd2Body .hd2r{margin-bottom:1px}</style>'
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
+    + `<span style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
-    const tree = hdTree(h, rows, _hd2Rows);
-    const aC = C => C.topics.flatMap(hdAssetsOf);
+    const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {};
+    const aC = C => C.topics.flatMap(hdAssetsOf), pT = T => T.products.map(P => P.key).filter(k => k !== '__none'), pC = C => C.topics.flatMap(pT);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets)).join(''),
-            hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
+          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets, '', [P.key])).join(''),
+            hdAssetsOf(P), '', [P.key])).join(''), hdAssetsOf(T), '', pT(T))).join(''), aC(C), '', pC(C))).join(''), tree.flatMap(aC), '', tree.flatMap(pC));
   }).join('') + '</div>';
   hd2ApplySort();
 }
