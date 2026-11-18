@@ -3873,6 +3873,7 @@ async function actionQueueTick(env, self, ctx) {
     const ok = !!r && !r.error && !r.skipped && !r.needsInterview && !(r.errors && r.errors.length);
     log.push({ at: new Date().toISOString(), i: st.i, action: b.action, id: b.assetId || b.titleId || b.productId || '', ok, error: r && (r.error || r.reason || (r.errors || []).join(' · ') || (r.needsInterview ? 'needs interview' : '')), keys: r ? Object.keys(r).slice(0, 10) : [] });
     await env.TRADES.put('actq:log', JSON.stringify(log.slice(-80)));
+    await env.TRADES.put('actq:result:' + st.i, JSON.stringify(r).slice(0, 200000), { expirationTtl: 7 * 86400 }).catch(() => {});   // full result, read back by Claude (2026-11-18)
     if (!ok) { st.stopped = true; break; } st.i++;
   }
   delete st.running; await env.TRADES.put('actq:v1', JSON.stringify(st)); return { i: st.i, of: st.steps.length };
