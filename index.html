@@ -1064,7 +1064,7 @@
   <div class="tab-panel" id="tabHubdash2">
     <div style="max-width:1200px;margin:0 auto;min-width:0;">
       <h2 style="font-size:18px;margin:0 0 6px;">Hub Dash 2</h2>
-      <div id="hd2Body" style="font-size:12px;color:var(--text3);">Empty — fresh start.</div>
+      <div id="hd2Body"></div>
     </div>
   </div>
   <div class="tab-panel" id="tabTracking">
@@ -11478,6 +11478,31 @@ function loadInformationFlowTables() {
   if (!FLOWS.methods.data) loadFlowTable('methods');
 }
 
+// ── Hub Dash 2 (operator 2026-11-18, fresh start): one collapsed tree Hub → Cluster → Topic → Product → Title. Read-only.
+// Reuses the Hub Dashboard data (devAssetsTable rows, hdHubs, hdTree); nothing else yet.
+let _hd2Rows = null;
+async function hd2Load(force) {
+  const el = document.getElementById('hd2Body'); if (!el) return;
+  if (_hd2Rows && !force) return hd2Render();
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  const d = await devAssetsTable().catch(e => ({ error: e.message }));
+  if (!d || d.error) { el.textContent = 'Not loaded: ' + ((d && d.error) || 'no response'); return; }
+  _hd2Rows = d.rows || []; hd2Render();
+}
+function hd2Render() {
+  const el = document.getElementById('hd2Body'); if (!el || !_hd2Rows) return;
+  const S = 'cursor:pointer;padding:5px 0;', K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
+  const node = (label, kids, w, body) => `<details style="${K}"><summary style="${S}">${esc(label)}${n(kids, w)}</summary>${body}</details>`;
+  el.innerHTML = '<div style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
+    const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
+    const tree = hdTree(h, rows, _hd2Rows);
+    return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
+      node(C.name, C.topics, 'topic', C.topics.map(T =>
+        node(T.name, T.products, 'product', T.products.map(P =>
+          node(P.name, P.titles, 'title', P.titles.map(Ti => `<div style="${K}padding:4px 0;">${esc(Ti.name)}</div>`).join(''))).join(''))).join(''))).join(''));
+  }).join('') + '</div>';
+}
+
 function loadTabContent(name) {
   try { call('usageMark', { kind: 'tab', name }).catch(() => {}); } catch (e) {}   // usage tracking (operator 2026-11-10) — which tabs actually get opened
   if (SESSION_TOKEN && !_hubRegistryReady) { const p = hubSitesExtraLoad(); if (p && p.then) return p.then(() => loadTabContentNow(name)); }
@@ -11492,6 +11517,7 @@ function loadTabContentNow(name) {
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs2' && !hubs2TabLoaded) { hubs2TabLoaded = true; renderHubs2(); }
   if (name === 'hubdashboard') hdLoad();
+  if (name === 'hubdash2') hd2Load();
   if (name === 'dev2') { restoreAllOutputTables(); }   // the review / interview flag strips were removed (2026-10-22) — interview flagging moves into the hub assets table
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('methods'); }
   if (name === 'informationFlow') loadInformationFlowTables();
