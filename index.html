@@ -8664,6 +8664,24 @@ function hdHubPlanBox(h) { if (!HD.ws) { if (!HD.wsBusy) { HD.wsBusy = true; cal
 // ＋ Initiative / ＋ Sub-initiative (operator 2026-11-17): an initiative / sub-initiative exists as a name on a product (the product map) — so each is made
 // WITH its first product: an existing product of this hub, or a new one (createProduct). Product map (productMap set) + the initiative name list.
 let HNI = null;
+// a NEW product (＋ Initiative / ＋ Sub-initiative / ＋ Product) must sit on a keyword topic and starts with a Development Series (operator 2026-11-17:
+// "the new product must force choose a cluster topic and deploy a dev series asset"): createProduct (with its Topic ID — the hub structure records it)
+// → product map → a title of the same name (createDevTitle, Development) → a Series asset at Development (initiativeBuildAsset). The push is then visible.
+function hdKwModel(cid, name) { const M = HD.kwm = HD.kwm || {}; if (!M[cid] && !M[cid + ':busy']) { M[cid + ':busy'] = 1; call('kwHubLoad', { campaignId: cid, name }).then(r => { M[cid] = (r && r.model) || { topics: [], clusters: [] }; }).catch(() => { M[cid] = { topics: [], clusters: [] }; }).finally(() => { delete M[cid + ':busy']; if (document.getElementById('hniCl')) hdTopicFill(cid, true); }); } return M[cid]; }
+function hdTopicPickHtml(cid, IN) { return `<div id="hniTopicW"><label style="font-size:12px;">Keyword cluster <span style="color:#f87171;">*</span></label><select id="hniCl" onchange="hdTopicFill('${esc(cid)}')" style="${IN}"><option>Loading…</option></select>
+  <label style="font-size:12px;">Keyword topic <span style="color:#f87171;">*</span></label><select id="hniTp" style="${IN}"></select><div style="font-size:11px;color:var(--text3);margin:-6px 0 10px;">A new product sits on one keyword topic; it starts with a title of the same name and a Development Series.</div></div>`; }
+function hdTopicFill(cid, all) { const m = (HD.kwm || {})[cid], cs = document.getElementById('hniCl'), ts = document.getElementById('hniTp'); if (!cs || !ts || !m) return;
+  const topics = (m.topics || []).filter(t => t && t.id && t.name && !/^trending$/i.test(t.name)), clusters = [...new Set(topics.map(t => t.cluster || '(no cluster)'))].sort();
+  if (all) cs.innerHTML = '<option value="">— pick a cluster —</option>' + clusters.map(c => `<option>${esc(c)}</option>`).join('');
+  const c = cs.value; ts.innerHTML = '<option value="">— pick a topic —</option>' + topics.filter(t => (t.cluster || '(no cluster)') === c).map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join(''); }
+async function hdNewProductChain(cid, name, topicId, init, sub) {
+  const r = await call('createProduct', { title: name, campaignId: cid, status: 'Development', topicId }).catch(e => ({ error: e.message })); if (!r || r.error || !r.id) throw new Error('Product not created: ' + ((r && r.error) || 'no response'));
+  const pid = hdNid(r.id), m = await call('productMap', { op: 'set', cid, productId: pid, product: name, initiative: init, sub }).catch(e => ({ error: e.message })); if (!m || m.error) throw new Error('Not placed: ' + ((m && m.error) || 'no response'));
+  const t = await call('createDevTitle', { title: name, campaignId: cid, productId: pid, status: 'Development', skipPillar: true }).catch(e => ({ error: e.message })), tid = t && (t.id || t.titleId); if (!t || t.error || !tid) throw new Error('Title not created: ' + ((t && t.error) || 'no response'));
+  const s = await call('initiativeBuildAsset', { titleId: hdNid(tid), campaignId: cid, productId: pid, assetType: 'Series', assetTitle: name + ' — Series', initiative: init, directions: 'The Series for ' + name + (sub ? ' (' + sub + ')' : '') + ': the coordinating parent its Runs and posts are made from. Written once the title research and pillar are in.' }).catch(e => ({ error: e.message }));
+  if (!s || s.error) throw new Error('Series not deployed: ' + ((s && s.error) || 'no response'));
+  if (sub && s.assetId) await call('cplanAssetEdit', { assetId: s.assetId, field: 'subinitiative', value: sub }).catch(() => null);
+  return { pid, tid: hdNid(tid) }; }
 function hdNewInitOpen(mode) { const h = hiHub(); if (!h) return; const cid = hdNid(h.campaignId);
   const prods = [...new Map((HD.rows || []).filter(x => x.kind === 'product' && x.productId && ((x.hubCids || []).map(hdNid).includes(cid) || hdNid(x.campId || '') === cid) && !/^(archived)$/i.test(hdSt(x))).map(x => [hdNid(x.productId), x.product || x.productName || x.name || 'Product'])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const inits = [...new Set((HD.rows || []).filter(x => x.kind === 'asset' && x.initiative && ((x.hubCids || []).map(hdNid).includes(cid) || hdNid(x.campId || '') === cid)).map(x => x.initiative.trim()))].sort();
@@ -8675,17 +8693,17 @@ function hdNewInitOpen(mode) { const h = hiHub(); if (!h) return; const cid = hd
     : `<label style="font-size:12px;">Initiative</label><select id="hniInit" style="${IN}">${inits.map(n => `<option>${esc(n)}</option>`).join('')}</select>
       <label style="font-size:12px;">Sub-initiative name</label><input id="hniSub" style="${IN}" placeholder="Initiative · Name">`}
     <label style="font-size:12px;">First product</label><select id="hniProd" onchange="document.getElementById('hniNewWrap').style.display=this.value==='__new'?'':'none'" style="${IN}"><option value="__new">＋ New product…</option>${prods.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('')}</select>
-    <div id="hniNewWrap"><label style="font-size:12px;">New product name</label><input id="hniNewProd" style="${IN}"></div>
-    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, hdNewInitGo)">＋ Create</button>${HC_CANCEL}</div>`); }
+    <div id="hniNewWrap"><label style="font-size:12px;">New product name</label><input id="hniNewProd" style="${IN}">${hdTopicPickHtml(cid, IN)}</div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, hdNewInitGo)">＋ Create</button>${HC_CANCEL}</div>`); if (hdKwModel(cid, h.campaign || h.name)) hdTopicFill(cid, true); }
 async function hdNewInitGo() { const X = HNI; if (!X) return 'Closed'; const v = id => String((document.getElementById(id) || {}).value || '').trim();
   const init = v('hniInit'); let sub = v('hniSub'); if (!init) return 'Name the initiative'; if (X.mode === 'sub' && !sub) return 'Name the sub-initiative';
   if (sub && !sub.toLowerCase().startsWith(init.toLowerCase() + ' · ')) sub = init + ' · ' + sub;   // the naming the tree uses: "Initiative · Name"
   let pid = v('hniProd'), pname = (X.prods.find(([id]) => id === pid) || [])[1] || '';
-  if (pid === '__new') { pname = v('hniNewProd'); if (!pname) return 'Name the new product';
-    const r = await call('createProduct', { title: pname, campaignId: X.cid, status: 'Development' }).catch(e => ({ error: e.message })); if (!r || r.error || !r.id) return 'Product not created: ' + ((r && r.error) || 'no response'); pid = hdNid(r.id); }
   if (X.mode === 'init') await call('initiativeNames', { op: 'add', name: init }).catch(() => null);
-  const m = await call('productMap', { op: 'set', cid: X.cid, productId: pid, product: pname, initiative: init, sub }).catch(e => ({ error: e.message }));
-  if (!m || m.error) return 'Not placed: ' + ((m && m.error) || 'no response');
+  if (pid === '__new') { pname = v('hniNewProd'); if (!pname) return 'Name the new product'; const tp = v('hniTp'); if (!tp) return 'Pick the keyword cluster and topic for the new product';
+    try { await hdNewProductChain(X.cid, pname, tp, init, sub); } catch (e) { return e.message; } }
+  else { const m = await call('productMap', { op: 'set', cid: X.cid, productId: pid, product: pname, initiative: init, sub }).catch(e => ({ error: e.message }));
+    if (!m || m.error) return 'Not placed: ' + ((m && m.error) || 'no response'); }
   document.getElementById('hcModal').classList.remove('open'); showToast(`✓ ${sub || init} — with ${pname}`, 'success'); HD.rows = null; hdLoad(true); return true; }
 // ＋ Product / ＋ Title on a sub-initiative page (operator 2026-11-17: "an ability to add products and titles into it. either existing or add new"):
 // a product joins via the product map (productMap set → this initiative + sub-initiative; a new one is made by createProduct first); a title joins by
@@ -8696,8 +8714,8 @@ function hdSubAdd(kind) { const T = HD.tp, h = hiHub(); if (!T || !T.sub || !h) 
   if (kind === 'product') { const prods = [...new Map((HD.rows || []).filter(x => x.kind === 'product' && x.productId && inHub(x) && !mineIds.has(hdNid(x.productId)) && !/^archived$/i.test(hdSt(x))).map(x => [hdNid(x.productId), x.product || x.productName || x.name || 'Product'])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
     hcModal(`<h3 style="margin:0 0 6px;">＋ Product into ${esc(T.sub)}</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">Moves an existing product of ${esc(h.name)} here (its titles and assets follow), or makes a new one.</div>
       <select id="hsaPick" onchange="document.getElementById('hsaNewW').style.display=this.value==='__new'?'':'none'" style="${IN}"><option value="__new">＋ New product…</option>${prods.map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join('')}</select>
-      <div id="hsaNewW"><label style="font-size:12px;">New product name</label><input id="hsaNew" style="${IN}"></div>
-      <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hdSubAddGo('product'))">＋ Add</button>${HC_CANCEL}</div>`); return; }
+      <div id="hsaNewW"><label style="font-size:12px;">New product name</label><input id="hsaNew" style="${IN}">${hdTopicPickHtml(cid, IN)}</div>
+      <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hdSubAddGo('product'))">＋ Add</button>${HC_CANCEL}</div>`); if (hdKwModel(cid, h.campaign || h.name)) hdTopicFill(cid, true); return; }
   if (!mine.length) return showToast('Add a product to this sub-initiative first', 'error');
   const titles = (HD.rows || []).filter(x => x.kind === 'title' && x.titleId && inHub(x) && !onPage.has(hdNid(x.titleId)) && !/^archived$/i.test(hdSt(x))).map(x => [hdNid(x.titleId), x.title || '(title)']).sort((a, b) => a[1].localeCompare(b[1]));
   hcModal(`<h3 style="margin:0 0 6px;">＋ Title into ${esc(T.sub)}</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">The title goes under one of this sub-initiative's products (an existing title moves; its assets follow).</div>
@@ -8707,9 +8725,10 @@ function hdSubAdd(kind) { const T = HD.tp, h = hiHub(); if (!T || !T.sub || !h) 
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hdSubAddGo('title'))">＋ Add</button>${HC_CANCEL}</div>`); }
 async function hdSubAddGo(kind) { const T = HD.tp, h = hiHub(); if (!T || !h) return 'Closed'; const cid = hdNid(h.campaignId), v = id => String((document.getElementById(id) || {}).value || '').trim();
   const init = T.sub.split(' · ')[0].trim(); let pick = v('hsaPick'), nm = v('hsaNew');
-  if (kind === 'product') { if (pick === '__new') { if (!nm) return 'Name the new product'; const r = await call('createProduct', { title: nm, campaignId: cid, status: 'Development' }).catch(e => ({ error: e.message })); if (!r || r.error || !r.id) return 'Product not created: ' + ((r && r.error) || 'no response'); pick = hdNid(r.id); }
-    else nm = ((HD.rows || []).find(x => x.kind === 'product' && hdNid(x.productId || '') === pick) || {}).product || '';
-    const m = await call('productMap', { op: 'set', cid, productId: pick, product: nm, initiative: init, sub: T.sub }).catch(e => ({ error: e.message })); if (!m || m.error) return 'Not placed: ' + ((m && m.error) || 'no response');
+  if (kind === 'product') { if (pick === '__new') { if (!nm) return 'Name the new product'; const tp = v('hniTp'); if (!tp) return 'Pick the keyword cluster and topic for the new product';
+      try { const c = await hdNewProductChain(cid, nm, tp, init, T.sub); pick = c.pid; T.ids.push(c.tid); } catch (e) { return e.message; } }
+    else { nm = ((HD.rows || []).find(x => x.kind === 'product' && hdNid(x.productId || '') === pick) || {}).product || '';
+      const m = await call('productMap', { op: 'set', cid, productId: pick, product: nm, initiative: init, sub: T.sub }).catch(e => ({ error: e.message })); if (!m || m.error) return 'Not placed: ' + ((m && m.error) || 'no response'); }
     (HD.rows || []).filter(x => x.kind === 'title' && hdNid(x.productId || '') === pick).forEach(x => T.ids.push(hdNid(x.titleId)));
   } else { const pid = v('hsaProd'); if (!pid) return 'Pick the product';
     if (pick === '__new') { if (!nm) return 'Name the new title'; const r = await call('createDevTitle', { title: nm, campaignId: cid, productId: pid, status: 'Development', skipPillar: true }).catch(e => ({ error: e.message })); const id = r && (r.id || r.titleId || r.pageId); if (!r || r.error || !id) return 'Title not created: ' + ((r && r.error) || 'no response'); T.ids.push(hdNid(id)); }
