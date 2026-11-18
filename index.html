@@ -11492,14 +11492,17 @@ async function hd2Load(force) {
 function hd2Render() {
   const el = document.getElementById('hd2Body'); if (!el || !_hd2Rows) return;
   const S = 'cursor:pointer;padding:5px 0;', K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
-  const node = (label, kids, w, body) => `<details style="${K}"><summary style="${S}">${esc(label)}${n(kids, w)}</summary>${body}</details>`;
+  // right column: how many assets anywhere under this header have a Deadline set (just the count)
+  const dl = assets => { const k = assets.filter(a => a && a.deadline).length; return `<span title="Assets with a deadline" style="float:right;min-width:28px;text-align:right;font-variant-numeric:tabular-nums;color:${k ? 'var(--text)' : 'var(--text3)'};">${k}</span>`; };
+  const node = (label, kids, w, body, assets) => `<details style="${K}"><summary style="${S}">${dl(assets)}${esc(label)}${n(kids, w)}</summary>${body}</details>`;
   el.innerHTML = '<div style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
     const tree = hdTree(h, rows, _hd2Rows);
+    const aC = C => C.topics.flatMap(hdAssetsOf);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => `<div style="${K}padding:4px 0;">${esc(Ti.name)}</div>`).join(''))).join(''))).join(''))).join(''));
+          node(P.name, P.titles, 'title', P.titles.map(Ti => `<div style="${K}padding:4px 0;">${dl(Ti.assets)}${esc(Ti.name)}</div>`).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
   }).join('') + '</div>';
 }
 
