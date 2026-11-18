@@ -157,6 +157,8 @@ async function hierarchyFetchInner(url, options={}) {
   const address=String(url), method=String(options.method || 'GET').toUpperCase();
   if(hierarchyEnv && /^https:\/\/api\.notion\.com\/v1\/pages(?:\/[^/?]+)?$/.test(address) && ['PATCH','POST'].includes(method) && typeof options.body==='string') {
     const payload=JSON.parse(options.body), props=payload.properties || {};
+    // Review is retired (operator 2026-11-17: "stop using review. just dev, publish and published"): any asset written as Review is saved as Publish
+    if(/^review$/i.test(props['Asset Status']?.select?.name || '')){props['Asset Status']={select:{name:'Publish'}};options={...options,body:JSON.stringify(payload)};}
     const explicit=props['Asset Status'] || props.Status, status=explicit?.select?.name || explicit?.status?.name;
     if(HIERARCHY_STATUSES.has(status)) {
       let current={properties:{},parent:payload.parent};
