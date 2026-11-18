@@ -11495,12 +11495,16 @@ function hd2Render() {
   // right column: how many assets anywhere under this header have a Deadline set (just the count)
   // zero = blank; an opened heading hides its count (its children carry it)
   const due = assets => assets.filter(a => a && a.deadline).length;
-  const dl = k => `<span class="hd2dl" title="Assets with a deadline" style="float:right;min-width:28px;text-align:right;font-variant-numeric:tabular-nums;">${k || ''}</span>`;
-  let ix = 0;   // data-i = original order (sort off); data-due = the count the Due sort uses
-  const node = (label, kids, w, body, assets) => { const k = due(assets); return `<details data-i="${ix++}" data-due="${k}" style="${K}"><summary class="hd2r" style="${S}">${dl(k)}${esc(label)}${n(kids, w)}</summary>${body}</details>`; };
-  const sortLbl = ['', ' ▼', ' ▲'][_hd2Sort] || '';
+  // right columns (floats, rightmost first): Due (52px) then Type (150px). Headers leave Type blank.
+  const dl = k => `<span class="hd2dl" title="Assets with a deadline" style="float:right;width:52px;text-align:right;font-variant-numeric:tabular-nums;">${k || ''}</span>`;
+  const ty = t => `<span class="hd2ty" title="${esc(t)}" style="float:right;width:150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;">${esc(t)}</span>`;
+  let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
+  const node = (label, kids, w, body, assets) => { const k = due(assets); return `<details data-i="${ix++}" data-due="${k}" data-type="" style="${K}"><summary class="hd2r" style="${S}">${dl(k)}${esc(label)}${n(kids, w)}</summary>${body}</details>`; };
+  const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
   el.innerHTML = '<style>#hd2Body .hd2r{border-radius:4px;padding-left:4px;padding-right:4px}#hd2Body .hd2r:hover{background:var(--surface2)}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}</style>'
-    + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;"><span id="hd2DueHd" onclick="hd2SortDue()" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">Due<span style="display:inline-block;min-width:14px;">${sortLbl || ' ⇅'}</span></span></div>`
+    + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
+    + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}width:150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
+    + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}width:52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
     const tree = hdTree(h, rows, _hd2Rows);
@@ -11510,21 +11514,27 @@ function hd2Render() {
         node(T.name, T.products, 'product', T.products.map(P =>
           node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', Ti.assets.map(a => {   // asset rows: Due shows the deadline date itself
             const d = String(a.deadline || '').slice(0, 10), dd = d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-            return `<div class="hd2r" data-i="${ix++}" data-due="${d ? 1 : 0}" style="${K}padding:4px 0;"><span class="hd2dl" title="Deadline ${esc(d)}" style="float:right;text-align:right;font-variant-numeric:tabular-nums;">${esc(dd)}</span>${esc(hdName(a))}<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(String(a.rawAssetType || a.assetType || ''))}${hdSt(a) ? ' · ' + esc(hdSt(a)) : ''}</span></div>`; }).join(''), Ti.assets)).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
+            const t = String(a.rawAssetType || a.assetType || '').trim();
+            return `<div class="hd2r" data-i="${ix++}" data-due="${d ? 1 : 0}" data-type="${esc(t.toLowerCase())}" style="${K}padding:4px 0;"><span class="hd2dl" title="Deadline ${esc(d)}" style="float:right;width:52px;text-align:right;font-variant-numeric:tabular-nums;">${esc(dd)}</span>${ty(t)}${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</div>`; }).join(''), Ti.assets)).join(''), hdAssetsOf(P))).join(''), hdAssetsOf(T))).join(''), aC(C))).join(''), tree.flatMap(aC));
   }).join('') + '</div>';
-  if (_hd2Sort) hd2ApplySort();
+  hd2ApplySort();
 }
-// Due sort: reorders siblings at every level in place, so opened headings stay open. 0 = original order, 1 = most first, 2 = fewest first.
-let _hd2Sort = 0;
-function hd2SortDue() {
-  _hd2Sort = (_hd2Sort + 1) % 3;
-  const s = document.querySelector('#hd2DueHd span'); if (s) s.textContent = ['', ' ▼', ' ▲'][_hd2Sort] || ' ⇅';
+// Column sorts reorder siblings at every level in place, so opened headings stay open. One column at a time; clicking cycles
+// its first direction → the other → off (original order). Due starts most-first; Type starts A→Z. Headers have no type, so a
+// Type sort only reorders the asset rows under each title (blank types last).
+let _hd2Sort = { col: '', dir: 0 };
+function hd2SortBy(col) {
+  const first = col === 'due' ? -1 : 1, s = _hd2Sort;
+  _hd2Sort = s.col !== col ? { col, dir: first } : s.dir === first ? { col, dir: -first } : { col: '', dir: 0 };
   hd2ApplySort();
 }
 function hd2ApplySort() {
   const tree = document.getElementById('hd2Tree'); if (!tree) return;
-  const dir = _hd2Sort === 2 ? 1 : -1;
-  const cmp = (a, b) => (_hd2Sort ? dir * ((+a.dataset.due) - (+b.dataset.due)) : 0) || (+a.dataset.i) - (+b.dataset.i);
+  const { col, dir } = _hd2Sort;
+  document.querySelectorAll('#hd2Body .hd2arw').forEach(x => { x.textContent = x.dataset.col !== col ? ' ⇅' : col === 'due' ? (dir < 0 ? ' ▼' : ' ▲') : (dir > 0 ? ' ▲' : ' ▼'); });
+  const key = (a, b) => col === 'due' ? dir * ((+a.dataset.due) - (+b.dataset.due))
+    : col === 'type' ? ((!a.dataset.type) - (!b.dataset.type)) || dir * String(a.dataset.type).localeCompare(String(b.dataset.type)) : 0;
+  const cmp = (a, b) => key(a, b) || (+a.dataset.i) - (+b.dataset.i);
   [tree, ...tree.querySelectorAll('details')].forEach(box => {
     const kids = [...box.children].filter(x => x.dataset && x.dataset.i != null);
     kids.sort(cmp).forEach(x => box.appendChild(x));
