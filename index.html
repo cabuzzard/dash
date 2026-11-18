@@ -32412,6 +32412,16 @@ function esc(s) {
 }
 
 // ── TOAST ────────────────────────────────────────────────────────────
+// No confirmation pop-ups (operator 2026-11-18: "the confirmation never showed. I'm generally not in favor of any of these confirmation dialogs … not the
+// only modal they don't show up in"). When Chrome blocks a page's dialogs, every confirm() silently answers "no", so actions quietly did nothing. All
+// confirm() calls now: ordinary actions run straight away; a destructive one (delete / trash / remove / archive / can't be undone) asks for a SECOND
+// click within 6 s instead of a dialog — the first click shows "⚠ … click again to confirm".
+(function () { let armed = { msg: '', at: 0 };
+  window.confirm = function (msg) { msg = String(msg == null ? '' : msg);
+    if (!/\b(delet|trash|remov|archiv|discard|wipe|purge)|undone|undo it|permanent|cannot be restored|can't be restored|for good\b/i.test(msg)) return true;
+    const now = Date.now(); if (armed.msg === msg && now - armed.at < 6000) { armed = { msg: '', at: 0 }; return true; }
+    armed = { msg, at: now }; const line = msg.split('\n').map(s => s.trim()).filter(Boolean)[0] || 'This can\u2019t be undone';
+    if (typeof showToast === 'function') showToast('\u26a0 ' + line.slice(0, 180) + ' \u2014 click again to confirm', 'error'); return false; }; })();
 function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
