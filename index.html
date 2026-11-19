@@ -11681,8 +11681,8 @@ async function hd2EfSave() {
       EF.dirty = {}; EF.msg = '✓ Saved' + ('cluster' in ch ? ' — the topic moves to its new cluster on the next ↻ refresh' : '');
       try { const h = HUB_SITES.find(x => x.slug === e.slug); if (h) { delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[e.slug]; } } catch (x) {}
     }
-    if (newName) { const s = document.querySelector('#hd2Tree .hd2lvc[data-e="' + EF.i + '"]'), lb = s && s.closest('.hd2r') && s.closest('.hd2r').querySelector('.hd2lb');
-      if (lb && lb.firstChild && lb.firstChild.nodeType === 3) lb.firstChild.nodeValue = newName; e.name = newName; }
+    if (newName) { const a = document.querySelector('#hd2Tree .hd2nm[data-e="' + EF.i + '"]');
+      if (a) a.textContent = e.k === 'hub' ? (a.textContent.match(/^\d+ · /) || [''])[0] + newName : newName; e.name = newName; }
   } catch (err) { EF.msg = '✗ ' + (err.message || err); }
   EF.warnClose = false; hd2EfDraw();
 }
@@ -11715,19 +11715,19 @@ function hd2Render() {
     assets.forEach(a => { const [i, s] = iv(a); if (i) I.add(i); if (s) Su.add(s); });
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
     return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
-  const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
+  const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2dl">${k || ''}</span>`;
   // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
   _hd2Ents = [];
-  const lvc = (w, pids, ent, nm) => { const name = nm || ({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Type');
-    if (!ent) return '<span class="hd2lvc">' + name + '</span>'; const i = _hd2Ents.push(ent) - 1;
-    return '<span class="hd2lvc" data-e="' + i + '"><a href="#" onclick="event.preventDefault();event.stopPropagation();hd2EntOpen(' + i + ')" title="Open this record — all its fields">' + name + '</a></span>'; };
+  // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
+  const nm = (label, ent) => { if (!ent) return '<span class="hd2nm">' + esc(label) + '</span>'; const i = _hd2Ents.push(ent) - 1;
+    return '<a href="#" class="hd2nm hd2lnk" data-e="' + i + '" onclick="event.preventDefault();event.stopPropagation();hd2EntOpen(' + i + ')" title="Open this record — all its fields">' + esc(label) + '</a>'; };
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${lvc(w, pids, ent)}${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${nm(label, ent)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
-    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${lvc('', null, { k: 'asset', id: a.assetId, name: hdName(a) }, 'Asset')}${cols(t, k, agg([a]))}</div>`; };
+    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -11738,22 +11738,25 @@ function hd2Render() {
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
     + '#hd2Body.hd2noic .hd2in,#hd2Body.hd2noic .hd2sb,#hd2Body.hd2noic .hd2ic{display:none}'
-    // shading per heading level (operator 2026-11-19): a clearly different shade at every level, hub lightest → type group darkest; asset rows stay dark
-    + '#hd2Body summary[data-lv="1"]{background:#444}#hd2Body summary[data-lv="2"]{background:#373737}#hd2Body summary[data-lv="3"]{background:#2b2b2b}'
-    + '#hd2Body summary[data-lv="4"]{background:#212121}#hd2Body summary[data-lv="5"]{background:#181818}#hd2Body summary[data-lv="6"]{background:#111}'
+    // typography carries the level (operator 2026-11-19): every heading bold, size stepping down hub → type group; asset rows regular.
+    // Shading stays, but quiet — a faint step per level, so the Due numbers are the strongest thing in the table.
+    + '#hd2Body summary.hd2r{font-weight:700;color:var(--text)}#hd2Body div.hd2r{font-weight:400;color:var(--text2)}'
+    + '#hd2Body summary[data-lv="1"]{font-size:15.5px;background:#1f1f1f}#hd2Body summary[data-lv="2"]{font-size:14.5px;background:#1b1b1b}#hd2Body summary[data-lv="3"]{font-size:14px;background:#181818}'
+    + '#hd2Body summary[data-lv="4"]{font-size:13.5px;background:#151515}#hd2Body summary[data-lv="5"]{font-size:13px;background:#131313}#hd2Body summary[data-lv="6"]{font-size:12.5px;background:#111}'
+    // the current group (an open heading with nothing open inside it): a guide line down its rows, and those rows in regular weight
+    + '#hd2Body details.hd2cur>details>summary.hd2r,#hd2Body details.hd2cur>div.hd2r{font-weight:400;box-shadow:inset 2px 0 0 #6b6b6b}'
+    + '#hd2Body .hd2lnk{color:inherit;text-decoration:none}#hd2Body .hd2lnk:hover{text-decoration:underline;text-underline-offset:3px;color:var(--accent)}'
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
-    + '#hd2Body .hd2lvc{flex:0 0 64px;margin-left:8px;font-size:11.5px;font-weight:400;color:var(--text3)}#hd2Body .hd2lvc a{color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--text3)}#hd2Body .hd2lvc a:hover{color:var(--accent);border-color:var(--accent)}'
-    + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
-    + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}#hd2Body details[open]>summary.hd2r{font-weight:600}'
+    + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}</style>'
     + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
-    + `<span style="${H}cursor:default;flex:0 0 64px;margin-left:8px;">Level</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
-    + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
+    + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
+    + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}margin-right:auto;">Sort by type<span class="hd2arw" data-col="type"></span></span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) );
@@ -11768,7 +11771,13 @@ function hd2Render() {
             hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
-  hd2ApplySort(); hd2FilterRun();
+  hd2ApplySort(); hd2FilterRun(); hd2Cur();
+  if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', () => hd2Cur(), true); }
+}
+// the current group = an open heading with no open heading inside it (one per open branch)
+function hd2Cur() {
+  const tree = document.getElementById('hd2Tree'); if (!tree) return;
+  tree.querySelectorAll('details').forEach(d => d.classList.toggle('hd2cur', d.open && !d.querySelector('details[open]')));
 }
 // Column sorts reorder siblings at every level in place, so opened headings stay open. One column at a time; clicking cycles
 // its first direction → the other → off (original order). Due starts most-first; Type starts A→Z. Headers have no type, so a
