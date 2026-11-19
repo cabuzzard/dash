@@ -2858,6 +2858,33 @@ async function specCommit(env, assetId, section, opts = {}) {
 // values when it carries short-form pointers —, preview), this asset's sources and the exact JSON to return; the pasted JSON is saved as
 // KV prewrite:<assetId> and the writer reads it as its starting draft. Types not yet in Writing Specs fall back to the registry contract.
 const WRITING_SPECS_DB = "6b6b782c83aa40fcb006d7970143a053";
+// Writing-rule trail for a flyout record (operator 2026-11-19: "the tracking of writing rules from asset flow all the way to each field").
+// For an asset: Asset Flow (its type's node, parents, children — the authority) → its Method → the Current Methods row (the contract:
+// one rule per field) → the committed Writing Spec (the type's own field rules + Base rules). Returns the trail for the record and, per
+// field, every rule with where it came from — the flyout shows them under each field and the `flyout` action hands them to an outside
+// writer. Other record kinds have no writing rules defined yet; the trail says so instead of inventing any.
+async function flyoutRules(env, kind, pageId) {
+  if (kind !== "asset") return { trail: { kind, note: "No writing rules are defined for " + kind + " records — rules come from Asset Flow → Current Methods → Writing Spec, which cover assets." }, fields: {}, contract: [] };
+  const page = await ivPage(pageId), p = page.properties || {}, type = p["Asset Type"]?.select?.name || "";
+  const m = await writingMethod(env, page).catch(e => ({ reason: e.message || String(e), contract: [] }));
+  let af = null;
+  try {
+    const flow = await env.TRADES.get("infoflow:table:assetflowgraph", "json"), rows = (flow && flow.rows) || [];
+    const nodes = new Map(rows.filter(r => r.cells?.kind === "node").map(r => [r.id, r.cells])), edges = rows.filter(r => r.cells?.kind === "edge");
+    const names = [type, ASSET_TYPE_RENAMES[type] || "", (typeof ASSET_TYPE_KEYS !== "undefined" && ASSET_TYPE_KEYS[type]) || ""].filter(Boolean).map(ivNorm);
+    const hit = [...nodes].find(([, c]) => names.includes(ivNorm(c.label)));
+    if (hit) { const [id, c] = hit, lab = x => String((nodes.get(x) || {}).label || "").trim();
+      af = { node: String(c.label || "").trim(), role: c.role || "", parents: edges.filter(e => e.cells.target === id).map(e => lab(e.cells.source)).filter(Boolean), children: edges.filter(e => e.cells.source === id).map(e => lab(e.cells.target)).filter(Boolean) }; }
+  } catch (e) {}
+  const spec = await writingSpecForType(env, type, m.name).catch(() => ({}));
+  const fields = {}, add = (f, r) => { if (!f || !String(r.rule || "").trim()) return; (fields[f] = fields[f] || []).push(r); };
+  (m.contract || []).forEach(f => add(f.name, { rule: f.rule, source: "Current Methods · " + ((m.row && m.row.name) || m.name || type) + " · contract" }));
+  ((spec && spec.kids) || []).filter(r => r.property || /^field$/i.test(r.kind)).forEach(r => add(r.property || r.name, { rule: r.rule, limits: r.limits || "", source: "Writing Spec · " + spec.type.name + " · " + r.name }));
+  ((spec && spec.base) || []).filter(r => r.property).forEach(r => add(r.property, { rule: r.rule, limits: r.limits || "", source: "Writing Spec · Base · " + r.name }));
+  return { fields, contract: m.contract || [], trail: { kind, assetType: type, assetFlow: af, method: m.method ? { id: hubAssetId(m.methodId || ""), name: m.name } : null,
+    currentMethods: m.row ? { name: m.row.name, mapped: m.row.mapped || "" } : null, writingSpec: spec && spec.type ? spec.type.name : null,
+    contractFields: (m.contract || []).map(f => f.name), reason: m.reason || "" } };
+}
 async function writingSpecsRows(env) {
   const cached = await env.TRADES.get("writingspecs:cache", "json").catch(() => null);
   if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.rows;
@@ -20802,7 +20829,9 @@ export default {
           if (F.NOTION_KINDS.includes(A.kind)) {
             const e = need(await invoke({ action: "entityGet", pageId: A.pageId }));
             let research = null; if (A.kind === "product") { const r = await invoke({ action: "getProductStrategy", productId: A.pageId }); research = (r && r.strategy && r.strategy.fields) || {}; }
-            return { kind: A.kind, name: e.title, notionUrl: e.url, database: e.database, props: e.props, positions: F.positions({ kind: A.kind, record: A.pageId, props: e.props, research }) };
+            const rules = await flyoutRules(env, A.kind, A.pageId).catch(x => ({ trail: { kind: A.kind, error: x.message || String(x) }, fields: {}, contract: [] }));
+            const positions = F.positions({ kind: A.kind, record: A.pageId, props: e.props, research }).map(q => ({ ...q, rules: rules.fields[q.field] || [], contractField: rules.contract.some(c => c.name === q.field) }));
+            return { kind: A.kind, name: e.title, notionUrl: e.url, database: e.database, props: e.props, rules, positions };
           }
           const m = (need(await invoke({ action: "kwHubLoad", campaignId: A.campaignId, name: "" })).model) || { topics: [], clusters: [] }, at = (t, k) => F.address(A.kind, A.record, t, k);
           if (A.kind === "topic") { const t = (m.topics || []).find(x => F.nid(x.id) === F.nid(A.sub)); if (!t) throw new Error("Topic not found in this hub's keyword model");
@@ -20816,10 +20845,13 @@ export default {
             { address: at("keywords", "topics"), tab: "keywords", label: "Topics", field: "topics", type: "multi_select", value: (m.topics || []).filter(t => t.cluster === c).map(t => t.name), editable: false }] };
         };
         const R = await load();
-        if (op === "map") return json({ ok: true, address: F.address(A.kind, A.record), kind: R.kind, name: R.name, notionUrl: R.notionUrl || "", database: R.database || "", tabs: F.tabsFor(A.kind), positions: R.positions });
+        if (op === "map") return json({ ok: true, address: F.address(A.kind, A.record), kind: R.kind, name: R.name, notionUrl: R.notionUrl || "", database: R.database || "", tabs: F.tabsFor(A.kind), trail: R.rules ? R.rules.trail : null, positions: R.positions });
+        if (op === "rules") return json({ ok: true, address: F.address(A.kind, A.record), trail: R.rules ? R.rules.trail : null, fields: R.rules ? R.rules.fields : {} });
+        const checkV = (pos, v) => R.rules ? validateWritingContract(R.rules.contract.filter(c => c.name === pos.field), { [pos.field]: String(v == null ? "" : v) }) : [];
         if (!A.tab || !A.key) return json({ error: "set / rewrite need a position address (…/<tab>/<key>) — op:map lists them" }, 400);
         const pos = R.positions.find(p => p.address === F.address(A.kind, A.record, A.tab, A.key));
         if (!pos) return json({ error: "No such position on this record — op:map lists them", address: body.address }, 404);
+        if (op === "check") return json({ ok: true, address: pos.address, field: pos.field, rules: pos.rules || [], violations: checkV(pos, body.value) });   // advisory, writes nothing
         if (op === "set") {
           if (!pos.editable) return json({ error: pos.label + " is read-only" }, 400);
           const v = body.value, before = pos.value;
@@ -20839,7 +20871,7 @@ export default {
             if (ops.some(o => (o.op === "rename" && !o.name) || (o.op === "renameCluster" && !o.to))) return json({ error: "A name can't be blank" }, 400);
             if (ops.length) { const r = need(await invoke({ action: "kwHubApply", campaignId: A.campaignId, name: "", ops })); if (r.errors && r.errors.length) throw new Error(r.errors.join(" · ")); }
           }
-          return json({ ok: true, op, address: pos.address, field: pos.field, before, after: v });
+          return json({ ok: true, op, address: pos.address, field: pos.field, before, after: v, rules: pos.rules || [], violations: checkV(pos, v) });   // violations are advisory, as in writeAsset
         }
         if (op === "rewrite") {   // run a writer on ONE position, directed by guidance
           const guidance = String(body.guidance || "").trim().slice(0, 4000);
@@ -20861,7 +20893,7 @@ export default {
           }
           return json({ error: "No writer runs this position — write the text yourself and use op:set", address: pos.address }, 400);
         }
-        return json({ error: "op must be find, map, set or rewrite" }, 400);
+        return json({ error: "op must be find, map, rules, check, set or rewrite" }, 400);
       } catch (e) { return json({ error: e.message || String(e) }, 400); }
     }
     // ── Hub Dash 2 entity flyout (operator 2026-11-19): load EVERY property of one Notion record (hub campaign, product, title or

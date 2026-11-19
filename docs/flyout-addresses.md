@@ -46,7 +46,9 @@ KV `external:log` with its op and address).
 |---|---|---|
 | `find` | `{ action:"flyout", op:"find", q:"Email 2", campaignId? }` | `results: [{ address, kind, name }]` — hubs, products, titles, assets by name; with `campaignId` also that hub's topics + clusters |
 | `map` | `{ action:"flyout", op:"map", address:"asset:<id>" }` | `{ name, notionUrl, tabs, positions: [{ address, tab, label, field, type, value, editable, options?, note? }] }` |
-| `set` | `{ action:"flyout", op:"set", address:"asset:<id>/post/blurb", value:"…" }` | `{ ok, field, before, after }` — writes the literal value |
+| `rules` | `{ action:"flyout", op:"rules", address:"asset:<id>" }` | `{ trail, fields: { "<Field>": [{ rule, limits?, source }] } }` — the writing-rule trail (below) |
+| `check` | `{ action:"flyout", op:"check", address:"…/post/blurb", value:"draft text" }` | `{ rules, violations }` — checks a draft against the field's contract rule; writes nothing |
+| `set` | `{ action:"flyout", op:"set", address:"asset:<id>/post/blurb", value:"…" }` | `{ ok, field, before, after, rules, violations }` — writes the literal value; violations are advisory (as in the writer) |
 | `rewrite` | `{ action:"flyout", op:"rewrite", address:"…", guidance:"shorter, lead with the result" }` | `{ ok, field, before, after, violations? }` — runs the dash's own writer on that one position |
 
 `rewrite` is available where a writer exists: **asset** `fields/*` and `post/*` (the governed writer `writeAssetFields`, one contract
@@ -54,12 +56,28 @@ field, the guidance as run guidance — method rules, sources and "AI filters, n
 (queued as a background job — read it back with `map` a minute or two later); **title research** (re-runs and keeps only that field).
 Anywhere else, write the text yourself and use `set`.
 
+## Writing rules — from Asset Flow to each field
+
+Every position in `map` carries `rules: [{ rule, limits?, source }]` and `contractField`, and `map` / `rules` return the record's **trail**:
+
+| step | what it decides | where it lives |
+|---|---|---|
+| Asset Flow | the asset type, its parents and children (the authority) | KV `infoflow:table:assetflowgraph` (dash Asset Flow tab) |
+| Method | the method the asset is written with | the asset's `Method` relation, else its type's method |
+| Current Methods row | the **contract** — one `Field — rule` line per field the writer fills | KV `infoflow:table:currentmethods` |
+| Writing Spec | the type's own field rules (+ limits) and the Base rules every type shares (committed rows only) | Notion 🧭 Writing Specs |
+
+Each rule says its `source` (e.g. `Current Methods · Single Post · contract`, `Writing Spec · Base · Title`). The flyout shows the same trail at the top
+of ✎ Fields and each field's rules under it (`● contract` marks contract fields). Only **assets** have writing rules today; other
+records return a trail `note` saying so — never invent rules for them.
+
 ## Procedure for an outside writer
 
 1. Resolve the record: `find` by name (or take the address the operator pasted).
-2. `map` it — confirm the position exists, read its current `value`, `type` and `note`.
-3. Either `rewrite` (preferred where available — the dash's writer does the work under its rules) or write the new text and `set` it.
-4. Report before → after to the operator.
+2. `map` it — confirm the position exists, read its current `value`, `type`, `note` and **`rules`**.
+3. Either `rewrite` (preferred where available — the dash's writer does the work under its rules) or write the new text **to every rule listed for that
+   position**, `check` it, fix any violation, then `set` it.
+4. Report before → after to the operator, with the rules you followed and any violation left.
 
 Never edit these records directly in Notion for a flyout field: `set` / `rewrite` go through the worker's normal actions
 (`entitySave`, `updateProductStrategyField`, `saveTitleResearch`, `kwHubApply`, `writeAssetFields`), which apply the Keywords-hierarchy
