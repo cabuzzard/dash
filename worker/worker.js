@@ -21186,12 +21186,22 @@ export default {
         // added = name → ISO time, for every name created from 2026-11-19 on (operator: "make a delineation between old (anything up to now) and
         // new (anything created from now on)"). A name without an entry is old. The Hub Dash 2 🎯 Initiatives flyout shows / hides the old ones.
         const added = cur.added || {};
-        if (op === "list") return json({ ok: true, names, added });
+        // notes = lowercase name → {name, note, at} (operator 2026-11-19: "a small notes link on each initiative row in the flyout … an editable
+        // notes field that belongs to the initiative"). Any initiative name can carry one, listed or only in use on assets. Every write keeps the rest.
+        const notes = cur.notes || {};
+        if (op === "list") return json({ ok: true, names, added, notes });
+        if (op === "note") {
+          if (!name) return json({ error: "name required" }, 400); const bad = initiativeNameBad(name); if (bad) return json({ error: bad }, 400);
+          const note = String(body.note ?? ""); if (note.length > 20000) return json({ error: "A note is at most 20000 characters" }, 400);
+          const next = { ...notes }, k = name.toLowerCase(); if (note.trim()) next[k] = { name, note, at: new Date().toISOString() }; else delete next[k];
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names, added, notes: next, at: Date.now() })); await log({ op, name, chars: note.length });
+          return json({ ok: true, notes: next });
+        }
         if (op === "add") {
           const bad = initiativeNameBad(name); if (bad) return json({ error: bad }, 400);
           if (names.some(n => same(n, name))) return json({ ok: true, names, added, existed: true });
           const next = [...names, name].sort((a, b) => a.localeCompare(b)), add2 = { ...added, [name]: new Date().toISOString() };
-          await env.TRADES.put(K, JSON.stringify({ names: next, added: add2, at: Date.now() })); await log({ op, name });
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names: next, added: add2, at: Date.now() })); await log({ op, name });
           return json({ ok: true, names: next, added: add2 });
         }
         if (op === "remove") {
@@ -21199,10 +21209,10 @@ export default {
           const still = (await notionQuery(ASSETS_DB, { filter: { property: "Initiative", rich_text: { equals: name } } })).filter(x => !x.archived && !x.in_trash);
           if (still.length) return json({ error: `${still.length} asset${still.length === 1 ? "" : "s"} still carry “${name}” — take them out of it first`, still: still.length }, 409);
           const next = names.filter(n => !same(n, name)), add2 = Object.fromEntries(Object.entries(added).filter(([n]) => !same(n, name)));
-          await env.TRADES.put(K, JSON.stringify({ names: next, added: add2, at: Date.now() }));
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names: next, added: add2, at: Date.now() }));
           await log({ op, name }); return json({ ok: true, names: next, added: add2 });
         }
-        return json({ error: "op must be list | add | remove" }, 400);
+        return json({ error: "op must be list | add | remove | note" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
     }
     if (body.action === "cplanAssetEdit") {
