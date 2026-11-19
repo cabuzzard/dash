@@ -11595,20 +11595,20 @@ function hd2Render() {
       .map(([t, L]) => node(t, L, 'asset', L.map(leaf).join(''), L, t === '(no type)' ? '' : t)).join(''); };
   const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
   el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
-    + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body summary.hd2r:hover{background:var(--surface2)}#hd2Body div.hd2r{background:none;box-shadow:none}'
+    + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body div.hd2r{background:none;box-shadow:none}'
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
     + '#hd2Body.hd2noic .hd2in,#hd2Body.hd2noic .hd2sb,#hd2Body.hd2noic .hd2ic{display:none}'
-    // left edge per heading level (hub → type group): white fading one step per level; inset shadow so nothing shifts
-    + '#hd2Body summary[data-lv="1"]{box-shadow:inset 3px 0 0 #ffffff}#hd2Body summary[data-lv="2"]{box-shadow:inset 3px 0 0 #d6d6d6}#hd2Body summary[data-lv="3"]{box-shadow:inset 3px 0 0 #adadad}'
-    + '#hd2Body summary[data-lv="4"]{box-shadow:inset 3px 0 0 #858585}#hd2Body summary[data-lv="5"]{box-shadow:inset 3px 0 0 #5e5e5e}#hd2Body summary[data-lv="6"]{box-shadow:inset 3px 0 0 #3f3f3f}'
+    // shading per heading level (operator 2026-11-19): a clearly different shade at every level, hub lightest → type group darkest; asset rows stay dark
+    + '#hd2Body summary[data-lv="1"]{background:#444}#hd2Body summary[data-lv="2"]{background:#373737}#hd2Body summary[data-lv="3"]{background:#2b2b2b}'
+    + '#hd2Body summary[data-lv="4"]{background:#212121}#hd2Body summary[data-lv="5"]{background:#181818}#hd2Body summary[data-lv="6"]{background:#111}'
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
     + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}#hd2Body details[open]>summary.hd2r{font-weight:600}'
-    // shading by level (operator 2026-11-18): titles (+ their type groups) = surface2; every heading above = one step lighter; asset rows stay dark
-    + '#hd2Body .hd2t{background:var(--surface2)}#hd2Body .hd2h{background:#242424}#hd2Body .hd2t:hover,#hd2Body .hd2h:hover{filter:brightness(1.3)}'
+    // hover: any heading brightens a step
+    + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}</style>'
     + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
