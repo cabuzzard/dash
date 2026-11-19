@@ -12353,15 +12353,21 @@ function hd2Render() {
 // Click one = the table shows only its assets, every heading on the way opened (click again / ✕ = all back, the headings it opened close).
 // ☑ Select assets = a box on every asset row and heading (a heading = all its shown assets). Put in → writes each asset's Initiative field
 // (cplanAssetBulkEdit, 20 per call, logged, stops at the first failure); a name not in the list yet is added to it first. Take out = clears it.
+// Old / new (operator 2026-11-19: "make a delineation between old (anything up to now) and new (anything created from now on) and put a toggle
+// in the flyout to show / hide old"): new = a name the names list stamped as added (initiativeNames → added, from 2026-11-19 on); everything
+// else is old. Old ones are hidden by default (remembered per browser); the datalist follows the same toggle.
+let _hd2IniAdded = {}, _hd2IniOld = false; try { _hd2IniOld = localStorage.getItem('hd2IniOld') === '1'; } catch (e) {}
+function hd2IniOldToggle() { _hd2IniOld = !_hd2IniOld; try { localStorage.setItem('hd2IniOld', _hd2IniOld ? '1' : '0'); } catch (e) {} hd2IniDraw(); }
+const hd2IniIsNew = v => Object.keys(_hd2IniAdded || {}).some(k => k.toLowerCase() === String(v || '').trim().toLowerCase());
 let _hd2Ini = '', _hd2IniOpen = false, _hd2Sel = new Set(), _hd2SelM = false, _hd2A = new Map(), _hd2IniNames = null, _hd2IniBusy = false, _hd2IniMsg = '', _hd2IniL = [], _hd2IniV = '';
 function hd2IniToggle(on) { _hd2IniOpen = on == null ? !_hd2IniOpen : !!on; if (!_hd2IniOpen) _hd2SelM = false; if (_hd2IniOpen && !_hd2IniNames) hd2IniNamesLoad(); hd2IniDraw(); }
-function hd2IniNamesLoad() { _hd2IniNames = []; call('initiativeNames', { op: 'list' }).then(r => { if (r && !r.error) { _hd2IniNames = r.names || []; hd2IniDraw(); } else _hd2IniNames = null; }).catch(() => { _hd2IniNames = null; }); }
+function hd2IniNamesLoad() { _hd2IniNames = []; call('initiativeNames', { op: 'list' }).then(r => { if (r && !r.error) { _hd2IniNames = r.names || []; _hd2IniAdded = r.added || {}; hd2IniDraw(); } else _hd2IniNames = null; }).catch(() => { _hd2IniNames = null; }); }
 function hd2IniList() {
   const m = new Map(), add = (v, id, hub) => { v = String(v || '').trim(); if (!v) return; const k = v.toLowerCase();
     if (!m.has(k)) m.set(k, { name: v, ids: new Set(), hubs: new Set() }); if (id) { m.get(k).ids.add(id); if (hub) m.get(k).hubs.add(hub); } };
   (_hd2IniNames || []).forEach(v => add(v));
   document.querySelectorAll('#hd2Tree div.hd2r[data-a]').forEach(r => add(r.dataset.in, r.dataset.a, r.dataset.h));
-  return [...m.values()].sort((a, b) => (!a.ids.size) - (!b.ids.size) || a.name.localeCompare(b.name));
+  return [...m.values()].map(x => Object.assign(x, { isNew: hd2IniIsNew(x.name) })).sort((a, b) => (!a.ids.size) - (!b.ids.size) || a.name.localeCompare(b.name));
 }
 function hd2IniDraw() {
   const body = document.getElementById('hd2Body'); let d = document.getElementById('hd2Ini');
@@ -12371,7 +12377,7 @@ function hd2IniDraw() {
   if (bar) bar.innerHTML = _hd2Ini ? `<span style="font-size:11.5px;padding:3px 4px 3px 10px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);">🎯 ${esc(_hd2Ini)}<button onclick="hd2IniPick(-1)" title="Show the whole table again" style="margin-left:6px;border:none;background:transparent;color:var(--accent);cursor:pointer;font-size:12px;">✕</button></span>` : '';
   if (!_hd2IniOpen) { if (d) d.remove(); return; }
   if (!d) { d = document.createElement('div'); d.id = 'hd2Ini'; (body || document.body).appendChild(d); }
-  const L = _hd2IniL = hd2IniList(), n = _hd2Sel.size, cur = _hd2Ini.toLowerCase(), S = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);';
+  const LA = hd2IniList(), nOld = LA.filter(x => !x.isNew).length, L = _hd2IniL = _hd2IniOld ? LA : LA.filter(x => x.isNew || x.name.toLowerCase() === _hd2Ini.toLowerCase()), n = _hd2Sel.size, cur = _hd2Ini.toLowerCase(), S = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);';
   const inp = document.getElementById('hd2IniV'); if (inp) _hd2IniV = inp.value;
   const msgC = /^✗/.test(_hd2IniMsg) ? '#f87171' : /^✓/.test(_hd2IniMsg) ? '#4ade80' : 'var(--text3)';
   d.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);">
@@ -12391,11 +12397,12 @@ function hd2IniDraw() {
         <button onclick="hd2IniApply(false)" ${n && !_hd2IniBusy ? '' : 'disabled'} style="${HD2_B('var(--accent)', 'var(--accent)')}${n ? '' : 'opacity:.5;'}">Put ${n || ''} in initiative</button>
         <button onclick="hd2IniApply(true)" ${n && !_hd2IniBusy ? '' : 'disabled'} style="${HD2_B()}${n ? '' : 'opacity:.5;'}" title="Clears each selected asset's own Initiative field">Take out of initiative</button></div>
       ${_hd2IniMsg ? `<div style="font-size:12px;margin-top:8px;color:${msgC};">${esc(_hd2IniMsg)}</div>` : ''}</div>
-    <div style="display:flex;align-items:center;padding:12px 14px 6px;"><div style="${S}">All initiatives (${L.length})</div><span style="flex:1"></span>
+    <div style="display:flex;align-items:center;padding:12px 14px 6px;"><div style="${S}">Initiatives (${L.length})</div><span style="flex:1"></span>
+      <label style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-right:10px;cursor:pointer;" title="Old = every initiative made before 2026-11-19"><input type="checkbox" ${_hd2IniOld ? 'checked' : ''} onchange="hd2IniOldToggle()">Show old (${nOld})</label>
       ${_hd2Ini ? `<a href="#" onclick="event.preventDefault();hd2IniPick(-1)" style="font-size:12px;color:var(--accent);">✕ Show whole table</a>` : ''}</div>
     <div style="flex:1;overflow:auto;padding:0 4px 12px;">${L.map((x, i) => `<div class="hi-r${x.name.toLowerCase() === cur ? ' on' : ''}" onclick="hd2IniPick(${i})" title="${x.ids.size ? 'Open the table to its assets' : 'No assets in the table yet'}">
-        <span class="hi-n">${esc(x.name)}</span><span class="hi-c">${x.ids.size ? `${x.ids.size} asset${x.ids.size === 1 ? '' : 's'}${x.hubs.size > 1 ? ' · ' + x.hubs.size + ' hubs' : x.hubs.size ? ' · ' + esc([...x.hubs][0]) : ''}` : 'no assets'}</span></div>`).join('')
-      || '<div style="font-size:12.5px;color:var(--text3);padding:8px 10px;">No initiatives yet — select assets and type a name above to start one.</div>'}</div>`;
+        <span class="hi-n">${esc(x.name)}${x.isNew ? '' : '<span style="font-size:10px;font-weight:400;color:var(--text3);border:1px solid var(--border2);border-radius:4px;padding:0 4px;margin-left:6px;">old</span>'}</span><span class="hi-c">${x.ids.size ? `${x.ids.size} asset${x.ids.size === 1 ? '' : 's'}${x.hubs.size > 1 ? ' · ' + x.hubs.size + ' hubs' : x.hubs.size ? ' · ' + esc([...x.hubs][0]) : ''}` : 'no assets'}</span></div>`).join('')
+      || `<div style="font-size:12.5px;color:var(--text3);padding:8px 10px;">No new initiatives yet — select assets and type a name above to start one.${nOld && !_hd2IniOld ? ' (' + nOld + ' old ones hidden — tick Show old.)' : ''}</div>`}</div>`;
 }
 // open the table to one initiative (or back to everything): headings it opened close again when it changes
 function hd2IniPick(i) {
@@ -12442,7 +12449,8 @@ async function hd2IniApply(remove) {
   _hd2IniBusy = true; _hd2IniMsg = `Saving… 0 / ${items.length}`; hd2IniDraw();
   if (!remove && !(_hd2IniNames || []).some(x => x.toLowerCase() === val.toLowerCase())) {   // a new name joins the names list first
     const r = await call('initiativeNames', { op: 'add', name: val }).catch(e => ({ error: e.message }));
-    if (r && !r.error) (_hd2IniNames = _hd2IniNames || []).push(val);
+    if (!r || r.error) { _hd2IniBusy = false; _hd2IniMsg = '✗ New initiative not created: ' + ((r && r.error) || 'no response') + ' — nothing written'; return hd2IniDraw(); }
+    _hd2IniNames = r.names || [...(_hd2IniNames || []), val]; _hd2IniAdded = r.added || _hd2IniAdded;
   }
   let done = 0, err = '';
   for (let i = 0; i < items.length && !err; i += 20) {

@@ -21183,19 +21183,24 @@ export default {
         await initiativeEnsureProp(env);
         const cur = (await env.TRADES.get(K, "json")) || { names: [] }, names = cur.names || [], same = (a, b) => a.toLowerCase() === b.toLowerCase();
         const log = async e => { const L = (await env.TRADES.get(K + ":log", "json")) || []; L.unshift({ at: new Date().toISOString(), ...e }); await env.TRADES.put(K + ":log", JSON.stringify(L.slice(0, 300))); };
-        if (op === "list") return json({ ok: true, names });
+        // added = name → ISO time, for every name created from 2026-11-19 on (operator: "make a delineation between old (anything up to now) and
+        // new (anything created from now on)"). A name without an entry is old. The Hub Dash 2 🎯 Initiatives flyout shows / hides the old ones.
+        const added = cur.added || {};
+        if (op === "list") return json({ ok: true, names, added });
         if (op === "add") {
           const bad = initiativeNameBad(name); if (bad) return json({ error: bad }, 400);
-          if (names.some(n => same(n, name))) return json({ ok: true, names, existed: true });
-          const next = [...names, name].sort((a, b) => a.localeCompare(b)); await env.TRADES.put(K, JSON.stringify({ names: next, at: Date.now() })); await log({ op, name });
-          return json({ ok: true, names: next });
+          if (names.some(n => same(n, name))) return json({ ok: true, names, added, existed: true });
+          const next = [...names, name].sort((a, b) => a.localeCompare(b)), add2 = { ...added, [name]: new Date().toISOString() };
+          await env.TRADES.put(K, JSON.stringify({ names: next, added: add2, at: Date.now() })); await log({ op, name });
+          return json({ ok: true, names: next, added: add2 });
         }
         if (op === "remove") {
           if (!name) return json({ error: "name required" }, 400);
           const still = (await notionQuery(ASSETS_DB, { filter: { property: "Initiative", rich_text: { equals: name } } })).filter(x => !x.archived && !x.in_trash);
           if (still.length) return json({ error: `${still.length} asset${still.length === 1 ? "" : "s"} still carry “${name}” — take them out of it first`, still: still.length }, 409);
-          const next = names.filter(n => !same(n, name)); await env.TRADES.put(K, JSON.stringify({ names: next, at: Date.now() }));
-          await log({ op, name }); return json({ ok: true, names: next });
+          const next = names.filter(n => !same(n, name)), add2 = Object.fromEntries(Object.entries(added).filter(([n]) => !same(n, name)));
+          await env.TRADES.put(K, JSON.stringify({ names: next, added: add2, at: Date.now() }));
+          await log({ op, name }); return json({ ok: true, names: next, added: add2 });
         }
         return json({ error: "op must be list | add | remove" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
