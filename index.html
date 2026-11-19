@@ -11850,6 +11850,12 @@ async function hd2KidBack() { const b = EF && EF.e.back, bt = (EF && EF.e.backTa
   await hd2EntOpen(b); if (EF && EF.i === b) hd2EfTab(bt); }
 
 // + New
+// the new initiatives for the + New asset list (loads the names once; the open form's list fills in when they arrive)
+function hd2KidInis() {
+  if (!_hd2IniNames) { _hd2IniNames = []; call('initiativeNames', { op: 'list' }).then(r => { if (r && !r.error) { _hd2IniNames = r.names || []; _hd2IniAdded = r.added || {}; _hd2IniNotes = r.notes || {};
+    const dl = document.getElementById('efKInis'); if (dl) dl.innerHTML = hd2KidInis().map(n => `<option value="${esc(n)}">`).join(''); } else _hd2IniNames = null; }).catch(() => { _hd2IniNames = null; }); }
+  return Object.keys(_hd2IniAdded || {}).sort((a, b) => a.localeCompare(b));
+}
 function hd2KidAddHtml() {
   const k = EF.kids.kind, e = EF.e;
   const lb = s => `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);margin:0 0 4px;">${s}</div>`;
@@ -11865,6 +11871,9 @@ function hd2KidAddHtml() {
     f = lb('Asset title') + I('efK1', 'asset title') + lb('Asset type') + I('efK2', 'pick or type an asset type', 'list="efKTypes" autocomplete="off"') + `<datalist id="efKTypes">${types.map(t => `<option value="${esc(t)}">`).join('')}</datalist>`
       + lb('Status') + `<select id="efK3" style="${HD2_IN}margin-bottom:10px;">${['Planning', 'Development', 'Review', 'Publish'].map(s => `<option ${s === 'Development' ? 'selected' : ''}>${s}</option>`).join('')}</select>`
       + lb('Due date') + `<input id="efK4" type="date" style="${HD2_IN}margin-bottom:10px;" title="The asset's Deadline — blank = no due date">`   // operator 2026-11-19: "add due date field"
+      // operator 2026-11-19: "add initiative pick from new or add new" — the list offers the NEW initiatives (made from 2026-11-19 on); a typed name
+      // that isn't one yet becomes a new initiative. Blank = none.
+      + lb('Initiative') + `<input id="efK5" list="efKInis" autocomplete="off" style="${HD2_IN}margin-bottom:10px;" placeholder="pick a new initiative or type a new name — blank = none"><datalist id="efKInis">${hd2KidInis().map(n => `<option value="${esc(n)}">`).join('')}</datalist>`
       + note('On title ' + esc(e.name) + '. The Asset Flow checks apply as in every other create.');
   }
   return `<div style="margin-top:12px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);">${f}
@@ -11905,6 +11914,13 @@ async function hd2KidAdd(btn) {
       if (!r || r.error || !r.id) throw new Error((r && r.error) || 'no response');
       const a = { kind: 'asset', assetId: hdNid(r.id), assetName: name, rawAssetType: type, status: st }; if (e.src && e.src.assets) e.src.assets.push(a);
       row = { k, id: a.assetId, name, st, sub: type, warn: (r.flowWarnings || []).join(' · ') };
+      const ini = v('efK5');   // initiative: a name not in the list yet is added first (it becomes a new one); then the asset's Initiative field
+      if (ini) { let bad = initiativeBad(ini);
+        if (!bad && !(_hd2IniNames || []).some(x => x.toLowerCase() === ini.toLowerCase())) { const r2 = await call('initiativeNames', { op: 'add', name: ini }).catch(x => ({ error: x.message }));
+          if (r2 && !r2.error) { _hd2IniNames = r2.names || [...(_hd2IniNames || []), ini]; if (r2.added) _hd2IniAdded = r2.added; } else bad = (r2 && r2.error) || 'no response'; }
+        const r3 = bad ? { error: bad } : await call('cplanAssetBulkEdit', { field: 'initiative', items: [{ assetId: a.assetId, value: ini }] }).catch(x => ({ error: x.message }));
+        if (r3 && !r3.error && !r3.stopped && (r3.done || []).length) { a.initiative = ini; row.sub += ' · 🎯 ' + ini; }
+        else row.warn = [row.warn, 'initiative not saved (' + ((r3 && (r3.error || (r3.stopped && r3.stopped.error))) || 'no response') + ') — set it from 🎯 Initiatives'].filter(Boolean).join(' · '); }
       const due = v('efK4');   // createAsset has no date: the Deadline is set right after; a failure keeps the asset and says so
       if (due) { const d = await call('setAssetDeadline', { assetId: a.assetId, date: due }).catch(x => ({ error: x.message }));
         if (d && !d.error) { a.deadline = due; row.sub = type + ' · due ' + due; } else row.warn = [row.warn, 'due date not saved (' + ((d && d.error) || 'no response') + ') — set it on the Schedule tab'].filter(Boolean).join(' · '); }
