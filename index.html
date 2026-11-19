@@ -12326,7 +12326,7 @@ function hd2Render() {
     + '#hd2Ini .hi-r{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer}#hd2Ini .hi-r:hover{background:var(--surface2)}#hd2Ini .hi-r.on{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}'
     + '#hd2Ini .hi-nl{font-size:11px;color:var(--text3);text-decoration:none;white-space:nowrap;opacity:.75}#hd2Ini .hi-nl:hover{color:var(--accent);opacity:1}#hd2Ini .hi-nl.has{color:var(--accent);opacity:1;font-weight:600}#hd2Ini .hi-n{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}#hd2Ini .hi-c{font-size:11.5px;color:var(--text3);white-space:nowrap}'
     + '@media (max-width:720px){#hd2Ini{top:auto;height:55vh;width:100vw;border-left:none;border-top:1px solid var(--border2);border-radius:12px 12px 0 0}#hd2Body.hd2inio{padding-bottom:56vh}}</style>'
-    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
+    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2LvBtn" class="hd2tg" onclick="hd2LvOpen(this)" title="Expand or collapse the table to a heading level" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">↕ Expand / collapse</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
     + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
@@ -12497,6 +12497,33 @@ async function hd2IniApply(remove) {
   showToast(_hd2IniMsg, err ? 'error' : 'success');
 }
 
+// ── ↕ Expand / collapse (operator 2026-11-19: "a button that is expand / collapse, and a pop up with a select box of heading levels").
+// Picking a level opens every heading above it and closes it and everything below, so the table shows rows down to that level.
+// Level = the summary's data-lv: 1 Hub · 2 Cluster · 3 Topic · 4 Product · 5 Title · 6 Asset type; 7 = everything open (assets showing).
+// Rows hidden by a filter are opened / closed too, so clearing a filter shows the same depth. The last pick is remembered per browser.
+const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types'], [7, 'Assets (everything open)']];
+let _hd2Lv = 2; try { _hd2Lv = +localStorage.getItem('hd2Lv') || 2; } catch (e) {}
+function hd2LvSet(v) {
+  _hd2Lv = +v || 1; try { localStorage.setItem('hd2Lv', String(_hd2Lv)); } catch (e) {}
+  const tree = document.getElementById('hd2Tree'); if (!tree) return;
+  tree.querySelectorAll('details').forEach(d => { const s = d.querySelector(':scope>summary'), lv = s ? +s.dataset.lv : 99; d.open = lv < _hd2Lv; d.classList.remove('hd2iop'); });
+  hd2Cur(); const sel = document.getElementById('hd2LvSel'); if (sel) sel.value = String(_hd2Lv);
+}
+function hd2LvOpen(btn) {
+  if (document.getElementById('hd2LvPop')) return hd2LvClose();
+  const r = btn.getBoundingClientRect(), m = document.createElement('div'); m.id = 'hd2LvPop';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(r.left, innerWidth - 268))}px;top:${r.bottom + 6}px;width:260px;padding:12px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);font-size:12.5px;color:var(--text);`;
+  m.innerHTML = `<div style="font-weight:700;margin-bottom:8px;">Show the table down to</div>
+    <select id="hd2LvSel" onchange="hd2LvSet(this.value)" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${HD2_LVS.map(([v, t]) => `<option value="${v}" ${v === _hd2Lv ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <div style="display:flex;gap:6px;margin-top:10px;">
+      <button onclick="hd2LvSet(7)" style="${HD2_B()}padding:4px 10px;font-size:12px;">Expand all</button>
+      <button onclick="hd2LvSet(1)" style="${HD2_B()}padding:4px 10px;font-size:12px;">Collapse all</button>
+      <button onclick="hd2LvClose()" style="${HD2_B()}padding:4px 10px;font-size:12px;margin-left:auto;">Close</button></div>`;
+  document.body.appendChild(m); btn.classList.add('on');
+  setTimeout(() => document.addEventListener('mousedown', hd2LvOut, true), 0);
+}
+function hd2LvOut(e) { const m = document.getElementById('hd2LvPop'), b = document.getElementById('hd2LvBtn'); if (m && !m.contains(e.target) && !(b && b.contains(e.target))) hd2LvClose(); }
+function hd2LvClose() { const m = document.getElementById('hd2LvPop'); if (m) m.remove(); document.removeEventListener('mousedown', hd2LvOut, true); const b = document.getElementById('hd2LvBtn'); if (b) b.classList.remove('on'); }
 // the current group = an open heading with no open heading inside it (one per open branch)
 function hd2Cur() {
   const tree = document.getElementById('hd2Tree'); if (!tree) return;
