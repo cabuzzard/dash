@@ -12,6 +12,11 @@
   .products-count-table tbody tr.products-count-product-header > td { border-top: 2px solid var(--border2); }
   .products-count-table tr:hover > td,
   .products-count-table thead tr:hover > th { background-color: var(--border2) !important; }
+  /* date pickers (operator 2026-11-19: "date pickers are slow to work or not working on most of the modals"): the page is dark, so native
+     controls follow it — the calendar icon was dark-on-dark and hard to find; the whole field is clickable */
+  :root { color-scheme: dark; }
+  input[type="date"], input[type="datetime-local"], input[type="time"], input[type="month"] { cursor: pointer; }
+  input[type="date"]::-webkit-calendar-picker-indicator, input[type="datetime-local"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .9; padding: 2px; }
   :root {
     --bg:        #0a0a0a;
     --surface:   #111111;
@@ -11479,6 +11484,12 @@ function loadInformationFlowTables() {
   if (!FLOWS.methods.data) loadFlowTable('methods');
 }
 
+// date fields (operator 2026-11-19): a click anywhere in a date field opens its calendar (not only the small icon); inside a draggable row
+// (📅 Schedule lists) the row stops being draggable while the field is in use, so the click reaches the field instead of starting a drag.
+document.addEventListener('mousedown', e => { const t = e.target; if (!t || !t.matches || !t.matches('input[type="date"],input[type="datetime-local"],input[type="month"]')) return;
+  const p = t.closest('[draggable="true"]'); if (p) { p.draggable = false; t.addEventListener('blur', () => { p.draggable = true; }, { once: true }); } }, true);
+document.addEventListener('click', e => { const t = e.target; if (!t || !t.matches || !t.matches('input[type="date"],input[type="datetime-local"],input[type="month"]') || t.disabled || t.readOnly) return;
+  try { if (t.showPicker) t.showPicker(); } catch (x) {} });
 // ── Hub Dash 2 (operator 2026-11-18, fresh start): one collapsed tree Hub → Cluster → Topic → Product → Title. Read-only.
 // Reuses the Hub Dashboard data (devAssetsTable rows, hdHubs, hdTree); nothing else yet.
 let _hd2Rows = null, _hd2PM = null, _hd2Lists = [], _hd2Only = false;   // _hd2Only = the top toggle: Initiatives only
