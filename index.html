@@ -11850,6 +11850,7 @@ function hd2KidAddHtml() {
     const types = [...new Set((_hd2Rows || []).filter(x => x.kind === 'asset').map(x => String(x.rawAssetType || x.assetType || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     f = lb('Asset title') + I('efK1', 'asset title') + lb('Asset type') + I('efK2', 'pick or type an asset type', 'list="efKTypes" autocomplete="off"') + `<datalist id="efKTypes">${types.map(t => `<option value="${esc(t)}">`).join('')}</datalist>`
       + lb('Status') + `<select id="efK3" style="${HD2_IN}margin-bottom:10px;">${['Planning', 'Development', 'Review', 'Publish'].map(s => `<option ${s === 'Development' ? 'selected' : ''}>${s}</option>`).join('')}</select>`
+      + lb('Due date') + `<input id="efK4" type="date" style="${HD2_IN}margin-bottom:10px;" title="The asset's Deadline — blank = no due date">`   // operator 2026-11-19: "add due date field"
       + note('On title ' + esc(e.name) + '. The Asset Flow checks apply as in every other create.');
   }
   return `<div style="margin-top:12px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);">${f}
@@ -11890,6 +11891,9 @@ async function hd2KidAdd(btn) {
       if (!r || r.error || !r.id) throw new Error((r && r.error) || 'no response');
       const a = { kind: 'asset', assetId: hdNid(r.id), assetName: name, rawAssetType: type, status: st }; if (e.src && e.src.assets) e.src.assets.push(a);
       row = { k, id: a.assetId, name, st, sub: type, warn: (r.flowWarnings || []).join(' · ') };
+      const due = v('efK4');   // createAsset has no date: the Deadline is set right after; a failure keeps the asset and says so
+      if (due) { const d = await call('setAssetDeadline', { assetId: a.assetId, date: due }).catch(x => ({ error: x.message }));
+        if (d && !d.error) { a.deadline = due; row.sub = type + ' · due ' + due; } else row.warn = [row.warn, 'due date not saved (' + ((d && d.error) || 'no response') + ') — set it on the Schedule tab'].filter(Boolean).join(' · '); }
     }
     K.rows.push(row); K.mode = ''; K.reload = true;
     K.msg = '✓ Added ' + HD2_LV[k].toLowerCase() + ' "' + row.name + '"' + (row.warn ? ' — Asset Flow: ' + row.warn : '');
