@@ -11724,10 +11724,10 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${nm(label, ent)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Type')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
-    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k, agg([a]))}</div>`; };
+    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -11736,7 +11736,9 @@ function hd2Render() {
   el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
     + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body div.hd2r{background:none;box-shadow:none}'
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
-    + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
+    + '#hd2Body .hd2lb{flex:0 0 440px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#hd2Body details.hd2cur>details>summary>.hd2lb,#hd2Body details.hd2cur>div.hd2r>.hd2lb{flex-basis:422px}'
+    + '#hd2Body .hd2lv{flex:0 0 72px;margin-left:12px;font-size:10.5px;font-weight:400;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}#hd2Body .hd2sp{flex:1 1 0;min-width:0}'
+    + '@media (max-width:720px){#hd2Body .hd2lb{flex-basis:52vw}#hd2Body details.hd2cur>details>summary>.hd2lb,#hd2Body details.hd2cur>div.hd2r>.hd2lb{flex-basis:calc(52vw - 18px)}#hd2Body .hd2lv{flex-basis:56px;margin-left:6px}}'
     + '#hd2Body.hd2noic .hd2in,#hd2Body.hd2noic .hd2sb,#hd2Body.hd2noic .hd2ic{display:none}'
     // typography carries the level (operator 2026-11-19): every heading bold, size stepping down hub → type group; asset rows regular.
     // Shading stays, but quiet — a faint step per level, so the Due numbers are the strongest thing in the table.
