@@ -11684,7 +11684,7 @@ function hd2EfDraw() {
   }
   const n = Object.keys(EF.dirty).length;
   const ft = D && !EF.err && ['fields', 'post', 'images'].includes(EF.tab) ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
-  P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}#efPanel .ef-adr{display:inline-block;margin-left:6px;padding:0 5px;border:none;background:transparent;color:var(--text3);font-size:11px;font-weight:700;cursor:copy;vertical-align:1px}#efPanel .ef-adr:hover{color:var(--accent)}#efPanel .ef-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}#efPanel .ef-dh{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center;padding:2px 0}#efPanel .ef-day{min-height:78px;border:1px solid var(--border);border-radius:5px;padding:3px;display:flex;flex-direction:column;gap:2px;min-width:0}#efPanel .ef-off{border-color:transparent}#efPanel .ef-has{background:var(--surface2)}#efPanel .ef-today{border-color:var(--accent)}#efPanel .ef-dn{font-size:11px;color:var(--text3);display:flex;justify-content:space-between}#efPanel .ef-dc{font-weight:700;color:var(--text)}#efPanel .ef-chip{display:block;font-size:11px;line-height:1.35;padding:1px 4px;border-left:3px solid var(--c);border-radius:3px;background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#efPanel .ef-chip:hover{color:var(--accent)}#efPanel .ef-agenda{display:none}@media (max-width:720px){#efPanel .ef-day{min-height:46px;padding:2px}#efPanel .ef-chip{font-size:0;height:5px;padding:0;border:none;background:var(--c)}#efPanel .ef-agenda{display:block}}#efPanel .ef-kid{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:8px 2px;border-bottom:1px solid var(--border);font-size:13.5px;cursor:pointer}#efPanel .ef-kid input{width:17px;height:17px;flex:0 0 auto;margin:0}#efPanel .ef-kid a{color:var(--text);text-decoration:none;flex:1 1 240px;min-width:0;overflow-wrap:anywhere}#efPanel .ef-kid a:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}#efPanel .ef-kst{font-size:11px;color:var(--text2);border:1px solid var(--border2);border-radius:9px;padding:1px 7px;white-space:nowrap}#efPanel .ef-ksub{font-size:11.5px;color:var(--text3);white-space:nowrap}#efPanel button:disabled{opacity:.45;cursor:default}#efPanel .ef-rules{margin-top:6px;font-size:12px;line-height:1.5;color:var(--text2)}#efPanel .ef-rules>div{margin-bottom:4px}#efPanel .ef-rsrc{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);margin-right:6px}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
+  P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}#efPanel .ef-adr{display:inline-block;margin-left:6px;padding:0 5px;border:none;background:transparent;color:var(--text3);font-size:11px;font-weight:700;cursor:copy;vertical-align:1px}#efPanel .ef-adr:hover{color:var(--accent)}#efPanel .ef-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}#efPanel .ef-dh{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center;padding:2px 0}#efPanel .ef-day{min-height:78px;border:1px solid var(--border);border-radius:5px;padding:3px;display:flex;flex-direction:column;gap:2px;min-width:0}#efPanel .ef-off{border-color:transparent}#efPanel .ef-has{background:var(--surface2)}#efPanel .ef-today{border-color:var(--accent)}#efPanel .ef-dn{font-size:11px;color:var(--text3);display:flex;justify-content:space-between}#efPanel .ef-dc{font-weight:700;color:var(--text)}#efPanel .ef-chip{display:block;font-size:11px;line-height:1.35;padding:1px 4px;border-left:3px solid var(--c);border-radius:3px;background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#efPanel .ef-chip:hover{color:var(--accent)}#efPanel .ef-agenda{display:none}#efPanel .ef-day{max-height:170px;overflow:auto}#efPanel .ef-chip{cursor:grab}#efPanel .ef-drop{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--surface2)}#efPanel .ef-nodue{border-radius:6px;padding:0 4px 4px}#efPanel.ef-dragging .ef-nodue{outline:1px dashed var(--border2)}@media (max-width:720px){#efPanel .ef-day{min-height:46px;padding:2px}#efPanel .ef-chip{font-size:0;height:5px;padding:0;border:none;background:var(--c)}#efPanel .ef-agenda{display:block}}#efPanel .ef-kid{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:8px 2px;border-bottom:1px solid var(--border);font-size:13.5px;cursor:pointer}#efPanel .ef-kid input{width:17px;height:17px;flex:0 0 auto;margin:0}#efPanel .ef-kid a{color:var(--text);text-decoration:none;flex:1 1 240px;min-width:0;overflow-wrap:anywhere}#efPanel .ef-kid a:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}#efPanel .ef-kst{font-size:11px;color:var(--text2);border:1px solid var(--border2);border-radius:9px;padding:1px 7px;white-space:nowrap}#efPanel .ef-ksub{font-size:11.5px;color:var(--text3);white-space:nowrap}#efPanel button:disabled{opacity:.45;cursor:default}#efPanel .ef-rules{margin-top:6px;font-size:12px;line-height:1.5;color:var(--text2)}#efPanel .ef-rules>div{margin-bottom:4px}#efPanel .ef-rsrc{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);margin-right:6px}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
 }
 async function hd2EfKeywords() {   // the existing 🔑 keyword modal (it opens above this flyout)
   const e = EF && EF.e; if (!e) return; await hubKwLoad(e.slug); const K = _hubKw[e.slug];
@@ -11732,7 +11732,7 @@ const HD2_TR_FIELDS = ["Title Intent", "Title Questions", "Title Angle", "Title 
 function hd2EfTabs() {
   const k = EF.e.k, t = [['fields', '✎ Fields']];
   if (HD2_KID[k]) t.push(['kids', '⤵ ' + HD2_KIDS_L[HD2_KID[k]]]);
-  if (k === 'title' && hd2SchedItems().some(x => x.due)) t.push(['sched', '📅 Schedule']);
+  if (k !== 'asset' && hd2SchedItems().some(x => x.due)) t.push(['sched', '📅 Schedule']);
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
   if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
@@ -11980,13 +11980,15 @@ async function hd2KidBulkGo(btn) {
   hd2EfDraw();
 }
 // ── 📅 Schedule (operator 2026-11-19): where a record's children carry a due date, they are laid out on a month calendar by it.
-// Due date only (operator: 'lets stick with due date') = the asset Deadline, the same field the table's Due column counts — so the tab is on titles.
+// Due date only (operator: 'lets stick with due date') = the asset Deadline, the same field the table's Due column counts. Assets only, at every
+// level (operator: 'just assets'): hub / cluster / topic / product / title each show every asset under them. Drag a chip (or a list row) onto
+// another day to move its due date, or onto No due date to clear it.
 // ‹ › change month, Today jumps back; a chip opens that child (← returns here). Below: Overdue (dated before today, not Published)
 // and No due date — an asset's date can be set or changed right there (setAssetDeadline; a date is a signal only, nothing runs on it).
 function hd2SchedItems() {
-  const e = EF.e, S = e.src || {}, d = v => String(v || '').slice(0, 10);
-  if (e.k === 'title') return (S.assets || []).map(a => ({ k: 'asset', id: a.assetId, name: hdName(a), st: hdSt(a), sub: String(a.rawAssetType || a.assetType || ''), due: d(a.deadline), a }));
-  return [];
+  const e = EF.e, S = e.src, d = v => String(v || '').slice(0, 10); if (!S || e.k === 'asset') return [];
+  const all = Array.isArray(S) ? S.flatMap(C => (C.topics || []).flatMap(hdAssetsOf)) : S.topics ? S.topics.flatMap(hdAssetsOf) : hdAssetsOf(S), many = e.k !== 'title';
+  return all.map(a => ({ k: 'asset', id: a.assetId, name: hdName(a), st: hdSt(a), sub: String(a.rawAssetType || a.assetType || '') + (many && a.title ? ' · ' + a.title : ''), due: d(a.deadline), a }));
 }
 const hd2Today = () => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
 const HD2_ST_C = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#60a5fa' : /^review$/i.test(s) ? '#facc15' : /^development$/i.test(s) ? '#ff7a00' : 'var(--text3)';
@@ -11997,36 +11999,44 @@ function hd2SchedHtml() {
   if (!EF.sch) { const up = dated.find(x => x.due >= today) || dated[dated.length - 1]; EF.sch = { ym: (up ? up.due : today).slice(0, 7) }; }
   const [Y, M] = EF.sch.ym.split('-').map(Number), first = new Date(Y, M - 1, 1), days = new Date(Y, M, 0).getDate(), lead = (first.getDay() + 6) % 7;
   const monthName = first.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-  const iOf = x => L.indexOf(x), chip = x => `<a href="#" class="ef-chip" style="--c:${HD2_ST_C(x.st)};" onclick="event.preventDefault();hd2SchedOpen(${iOf(x)})" title="${esc(x.name + (x.st ? ' · ' + x.st : '') + (x.sub ? ' · ' + x.sub : ''))}">${esc(x.name || '(untitled)')}</a>`;
+  const iOf = x => L.indexOf(x), drag = x => `draggable="true" ondragstart="hd2SchedDrag(event, ${iOf(x)})" ondragend="hd2SchedDragEnd()"`, drop = ds => `ondragover="event.preventDefault();this.classList.add('ef-drop')" ondragleave="this.classList.remove('ef-drop')" ondrop="hd2SchedDrop(event, '${ds}')"`;
+  const chip = x => `<a href="#" class="ef-chip" ${drag(x)} style="--c:${HD2_ST_C(x.st)};" onclick="event.preventDefault();hd2SchedOpen(${iOf(x)})" title="${esc(x.name + (x.st ? ' · ' + x.st : '') + (x.sub ? ' · ' + x.sub : ''))}">${esc(x.name || '(untitled)')}</a>`;
   let cells = '';
   for (let i = 0; i < lead; i++) cells += '<div class="ef-day ef-off"></div>';
   for (let d = 1; d <= days; d++) {
     const ds = EF.sch.ym + '-' + String(d).padStart(2, '0'), on = dated.filter(x => x.due === ds);
-    cells += `<div class="ef-day${ds === today ? ' ef-today' : ''}${on.length ? ' ef-has' : ''}"><div class="ef-dn">${d}${on.length ? `<span class="ef-dc">${on.length}</span>` : ''}</div>${on.map(chip).join('')}</div>`;
+    cells += `<div class="ef-day${ds === today ? ' ef-today' : ''}${on.length ? ' ef-has' : ''}" ${drop(ds)}><div class="ef-dn">${d}${on.length ? `<span class="ef-dc">${on.length}</span>` : ''}</div>${on.map(chip).join('')}</div>`;
   }
   for (let i = (7 - (lead + days) % 7) % 7; i > 0; i--) cells += '<div class="ef-day ef-off"></div>';
   const inMonth = dated.filter(x => x.due.slice(0, 7) === EF.sch.ym);
   const dateIn = x => x.k === 'asset' ? `<input type="date" value="${esc(x.due)}" style="font-size:12px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);" onchange="hd2SchedSet(${iOf(x)}, this.value)" title="Deadline">` : (x.due ? `<span class="ef-ksub">${esc(x.due)}</span>` : '');
-  const line = x => `<div class="ef-kid" style="cursor:default;"><span style="width:8px;height:8px;border-radius:50%;background:${HD2_ST_C(x.st)};flex:0 0 auto;"></span><a href="#" onclick="event.preventDefault();hd2SchedOpen(${iOf(x)})">${esc(x.name || '(untitled)')}</a>${x.st ? `<span class="ef-kst">${esc(x.st)}</span>` : ''}${x.sub ? `<span class="ef-ksub">${esc(x.sub)}</span>` : ''}${dateIn(x)}</div>`;
+  const line = x => `<div class="ef-kid" style="cursor:grab;" ${drag(x)}><span style="width:8px;height:8px;border-radius:50%;background:${HD2_ST_C(x.st)};flex:0 0 auto;"></span><a href="#" onclick="event.preventDefault();hd2SchedOpen(${iOf(x)})">${esc(x.name || '(untitled)')}</a>${x.st ? `<span class="ef-kst">${esc(x.st)}</span>` : ''}${x.sub ? `<span class="ef-ksub">${esc(x.sub)}</span>` : ''}${dateIn(x)}</div>`;
   const H = (t, n) => `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:20px 0 4px;">${t} <span style="font-weight:400;letter-spacing:0;text-transform:none;">(${n})</span></div>`;
   const nav = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
     <button style="${HD2_B()}" onclick="hd2SchedMove(-1)" title="Previous month">‹</button><div style="font-size:15px;font-weight:700;min-width:150px;text-align:center;">${esc(monthName)}</div><button style="${HD2_B()}" onclick="hd2SchedMove(1)" title="Next month">›</button>
     <button style="${HD2_B()}" onclick="EF.sch.ym=hd2Today().slice(0,7);hd2EfDraw()">Today</button><span style="flex:1"></span>
     <span style="font-size:12px;color:var(--text3);">${dated.length} dated${late.length ? ` · <span style="color:#f87171;">${late.length} overdue</span>` : ''} · ${none.length} no date</span></div>`;
-  const legend = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:8px;">${['Development', 'Review', 'Publish', 'Published'].map(s => `<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${HD2_ST_C(s)};margin-right:4px;"></span>${s}</span>`).join('')}</div>`;
+  const legend = `<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-top:8px;"><span>Drag an asset to another day to move its due date.</span>${['Development', 'Review', 'Publish', 'Published'].map(s => `<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${HD2_ST_C(s)};margin-right:4px;"></span>${s}</span>`).join('')}</div>`;
   return nav + `<div class="ef-cal">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<div class="ef-dh">${d}</div>`).join('')}${cells}</div>` + legend
     + `<div class="ef-agenda">${H('This month', inMonth.length)}${inMonth.map(line).join('') || '<div class="ef-ksub" style="padding:6px 0;">Nothing due this month.</div>'}</div>`
     + (late.length ? H('<span style="color:#f87171;">Overdue</span>', late.length) + late.map(line).join('') : '')
-    + (none.length ? H('No due date', none.length) + none.map(line).join('') : '');
+    + `<div class="ef-nodue" ${drop('')}>${H('No due date', none.length)}${none.map(line).join('') || '<div class="ef-ksub" style="padding:6px 0;">Drop an asset here to remove its due date.</div>'}</div>`;
 }
 function hd2SchedMove(n) { const [Y, M] = EF.sch.ym.split('-').map(Number), d = new Date(Y, M - 1 + n, 1); EF.sch.ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); hd2EfDraw(); }
 function hd2SchedOpen(i) { const x = (EF.schItems || [])[i]; if (x) hd2OpenRec(x); }
-async function hd2SchedSet(i, date) {
-  const x = (EF.schItems || [])[i]; if (!x || x.k !== 'asset') return;
+async function hd2SchedSet(i, date, stay) {
+  const x = (EF.schItems || [])[i]; if (!x || x.k !== 'asset') return; const was = x.a.deadline || '', E = EF;
+  x.a.deadline = date || ''; if (date && !stay) EF.sch.ym = date.slice(0, 7); hd2EfDraw();
   try { const r = await call('setAssetDeadline', { assetId: x.id, date: date || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
-    x.a.deadline = date || ''; showToast(date ? '✓ Due ' + date + ' — ' + x.name : '✓ Date removed — ' + x.name, 'success'); if (date) EF.sch.ym = date.slice(0, 7); }
-  catch (err) { showToast('✗ Date not saved: ' + (err.message || err), 'error'); }
-  hd2EfDraw();
+    showToast(date ? '✓ Due ' + date + ' — ' + x.name : '✓ Due date removed — ' + x.name, 'success'); }
+  catch (err) { x.a.deadline = was; showToast('✗ Date not saved: ' + (err.message || err), 'error'); if (EF === E && EF.tab === 'sched') hd2EfDraw(); }
+}
+function hd2SchedDrag(ev, i) { try { ev.dataTransfer.setData('text/plain', String(i)); ev.dataTransfer.effectAllowed = 'move'; } catch (x) {} const p = document.getElementById('efPanel'); if (p) p.classList.add('ef-dragging'); }
+function hd2SchedDragEnd() { const p = document.getElementById('efPanel'); if (p) { p.classList.remove('ef-dragging'); p.querySelectorAll('.ef-drop').forEach(x => x.classList.remove('ef-drop')); } }
+function hd2SchedDrop(ev, ds) {
+  ev.preventDefault(); hd2SchedDragEnd(); let i = NaN; try { i = parseInt(ev.dataTransfer.getData('text/plain'), 10); } catch (x) {}
+  const x = (EF && EF.schItems || [])[i]; if (!x || (x.due || '') === ds) return;
+  hd2SchedSet(i, ds, true);
 }
 // ── 🔬 Research ──
 async function hd2ResLoad() {
