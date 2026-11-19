@@ -12324,7 +12324,7 @@ function hd2Render() {
     + '#hd2Body.hd2selm div.hd2r.hd2on{background:rgba(255,122,0,.08)}@media (min-width:1100px){#hd2Body.hd2inio{padding-right:410px}}'
     + '#hd2Ini{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:950;background:var(--bg);border-left:1px solid var(--border2);box-shadow:-8px 0 30px rgba(0,0,0,.3);display:flex;flex-direction:column;font-size:13px;color:var(--text)}'
     + '#hd2Ini .hi-r{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer}#hd2Ini .hi-r:hover{background:var(--surface2)}#hd2Ini .hi-r.on{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}'
-    + '#hd2Ini .hi-nl{font-size:11px;color:var(--text3);text-decoration:none;white-space:nowrap;opacity:.75}#hd2Ini .hi-nl:hover{color:var(--accent);opacity:1}#hd2Ini .hi-nl.has{color:var(--accent);opacity:1;font-weight:600}#hd2Ini .hi-n{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}#hd2Ini .hi-c{font-size:11.5px;color:var(--text3);white-space:nowrap}'
+    + '#hd2Ini .hi-nl{font-size:11px;color:var(--text3);text-decoration:none;white-space:nowrap;opacity:.75}#hd2Ini .hi-nl:hover{color:var(--accent);opacity:1}#hd2Ini .hi-nl.has{color:var(--accent);opacity:1;font-weight:600}#hd2Ini .hi-del.arm{color:#f87171;opacity:1;font-weight:700}#hd2Ini .hi-r{flex-wrap:wrap;row-gap:4px}#hd2Ini .hi-n{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}#hd2Ini .hi-c{font-size:11.5px;color:var(--text3);white-space:nowrap}'
     + '@media (max-width:720px){#hd2Ini{top:auto;height:55vh;width:100vw;border-left:none;border-top:1px solid var(--border2);border-radius:12px 12px 0 0}#hd2Body.hd2inio{padding-bottom:56vh}}</style>'
     + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2LvBtn" class="hd2tg" onclick="hd2LvOpen(this)" title="Expand or collapse the table to a heading level" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">↕ Expand / collapse</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
     + `<div style="display:flex;justify-content:flex-end;align-items:center;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
@@ -12417,7 +12417,9 @@ function hd2IniDraw() {
       ${_hd2Ini ? `<a href="#" onclick="event.preventDefault();hd2IniPick(-1)" style="font-size:12px;color:var(--accent);">✕ Show whole table</a>` : ''}</div>
     <div style="flex:1;overflow:auto;padding:0 4px 12px;">${L.map((x, i) => `<div class="hi-r${x.name.toLowerCase() === cur ? ' on' : ''}" onclick="hd2IniPick(${i})" title="${x.ids.size ? 'Open the table to its assets' : 'No assets in the table yet'}">
         <span class="hi-n">${esc(x.name)}${x.isNew ? '' : '<span style="font-size:10px;font-weight:400;color:var(--text3);border:1px solid var(--border2);border-radius:4px;padding:0 4px;margin-left:6px;">old</span>'}</span><span class="hi-c">${x.ids.size ? `${x.ids.size} asset${x.ids.size === 1 ? '' : 's'}${x.hubs.size > 1 ? ' · ' + x.hubs.size + ' hubs' : x.hubs.size ? ' · ' + esc([...x.hubs][0]) : ''}` : 'no assets'}</span>
-        <a href="#" class="hi-nl${_hd2IniNotes[x.name.toLowerCase()] ? ' has' : ''}" onclick="event.preventDefault();event.stopPropagation();hd2IniNoteOpen(${i})" title="${_hd2IniNotes[x.name.toLowerCase()] ? esc(String(_hd2IniNotes[x.name.toLowerCase()].note).slice(0, 300)) : 'Add notes to this initiative'}">📝 notes</a></div>${hd2IniNoteHtml(x)}`).join('')
+        <a href="#" class="hi-nl" onclick="event.preventDefault();event.stopPropagation();hd2IniSelIn(${i})" title="${x.ids.size ? 'Select every asset in this initiative (again = unselect them)' : 'No assets in the table'}" ${x.ids.size ? '' : 'style="visibility:hidden"'}>☑ select all</a>
+        <a href="#" class="hi-nl${_hd2IniNotes[x.name.toLowerCase()] ? ' has' : ''}" onclick="event.preventDefault();event.stopPropagation();hd2IniNoteOpen(${i})" title="${_hd2IniNotes[x.name.toLowerCase()] ? esc(String(_hd2IniNotes[x.name.toLowerCase()].note).slice(0, 300)) : 'Add notes to this initiative'}">📝 notes</a>
+        <a href="#" class="hi-nl hi-del${_hd2IniDel === x.name.toLowerCase() ? ' arm' : ''}" onclick="event.preventDefault();event.stopPropagation();hd2IniDelete(${i})" title="Delete this initiative: clears it from every asset that carries it, then removes the name">${_hd2IniDel === x.name.toLowerCase() ? (_hd2IniBusy ? 'Deleting…' : 'Delete? click again') : '🗑'}</a></div>${hd2IniNoteHtml(x)}`).join('')
       || `<div style="font-size:12.5px;color:var(--text3);padding:8px 10px;">No new initiatives yet — select assets and type a name above to start one.${nOld && !_hd2IniOld ? ' (' + nOld + ' old ones hidden — tick Show old.)' : ''}</div>`}</div>`;
 }
 // open the table to one initiative (or back to everything): headings it opened close again when it changes
@@ -12431,13 +12433,49 @@ function hd2IniNoteHtml(x) {
       <span style="font-size:11px;color:${E.err ? '#f87171' : 'var(--text3)'};">${E.err ? '✗ ' + esc(E.err) : at ? 'Last saved ' + esc(String(at).slice(0, 16).replace('T', ' ')) + ' UTC' : ''}</span></div></div>`;
 }
 function hd2IniPick(i) {
-  const x = _hd2IniL[i]; _hd2Ini = !x || _hd2Ini.toLowerCase() === x.name.toLowerCase() ? '' : x.name;
+  _hd2IniDel = ''; const x = _hd2IniL[i]; _hd2Ini = !x || _hd2Ini.toLowerCase() === x.name.toLowerCase() ? '' : x.name;
   const tree = document.getElementById('hd2Tree');
   if (tree) tree.querySelectorAll('details.hd2iop').forEach(d => { d.classList.remove('hd2iop'); d.open = false; });
   hd2FilterRun();
   if (tree && _hd2Ini) tree.querySelectorAll('div.hd2r[data-a]:not(.hd2fx)').forEach(r => {
     for (let d = r.parentElement; d && d !== tree; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.open) { d.open = true; d.classList.add('hd2iop'); } });
   hd2Cur(); hd2SelPaint(); hd2IniDraw();
+}
+// ☑ select all in an initiative (operator 2026-11-19): adds every asset the row counts (the Initiative column value) to the selection and turns
+// select mode on; when they are all selected already it unselects them.
+function hd2IniSelIn(i) { const x = _hd2IniL[i]; if (!x || !x.ids.size) return; const ids = [...x.ids], all = ids.every(id => _hd2Sel.has(id));
+  ids.forEach(id => all ? _hd2Sel.delete(id) : _hd2Sel.add(id)); _hd2SelM = true; hd2SelPaint(); hd2IniDraw(); }
+// 🗑 delete an initiative (operator 2026-11-19), 2nd click runs it: every asset whose OWN Initiative field is this name gets it cleared
+// (cplanAssetBulkEdit, logged, stops at the first failure), then the name leaves the names list with its notes (initiativeNames remove — the
+// worker refuses while any asset in Notion still carries it, e.g. one outside this table). Assets that only show it through their product's
+// map entry are not changed; the message says how many.
+let _hd2IniDel = '';
+async function hd2IniDelete(i) {
+  const x = _hd2IniL[i]; if (!x || _hd2IniBusy) return; const k = x.name.toLowerCase();
+  if (_hd2IniDel !== k) { _hd2IniDel = k; hd2IniDraw(); return; }
+  _hd2IniBusy = true; hd2IniDraw();
+  const own = [..._hd2A.values()].filter(a => String(a.initiative || '').trim().toLowerCase() === k);
+  let done = 0, err = '';
+  for (let j = 0; j < own.length && !err; j += 20) {
+    const chunk = own.slice(j, j + 20);
+    const r = await call('cplanAssetBulkEdit', { field: 'initiative', items: chunk.map(a => ({ assetId: hdNid(a.assetId), value: '' })) }).catch(e => ({ error: e.message }));
+    if (!r || r.error) { err = (r && r.error) || 'no response'; break; }
+    (r.done || []).forEach(d => { const a = chunk.find(y => hdNid(y.assetId) === d.assetId); if (a) { a.initiative = (d.after || {}).initiative || ''; done++; } });
+    if (r.stopped) err = r.stopped.error || 'stopped';
+    _hd2IniMsg = `Deleting “${x.name}”… ${done} / ${own.length} assets cleared`; hd2IniDraw();
+  }
+  if (!err) {
+    const r = await call('initiativeNames', { op: 'remove', name: x.name }).catch(e => ({ error: e.message }));
+    if (r && !r.error) { _hd2IniNames = r.names || (_hd2IniNames || []).filter(n => n.toLowerCase() !== k); if (r.added) _hd2IniAdded = r.added; if (r.notes) _hd2IniNotes = r.notes; else delete _hd2IniNotes[k]; }
+    else if (!(r && /still carry/.test(r.error || '') && !(_hd2IniNames || []).some(n => n.toLowerCase() === k))) err = (r && r.error) || 'no response';
+  }
+  _hd2IniBusy = false; _hd2IniDel = ''; if (_hd2IniEd && _hd2IniEd.k === k) _hd2IniEd = null;
+  if (done) hd2Rerender();
+  const left = document.querySelectorAll('#hd2Tree div.hd2r[data-a]').length ? [...document.querySelectorAll('#hd2Tree div.hd2r[data-a]')].filter(r => (r.dataset.in || '').toLowerCase() === k).length : 0;
+  if (!err && _hd2Ini.toLowerCase() === k && !left) { _hd2Ini = ''; hd2FilterRun(); }
+  _hd2IniMsg = err ? `✗ “${x.name}”: ${done} of ${own.length} asset${own.length === 1 ? '' : 's'} cleared, then stopped — ${err}`
+    : `✓ “${x.name}” deleted — ${done} asset${done === 1 ? '' : 's'} cleared${left ? ` · ${left} still show it through their product (product map — not changed here)` : ''}`;
+  hd2IniDraw(); showToast(_hd2IniMsg, err ? 'error' : 'success');
 }
 function hd2SelMode() { _hd2SelM = !_hd2SelM; hd2IniDraw(); }
 const hd2Shown = root => [...root.querySelectorAll('div.hd2r[data-a]')].filter(r => r.dataset.a && !r.closest('.hd2fx'));

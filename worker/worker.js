@@ -21208,9 +21208,9 @@ export default {
           if (!name) return json({ error: "name required" }, 400);
           const still = (await notionQuery(ASSETS_DB, { filter: { property: "Initiative", rich_text: { equals: name } } })).filter(x => !x.archived && !x.in_trash);
           if (still.length) return json({ error: `${still.length} asset${still.length === 1 ? "" : "s"} still carry “${name}” — take them out of it first`, still: still.length }, 409);
-          const next = names.filter(n => !same(n, name)), add2 = Object.fromEntries(Object.entries(added).filter(([n]) => !same(n, name)));
-          await env.TRADES.put(K, JSON.stringify({ ...cur, names: next, added: add2, at: Date.now() }));
-          await log({ op, name }); return json({ ok: true, names: next, added: add2 });
+          const next = names.filter(n => !same(n, name)), add2 = Object.fromEntries(Object.entries(added).filter(([n]) => !same(n, name))), notes2 = { ...notes }; delete notes2[name.toLowerCase()];   // its notes go with it
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names: next, added: add2, notes: notes2, at: Date.now() }));
+          await log({ op, name }); return json({ ok: true, names: next, added: add2, notes: notes2 });
         }
         return json({ error: "op must be list | add | remove | note" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
