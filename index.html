@@ -11636,6 +11636,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'research') bd = hd2ResHtml();
   else if (EF.tab === 'keywords') bd = hd2KwHtml();
   else if (EF.tab === 'post') bd = hd2PostHtml();
+  else if (EF.tab === 'images') bd = hd2ImagesHtml();
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
@@ -11654,7 +11655,7 @@ function hd2EfDraw() {
         + row('Keywords', kws.length + ' · edit in the keyword modal', `<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow:auto;padding-top:4px;">${kws.map(x => `<span style="font-size:12px;padding:2px 8px;border:1px solid var(--border2);border-radius:10px;color:var(--text2);">${esc(x)}</span>`).join('') || '<span style="font-size:12px;color:var(--text3);">none</span>'}</div><button style="${B()}margin-top:8px;" onclick="hd2EfKeywords()">🔑 Edit keywords</button>`); }
   }
   const n = Object.keys(EF.dirty).length;
-  const ft = D && !EF.err && EF.tab === 'fields' ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
+  const ft = D && !EF.err && ['fields', 'post', 'images'].includes(EF.tab) ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
   P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
 }
 async function hd2EfKeywords() {   // the existing 🔑 keyword modal (it opens above this flyout)
@@ -11704,7 +11705,7 @@ function hd2EfTabs() {
   const k = EF.e.k, t = [['fields', '✎ Fields']];
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
-  if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post']);
+  if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
   return t;
 }
 function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
@@ -11856,15 +11857,57 @@ function hd2PostParts(D) {
   const thumb = pick(HD2_POST.thumb);
   return { title: pick(HD2_POST.title), thumb: thumb && /^https?:/.test(thumb.value) ? thumb : null, blurb };
 }
-function hd2PostHtml() {
+function hd2PostHtml() {   // every part editable; edits join the same 💾 Save as ✎ Fields (only changed fields are written)
   const D = EF.data; if (!D || D.kind !== 'notion') return '';
-  const P = hd2PostParts(D), src = f => `<div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:6px;">${esc(f)}</div>`;
+  const P = hd2PostParts(D), by = n => D.props.findIndex(p => p.name === n);
+  const src = f => `<div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 0;">${esc(f)}</div>`;
   if (!P.title && !P.thumb && !P.blurb) return `<div style="font-size:13px;color:var(--text3);">This record has no post title, thumbnail or blurb yet.</div>`;
-  return `<div style="max-width:640px;">
-    ${P.thumb ? `<a href="${esc(P.thumb.value)}" target="_blank" rel="noopener"><img src="${esc(P.thumb.value)}" alt="" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image did not load',style:'font-size:12px;color:#f87171;padding:10px;border:1px solid var(--border2);border-radius:8px;'}))"></a>${src('Thumbnail · ' + P.thumb.field)}` : ''}
-    ${P.title ? `<div style="font-size:22px;font-weight:800;line-height:1.25;margin-top:${P.thumb ? 16 : 0}px;overflow-wrap:anywhere;">${esc(P.title.value)}</div>${src('Title · ' + P.title.field)}` : ''}
-    ${P.blurb ? `<div style="font-size:15px;line-height:1.6;color:var(--text2);margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;">${esc(P.blurb.value)}</div>${src('Blurb · ' + P.blurb.field)}` : ''}
-  </div>`;
+  const part = (lbl, x, big, img) => { if (!x) return ''; const k = by(x.field); if (k < 0) return '';
+    const p = D.props[k], v = hd2EfVal(p), s = Array.isArray(v) ? v.join(', ') : String(v == null ? '' : v);
+    const inp = p.editable ? (big ? `<textarea rows="${Math.min(14, Math.max(3, Math.ceil(s.length / 80) + 1))}" style="${HD2_IN}line-height:1.6;resize:vertical;font-size:15px;" oninput="hd2EfSet(EF.data.props[${k}].name, this.value)">${esc(s)}</textarea>`
+      : `<input style="${HD2_IN}${lbl === 'Title' ? 'font-size:20px;font-weight:800;' : ''}" value="${esc(s)}" oninput="hd2EfSet(EF.data.props[${k}].name, this.value)${img ? ';hd2ImgPrev(this)' : ''}">`)
+      : `<div style="font-size:12px;color:var(--text3);">${esc(s)} (read-only field)</div>`;
+    return `<div style="margin-bottom:16px;">${img && s ? `<img class="hd2-prev" src="${esc(s)}" alt="" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);margin-bottom:8px;">` : ''}${inp}${src(lbl + ' · ' + x.field)}</div>`; };
+  // a blurb drawn from Body's opening edits the whole Body
+  const blurb = P.blurb && /^Body/.test(P.blurb.field) ? { field: 'Body', value: '' } : P.blurb;
+  return `<div style="max-width:680px;">${part('Thumbnail', P.thumb, false, true)}${part('Title', P.title)}${part(P.blurb && /^Body/.test(P.blurb.field) ? 'Blurb (from the opening of Body — this edits all of Body)' : 'Blurb', blurb, true)}</div>`;
+}
+function hd2ImgPrev(inp) { const im = inp.parentElement.querySelector('img.hd2-prev'); if (im && /^https?:/.test(inp.value)) im.src = inp.value; }
+
+// ── Entity flyout · 🖼 Images tab (operator 2026-11-19): every image field on the record (Thumbnail, Post Image, banners, backgrounds …) —
+// preview + editable link (saved with 💾 Save); then every other image on the record: files attached to it, images in the page body,
+// and image links inside its text fields. ✎ Edit on an asset's Thumbnail / Post Image / Instagram Background opens care-gap's full
+// image modal (Grok render, text render, text boxes, typography) on that asset in a new tab — until that editor is ported here.
+const HD2_IMG_NAME = /(image|thumb|banner|background|hero|photo|cover|logo|icon|avatar|picture|plate|poster)/i;
+const hd2ImgLike = u => /^https?:\/\/\S+\.(png|jpe?g|webp|gif|avif|svg)(\?\S*)?$/i.test(u) || /^https?:\/\/[^\s]*(r2\.dev|notion-static|prod-files-secure|secure\.notion|images\.unsplash|\/images\/|\/backgrounds\/)/i.test(u);
+const HD2_CG_SLOT = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' };
+function hd2ImagesHtml() {
+  const D = EF.data, e = EF.e; if (!D || D.kind !== 'notion') return '';
+  const fields = D.props.map((p, k) => ({ p, k })).filter(({ p }) => p.type === 'files' ? (p.value || []).length || HD2_IMG_NAME.test(p.name) : p.type === 'url' && (HD2_IMG_NAME.test(p.name) || hd2ImgLike(String(p.value || ''))));
+  const shown = new Set(); fields.forEach(({ p }) => (p.type === 'files' ? p.value || [] : [p.value]).forEach(u => u && shown.add(String(u))));
+  const cgUrl = `https://cabuzzard.github.io/dash/microsites/care-gap-v2/?asset=${encodeURIComponent(e.id)}${e.cid ? '&campaignId=' + encodeURIComponent(e.cid) : ''}`;
+  const img = (u, h) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" loading="lazy" style="display:block;width:100%;height:${h}px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.display='none'"></a>`;
+  const card = ({ p, k }) => { const v = hd2EfVal(p);
+    if (p.type === 'files') return `<div class="ef-img">${(v || []).map(u => img(u, 150)).join('') || '<div class="ef-noimg">no files</div>'}<div class="ef-cap">${esc(p.name)} · attached files</div><div style="font-size:11px;color:var(--text3);">Files are added in Notion (↗ top right).</div></div>`;
+    const s = String(v || ''), slot = e.k === 'asset' && HD2_CG_SLOT[p.name];
+    return `<div class="ef-img">${s ? `<img class="hd2-prev" src="${esc(s)}" alt="" loading="lazy" style="display:block;width:100%;height:170px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.opacity=.15">` : '<div class="ef-noimg">empty</div>'}
+      <div class="ef-cap">${esc(p.name)}</div>
+      <input style="${HD2_IN}font-size:12px;padding:6px 8px;" placeholder="https://… image link" value="${esc(s)}" ${p.editable ? '' : 'disabled'} oninput="hd2EfSet(EF.data.props[${k}].name, this.value);hd2ImgPrev(this)">
+      ${slot ? `<a href="${esc(cgUrl)}" target="_blank" rel="noopener" style="${HD2_B('var(--accent)', 'var(--accent)')}display:inline-block;margin-top:6px;text-decoration:none;" title="Opens this asset's Publish modal in care-gap: ✨ Grok render, 🔤 text render, text boxes and typography">✎ Edit image ↗</a>` : ''}</div>`; };
+  // every other image on the record: page body images + image links in its text fields
+  const more = [], seen = new Set(shown), add = (u, from, cap) => { u = String(u || '').replace(/[.,;]+$/, ''); if (!u || seen.has(u)) return; if (from !== 'page image' && !hd2ImgLike(u)) return; seen.add(u); more.push({ u, from, cap }); };
+  (D.bodyImages || []).forEach(x => add(x.url, x.from, x.caption));
+  D.props.filter(p => p.type === 'rich_text' || p.type === 'title').forEach(p => {
+    const t = String(hd2EfVal(p) || '');
+    (t.match(/!\[[^\]]*\]\((https?:[^)\s]+)\)/g) || []).forEach(m => add(m.replace(/^!\[[^\]]*\]\(|\)$/g, ''), p.name));
+    (t.match(/<img[^>]+src=["']([^"']+)["']/gi) || []).forEach(m => add(m.replace(/^.*src=["']|["']$/gi, ''), p.name));
+    (t.match(/https?:\/\/[^\s)"'<>\]]+/g) || []).forEach(u => add(u, p.name));
+  });
+  return `<style>#efPanel .ef-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}#efPanel .ef-img{border:1px solid var(--border2);border-radius:8px;padding:8px;min-width:0}#efPanel .ef-cap{font-size:12px;font-weight:700;margin:6px 0 4px;overflow-wrap:anywhere}#efPanel .ef-noimg{height:120px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text3);border:1px dashed var(--border2);border-radius:6px}</style>
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:8px;">Image fields</div>
+    ${fields.length ? `<div class="ef-imgs">${fields.map(card).join('')}</div>` : '<div style="font-size:12.5px;color:var(--text3);">This record has no image fields.</div>'}
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:22px 0 8px;">Images <span style="text-transform:none;letter-spacing:0;font-weight:400;">— attached to the record, in its page and in its text (${more.length})</span></div>
+    ${more.length ? `<div class="ef-imgs">${more.map(x => `<div class="ef-img">${img(x.u, 150)}<div class="ef-cap" style="font-weight:400;color:var(--text3);">${esc(x.from)}${x.cap ? ' · ' + esc(x.cap) : ''}</div><div style="font-size:11px;color:var(--text3);overflow-wrap:anywhere;">${esc(x.u.length > 80 ? x.u.slice(0, 80) + '…' : x.u)}</div></div>`).join('')}</div>` : '<div style="font-size:12.5px;color:var(--text3);">No other images found on this record.</div>'}`;
 }
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;

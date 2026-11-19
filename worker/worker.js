@@ -20806,7 +20806,13 @@ export default {
           return { name, type: p.type, value: valueOf(p), editable: EDIT.includes(p.type), options };
         });
         const titleProp = props.find(x => x.type === "title");
-        return json({ ok: true, id: pid, url: page.url || "", database: db ? rt(db.title) : "", databaseId: dbId, title: titleProp ? titleProp.value : "", props });
+        // images in the page body (Images tab): image blocks, plus any link inside a text block (the flyout keeps the image-looking ones)
+        const bodyImages = [];
+        try { const br = await fetch("https://api.notion.com/v1/blocks/" + pid + "/children?page_size=100", { headers: H });
+          if (br.ok) ((await br.json()).results || []).forEach(b => { const x = b[b.type] || {};
+            if (b.type === "image") { const u = (x.external && x.external.url) || (x.file && x.file.url) || ""; if (u) bodyImages.push({ url: u, caption: rt(x.caption), from: "page image" }); return; }
+            (x.rich_text || []).forEach(t => { if (t.href) bodyImages.push({ url: t.href, from: "page link" }); (String(t.plain_text || "").match(/https?:\/\/[^\s)"'<>]+/g) || []).forEach(u => bodyImages.push({ url: u, from: "page text" })); }); }); } catch (e) {}
+        return json({ ok: true, id: pid, url: page.url || "", database: db ? rt(db.title) : "", databaseId: dbId, title: titleProp ? titleProp.value : "", props, bodyImages });
       }
       // entitySave: { pageId, changes: { [propertyName]: value } } — types come from the page itself, never from the client
       const changes = body.changes && typeof body.changes === "object" ? body.changes : {};
