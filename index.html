@@ -12293,12 +12293,12 @@ function hd2Render() {
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   // Run level (operator 2026-11-19: "add another level … asset type and we can have run inside of asset type"): inside an asset type, assets
   // with a Run (asset field "Run"; "none" = no run) sit under one heading per run, runs in natural order (R2 before R10); assets without a run
-  // get a (no run) heading, last (operator: "no run. can also be a heading"). The "Run" asset type itself (one record per run) is not split.
+  // are listed straight under the type (operator: "if theres no run value just list them under type"). The "Run" asset type itself (one record per run) is not split.
   const runOf = a => { const r = String(a.run || '').trim(); return /^none$/i.test(r) ? '' : r; };
   const byRun = (t, L) => { if (/^run$/i.test(t) || !L.some(runOf)) return L.map(leaf).join('');
     const m = new Map(); L.forEach(a => { const r = runOf(a); if (r) { if (!m.has(r)) m.set(r, []); m.get(r).push(a); } });
     return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
-      .map(([r, RL]) => node(r, RL, 'run', RL.map(leaf).join(''), RL, t === '(no type)' ? '' : t)).join('') + (L.some(a => !runOf(a)) ? node('(no run)', [], 'run', L.filter(a => !runOf(a)).map(leaf).join(''), L.filter(a => !runOf(a)), t === '(no type)' ? '' : t) : ''); };
+      .map(([r, RL]) => node(r, RL, 'run', RL.map(leaf).join(''), RL, t === '(no type)' ? '' : t)).join('') + L.filter(a => !runOf(a)).map(leaf).join(''); };
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
       .map(([t, L]) => node(t, L, 'asset', byRun(t, L), L, t === '(no type)' ? '' : t)).join(''); };
