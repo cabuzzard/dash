@@ -62,7 +62,7 @@ All secrets are set via `wrangler secret put` and never hardcoded:
 - `XAI_API_KEY` — Grok: `grok-4.6` trending grounding **and** `grok-imagine-image-2.0` offer images (needs image access on the plan)
 - `NOTES_POLL_SECRET` — machine-to-machine read-only auth for `getMicrositeNotes` (`body.pollSecret`), checked *before* the normal session-token gate. Lets an automated watcher (e.g. a Claude Code session background-polling for newly-submitted microsite field notes) read notes without the operator's PIN. Read-only, one action only — never a write path.
 
-- `EXTERNAL_WORKER_KEY` — machine key for outside tools (Buzz, …): sent as header `X-External-Key` (or `body.externalKey`) instead of a PIN session; unlocks ONLY `EXTERNAL_ACTIONS` in worker.js (`saveOfferImage`, `createRunAssets`, `getRun`). Every call (allowed, bad key, or refused action) is logged to KV `external:log` (last 200, no key material; operator reads it with `getExternalLog`). Unset = off. Rotate with `wrangler secret put EXTERNAL_WORKER_KEY`.
+- `EXTERNAL_WORKER_KEY` — machine key for outside tools (Buzz, …): sent as header `X-External-Key` (or `body.externalKey`) instead of a PIN session; unlocks ONLY `EXTERNAL_ACTIONS` in worker.js (`flyout`, `saveOfferImage`, `createRunAssets`, `getRun`, `updateContentPlan`, `getContentPlanGoals`, `getContentPlanRows`, `getInitiatives` — read-only initiatives for outside editors, see `docs/initiatives-api.md`). Every call (allowed, bad key, or refused action) is logged to KV `external:log` (last 200, no key material; operator reads it with `getExternalLog`). Unset = off. Rotate with `wrangler secret put EXTERNAL_WORKER_KEY`.
 
 **PowerShell pipe caveat:** always `.trim()` secrets read from `env.*` — PowerShell pipes add a trailing newline.
 

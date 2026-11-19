@@ -11572,7 +11572,7 @@ async function contentPlanCronAction(env, body) {   // operator only: status · 
   } else if (op !== "status") return { error: "op must be status | on | off | start | preview" };
   return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", start: (await env.TRADES.get(CPC_START)) || "", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
 }
-const EXTERNAL_ACTIONS = new Set(["flyout", "saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
+const EXTERNAL_ACTIONS = new Set(["flyout", "saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "getInitiatives"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -21214,6 +21214,38 @@ export default {
         }
         return json({ error: "op must be list | add | remove | note" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
+    }
+    // getInitiatives {scope?: "new" (default) | "all", name?, titles?: true} (operator 2026-11-19: "external editors to be able to access the 'new'
+    // initiatives info to be able to sort through records") — READ ONLY, open to the external key. New = a name the names list stamped as added
+    // (from 2026-11-19 on, KV initiative:names .added); "all" adds the old ones (new:false). Per initiative: created date, its notes, every live
+    // asset whose Initiative field is that name (id, name, type, status, deadline, run, title, product, hub, flyout address) and the products the
+    // product map (hd:productmap:v1) gives that initiative — the Hub Dash 2 Initiative column falls back to those for assets with no own value.
+    if (body.action === "getInitiatives") {
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        const cur = (await env.TRADES.get("initiative:names", "json")) || {}, added = cur.added || {}, notes = cur.notes || {};
+        const lc = s => String(s || "").trim().toLowerCase(), isNew = n => Object.keys(added).some(k => lc(k) === lc(n)), all = String(body.scope || "new") === "all", only = lc(body.name);
+        const rt = p => (p?.rich_text || p?.title || []).map(x => x.plain_text || "").join("").trim(), rel = p => ((p?.relation) || []).map(x => String(x.id).replace(/-/g, ""));
+        const hubOf = cid => { const H = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid); return H ? { slug: H.slug, name: H.name } : null; };
+        const pages = (await notionQuery(ASSETS_DB, { filter: { property: "Initiative", rich_text: { is_not_empty: true } } })).filter(x => !x.archived && !x.in_trash);
+        const map = new Map(), slot = n => { const k = lc(n); if (!map.has(k)) { const ak = Object.keys(added).find(x => lc(x) === k); map.set(k, { name: ak || n, new: !!ak, createdAt: ak ? added[ak] : null, assets: [], products: [] }); } return map.get(k); };
+        (cur.names || []).forEach(n => slot(n)); Object.keys(added).forEach(n => slot(n));
+        for (const pg of pages) { const p = pg.properties || {}, n = rt(p.Initiative); if (!n) continue; const cid = rel(p.Campaign)[0] || "", id = String(pg.id).replace(/-/g, "");
+          slot(n).assets.push({ assetId: id, name: rt(p["Asset Title"]) || rt(p.Name), type: p["Asset Type"]?.select?.name || "", status: p["Asset Status"]?.select?.name || "",
+            deadline: p.Deadline?.date?.start || "", run: rt(p.Run), subInitiative: rt(p["Sub Initiative"]), titleId: rel(p["Content Strategy"])[0] || "", productId: rel(p.Product)[0] || "",
+            campaignId: cid, hub: hubOf(cid), address: "asset:" + id, url: pg.url || "" }); }
+        const pm = (await env.TRADES.get("hd:productmap:v1", "json")) || { hubs: {} };
+        Object.entries(pm.hubs || {}).forEach(([cid, prods]) => Object.entries(prods || {}).forEach(([pid, m]) => { if (m && m.initiative) slot(m.initiative).products.push({ productId: pid, product: m.product || "", sub: m.sub || "", campaignId: cid, hub: hubOf(cid), address: "product:" + pid }); }));
+        let out = [...map.values()].filter(x => (all || x.new) && (!only || lc(x.name) === only));
+        if (body.titles !== false) {   // title names for the assets returned (one read per title, 8 at a time)
+          const ids = [...new Set(out.flatMap(x => x.assets.map(a => a.titleId)).filter(Boolean))].slice(0, 300), names = {};
+          for (let i = 0; i < ids.length; i += 8) await Promise.all(ids.slice(i, i + 8).map(async t => { try { const g = await ivPage(t); names[t] = rt(g.properties?.Title) || rt(g.properties?.Name); } catch (e) {} }));
+          out.forEach(x => x.assets.forEach(a => { a.title = names[a.titleId] || ""; }));
+        }
+        out = out.map(x => ({ ...x, note: (notes[lc(x.name)] || {}).note || "", noteAt: (notes[lc(x.name)] || {}).at || null, assetCount: x.assets.length }))
+          .sort((a, b) => (b.new - a.new) || String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || a.name.localeCompare(b.name));
+        return json({ ok: true, scope: all ? "all" : "new", newSince: "2026-11-19", count: out.length, initiatives: out });
+      } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, 500); }
     }
     if (body.action === "cplanAssetEdit") {
       if (externalCaller) return json({ error: "operator only" }, 403);
