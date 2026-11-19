@@ -20791,7 +20791,7 @@ export default {
         case "url": case "email": case "phone_number": return p[p.type] || "";
         case "relation": return (p.relation || []).map(r => hubAssetId(r.id));
         case "people": return (p.people || []).map(x => x.name || x.id);
-        case "files": return (p.files || []).map(f => f.name || (f.external && f.external.url) || (f.file && f.file.url) || "");
+        case "files": return (p.files || []).map(f => (f.external && f.external.url) || (f.file && f.file.url) || f.name || "");   // links first (the flyout's Post tab shows them)
         case "formula": { const f = p.formula || {}; return f[f.type] == null ? "" : (typeof f[f.type] === "object" ? JSON.stringify(f[f.type]) : f[f.type]); }
         case "rollup": { const r = p.rollup || {}; return r.type === "array" ? (r.array || []).length + " item(s)" : (r[r.type] == null ? "" : JSON.stringify(r[r.type])); }
         case "unique_id": return p.unique_id ? (p.unique_id.prefix ? p.unique_id.prefix + "-" : "") + p.unique_id.number : "";

@@ -11635,6 +11635,7 @@ function hd2EfDraw() {
   if (EF.busy || EF.err || !D) bd = `<div style="font-size:13px;color:${EF.err ? '#f87171' : 'var(--text3)'};">${esc(EF.err ? '✗ ' + EF.err : EF.busy)}</div>`;
   else if (EF.tab === 'research') bd = hd2ResHtml();
   else if (EF.tab === 'keywords') bd = hd2KwHtml();
+  else if (EF.tab === 'post') bd = hd2PostHtml();
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
@@ -11703,6 +11704,7 @@ function hd2EfTabs() {
   const k = EF.e.k, t = [['fields', '✎ Fields']];
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
+  if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post']);
   return t;
 }
 function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
@@ -11836,6 +11838,33 @@ async function hd2KwSave() {
   else { D.topic.keywords = next; W.log = '✓ Saved: +' + add.length + ' −' + del.length + ' keywords (↶ undo in the Keywords tab)';
     try { delete _kwTopicCache[kwNid(e.cid)]; delete _hubKw[e.slug]; } catch (x) {} }
   hd2EfDraw();
+}
+// ── Entity flyout · 📰 Post tab (operator 2026-11-19): how the record reads as a post — its production (copy-written) title,
+// thumbnail and blurb, each only if the record has it. Read from the fields already loaded for ✎ Fields (no extra call), first
+// non-empty of: title ← Platform Title · SEO Title · Headline · Post Title · Hub Title; thumbnail ← Thumbnail · Post Image ·
+// Instagram Background · Hero Image · Image · Images (files); blurb ← Blurb · Description · Summary · Excerpt · Teaser, else the
+// opening of Body (as the hub blog cards do). Each part names the field it came from; edits happen in ✎ Fields.
+const HD2_POST = {
+  title: ['Platform Title', 'SEO Title', 'Headline', 'Post Title', 'Hub Title'],
+  thumb: ['Thumbnail', 'Post Image', 'Instagram Background', 'Hero Image', 'Image', 'Images'],
+  blurb: ['Blurb', 'Description', 'Summary', 'Excerpt', 'Teaser'],
+};
+function hd2PostParts(D) {
+  const by = n => (D.props || []).find(p => p.name === n), txt = v => Array.isArray(v) ? v.join(' ') : String(v == null ? '' : v);
+  const pick = L => { for (const n of L) { const p = by(n); if (!p) continue; const v = p.type === 'files' ? (p.value || []).find(u => /^https?:/.test(u)) || '' : txt(p.value).trim(); if (v) return { field: n, value: v }; } return null; };
+  const blurb = pick(HD2_POST.blurb) || (() => { const b = by('Body'), v = b ? txt(b.value).replace(/\s+/g, ' ').trim() : ''; return v ? { field: 'Body (opening)', value: v.length > 300 ? v.slice(0, 300).replace(/\s+\S*$/, '') + '…' : v } : null; })();
+  const thumb = pick(HD2_POST.thumb);
+  return { title: pick(HD2_POST.title), thumb: thumb && /^https?:/.test(thumb.value) ? thumb : null, blurb };
+}
+function hd2PostHtml() {
+  const D = EF.data; if (!D || D.kind !== 'notion') return '';
+  const P = hd2PostParts(D), src = f => `<div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:6px;">${esc(f)}</div>`;
+  if (!P.title && !P.thumb && !P.blurb) return `<div style="font-size:13px;color:var(--text3);">This record has no post title, thumbnail or blurb yet.</div>`;
+  return `<div style="max-width:640px;">
+    ${P.thumb ? `<a href="${esc(P.thumb.value)}" target="_blank" rel="noopener"><img src="${esc(P.thumb.value)}" alt="" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Image did not load',style:'font-size:12px;color:#f87171;padding:10px;border:1px solid var(--border2);border-radius:8px;'}))"></a>${src('Thumbnail · ' + P.thumb.field)}` : ''}
+    ${P.title ? `<div style="font-size:22px;font-weight:800;line-height:1.25;margin-top:${P.thumb ? 16 : 0}px;overflow-wrap:anywhere;">${esc(P.title.value)}</div>${src('Title · ' + P.title.field)}` : ''}
+    ${P.blurb ? `<div style="font-size:15px;line-height:1.6;color:var(--text2);margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;">${esc(P.blurb.value)}</div>${src('Blurb · ' + P.blurb.field)}` : ''}
+  </div>`;
 }
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;
