@@ -12288,7 +12288,10 @@ function hd2Render() {
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
     return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
   const cols = (t, D, g, own) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span>`
-    + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? md(own) : '') : (D[b] || '')}</span>`).join('') + `<span class="hd2dl">${D.t || ''}</span>`;
+    + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? md(own) : '') : dcl(D[b], 'd' + b)}</span>`).join('') + `<span class="hd2dl">${own ? (D.t || '') : dcl(D.t, 'due')}</span>`;
+  // a heading's count opens that heading down to exactly the assets it counts (operator 2026-11-19: "click on the count in the heading and it opens
+  // the asset level records that carry the count")
+  const dcl = (n, c) => n ? `<a href="#" class="hd2dc" onclick="event.preventDefault();event.stopPropagation();hd2DueOpen(this,'${c}')" title="Open the ${n} asset${n === 1 ? '' : 's'} this counts">${n}</a>` : '';
   // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
   _hd2Ents = [];
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
@@ -12336,7 +12339,7 @@ function hd2Render() {
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2dl{flex:0 0 50px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
-    + '#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
+    + '#hd2Body .hd2dc{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}#hd2Body .hd2dc:hover{text-decoration-style:solid}#hd2Body div.hd2r.hd2flash{background:rgba(255,138,31,.2)!important;transition:background .4s}#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}'
@@ -12712,6 +12715,15 @@ function hd2Weeks() {
   const last = new Date(sun); last.setDate(sun.getDate() - 7); const mon = new Date(sun); mon.setDate(sun.getDate() - 6);
   const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), md = d => (d.getMonth() + 1) + '/' + d.getDate();
   return { sun: ymd(sun), last: ymd(last), sunL: md(sun), lastL: md(last), monL: md(mon) };
+}
+// open a heading down to the assets one of its due counts counts: everything inside it closes, then only the paths to those assets open; they flash
+function hd2DueOpen(el, c) {
+  const box = el.closest('details'), k = HD2_DCOL[c]; if (!box || !k) return;
+  box.querySelectorAll('details').forEach(d => { d.open = false; d.classList.remove('hd2iop'); }); box.open = true;
+  const hits = [...box.querySelectorAll('div.hd2r[data-a]')].filter(r => +r.dataset[k] > 0 && !r.closest('.hd2fx'));
+  hits.forEach(r => { for (let d = r.parentElement; d && d !== box; d = d.parentElement) if (d.tagName === 'DETAILS') d.open = true;
+    r.classList.add('hd2flash'); setTimeout(() => r.classList.remove('hd2flash'), 2500); });
+  hd2Cur();
 }
 function hd2SortBy(col) {
   const first = HD2_DCOL[col] ? -1 : 1, s = _hd2Sort;
