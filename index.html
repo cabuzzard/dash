@@ -11480,7 +11480,38 @@ function loadInformationFlowTables() {
 
 // ── Hub Dash 2 (operator 2026-11-18, fresh start): one collapsed tree Hub → Cluster → Topic → Product → Title. Read-only.
 // Reuses the Hub Dashboard data (devAssetsTable rows, hdHubs, hdTree); nothing else yet.
-let _hd2Rows = null, _hd2PM = null;
+let _hd2Rows = null, _hd2PM = null, _hd2Lists = [], _hd2F = null;   // _hd2F = { kind: 'init'|'sub', vals: Set } — the table filter
+// Filter (operator 2026-11-18): a multi-value Initiative / Sub count opens a small popup with exactly those values; Apply filters
+// the whole table to them. An asset matches by its own field, else its product's map entry; a product / title row by its product's map entry.
+function hd2Keep(x, pmHub) {
+  if (!_hd2F) return true;
+  const m = pmHub[hdNid(x.productId || '')] || null;
+  const v = _hd2F.kind === 'init' ? ((x.kind === 'asset' && String(x.initiative || '').trim()) || (m && m.initiative) || '')
+    : ((x.kind === 'asset' && String(x.subInitiative || '').trim()) || (m && m.sub) || '');
+  return _hd2F.vals.has(v);
+}
+function hd2FilterOpen(i) {
+  const L = _hd2Lists[i]; if (!L) return; hd2FilterClose();
+  const ev = window.event, x = ev && ev.clientX != null ? ev.clientX : innerWidth / 2, y = ev && ev.clientY != null ? ev.clientY : innerHeight / 2;
+  const on = v => !_hd2F || _hd2F.kind !== L.kind || _hd2F.vals.has(v);
+  const m = document.createElement('div'); m.id = 'hd2Flt'; _hd2Lists._open = L;
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(x - 120, innerWidth - 300))}px;top:${Math.max(8, Math.min(y + 8, innerHeight - 340))}px;width:280px;max-height:320px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);font-size:12.5px;`;
+  m.innerHTML = `<div style="padding:8px 10px 6px;font-weight:700;color:var(--text);">Filter by ${L.kind === 'init' ? 'initiative' : 'sub-initiative'}</div>
+    <div style="overflow:auto;padding:0 10px;flex:1;">${L.vals.map((v, k) => `<label style="display:flex;gap:6px;align-items:center;padding:3px 0;cursor:pointer;color:var(--text2);"><input type="checkbox" data-k="${k}" ${on(v) ? 'checked' : ''}>${esc(v)}</label>`).join('')}</div>
+    <div style="display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--border);">
+      <button onclick="hd2FilterApply()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">Apply</button>
+      <button onclick="document.querySelectorAll('#hd2Flt input').forEach(c=>c.checked=!c.checked)" style="font-size:11.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">Invert</button>
+      <button onclick="hd2FilterClose()" style="margin-left:auto;font-size:11.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">Close</button></div>`;
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener('mousedown', hd2FilterOut, true), 0);
+}
+function hd2FilterOut(e) { const m = document.getElementById('hd2Flt'); if (m && !m.contains(e.target)) hd2FilterClose(); }
+function hd2FilterClose() { const m = document.getElementById('hd2Flt'); if (m) m.remove(); document.removeEventListener('mousedown', hd2FilterOut, true); }
+function hd2FilterApply() {
+  const L = _hd2Lists._open; if (!L) return;
+  const vals = [...document.querySelectorAll('#hd2Flt input')].filter(c => c.checked).map(c => L.vals[+c.dataset.k]);
+  hd2FilterClose(); _hd2F = vals.length ? { kind: L.kind, vals: new Set(vals) } : null; hd2Render();
+}
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;
   if (_hd2Rows && !force) return hd2Render();
@@ -11502,11 +11533,14 @@ function hd2Render() {
   const PM = (_hd2PM && _hd2PM.hubs) || {}; let pmc = {};
   const pmOf = pid => pmc[hdNid(pid || '')] || null;
   const iv = a => { const m = pmOf(a.productId); return [String(a.initiative || '').trim() || (m && m.initiative) || '', String(a.subInitiative || '').trim() || (m && m.sub) || '']; };
-  const one = (S, w) => S.size === 0 ? '' : S.size === 1 ? esc([...S][0]) : String(S.size);   // more than one = just the count (hover lists them)
+  // more than one = just the count; clicking it opens the filter popup listing exactly those values
+  _hd2Lists = [];
+  const one = (S, kind) => S.size === 0 ? '' : S.size === 1 ? esc([...S][0])
+    : `<span class="hd2cnt" onclick="event.preventDefault();event.stopPropagation();hd2FilterOpen(${_hd2Lists.push({ kind, vals: [...S].sort() }) - 1})" title="Filter the table by these">${S.size}</span>`;
   const agg = (assets, pids) => { const I = new Set(), Su = new Set();
     assets.forEach(a => { const [i, s] = iv(a); if (i) I.add(i); if (s) Su.add(s); });
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
-    return [one(I, 'initiatives'), one(Su, 'subs'), [...I].join(' · '), [...Su].join(' · ')]; };
+    return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
   const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids) => { const k = due(assets);
@@ -11522,6 +11556,7 @@ function hd2Render() {
     + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body .hd2r:hover{background:var(--surface2)}'
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
+    + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover{color:var(--accent)}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
     + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}#hd2Body details[open]>summary.hd2r{font-weight:600}'
@@ -11532,8 +11567,10 @@ function hd2Render() {
     + `<span style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
+    + (_hd2F ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;padding:6px 8px;margin-bottom:6px;border:1px solid var(--accent);border-radius:6px;"><b>Filtered</b><span style="color:var(--text2);">${_hd2F.kind === 'init' ? 'Initiative' : 'Sub-initiative'}: ${[..._hd2F.vals].map(esc).join(' · ')}</span><button onclick="_hd2F=null;hd2Render()" style="margin-left:auto;font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✕ Clear filter</button></div>` : '')
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
-    const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => (x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c));
+    const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) && hd2Keep(x, PM[c] || {}));
+    if (_hd2F && !rows.length) return '';   // a filtered-out hub disappears
     const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {};
     const aC = C => C.topics.flatMap(hdAssetsOf), pT = T => T.products.map(P => P.key).filter(k => k !== '__none'), pC = C => C.topics.flatMap(pT);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
