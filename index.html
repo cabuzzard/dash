@@ -11585,7 +11585,7 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
     return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k, agg([a]))}</div>`; };
@@ -11599,6 +11599,9 @@ function hd2Render() {
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
     + '#hd2Body.hd2noic .hd2in,#hd2Body.hd2noic .hd2sb,#hd2Body.hd2noic .hd2ic{display:none}'
+    // left edge per heading level (hub → type group): white fading one step per level; inset shadow so nothing shifts
+    + '#hd2Body summary[data-lv="1"]{box-shadow:inset 3px 0 0 #ffffff}#hd2Body summary[data-lv="2"]{box-shadow:inset 3px 0 0 #d6d6d6}#hd2Body summary[data-lv="3"]{box-shadow:inset 3px 0 0 #adadad}'
+    + '#hd2Body summary[data-lv="4"]{box-shadow:inset 3px 0 0 #858585}#hd2Body summary[data-lv="5"]{box-shadow:inset 3px 0 0 #5e5e5e}#hd2Body summary[data-lv="6"]{box-shadow:inset 3px 0 0 #3f3f3f}'
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
