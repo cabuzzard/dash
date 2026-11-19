@@ -12685,11 +12685,17 @@ const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [
 let _hd2LvOn = new Set([1]); try { const s = JSON.parse(localStorage.getItem('hd2LvOn') || 'null'); if (Array.isArray(s)) _hd2LvOn = new Set(s.map(Number)); } catch (e) {}
 function hd2LvApply() {
   try { localStorage.setItem('hd2LvOn', JSON.stringify([..._hd2LvOn])); } catch (e) {}
-  const tree = document.getElementById('hd2Tree'); if (tree) tree.querySelectorAll('details').forEach(d => { const s = d.querySelector(':scope>summary'); d.open = !!s && _hd2LvOn.has(+s.dataset.lv); d.classList.remove('hd2iop'); });
+  // a ticked level opens its headings AND the headings above them (a ticked level used to show nothing while the levels above it stayed
+  // closed); every other heading closes
+  const tree = document.getElementById('hd2Tree'); if (tree) { const on = new Set();
+    tree.querySelectorAll('details').forEach(d => { const s = d.querySelector(':scope>summary'); if (s && _hd2LvOn.has(+s.dataset.lv)) for (let x = d; x && x !== tree; x = x.parentElement) if (x.tagName === 'DETAILS') on.add(x); });
+    tree.querySelectorAll('details').forEach(d => { d.open = on.has(d); d.classList.remove('hd2iop'); }); }
   hd2Cur(); hd2LvPaint();
 }
-function hd2LvTick(v, on) { if (on) _hd2LvOn.add(+v); else _hd2LvOn.delete(+v); hd2LvApply(); }
-function hd2LvAll(on) { _hd2LvOn = new Set(on ? HD2_LVS.map(x => x[0]) : []); hd2LvApply(); }
+// ticks only mark the levels; ✓ Apply (operator 2026-11-19: "if you make a selection theres no button to push") opens them and closes the popup
+function hd2LvTick(v, on) { if (on) _hd2LvOn.add(+v); else _hd2LvOn.delete(+v); hd2LvPaint(); }
+function hd2LvAll(on) { _hd2LvOn = new Set(on ? HD2_LVS.map(x => x[0]) : []); hd2LvPaint(); }
+function hd2LvGo() { hd2LvApply(); hd2LvClose(); }
 function hd2LvPaint() {
   document.querySelectorAll('#hd2LvPop input[data-lv]').forEach(c => { c.checked = _hd2LvOn.has(+c.dataset.lv); });
   const all = document.getElementById('hd2LvAllCk'); if (all) { const n = HD2_LVS.filter(x => _hd2LvOn.has(x[0])).length; all.checked = n === HD2_LVS.length; all.indeterminate = n > 0 && n < HD2_LVS.length; }
@@ -12701,7 +12707,8 @@ function hd2LvOpen(btn) {
   const L = 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;';
   m.innerHTML = `<div style="font-weight:700;margin-bottom:6px;">Expand heading levels</div>
     <label style="${L}font-weight:600;border-bottom:1px solid var(--border);padding-bottom:7px;margin-bottom:3px;"><input type="checkbox" id="hd2LvAllCk" onchange="hd2LvAll(this.checked)">All</label>
-    ${HD2_LVS.map(([v, t]) => `<label style="${L}"><input type="checkbox" data-lv="${v}" onchange="hd2LvTick(${v}, this.checked)">${t}</label>`).join('')}`;
+    ${HD2_LVS.map(([v, t]) => `<label style="${L}"><input type="checkbox" data-lv="${v}" onchange="hd2LvTick(${v}, this.checked)">${t}</label>`).join('')}
+    <div style="display:flex;gap:6px;margin-top:10px;"><button onclick="hd2LvGo()" style="${HD2_B('var(--accent)', 'var(--accent)')}padding:5px 14px;font-size:12.5px;">✓ Apply</button><button onclick="hd2LvClose()" style="${HD2_B()}padding:5px 12px;font-size:12.5px;">Cancel</button></div>`;
   document.body.appendChild(m); btn.classList.add('on'); hd2LvPaint();
   setTimeout(() => document.addEventListener('mousedown', hd2LvOut, true), 0);
 }
