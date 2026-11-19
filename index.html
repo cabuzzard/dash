@@ -11936,10 +11936,21 @@ async function hd2KidAdd(btn) {
       if (due) { const d = await call('setAssetDeadline', { assetId: a.assetId, date: due }).catch(x => ({ error: x.message }));
         if (d && !d.error) { a.deadline = due; row.sub = type + ' · due ' + due; } else row.warn = [row.warn, 'due date not saved (' + ((d && d.error) || 'no response') + ') — set it on the Schedule tab'].filter(Boolean).join(' · '); }
     }
-    K.rows.push(row); K.mode = ''; K.reload = true;
-    K.msg = '✓ Added ' + HD2_LV[k].toLowerCase() + ' "' + row.name + '"' + (row.warn ? ' — Asset Flow: ' + row.warn : '');
+    K.rows.push(row); K.mode = ''; K.reload = false;
+    K.msg = '✓ Added ' + HD2_LV[k].toLowerCase() + ' "' + row.name + '"' + (row.warn ? ' — Asset Flow: ' + row.warn : '') + ' — updating the table…';
     hd2EfDraw();
+    hd2ReloadFromFlyout().then(() => { if (EF && EF.kids === K && /updating the table…$/.test(K.msg)) { K.msg = K.msg.replace(/ — updating the table…$/, ' — the table is updated'); hd2EfDraw(); } });
   } catch (err) { fail('✗ ' + (err.message || err)); }
+}
+// reload the main table under an open flyout (operator 2026-11-19: "+ New … reload the main table on its own"): the flyout keeps its record,
+// and its index, ← Back target and tree node are re-pointed at the reloaded table (by kind + id / name).
+async function hd2ReloadFromFlyout() {
+  const same = (a, b) => a && b && a.k === b.k && String(a.id || a.name) === String(b.id || b.name);
+  const E = EF && EF.e, oldBack = E && E.back != null ? _hd2Ents[E.back] : null;
+  try { await hd2Reload(); } catch (x) { return; }
+  if (!EF || EF.e !== E) return;
+  const ni = _hd2Ents.findIndex(x => same(x, E)); if (ni >= 0) { EF.i = ni; if (_hd2Ents[ni].src) E.src = _hd2Ents[ni].src; }
+  if (oldBack) { const bi = _hd2Ents.findIndex(x => same(x, oldBack)); E.back = bi >= 0 ? bi : null; }
 }
 
 // 🗑 Delete (second click confirms)
