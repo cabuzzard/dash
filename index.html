@@ -11552,6 +11552,140 @@ function hd2FilterRun() {
     });
   });
 }
+// ── Hub Dash 2 · entity flyout (operator 2026-11-19): the Level column names each row (Hub · Cluster · Topic · Product · Title · Asset)
+// and opens a large right-hand flyout (same frame as the asset writer: .amf, full width on a phone). Tab 1 = ✎ Fields: every field of
+// that record, editable, 💾 Save writes only what changed — no confirmation. Hub / Product / Title / Asset = their Notion page
+// (worker entityGet / entitySave — saves pass the worker's normal guards). Cluster / Topic live in the hub keyword model, not Notion:
+// a cluster's field is its name (kwHubApply renameCluster), a topic's are name + cluster (rename / setCluster); topic keywords open
+// the existing 🔑 keyword modal. Saved names update the row label in place — the tree is never redrawn.
+let _hd2Ents = [], EF = null;
+const HD2_LV = { hub: 'Hub', cluster: 'Cluster', topic: 'Topic', product: 'Product', title: 'Title', asset: 'Asset' };
+function hd2EfEnsure() {
+  let bg = document.getElementById('efBg'); if (bg) return bg;
+  bg = document.createElement('div'); bg.id = 'efBg'; bg.className = 'amf-bg';
+  bg.innerHTML = '<div class="amf" id="efPanel" role="dialog" aria-label="Record"></div>';
+  bg.addEventListener('mousedown', e => { if (e.target === bg) hd2EfClose(); });
+  document.body.appendChild(bg);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && EF && bg.classList.contains('open')) hd2EfClose(); });
+  return bg;
+}
+async function hd2EntOpen(i) {
+  const e = _hd2Ents[i]; if (!e) return;
+  hd2EfEnsure().classList.add('open'); document.body.style.overflow = 'hidden'; document.body.classList.add('amf-open');
+  EF = { i, e, tab: 'fields', busy: 'Loading…', err: '', data: null, dirty: {}, msg: '', warnClose: false };
+  hd2EfDraw();
+  try {
+    if (e.k === 'cluster' || e.k === 'topic') {
+      const r = await call('kwHubLoad', { campaignId: e.cid, name: e.hub }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      const m = r.model || { topics: [], clusters: [] };
+      if (e.k === 'cluster') EF.data = { kind: 'kw', clusters: m.clusters || [], topics: (m.topics || []).filter(t => t.cluster === e.name), name: e.name };
+      else { const t = (m.topics || []).find(x => hdNid(x.id) === hdNid(e.id)); if (!t) throw new Error('Topic not found in this hub\'s keyword model');
+        EF.data = { kind: 'kw', clusters: m.clusters || [], topic: t, name: t.name, cluster: t.cluster || '' }; }
+    } else {
+      const r = await call('entityGet', { pageId: e.id }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      EF.data = { kind: 'notion', ...r };
+    }
+    EF.busy = '';
+  } catch (err) { EF.busy = ''; EF.err = err.message || String(err); }
+  if (EF && EF.i === i) hd2EfDraw();
+}
+function hd2EfClose() {
+  if (EF && Object.keys(EF.dirty).length && !EF.warnClose) { EF.warnClose = true; EF.msg = 'Unsaved changes — 💾 Save, or close again to discard them.'; hd2EfDraw(); return; }
+  const bg = document.getElementById('efBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open'); EF = null;
+}
+function hd2EfSet(k, v) { if (!EF) return; EF.dirty[k] = v; EF.warnClose = false; const b = document.getElementById('efSave'); if (b) { const n = Object.keys(EF.dirty).length; b.textContent = '💾 Save' + (n ? ' (' + n + ')' : ''); b.disabled = !n; } }
+function hd2EfVal(p) { return p.name in EF.dirty ? EF.dirty[p.name] : p.value; }
+function hd2EfInput(p, k) {
+  const IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+  const v = hd2EfVal(p), on = `hd2EfSet(EF.data.props[${k}].name, `;
+  switch (p.type) {
+    case 'title': return `<input style="${IN}font-weight:600;" value="${esc(v || '')}" oninput="${on}this.value)">`;
+    case 'rich_text': { const rows = Math.min(14, Math.max(2, String(v || '').split('\n').length + 1, Math.ceil(String(v || '').length / 90)));
+      return `<textarea rows="${rows}" style="${IN}line-height:1.5;resize:vertical;" oninput="${on}this.value)">${esc(v || '')}</textarea>`; }
+    case 'number': return `<input inputmode="decimal" style="${IN}" value="${v == null ? '' : esc(String(v))}" oninput="${on}this.value)">`;
+    case 'url': case 'email': case 'phone_number': return `<input style="${IN}" value="${esc(v || '')}" oninput="${on}this.value)">${p.type === 'url' && v ? ` <a href="${esc(v)}" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--accent);">open ↗</a>` : ''}`;
+    case 'checkbox': return `<label style="display:inline-flex;gap:8px;align-items:center;font-size:14px;cursor:pointer;"><input type="checkbox" style="width:18px;height:18px;" ${v ? 'checked' : ''} onchange="${on}this.checked)"> ${v ? 'Yes' : 'No'}</label>`;
+    case 'select': case 'status': { const opts = [...new Set([...(p.options || []), v].filter(Boolean))];
+      return `<select style="${IN}" onchange="${on}this.value)">${p.type === 'select' ? '<option value="">—</option>' : ''}${opts.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`; }
+    case 'multi_select': { const cur = new Set(v || []), opts = [...new Set([...(p.options || []), ...(v || [])])];
+      return `<div style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:180px;overflow:auto;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);">${opts.map(o => `<label style="display:inline-flex;gap:5px;align-items:center;font-size:13px;cursor:pointer;"><input type="checkbox" ${cur.has(o) ? 'checked' : ''} onchange="hd2EfMulti(${k}, this.parentElement.parentElement)" data-o="${esc(o)}">${esc(o)}</label>`).join('') || '<span style="font-size:12px;color:var(--text3);">No options defined</span>'}</div>`; }
+    case 'date': { const d = v || { start: '', end: '' }, s = String(d.start || '').slice(0, 10), en = String(d.end || '').slice(0, 10);
+      return `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;"><input type="date" style="${IN}width:auto;" value="${esc(s)}" onchange="hd2EfDate(${k}, this.parentElement)"><span style="font-size:11.5px;color:var(--text3);">to</span><input type="date" style="${IN}width:auto;" value="${esc(en)}" onchange="hd2EfDate(${k}, this.parentElement)"><span style="font-size:11px;color:var(--text3);">(end optional)</span></div>`; }
+  }
+  return '';
+}
+function hd2EfMulti(k, box) { const p = EF.data.props[k]; hd2EfSet(p.name, [...box.querySelectorAll('input:checked')].map(c => c.dataset.o)); }
+function hd2EfDate(k, box) { const p = EF.data.props[k], d = box.querySelectorAll('input[type=date]'); hd2EfSet(p.name, { start: d[0].value || '', end: d[1].value || '' }); }
+function hd2EfRo(p) {   // read-only fields: shown, never sent
+  const v = p.value; if (p.type === 'relation') return `${(v || []).length} linked record${(v || []).length === 1 ? '' : 's'}`;
+  if (Array.isArray(v)) return v.length ? v.map(esc).join(' · ') : '—';
+  return v === '' || v == null ? '—' : esc(String(v));
+}
+function hd2EfDraw() {
+  const P = document.getElementById('efPanel'); if (!P || !EF) return;
+  const e = EF.e, B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
+  const D = EF.data, nm = (D && (D.title || D.name)) || e.name || '';
+  const links = D && D.url ? `<a href="${esc(D.url)}" target="_blank" rel="noopener" style="${B()}text-decoration:none;">Notion ↗</a>` : '';
+  const writer = e.k === 'asset' ? `<button style="${B('var(--accent)', 'var(--accent)')}" onclick="const id=EF.e.id;hd2EfClose();if(!EF)amOpen(id)">✍ Writer</button>` : '';
+  const hd = `<div class="amf-hd"><span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;">${HD2_LV[e.k]}</span>
+      <div style="min-width:0;flex:1;font-size:16px;font-weight:700;overflow-wrap:anywhere;">${esc(nm)}${D && D.database ? `<div style="font-size:11px;font-weight:400;color:var(--text3);">${esc(D.database)}</div>` : ''}</div>
+      ${writer}${links}<button style="${B()}" onclick="hd2EfClose()" title="Close (Esc)">✕</button></div>`;
+  const tabs = `<div class="amf-tabs"><button class="on">✎ Fields</button></div>`;
+  let bd;
+  if (EF.busy || EF.err || !D) bd = `<div style="font-size:13px;color:${EF.err ? '#f87171' : 'var(--text3)'};">${esc(EF.err ? '✗ ' + EF.err : EF.busy)}</div>`;
+  else if (D.kind === 'notion') {
+    const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable), ro = D.props.filter(p => !p.editable);
+    ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
+    const row = (p, inner) => `<div class="ef-row"><div class="ef-lb">${esc(p.name)}<span>${esc(p.type.replace('_', ' '))}</span></div><div class="ef-in">${inner}</div></div>`;
+    bd = ed.map(({ p, k }) => row(p, hd2EfInput(p, k))).join('')
+      + (ro.length ? `<details style="margin-top:14px;"><summary style="cursor:pointer;font-size:12px;color:var(--text3);">Read-only fields (${ro.length}) — relations, formulas, rollups, system fields</summary><div style="margin-top:8px;">${ro.map(p => row(p, `<div style="font-size:13px;color:var(--text2);overflow-wrap:anywhere;padding-top:6px;">${hd2EfRo(p)}</div>`)).join('')}</div></details>` : '');
+  } else {
+    const IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+    const nameV = 'name' in EF.dirty ? EF.dirty.name : D.name;
+    const row = (lb, sub, inner) => `<div class="ef-row"><div class="ef-lb">${lb}<span>${sub}</span></div><div class="ef-in">${inner}</div></div>`;
+    if (e.k === 'cluster') bd = row('Name', 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)"><div style="font-size:11px;color:var(--text3);margin-top:4px;">Renaming onto an existing cluster merges the two.</div>`)
+      + row('Topics', 'read-only', `<div style="font-size:13px;color:var(--text2);padding-top:6px;">${D.topics.map(t => esc(t.name)).join(' · ') || '—'}</div>`);
+    else { const cl = 'cluster' in EF.dirty ? EF.dirty.cluster : D.cluster, kws = D.topic.keywords || [];
+      bd = row('Name', 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)">`)
+        + row('Cluster', 'keyword model', `<select style="${IN}" onchange="hd2EfSet('cluster', this.value)"><option value="">(no cluster)</option>${[...new Set([...D.clusters, cl].filter(Boolean))].map(c => `<option ${c === cl ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`)
+        + row('Keywords', kws.length + ' · edit in the keyword modal', `<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow:auto;padding-top:4px;">${kws.map(x => `<span style="font-size:12px;padding:2px 8px;border:1px solid var(--border2);border-radius:10px;color:var(--text2);">${esc(x)}</span>`).join('') || '<span style="font-size:12px;color:var(--text3);">none</span>'}</div><button style="${B()}margin-top:8px;" onclick="hd2EfKeywords()">🔑 Edit keywords</button>`); }
+  }
+  const n = Object.keys(EF.dirty).length;
+  const ft = D && !EF.err ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
+  P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
+}
+async function hd2EfKeywords() {   // the existing 🔑 keyword modal (it opens above this flyout)
+  const e = EF && EF.e; if (!e) return; await hubKwLoad(e.slug); const K = _hubKw[e.slug];
+  const t = K && !K.error && [...(K.staged || []), ...(K.committed || [])].find(x => hdNid(x.id) === hdNid(e.id)); if (!t) return showToast('Topic not found in the keyword list — open it from the Keywords tab', 'error');
+  hubKwKwModal(e.slug, t.id);
+}
+async function hd2EfSave() {
+  if (!EF || !EF.data) return; const e = EF.e, D = EF.data, ch = { ...EF.dirty }; if (!Object.keys(ch).length) return;
+  const b = document.getElementById('efSave'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+  let newName = '';
+  try {
+    if (D.kind === 'notion') {
+      const r = await call('entitySave', { pageId: e.id, changes: ch }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      Object.entries(r.values || {}).forEach(([k, v]) => { const p = D.props.find(x => x.name === k); if (p) p.value = v; });
+      (r.saved || []).forEach(k => delete EF.dirty[k]);
+      const tp = D.props.find(p => p.type === 'title'); if (tp && (r.saved || []).includes(tp.name)) { D.title = tp.value; newName = tp.value; }
+      EF.msg = (r.refused || []).length ? '✗ Saved ' + (r.saved || []).length + ', not saved: ' + r.refused.join(', ') : '✓ Saved ' + (r.saved || []).length + ' field' + ((r.saved || []).length === 1 ? '' : 's');
+    } else {
+      const ops = [];
+      if (e.k === 'cluster') { const to = String(ch.name || '').trim(); if (!to) throw new Error('A cluster name can\'t be blank'); if (to !== D.name) ops.push({ op: 'renameCluster', from: D.name, to }); }
+      else { if ('name' in ch) { const v = String(ch.name).trim(); if (!v) throw new Error('A topic name can\'t be blank'); if (v !== D.name) ops.push({ op: 'rename', id: D.topic.id, name: v }); }
+        if ('cluster' in ch && ch.cluster !== D.cluster) ops.push({ op: 'setCluster', ids: [D.topic.id], cluster: ch.cluster }); }
+      if (ops.length) { const r = await call('kwHubApply', { campaignId: e.cid, name: e.hub, ops }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); if (r.errors && r.errors.length) throw new Error(r.errors.join(' · ')); }
+      if ('name' in ch) { D.name = String(ch.name).trim(); newName = D.name; if (e.k === 'cluster') e.name = D.name; }
+      if ('cluster' in ch) D.cluster = ch.cluster;
+      EF.dirty = {}; EF.msg = '✓ Saved' + ('cluster' in ch ? ' — the topic moves to its new cluster on the next ↻ refresh' : '');
+      try { const h = HUB_SITES.find(x => x.slug === e.slug); if (h) { delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[e.slug]; } } catch (x) {}
+    }
+    if (newName) { const s = document.querySelector('#hd2Tree .hd2lvc[data-e="' + EF.i + '"]'), lb = s && s.closest('.hd2r') && s.closest('.hd2r').querySelector('.hd2lb');
+      if (lb && lb.firstChild && lb.firstChild.nodeType === 3) lb.firstChild.nodeValue = newName; e.name = newName; }
+  } catch (err) { EF.msg = '✗ ' + (err.message || err); }
+  EF.warnClose = false; hd2EfDraw();
+}
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;
   if (_hd2Rows && !force) return hd2Render();
@@ -11582,13 +11716,18 @@ function hd2Render() {
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
     return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
   const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2ty" title="${esc(t)}">${esc(t)}</span><span class="hd2dl">${k || ''}</span>`;
+  // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
+  _hd2Ents = [];
+  const lvc = (w, pids, ent, nm) => { const name = nm || ({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Type');
+    if (!ent) return '<span class="hd2lvc">' + name + '</span>'; const i = _hd2Ents.push(ent) - 1;
+    return '<span class="hd2lvc" data-e="' + i + '"><a href="#" onclick="event.preventDefault();event.stopPropagation();hd2EntOpen(' + i + ')" title="Open this record — all its fields">' + name + '</a></span>'; };
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
-  const node = (label, kids, w, body, assets, type, pids) => { const k = due(assets);
+  const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${esc(label)}${n(kids, w)}</span>${lvc(w, pids, ent)}${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
-    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${cols(t, k, agg([a]))}</div>`; };
+    return `<div class="hd2r" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${esc(hdName(a))}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span>${lvc('', null, { k: 'asset', id: a.assetId, name: hdName(a) }, 'Asset')}${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -11605,6 +11744,7 @@ function hd2Render() {
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
+    + '#hd2Body .hd2lvc{flex:0 0 64px;margin-left:8px;font-size:11.5px;font-weight:400;color:var(--text3)}#hd2Body .hd2lvc a{color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--text3)}#hd2Body .hd2lvc a:hover{color:var(--accent);border-color:var(--accent)}'
     + '#hd2Body .hd2ty{flex:0 0 150px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}'
     + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}#hd2Body details[open]>summary.hd2r{font-weight:600}'
     // hover: any heading brightens a step
@@ -11612,19 +11752,20 @@ function hd2Render() {
     + '#hd2Body .hd2r{margin-bottom:1px}</style>'
     + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
-    + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
+    + `<span style="${H}cursor:default;flex:0 0 64px;margin-left:8px;">Level</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) );
 
     const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {};
+    const hb = { slug: h.slug, cid: h.campaignId, hub: h.campaign || h.name || h.slug }, okC = n => !['(no cluster)', 'No topic assigned', '★ Main'].includes(n), okT = k => k && k !== '__none' && k !== '__main' && !/^ip:/.test(k);
     const aC = C => C.topics.flatMap(hdAssetsOf), pT = T => T.products.map(P => P.key).filter(k => k !== '__none'), pC = C => C.topics.flatMap(pT);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets, '', [P.key])).join(''),
-            hdAssetsOf(P), '', [P.key])).join(''), hdAssetsOf(T), '', pT(T))).join(''), aC(C), '', pC(C))).join(''), tree.flatMap(aC), '', tree.flatMap(pC));
+          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets, '', [P.key], Ti.key !== '__none' ? { k: 'title', id: Ti.key, name: Ti.name } : null)).join(''),
+            hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
   hd2ApplySort(); hd2FilterRun();

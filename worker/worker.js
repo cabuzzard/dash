@@ -20767,6 +20767,75 @@ export default {
     // titleSubBulk {items: [{titleId, sub}] (≤ 25)} — writes titles' Sub Initiative, one PATCH each, ~0.35 s apart; logged once (title:sub:log)
     // productMap {op: get | set, cid?, productId?, product?, initiative?, sub?} (operator 2026-11-13: deploy new cards from the initiative row) —
     // get = the strict product → initiative / sub map (KV hd:productmap:v1) + the naming keys (KV naming:keys:v1); set = add / update one product.
+    // ── Hub Dash 2 entity flyout (operator 2026-11-19): load EVERY property of one Notion record (hub campaign, product, title or
+    // asset) with the database's options, and save the fields the operator changed. Reads are plain; saves go through the module
+    // fetch, so the Keywords-hierarchy guard, the Review → Development rule and the Asset Type mapping all apply as for any other write.
+    // Only changed fields are sent. Rich text is saved as plain text (formatting / links inside a text field are not kept).
+    if (body.action === "entityGet" || body.action === "entitySave") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      const pid = hubAssetId(String(body.pageId || ""));
+      if (!/^[0-9a-f]{32}$/i.test(pid)) return json({ error: "pageId required" }, 400);
+      const H = ivHdr(), rt = a => (a || []).map(t => t.plain_text || "").join("");
+      const pr = await fetch("https://api.notion.com/v1/pages/" + pid, { headers: H }), page = await pr.json();
+      if (!pr.ok) return json({ error: page.message || ("Notion " + pr.status) }, pr.status);
+      const dbId = page.parent && page.parent.database_id ? hubAssetId(page.parent.database_id) : "";
+      let db = null; if (dbId) { const dr = await fetch("https://api.notion.com/v1/databases/" + dbId, { headers: H }); if (dr.ok) db = await dr.json(); }
+      const EDIT = ["title", "rich_text", "number", "select", "status", "multi_select", "date", "checkbox", "url", "email", "phone_number"];
+      const valueOf = p => { switch (p.type) {
+        case "title": case "rich_text": return rt(p[p.type]);
+        case "number": return p.number; case "checkbox": return !!p.checkbox;
+        case "select": return p.select ? p.select.name : ""; case "status": return p.status ? p.status.name : "";
+        case "multi_select": return (p.multi_select || []).map(o => o.name);
+        case "date": return p.date ? { start: p.date.start || "", end: p.date.end || "" } : { start: "", end: "" };
+        case "url": case "email": case "phone_number": return p[p.type] || "";
+        case "relation": return (p.relation || []).map(r => hubAssetId(r.id));
+        case "people": return (p.people || []).map(x => x.name || x.id);
+        case "files": return (p.files || []).map(f => f.name || (f.external && f.external.url) || (f.file && f.file.url) || "");
+        case "formula": { const f = p.formula || {}; return f[f.type] == null ? "" : (typeof f[f.type] === "object" ? JSON.stringify(f[f.type]) : f[f.type]); }
+        case "rollup": { const r = p.rollup || {}; return r.type === "array" ? (r.array || []).length + " item(s)" : (r[r.type] == null ? "" : JSON.stringify(r[r.type])); }
+        case "unique_id": return p.unique_id ? (p.unique_id.prefix ? p.unique_id.prefix + "-" : "") + p.unique_id.number : "";
+        case "created_time": case "last_edited_time": return p[p.type] || "";
+        case "created_by": case "last_edited_by": return (p[p.type] && (p[p.type].name || p[p.type].id)) || "";
+        default: return "";
+      } };
+      if (body.action === "entityGet") {
+        const props = Object.entries(page.properties || {}).map(([name, p]) => {
+          const d = db && db.properties ? db.properties[name] : null;
+          const options = d && (d.type === "select" || d.type === "multi_select" || d.type === "status") ? ((d[d.type] || {}).options || []).map(o => o.name) : null;
+          return { name, type: p.type, value: valueOf(p), editable: EDIT.includes(p.type), options };
+        });
+        const titleProp = props.find(x => x.type === "title");
+        return json({ ok: true, id: pid, url: page.url || "", database: db ? rt(db.title) : "", databaseId: dbId, title: titleProp ? titleProp.value : "", props });
+      }
+      // entitySave: { pageId, changes: { [propertyName]: value } } — types come from the page itself, never from the client
+      const changes = body.changes && typeof body.changes === "object" ? body.changes : {};
+      const chunks = s => { const out = [], t = String(s == null ? "" : s); for (let i = 0; i < t.length; i += 2000) out.push({ type: "text", text: { content: t.slice(i, i + 2000) } }); return out; };
+      const out = {}, refused = [];
+      for (const [name, v] of Object.entries(changes)) {
+        const p = (page.properties || {})[name]; if (!p || !EDIT.includes(p.type)) { refused.push(name); continue; }
+        const s = v == null ? "" : String(v).trim();
+        switch (p.type) {
+          case "title": if (!s) { refused.push(name + " (a title is never blanked)"); continue; } out[name] = { title: chunks(v) }; break;
+          case "rich_text": out[name] = { rich_text: chunks(v) }; break;
+          case "number": if (s === "") out[name] = { number: null }; else if (isFinite(+s)) out[name] = { number: +s }; else { refused.push(name + " (not a number)"); continue; } break;
+          case "checkbox": out[name] = { checkbox: v === true || v === "true" }; break;
+          case "select": out[name] = { select: s ? { name: s } : null }; break;
+          case "status": if (!s) { refused.push(name + " (status can't be empty)"); continue; } out[name] = { status: { name: s } }; break;
+          case "multi_select": out[name] = { multi_select: (Array.isArray(v) ? v : String(v || "").split(",")).map(x => String(x).trim()).filter(Boolean).map(n => ({ name: n })) }; break;
+          case "date": { const st = String((v && v.start) || "").trim(), en = String((v && v.end) || "").trim();
+            out[name] = { date: st ? { start: st, ...(en ? { end: en } : {}) } : null }; break; }
+          case "url": case "email": case "phone_number": out[name] = { [p.type]: s || null }; break;
+        }
+      }
+      if (!Object.keys(out).length) return json({ ok: !refused.length, saved: [], refused, error: refused.length ? "Nothing saved: " + refused.join(", ") : "" });
+      let ur; try { ur = await fetch("https://api.notion.com/v1/pages/" + pid, { method: "PATCH", headers: H, body: JSON.stringify({ properties: out }) }); }
+      catch (e) { return json({ error: "Not saved: " + (e.message || e), refused }, 400); }   // e.g. the Keywords-hierarchy guard refused a status
+      const ud = await ur.json().catch(() => ({}));
+      if (!ur.ok) return json({ error: ud.message || ("Notion " + ur.status), refused }, ur.status >= 500 ? 502 : 400);
+      const back = {}; Object.keys(out).forEach(n => { const p = (ud.properties || {})[n]; if (p) back[n] = valueOf(p); });
+      return json({ ok: true, saved: Object.keys(out), refused, values: back });
+    }
     if (body.action === "productMap") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       const K = "hd:productmap:v1", pm = (await env.TRADES.get(K, "json")) || { version: 1, hubs: {} };
