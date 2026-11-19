@@ -11630,9 +11630,11 @@ function hd2EfDraw() {
   const hd = `<div class="amf-hd"><span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;">${HD2_LV[e.k]}</span>
       <div style="min-width:0;flex:1;font-size:16px;font-weight:700;overflow-wrap:anywhere;">${esc(nm)}${D && D.database ? `<div style="font-size:11px;font-weight:400;color:var(--text3);">${esc(D.database)}</div>` : ''}</div>
       ${writer}${links}<button style="${B()}" onclick="hd2EfClose()" title="Close (Esc)">✕</button></div>`;
-  const tabs = `<div class="amf-tabs"><button class="on">✎ Fields</button></div>`;
+  const tabs = `<div class="amf-tabs">${hd2EfTabs().map(([k, l]) => `<button class="${EF.tab === k ? 'on' : ''}" onclick="hd2EfTab('${k}')">${l}</button>`).join('')}</div>`;
   let bd;
   if (EF.busy || EF.err || !D) bd = `<div style="font-size:13px;color:${EF.err ? '#f87171' : 'var(--text3)'};">${esc(EF.err ? '✗ ' + EF.err : EF.busy)}</div>`;
+  else if (EF.tab === 'research') bd = hd2ResHtml();
+  else if (EF.tab === 'keywords') bd = hd2KwHtml();
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
@@ -11651,7 +11653,7 @@ function hd2EfDraw() {
         + row('Keywords', kws.length + ' · edit in the keyword modal', `<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow:auto;padding-top:4px;">${kws.map(x => `<span style="font-size:12px;padding:2px 8px;border:1px solid var(--border2);border-radius:10px;color:var(--text2);">${esc(x)}</span>`).join('') || '<span style="font-size:12px;color:var(--text3);">none</span>'}</div><button style="${B()}margin-top:8px;" onclick="hd2EfKeywords()">🔑 Edit keywords</button>`); }
   }
   const n = Object.keys(EF.dirty).length;
-  const ft = D && !EF.err ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
+  const ft = D && !EF.err && EF.tab === 'fields' ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
   P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
 }
 async function hd2EfKeywords() {   // the existing 🔑 keyword modal (it opens above this flyout)
@@ -11685,6 +11687,155 @@ async function hd2EfSave() {
       if (a) a.textContent = e.k === 'hub' ? (a.textContent.match(/^\d+ · /) || [''])[0] + newName : newName; e.name = newName; }
   } catch (err) { EF.msg = '✗ ' + (err.message || err); }
   EF.warnClose = false; hd2EfDraw();
+}
+// ── Entity flyout · second tab (operator 2026-11-19) ──
+// 🔬 Research (products, titles): every research field, editable, with a sync badge for the record and a status per row; ↻ Run all or
+// ↻ Run one row. Product = the 🔬 Product Research record (getProductStrategy; runs go to the background job queue —
+// queueProductResearch with all fields or one; sync = getCampaignStrategies researchState). Title = its four research fields
+// (getTitleResearch; generateTitleResearch runs all four — a one-row run re-runs and then puts the other rows back as they were;
+// sync = the title's Keywords Out of Sync flag).
+// 🔑 Keywords (clusters, topics): a seed keyword → 🔬 Re-run (kwSeedResearch, Google ideas). Topic: results go into its keyword list
+// (click a chip to drop it) → 💾 Save keywords (kwHubApply assign / unassign). Cluster: results are name suggestions — click one to
+// put it in the Fields tab's name, then 💾 Save there.
+const HD2_PR_FIELDS = ["Customer", "Niche", "Pain Points", "Emotions", "Solution", "Benefits", "Unique Opportunity", "Transformation", "Offer Structure", "Proof Points", "Objections"];
+const HD2_TR_FIELDS = ["Title Intent", "Title Questions", "Title Angle", "Title Audience"];
+function hd2EfTabs() {
+  const k = EF.e.k, t = [['fields', '✎ Fields']];
+  if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
+  if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
+  return t;
+}
+function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
+const HD2_IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
+const HD2_B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
+
+// ── 🔬 Research ──
+async function hd2ResLoad() {
+  const e = EF.e, R = EF.res = { busy: 'Loading research…', log: '', fields: null, dirty: {}, sync: '', guidance: '' }; hd2EfDraw();
+  try {
+    if (e.k === 'product') {
+      const [r, cs] = await Promise.all([call('getProductStrategy', { productId: e.id }), call('getCampaignStrategies', { campaignId: e.cid }).catch(() => null)]);
+      if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      R.fields = Object.fromEntries(HD2_PR_FIELDS.map(f => [f, String(((r.strategy && r.strategy.fields) || {})[f] || '')]));
+      const p = ((cs && cs.products) || []).find(x => hdNid(x.productId) === hdNid(e.id));
+      R.sync = p ? (p.researchState === 'updated' ? 'in' : p.researchState === 'off-main' ? 'out' : 'none') : '';
+      R.isolated = !!r.isolated;
+    } else {
+      const r = await call('getTitleResearch', { titleId: e.id }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      R.fields = Object.fromEntries(HD2_TR_FIELDS.map(f => [f, String((r.fields || {})[f] || '')]));
+      R.sync = HD2_TR_FIELDS.every(f => !R.fields[f].trim()) ? 'none' : r.outOfSync ? 'out' : 'in';
+    }
+    R.busy = '';
+  } catch (err) { R.busy = ''; R.log = '✗ ' + (err.message || err); }
+  if (EF && EF.res === R) hd2EfDraw();
+}
+function hd2ResHtml() {
+  const R = EF.res, e = EF.e; if (!R) return '';
+  if (!R.fields) return `<div style="font-size:13px;color:${/^✗/.test(R.log) ? '#f87171' : 'var(--text3)'};">${esc(R.busy || R.log)}</div>`;
+  const L = e.k === 'product' ? HD2_PR_FIELDS : HD2_TR_FIELDS, dis = R.busy ? 'disabled' : '';
+  const badge = R.sync === 'in' ? ['✓ In sync — research is current with the keywords', '#4ade80'] : R.sync === 'out' ? ['✗ Out of sync — the keywords changed since this research ran', '#f6ad55']
+    : R.sync === 'none' ? ['✗ No research yet', '#f6ad55'] : ['· Sync unknown', 'var(--text3)'];
+  const rowSt = f => !String(R.fields[f] || '').trim() ? ['empty', '#f6ad55'] : R.dirty[f] ? ['edited', 'var(--accent)'] : R.sync === 'in' ? ['✓ in sync', '#4ade80'] : R.sync === 'out' ? ['out of sync', '#f6ad55'] : ['filled', 'var(--text3)'];
+  const n = Object.keys(R.dirty).length;
+  return `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <span style="font-size:13px;font-weight:700;color:${badge[1]};">${badge[0]}</span>${R.isolated ? '<span style="font-size:11.5px;color:#8ab4f8;">🔒 isolated from the hub keywords</span>' : ''}
+      <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;"><button ${dis} style="${HD2_B('var(--accent)', 'var(--accent)')}" onclick="hd2ResRun(null)">↻ Run all</button><button ${dis} style="${HD2_B()}" onclick="EF.res=null;hd2ResLoad()" title="Reload the research and its sync status">⟳ Reload</button></span></div>
+    <textarea rows="2" placeholder="Guidance for this run (optional) — angle, audience, what to include or leave out…" oninput="EF.res.guidance=this.value" style="${HD2_IN}font-size:13px;margin-bottom:6px;">${esc(R.guidance)}</textarea>
+    <div style="font-size:12px;min-height:16px;margin-bottom:6px;color:${/^✗/.test(R.log) ? '#f87171' : 'var(--text3)'};">${esc(R.busy || R.log)}</div>
+    ${L.map((f, i) => { const s = rowSt(f), v = R.fields[f] || '', rows = Math.min(10, Math.max(2, Math.ceil(v.length / 90) + 1));
+      return `<div class="ef-row"><div class="ef-lb">${esc(f)}<span style="color:${s[1]};">${s[0]}</span><button ${dis} style="${HD2_B()}font-size:11.5px;padding:3px 9px;margin-top:6px;" onclick="hd2ResRun(${i})" title="Re-run only this field">↻ Run</button></div>
+        <div class="ef-in"><textarea rows="${rows}" style="${HD2_IN}line-height:1.5;resize:vertical;" oninput="hd2ResEdit(${i}, this.value)">${esc(v)}</textarea></div></div>`; }).join('')}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;"><button class="modal-btn" ${dis || (n ? '' : 'disabled')} onclick="hd2ResSave()">💾 Save research${n ? ' (' + n + ')' : ''}</button><span style="font-size:11.5px;color:var(--text3);">Saving marks the research current.</span></div>`;
+}
+function hd2ResEdit(i, v) { const R = EF && EF.res; if (!R) return; const f = (EF.e.k === 'product' ? HD2_PR_FIELDS : HD2_TR_FIELDS)[i]; R.fields[f] = v; R.dirty[f] = true;
+  const b = document.querySelector('#efPanel .amf-bd .modal-btn'); if (b) { const n = Object.keys(R.dirty).length; b.disabled = !n; b.textContent = '💾 Save research' + (n ? ' (' + n + ')' : ''); } }
+async function hd2ResSave() {
+  const R = EF && EF.res, e = EF && EF.e; if (!R) return; const fs = Object.keys(R.dirty); if (!fs.length) return;
+  R.busy = 'Saving…'; hd2EfDraw();
+  try {
+    if (e.k === 'product') { const bad = [];
+      for (const f of fs) { const r = await call('updateProductStrategyField', { productId: e.id, field: f, value: R.fields[f] || '' }).catch(x => ({ error: x.message })); if (!r || r.error) bad.push(f); else delete R.dirty[f]; }
+      if (bad.length) throw new Error('not saved: ' + bad.join(', '));
+    } else { const r = await call('saveTitleResearch', { titleId: e.id, fields: R.fields }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); R.dirty = {}; }
+    R.sync = 'in'; R.log = '✓ Saved ' + fs.length + ' field' + (fs.length === 1 ? '' : 's') + ' — in sync';
+  } catch (err) { R.log = '✗ ' + (err.message || err); }
+  R.busy = ''; if (EF && EF.res === R) hd2EfDraw();
+}
+async function hd2ResRun(i) {
+  const R = EF && EF.res, e = EF && EF.e; if (!R) return;
+  const L = e.k === 'product' ? HD2_PR_FIELDS : HD2_TR_FIELDS, f = i == null ? null : L[i], guidance = String(R.guidance || '').trim();
+  if (Object.keys(R.dirty).length) { R.log = '✗ Save or reload your edits first — a run would overwrite them'; return hd2EfDraw(); }
+  R.busy = f ? '⏳ Running ' + f + '…' : '⏳ Running all ' + L.length + ' fields…'; hd2EfDraw();
+  try {
+    if (e.k === 'product') {   // a background job (⚙ bottom-right) — it carries on if this closes
+      const q = await call('queueProductResearch', { productId: e.id, campaignId: e.cid, name: e.name, slug: e.slug, fields: f ? [f] : L, guidance }); if (!q || q.error) throw new Error((q && q.error) || 'no response');
+      try { if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); } catch (x) {}
+      R.log = '⏳ Running in the background (⚙ bottom-right) — ⟳ Reload when it finishes to see the new ' + (f ? f : 'fields') + '.';
+    } else {
+      const before = { ...R.fields };
+      const r = await call('generateTitleResearch', { titleId: e.id, force: true, ...(guidance ? { guidance } : {}) }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      const next = Object.fromEntries(L.map(x => [x, String((r.fields || {})[x] || '')]));
+      if (f) {   // one row: keep the new value for this field only, put the others back
+        const keep = { ...before, [f]: next[f] }; const s = await call('saveTitleResearch', { titleId: e.id, fields: keep }); if (!s || s.error) throw new Error('ran, but the other fields could not be restored: ' + ((s && s.error) || 'no response'));
+        R.fields = keep;
+      } else R.fields = next;
+      R.sync = 'in'; R.log = '✓ ' + (f ? f + ' re-run' : 'All fields re-run') + ' — in sync';
+    }
+  } catch (err) { R.log = '✗ ' + (err.message || err); }
+  R.busy = ''; if (EF && EF.res === R) hd2EfDraw();
+}
+
+// ── 🔑 Keywords ──
+function hd2KwHtml() {
+  const W = EF.kw, D = EF.data, e = EF.e; if (!W || !D) return '';
+  const dis = W.busy ? 'disabled' : '', isT = e.k === 'topic';
+  if (isT && W.list == null) W.list = (D.topic.keywords || []).slice();
+  const head = `<div class="ef-row"><div class="ef-lb">Seed keyword<span>${isT ? 'Google ideas → keywords for this topic' : 'Google ideas → broad names for this cluster'}</span></div>
+      <div class="ef-in"><div style="display:flex;gap:8px;flex-wrap:wrap;"><input id="efKwSeed" style="${HD2_IN}flex:1 1 220px;width:auto;" value="${esc(W.seed)}" oninput="EF.kw.seed=this.value" onkeydown="if(event.key==='Enter')hd2KwRun()" placeholder="a seed keyword (commas for several)">
+      <button ${dis} style="${HD2_B('var(--accent)', 'var(--accent)')}" onclick="hd2KwRun()">🔬 Re-run</button></div>
+      <div style="font-size:12px;margin-top:6px;color:${/^✗/.test(W.log) ? '#f87171' : 'var(--text3)'};">${esc(W.busy || W.log)}</div>
+      ${W.chips.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${W.chips.map((k, i) => `<button style="${HD2_B()}font-size:12px;padding:3px 9px;${isT && !(W.list || []).includes(k.t) ? 'opacity:.45;text-decoration:line-through;' : ''}" onclick="hd2KwChip(${i})" title="${isT ? 'In the list — click to drop it (click again to put it back)' : 'Use as the cluster name (then 💾 Save in ✎ Fields)'}">${esc(k.t)}${k.v == null ? '' : ' <span style="color:var(--text3);">· ' + Number(k.v).toLocaleString() + '</span>'}</button>`).join('')}</div>` : ''}</div></div>`;
+  if (!isT) return head + `<div class="ef-row"><div class="ef-lb">Topics<span>read-only</span></div><div class="ef-in" style="font-size:13px;color:var(--text2);padding-top:6px;">${D.topics.map(t => esc(t.name)).join(' · ') || '—'}</div></div>`;
+  const cur = D.topic.keywords || [], add = W.list.filter(k => !cur.includes(k)).length, del = cur.filter(k => !W.list.includes(k)).length;
+  return head + `<div class="ef-row"><div class="ef-lb">Keywords<span>${W.list.length} · one per line</span></div><div class="ef-in">
+      <textarea id="efKwList" rows="${Math.min(16, Math.max(4, W.list.length + 1))}" style="${HD2_IN}font-size:13px;line-height:1.5;" oninput="EF.kw.list=this.value.split('\\n').map(x=>x.trim().toLowerCase()).filter(Boolean);hd2KwCount()">${esc(W.list.join('\n'))}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><button ${dis} class="modal-btn" onclick="hd2KwSave()">💾 Save keywords</button><span id="efKwN" style="font-size:12px;color:var(--text3);">${add || del ? '+' + add + ' −' + del + ' unsaved' : 'no changes'}</span></div></div></div>`;
+}
+function hd2KwCount() { const W = EF.kw, cur = EF.data.topic.keywords || [], el = document.getElementById('efKwN'); if (!el) return;
+  const add = W.list.filter(k => !cur.includes(k)).length, del = cur.filter(k => !W.list.includes(k)).length; el.textContent = add || del ? '+' + add + ' −' + del + ' unsaved' : 'no changes'; }
+async function hd2KwRun() {
+  const W = EF && EF.kw, e = EF && EF.e; if (!W) return;
+  const seeds = String(W.seed || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean); if (!seeds.length) { W.log = 'Type a seed keyword first.'; return hd2EfDraw(); }
+  W.busy = '⏳ Researching ' + seeds.join(', ') + '…'; W.log = ''; hd2EfDraw();
+  const r = await call('kwSeedResearch', { seeds, kind: e.k, hub: e.hub, name: e.k === 'topic' ? (EF.data.name || '') : '' }).catch(x => ({ error: x.message }));
+  if (!EF || EF.kw !== W) return; W.busy = '';
+  if (!r || r.error) { W.log = '✗ ' + ((r && r.error) || 'no response'); return hd2EfDraw(); }
+  W.chips = r.keywords || [];
+  if (!W.chips.length) W.log = 'Nothing came back — try a broader seed.';
+  else if (e.k === 'topic') { const fresh = W.chips.map(k => k.t.toLowerCase()).filter(t => !W.list.includes(t)); W.list = [...W.list, ...fresh];
+    W.log = (r.warn ? '⚠ ' + r.warn + ' · ' : '') + fresh.length + ' new keyword' + (fresh.length === 1 ? '' : 's') + ' added from ' + (r.ideas || W.chips.length) + ' Google ideas — 💾 Save keywords to keep them'; }
+  else W.log = (r.warn ? '⚠ ' + r.warn + ' · ' : '') + 'Click a suggestion to use it as the cluster name';
+  hd2EfDraw();
+}
+function hd2KwChip(i) {
+  const W = EF && EF.kw, k = W && W.chips[i]; if (!k) return;
+  if (EF.e.k === 'topic') { const t = k.t.toLowerCase(); W.list = W.list.includes(t) ? W.list.filter(x => x !== t) : [...W.list, t]; }
+  else { hd2EfSet('name', k.t); W.log = '“' + k.t + '” set as the name — 💾 Save in ✎ Fields'; }
+  hd2EfDraw();
+}
+async function hd2KwSave() {
+  const W = EF && EF.kw, e = EF && EF.e, D = EF && EF.data; if (!W || !D || !D.topic) return;
+  const cur = D.topic.keywords || [], next = [...new Set(W.list)], add = next.filter(k => !cur.includes(k)), del = cur.filter(k => !next.includes(k));
+  if (!add.length && !del.length) { W.log = 'No changes to save'; return hd2EfDraw(); }
+  if (!next.length) { W.log = '✗ A topic needs at least one keyword'; return hd2EfDraw(); }
+  W.busy = 'Saving…'; hd2EfDraw();
+  const ops = [add.length && { op: 'assign', keywords: add, to: D.topic.id, move: false }, del.length && { op: 'unassign', keywords: del, from: D.topic.id }].filter(Boolean);
+  const r = await call('kwHubApply', { campaignId: e.cid, name: e.hub, ops }).catch(x => ({ error: x.message }));
+  W.busy = '';
+  if (!r || r.error || (r.errors && r.errors.length)) W.log = '✗ ' + ((r && (r.error || (r.errors || []).join(' · '))) || 'no response');
+  else { D.topic.keywords = next; W.log = '✓ Saved: +' + add.length + ' −' + del.length + ' keywords (↶ undo in the Keywords tab)';
+    try { delete _kwTopicCache[kwNid(e.cid)]; delete _hubKw[e.slug]; } catch (x) {} }
+  hd2EfDraw();
 }
 async function hd2Load(force) {
   const el = document.getElementById('hd2Body'); if (!el) return;
@@ -11769,8 +11920,8 @@ function hd2Render() {
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
       node(C.name, C.topics, 'topic', C.topics.map(T =>
         node(T.name, T.products, 'product', T.products.map(P =>
-          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets, '', [P.key], Ti.key !== '__none' ? { k: 'title', id: Ti.key, name: Ti.name } : null)).join(''),
-            hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb });
+          node(P.name, P.titles, 'title', P.titles.map(Ti => node(Ti.name, Ti.assets, 'asset', groups(Ti.assets), Ti.assets, '', [P.key], Ti.key !== '__none' ? { k: 'title', id: Ti.key, name: Ti.name, ...hb } : null)).join(''),
+            hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name, ...hb } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
   hd2ApplySort(); hd2FilterRun(); hd2Cur();
