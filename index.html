@@ -12266,6 +12266,14 @@ function hd2Render() {
   // its own collapsed heading.
   const K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
   const due = assets => assets.filter(a => a && a.deadline).length;
+  // Due buckets (operator 2026-11-19: "past (red), this week (orange), following week and beyond (yellow) (sunday 11:59 PM cutoff) and total
+  // — just use m/d numbers as headings based on sunday nights"). Weeks run Mon → Sun 11:59 PM: Past = due by last Sunday night, This week =
+  // due by this Sunday night, After = later. Every dated asset counts (status doesn't matter), as the old Due count did. An asset row shows
+  // its own m/d in its bucket.
+  const W = hd2Weeks(), bk = d => { d = String(d || '').slice(0, 10); return !d ? '' : d <= W.last ? 'p' : d <= W.sun ? 'w' : 'f'; };
+  const dueB = assets => { const o = { p: 0, w: 0, f: 0, t: 0 }; assets.forEach(a => { const b = a && bk(a.deadline); if (b) { o[b]++; o.t++; } }); return o; };
+  const dueAttr = assets => { const o = dueB(assets); return ` data-dp="${o.p}" data-dw="${o.w}" data-df="${o.f}"`; };
+  const md = d => +String(d).slice(5, 7) + '/' + +String(d).slice(8, 10);
   // Initiative / Sub columns: an asset's own Initiative / Sub Initiative fields, else its product's entry in the product map
   // (hd:productmap:v1). A heading shows the one value everything under it shares, or "n initiatives" when they differ.
   const PM = (_hd2PM && _hd2PM.hubs) || {}; let pmc = {};
@@ -12279,7 +12287,8 @@ function hd2Render() {
     assets.forEach(a => { const [i, s] = iv(a); if (i) I.add(i); if (s) Su.add(s); });
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
     return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
-  const cols = (t, k, g) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2dl">${k || ''}</span>`;
+  const cols = (t, D, g, own) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span>`
+    + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? md(own) : '') : (D[b] || '')}</span>`).join('') + `<span class="hd2dl">${D.t || ''}</span>`;
   // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
   _hd2Ents = [];
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
@@ -12289,11 +12298,11 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
-    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, k, agg([a]))}</div>`; };
+    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}"${dueAttr([a])} data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, dueB([a]), agg([a]), a.deadline)}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   // Run level (operator 2026-11-19: "add another level … asset type and we can have run inside of asset type"): inside an asset type, assets
   // with a Run (asset field "Run"; "none" = no run) sit under one heading per run, runs in natural order (R2 before R10); assets without a run
@@ -12326,7 +12335,8 @@ function hd2Render() {
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
-    + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
+    + '#hd2Body .hd2dl{flex:0 0 50px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
+    + '#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}'
@@ -12342,7 +12352,8 @@ function hd2Render() {
     + `<div style="display:flex;justify-content:flex-end;align-items:center;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
     + `<label class="hd2cka" onclick="event.preventDefault();hd2SelAll()" title="Select / unselect every asset the table shows" style="${H}margin-right:auto;align-items:center;"><span class="hd2ck" id="hd2CkAll"></span>All</label>`
     + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
-    + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
+    + (() => { const W = hd2Weeks(), dh = (c, lab, tip, col) => `<span class="hd2dl" onclick="hd2SortBy('${c}')" title="${tip} — click to sort: most first ▼ · fewest first ▲ · off" style="${H}${col ? 'color:' + col + ';' : ''}">${lab}<span class="hd2arw" data-col="${c}"></span></span>`;
+      return dh('dp', '≤' + W.lastL, 'Past — due by Sunday ' + W.lastL + ' 11:59 PM', '#f87171') + dh('dw', W.sunL, 'This week — due Monday ' + W.monL + ' to Sunday ' + W.sunL + ' 11:59 PM', '#ff8a1f') + dh('df', '>' + W.sunL, 'Following week and beyond — due after Sunday ' + W.sunL, '#facc15') + dh('due', 'Total', 'Every asset with a due date'); })() + `</div>`
     + '<div id="hd2Bulk" style="display:none;position:sticky;top:0;z-index:6;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;margin:0 0 8px;"></div>'
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) );
@@ -12694,16 +12705,24 @@ function hd2Cur() {
 // its first direction → the other → off (original order). Due starts most-first; Type starts A→Z. Headers have no type, so a
 // Type sort only reorders the asset rows under each title (blank types last).
 let _hd2Sort = { col: 'due', dir: -1 };   // default: Due total, most first
+const HD2_DCOL = { due: 'due', dp: 'dp', dw: 'dw', df: 'df' };   // the due columns → their data- attribute
+// this week's Sunday night and last week's (local time): weeks run Monday → Sunday 11:59 PM
+function hd2Weeks() {
+  const t = new Date(); t.setHours(0, 0, 0, 0); const sun = new Date(t); sun.setDate(t.getDate() + (7 - t.getDay()) % 7);
+  const last = new Date(sun); last.setDate(sun.getDate() - 7); const mon = new Date(sun); mon.setDate(sun.getDate() - 6);
+  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), md = d => (d.getMonth() + 1) + '/' + d.getDate();
+  return { sun: ymd(sun), last: ymd(last), sunL: md(sun), lastL: md(last), monL: md(mon) };
+}
 function hd2SortBy(col) {
-  const first = col === 'due' ? -1 : 1, s = _hd2Sort;
+  const first = HD2_DCOL[col] ? -1 : 1, s = _hd2Sort;
   _hd2Sort = s.col !== col ? { col, dir: first } : s.dir === first ? { col, dir: -first } : { col: '', dir: 0 };
   hd2ApplySort();
 }
 function hd2ApplySort() {
   const tree = document.getElementById('hd2Tree'); if (!tree) return;
   const { col, dir } = _hd2Sort;
-  document.querySelectorAll('#hd2Body .hd2arw').forEach(x => { x.textContent = x.dataset.col !== col ? ' ⇅' : col === 'due' ? (dir < 0 ? ' ▼' : ' ▲') : (dir > 0 ? ' ▲' : ' ▼'); });
-  const key = (a, b) => col === 'due' ? dir * ((+a.dataset.due) - (+b.dataset.due))
+  document.querySelectorAll('#hd2Body .hd2arw').forEach(x => { x.textContent = x.dataset.col !== col ? ' ⇅' : HD2_DCOL[col] ? (dir < 0 ? ' ▼' : ' ▲') : (dir > 0 ? ' ▲' : ' ▼'); });
+  const key = (a, b) => HD2_DCOL[col] ? dir * ((+a.dataset[HD2_DCOL[col]] || 0) - (+b.dataset[HD2_DCOL[col]] || 0))
     : col === 'type' ? ((!a.dataset.type) - (!b.dataset.type)) || dir * String(a.dataset.type).localeCompare(String(b.dataset.type)) : 0;
   const cmp = (a, b) => key(a, b) || (+a.dataset.i) - (+b.dataset.i);
   [tree, ...tree.querySelectorAll('details')].forEach(box => {
