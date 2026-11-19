@@ -4341,6 +4341,7 @@
 <script src="shared/codex-design-panel.js?v=2026102205"></script>
 <script src="shared/interview-panel.js?v=2026111001"></script>
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
+<script src="worker/flyout-map.mjs?v=2026111901"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script src="shared/governance.js?v=2026102202"></script>
 <script src="shared/information-flow.js?v=2026111601"></script>
@@ -11614,6 +11615,12 @@ function hd2EfInput(p, k) {
   }
   return '';
 }
+// # = this position's address (worker/flyout-map.mjs) — an outside writer reads / sets / rewrites it through the worker's `flyout` action
+function hd2RecAdr(e) { const F = FlyoutMap; e = e || EF.e;
+  return F.address(e.k, e.k === 'topic' ? hdNid(e.cid) + '.' + hdNid(e.id) : e.k === 'cluster' ? hdNid(e.cid) + '.' + F.slug(e.name) : hdNid(e.id)); }
+function hd2Chip(tab, key) { const a = tab ? hd2RecAdr() + '/' + tab + '/' + key : hd2RecAdr();
+  return `<button type="button" class="ef-adr" data-a="${esc(a)}" onclick="event.preventDefault();event.stopPropagation();hd2CopyAdr(this)" title="Copy this ${tab ? 'position' : 'record'}'s address: ${esc(a)}">#</button>`; }
+function hd2CopyAdr(b) { const a = b.dataset.a; try { navigator.clipboard.writeText(a); } catch (x) {} showToast('Copied ' + a, 'success'); }
 function hd2EfMulti(k, box) { const p = EF.data.props[k]; hd2EfSet(p.name, [...box.querySelectorAll('input:checked')].map(c => c.dataset.o)); }
 function hd2EfDate(k, box) { const p = EF.data.props[k], d = box.querySelectorAll('input[type=date]'); hd2EfSet(p.name, { start: d[0].value || '', end: d[1].value || '' }); }
 function hd2EfRo(p) {   // read-only fields: shown, never sent
@@ -11627,7 +11634,7 @@ function hd2EfDraw() {
   const D = EF.data, nm = (D && (D.title || D.name)) || e.name || '';
   const links = D && D.url ? `<a href="${esc(D.url)}" target="_blank" rel="noopener" style="${B()}text-decoration:none;">Notion ↗</a>` : '';
   const writer = e.k === 'asset' ? `<button style="${B('var(--accent)', 'var(--accent)')}" onclick="const id=EF.e.id;hd2EfClose();if(!EF)amOpen(id)">✍ Writer</button>` : '';
-  const hd = `<div class="amf-hd"><span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;">${HD2_LV[e.k]}</span>
+  const hd = `<div class="amf-hd"><span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;">${HD2_LV[e.k]}</span>${hd2Chip()}
       <div style="min-width:0;flex:1;font-size:16px;font-weight:700;overflow-wrap:anywhere;">${esc(nm)}${D && D.database ? `<div style="font-size:11px;font-weight:400;color:var(--text3);">${esc(D.database)}</div>` : ''}</div>
       ${writer}${links}<button style="${B()}" onclick="hd2EfClose()" title="Close (Esc)">✕</button></div>`;
   const tabs = `<div class="amf-tabs">${hd2EfTabs().map(([k, l]) => `<button class="${EF.tab === k ? 'on' : ''}" onclick="hd2EfTab('${k}')">${l}</button>`).join('')}</div>`;
@@ -11640,23 +11647,23 @@ function hd2EfDraw() {
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
-    const row = (p, inner) => `<div class="ef-row"><div class="ef-lb">${esc(p.name)}<span>${esc(p.type.replace('_', ' '))}</span></div><div class="ef-in">${inner}</div></div>`;
+    const row = (p, inner) => `<div class="ef-row"><div class="ef-lb">${esc(p.name)}${hd2Chip('fields', FlyoutMap.slug(p.name))}<span>${esc(p.type.replace('_', ' '))}</span></div><div class="ef-in">${inner}</div></div>`;
     bd = ed.map(({ p, k }) => row(p, hd2EfInput(p, k))).join('')
       + (ro.length ? `<details style="margin-top:14px;"><summary style="cursor:pointer;font-size:12px;color:var(--text3);">Read-only fields (${ro.length}) — relations, formulas, rollups, system fields</summary><div style="margin-top:8px;">${ro.map(p => row(p, `<div style="font-size:13px;color:var(--text2);overflow-wrap:anywhere;padding-top:6px;">${hd2EfRo(p)}</div>`)).join('')}</div></details>` : '');
   } else {
     const IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
     const nameV = 'name' in EF.dirty ? EF.dirty.name : D.name;
     const row = (lb, sub, inner) => `<div class="ef-row"><div class="ef-lb">${lb}<span>${sub}</span></div><div class="ef-in">${inner}</div></div>`;
-    if (e.k === 'cluster') bd = row('Name', 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)"><div style="font-size:11px;color:var(--text3);margin-top:4px;">Renaming onto an existing cluster merges the two.</div>`)
+    if (e.k === 'cluster') bd = row('Name' + hd2Chip('fields', 'name'), 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)"><div style="font-size:11px;color:var(--text3);margin-top:4px;">Renaming onto an existing cluster merges the two.</div>`)
       + row('Topics', 'read-only', `<div style="font-size:13px;color:var(--text2);padding-top:6px;">${D.topics.map(t => esc(t.name)).join(' · ') || '—'}</div>`);
     else { const cl = 'cluster' in EF.dirty ? EF.dirty.cluster : D.cluster, kws = D.topic.keywords || [];
-      bd = row('Name', 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)">`)
-        + row('Cluster', 'keyword model', `<select style="${IN}" onchange="hd2EfSet('cluster', this.value)"><option value="">(no cluster)</option>${[...new Set([...D.clusters, cl].filter(Boolean))].map(c => `<option ${c === cl ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`)
+      bd = row('Name' + hd2Chip('fields', 'name'), 'keyword model', `<input style="${IN}font-weight:600;" value="${esc(nameV)}" oninput="hd2EfSet('name', this.value)">`)
+        + row('Cluster' + hd2Chip('fields', 'cluster'), 'keyword model', `<select style="${IN}" onchange="hd2EfSet('cluster', this.value)"><option value="">(no cluster)</option>${[...new Set([...D.clusters, cl].filter(Boolean))].map(c => `<option ${c === cl ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`)
         + row('Keywords', kws.length + ' · edit in the keyword modal', `<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow:auto;padding-top:4px;">${kws.map(x => `<span style="font-size:12px;padding:2px 8px;border:1px solid var(--border2);border-radius:10px;color:var(--text2);">${esc(x)}</span>`).join('') || '<span style="font-size:12px;color:var(--text3);">none</span>'}</div><button style="${B()}margin-top:8px;" onclick="hd2EfKeywords()">🔑 Edit keywords</button>`); }
   }
   const n = Object.keys(EF.dirty).length;
   const ft = D && !EF.err && ['fields', 'post', 'images'].includes(EF.tab) ? `<div class="amf-ft"><button id="efSave" class="modal-btn" ${n ? '' : 'disabled'} onclick="hd2EfSave()">💾 Save${n ? ' (' + n + ')' : ''}</button><span id="efMsg" style="font-size:12px;color:${/^✗/.test(EF.msg) ? '#f87171' : 'var(--text3)'};">${esc(EF.msg)}</span></div>` : '';
-  P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
+  P.innerHTML = hd + tabs + `<div class="amf-bd"><style>#efPanel .ef-row{display:grid;grid-template-columns:200px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);align-items:start}#efPanel .ef-lb{font-size:13px;font-weight:600;color:var(--text);padding-top:7px;overflow-wrap:anywhere}#efPanel .ef-lb span{display:block;font-size:10.5px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}#efPanel .ef-in{min-width:0}#efPanel .ef-adr{display:inline-block;margin-left:6px;padding:0 5px;border:none;background:transparent;color:var(--text3);font-size:11px;font-weight:700;cursor:copy;vertical-align:1px}#efPanel .ef-adr:hover{color:var(--accent)}@media (max-width:720px){#efPanel .ef-row{grid-template-columns:1fr;gap:4px}#efPanel .ef-lb{padding-top:0}}</style>${bd}</div>` + ft;
 }
 async function hd2EfKeywords() {   // the existing 🔑 keyword modal (it opens above this flyout)
   const e = EF && EF.e; if (!e) return; await hubKwLoad(e.slug); const K = _hubKw[e.slug];
@@ -11746,7 +11753,7 @@ function hd2ResHtml() {
     <textarea rows="2" placeholder="Guidance for this run (optional) — angle, audience, what to include or leave out…" oninput="EF.res.guidance=this.value" style="${HD2_IN}font-size:13px;margin-bottom:6px;">${esc(R.guidance)}</textarea>
     <div style="font-size:12px;min-height:16px;margin-bottom:6px;color:${/^✗/.test(R.log) ? '#f87171' : 'var(--text3)'};">${esc(R.busy || R.log)}</div>
     ${L.map((f, i) => { const s = rowSt(f), v = R.fields[f] || '', rows = Math.min(10, Math.max(2, Math.ceil(v.length / 90) + 1));
-      return `<div class="ef-row"><div class="ef-lb">${esc(f)}<span style="color:${s[1]};">${s[0]}</span><button ${dis} style="${HD2_B()}font-size:11.5px;padding:3px 9px;margin-top:6px;" onclick="hd2ResRun(${i})" title="Re-run only this field">↻ Run</button></div>
+      return `<div class="ef-row"><div class="ef-lb">${esc(f)}${hd2Chip('research', FlyoutMap.slug(f))}<span style="color:${s[1]};">${s[0]}</span><button ${dis} style="${HD2_B()}font-size:11.5px;padding:3px 9px;margin-top:6px;" onclick="hd2ResRun(${i})" title="Re-run only this field">↻ Run</button></div>
         <div class="ef-in"><textarea rows="${rows}" style="${HD2_IN}line-height:1.5;resize:vertical;" oninput="hd2ResEdit(${i}, this.value)">${esc(v)}</textarea></div></div>`; }).join('')}
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px;"><button class="modal-btn" ${dis || (n ? '' : 'disabled')} onclick="hd2ResSave()">💾 Save research${n ? ' (' + n + ')' : ''}</button><span style="font-size:11.5px;color:var(--text3);">Saving marks the research current.</span></div>`;
 }
@@ -11800,7 +11807,7 @@ function hd2KwHtml() {
       ${W.chips.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${W.chips.map((k, i) => `<button style="${HD2_B()}font-size:12px;padding:3px 9px;${isT && !(W.list || []).includes(k.t) ? 'opacity:.45;text-decoration:line-through;' : ''}" onclick="hd2KwChip(${i})" title="${isT ? 'In the list — click to drop it (click again to put it back)' : 'Use as the cluster name (then 💾 Save in ✎ Fields)'}">${esc(k.t)}${k.v == null ? '' : ' <span style="color:var(--text3);">· ' + Number(k.v).toLocaleString() + '</span>'}</button>`).join('')}</div>` : ''}</div></div>`;
   if (!isT) return head + `<div class="ef-row"><div class="ef-lb">Topics<span>read-only</span></div><div class="ef-in" style="font-size:13px;color:var(--text2);padding-top:6px;">${D.topics.map(t => esc(t.name)).join(' · ') || '—'}</div></div>`;
   const cur = D.topic.keywords || [], add = W.list.filter(k => !cur.includes(k)).length, del = cur.filter(k => !W.list.includes(k)).length;
-  return head + `<div class="ef-row"><div class="ef-lb">Keywords<span>${W.list.length} · one per line</span></div><div class="ef-in">
+  return head + `<div class="ef-row"><div class="ef-lb">Keywords${hd2Chip('keywords', 'list')}<span>${W.list.length} · one per line</span></div><div class="ef-in">
       <textarea id="efKwList" rows="${Math.min(16, Math.max(4, W.list.length + 1))}" style="${HD2_IN}font-size:13px;line-height:1.5;" oninput="EF.kw.list=this.value.split('\\n').map(x=>x.trim().toLowerCase()).filter(Boolean);hd2KwCount()">${esc(W.list.join('\n'))}</textarea>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><button ${dis} class="modal-btn" onclick="hd2KwSave()">💾 Save keywords</button><span id="efKwN" style="font-size:12px;color:var(--text3);">${add || del ? '+' + add + ' −' + del + ' unsaved' : 'no changes'}</span></div></div></div>`;
 }
@@ -11845,17 +11852,9 @@ async function hd2KwSave() {
 // non-empty of: title ← Platform Title · SEO Title · Headline · Post Title · Hub Title; thumbnail ← Thumbnail · Post Image ·
 // Instagram Background · Hero Image · Image · Images (files); blurb ← Blurb · Description · Summary · Excerpt · Teaser, else the
 // opening of Body (as the hub blog cards do). Each part names the field it came from; edits happen in ✎ Fields.
-const HD2_POST = {
-  title: ['Platform Title', 'SEO Title', 'Headline', 'Post Title', 'Hub Title'],
-  thumb: ['Thumbnail', 'Post Image', 'Instagram Background', 'Hero Image', 'Image', 'Images'],
-  blurb: ['Blurb', 'Description', 'Summary', 'Excerpt', 'Teaser'],
-};
-function hd2PostParts(D) {
-  const by = n => (D.props || []).find(p => p.name === n), txt = v => Array.isArray(v) ? v.join(' ') : String(v == null ? '' : v);
-  const pick = L => { for (const n of L) { const p = by(n); if (!p) continue; const v = p.type === 'files' ? (p.value || []).find(u => /^https?:/.test(u)) || '' : txt(p.value).trim(); if (v) return { field: n, value: v }; } return null; };
-  const blurb = pick(HD2_POST.blurb) || (() => { const b = by('Body'), v = b ? txt(b.value).replace(/\s+/g, ' ').trim() : ''; return v ? { field: 'Body (opening)', value: v.length > 300 ? v.slice(0, 300).replace(/\s+\S*$/, '') + '…' : v } : null; })();
-  const thumb = pick(HD2_POST.thumb);
-  return { title: pick(HD2_POST.title), thumb: thumb && /^https?:/.test(thumb.value) ? thumb : null, blurb };
+function hd2PostParts(D) {   // rules: worker/flyout-map.mjs (FlyoutMap.postParts)
+  const P = FlyoutMap.postParts(D.props || []);
+  return { title: P.title, thumb: P.thumbnail, blurb: P.blurb && (P.blurb.fromBody ? { field: 'Body (opening)', value: P.blurb.value } : P.blurb) };
 }
 function hd2PostHtml() {   // every part editable; edits join the same 💾 Save as ✎ Fields (only changed fields are written)
   const D = EF.data; if (!D || D.kind !== 'notion') return '';
@@ -11867,7 +11866,7 @@ function hd2PostHtml() {   // every part editable; edits join the same 💾 Save
     const inp = p.editable ? (big ? `<textarea rows="${Math.min(14, Math.max(3, Math.ceil(s.length / 80) + 1))}" style="${HD2_IN}line-height:1.6;resize:vertical;font-size:15px;" oninput="hd2EfSet(EF.data.props[${k}].name, this.value)">${esc(s)}</textarea>`
       : `<input style="${HD2_IN}${lbl === 'Title' ? 'font-size:20px;font-weight:800;' : ''}" value="${esc(s)}" oninput="hd2EfSet(EF.data.props[${k}].name, this.value)${img ? ';hd2ImgPrev(this)' : ''}">`)
       : `<div style="font-size:12px;color:var(--text3);">${esc(s)} (read-only field)</div>`;
-    return `<div style="margin-bottom:16px;">${img && s ? `<img class="hd2-prev" src="${esc(s)}" alt="" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);margin-bottom:8px;">` : ''}${inp}${src(lbl + ' · ' + x.field)}</div>`; };
+    return `<div style="margin-bottom:16px;">${img && s ? `<img class="hd2-prev" src="${esc(s)}" alt="" loading="lazy" style="display:block;width:100%;max-height:420px;object-fit:cover;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);margin-bottom:8px;">` : ''}${inp}${src(lbl + ' · ' + x.field)}${hd2Chip('post', ({ Thumbnail: 'thumbnail', Title: 'title' })[lbl] || 'blurb')}</div>`; };
   // a blurb drawn from Body's opening edits the whole Body
   const blurb = P.blurb && /^Body/.test(P.blurb.field) ? { field: 'Body', value: '' } : P.blurb;
   return `<div style="max-width:680px;">${part('Thumbnail', P.thumb, false, true)}${part('Title', P.title)}${part(P.blurb && /^Body/.test(P.blurb.field) ? 'Blurb (from the opening of Body — this edits all of Body)' : 'Blurb', blurb, true)}</div>`;
@@ -11878,20 +11877,19 @@ function hd2ImgPrev(inp) { const im = inp.parentElement.querySelector('img.hd2-p
 // preview + editable link (saved with 💾 Save); then every other image on the record: files attached to it, images in the page body,
 // and image links inside its text fields. ✎ Edit on an asset's Thumbnail / Post Image / Instagram Background opens care-gap's full
 // image modal (Grok render, text render, text boxes, typography) on that asset in a new tab — until that editor is ported here.
-const HD2_IMG_NAME = /(image|thumb|banner|background|hero|photo|cover|logo|icon|avatar|picture|plate|poster)/i;
-const hd2ImgLike = u => /^https?:\/\/\S+\.(png|jpe?g|webp|gif|avif|svg)(\?\S*)?$/i.test(u) || /^https?:\/\/[^\s]*(r2\.dev|notion-static|prod-files-secure|secure\.notion|images\.unsplash|\/images\/|\/backgrounds\/)/i.test(u);
+const hd2ImgLike = u => FlyoutMap.imgLike(u);   // rules: worker/flyout-map.mjs
 const HD2_CG_SLOT = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' };
 function hd2ImagesHtml() {
   const D = EF.data, e = EF.e; if (!D || D.kind !== 'notion') return '';
-  const fields = D.props.map((p, k) => ({ p, k })).filter(({ p }) => p.type === 'files' ? (p.value || []).length || HD2_IMG_NAME.test(p.name) : p.type === 'url' && (HD2_IMG_NAME.test(p.name) || hd2ImgLike(String(p.value || ''))));
+  const fields = D.props.map((p, k) => ({ p, k })).filter(({ p }) => FlyoutMap.isImageField(p));
   const shown = new Set(); fields.forEach(({ p }) => (p.type === 'files' ? p.value || [] : [p.value]).forEach(u => u && shown.add(String(u))));
   const cgUrl = `https://cabuzzard.github.io/dash/microsites/care-gap-v2/?asset=${encodeURIComponent(e.id)}${e.cid ? '&campaignId=' + encodeURIComponent(e.cid) : ''}`;
   const img = (u, h) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" loading="lazy" style="display:block;width:100%;height:${h}px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.display='none'"></a>`;
   const card = ({ p, k }) => { const v = hd2EfVal(p);
-    if (p.type === 'files') return `<div class="ef-img">${(v || []).map(u => img(u, 150)).join('') || '<div class="ef-noimg">no files</div>'}<div class="ef-cap">${esc(p.name)} · attached files</div><div style="font-size:11px;color:var(--text3);">Files are added in Notion (↗ top right).</div></div>`;
+    if (p.type === 'files') return `<div class="ef-img">${(v || []).map(u => img(u, 150)).join('') || '<div class="ef-noimg">no files</div>'}<div class="ef-cap">${esc(p.name)} · attached files${hd2Chip('images', FlyoutMap.slug(p.name))}</div><div style="font-size:11px;color:var(--text3);">Files are added in Notion (↗ top right).</div></div>`;
     const s = String(v || ''), slot = e.k === 'asset' && HD2_CG_SLOT[p.name];
     return `<div class="ef-img">${s ? `<img class="hd2-prev" src="${esc(s)}" alt="" loading="lazy" style="display:block;width:100%;height:170px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.opacity=.15">` : '<div class="ef-noimg">empty</div>'}
-      <div class="ef-cap">${esc(p.name)}</div>
+      <div class="ef-cap">${esc(p.name)}${hd2Chip('images', FlyoutMap.slug(p.name))}</div>
       <input style="${HD2_IN}font-size:12px;padding:6px 8px;" placeholder="https://… image link" value="${esc(s)}" ${p.editable ? '' : 'disabled'} oninput="hd2EfSet(EF.data.props[${k}].name, this.value);hd2ImgPrev(this)">
       ${slot ? `<a href="${esc(cgUrl)}" target="_blank" rel="noopener" style="${HD2_B('var(--accent)', 'var(--accent)')}display:inline-block;margin-top:6px;text-decoration:none;" title="Opens this asset's Publish modal in care-gap: ✨ Grok render, 🔤 text render, text boxes and typography">✎ Edit image ↗</a>` : ''}</div>`; };
   // every other image on the record: page body images + image links in its text fields

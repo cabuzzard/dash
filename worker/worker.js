@@ -1,7 +1,8 @@
 ﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET, ETSY_KEYSTRING, ETSY_SHARED_SECRET
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
-import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
+import "./kw-hub-ops.mjs";
+import "./flyout-map.mjs";   // globalThis.FlyoutMap — flyout position addresses (shared with the dash Hub Dash 2 flyout)   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {structureRuntime} from './hub-structure-runtime.mjs';
 import {viewOf as hubStructureView} from './hub-structure-sync.mjs';
@@ -11485,7 +11486,7 @@ async function contentPlanCronAction(env, body) {   // operator only: status · 
   } else if (op !== "status") return { error: "op must be status | on | off | start | preview" };
   return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", start: (await env.TRADES.get(CPC_START)) || "", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
 }
-const EXTERNAL_ACTIONS = new Set(["saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
+const EXTERNAL_ACTIONS = new Set(["flyout", "saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -20676,7 +20677,7 @@ export default {
       const [a, b] = await Promise.all([h(extKey), h(want)]);
       let diff = want ? 0 : 1; for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
       const allowed = EXTERNAL_ACTIONS.has(body.action);
-      const entry = { at: new Date().toISOString(), action: String(body.action || ""), assetId: body.assetId || body.seriesAssetId || "", runId: body.runId || "",
+      const entry = { at: new Date().toISOString(), action: String(body.action || ""), assetId: body.assetId || body.seriesAssetId || "", runId: body.runId || "", address: body.address || "", op: body.op || "",
         kind: body.kind || "", items: Array.isArray(body.items) ? body.items.length : undefined, ip: request.headers.get("CF-Connecting-IP") || "",
         result: diff ? "bad key" : allowed ? "allowed" : "action not allowed" };
       try { const log = (await env.TRADES.get("external:log", "json")) || []; log.unshift(entry); await env.TRADES.put("external:log", JSON.stringify(log.slice(0, 200))); } catch (e) {}
@@ -20767,6 +20768,102 @@ export default {
     // titleSubBulk {items: [{titleId, sub}] (≤ 25)} — writes titles' Sub Initiative, one PATCH each, ~0.35 s apart; logged once (title:sub:log)
     // productMap {op: get | set, cid?, productId?, product?, initiative?, sub?} (operator 2026-11-13: deploy new cards from the initiative row) —
     // get = the strict product → initiative / sub map (KV hd:productmap:v1) + the naming keys (KV naming:keys:v1); set = add / update one product.
+    // ── flyout addresses (operator 2026-11-19: "every flyout position should have an identifier that can be hooked into from an
+    // external"). One action, also open to the external key: op find {q, campaignId?} · map {address} · set {address, value} ·
+    // rewrite {address, guidance?}. Addresses and their meaning come from worker/flyout-map.mjs (shared with the dash flyout).
+    // Every read / write goes through the existing actions (entityGet / entitySave / getProductStrategy / updateProductStrategyField /
+    // saveTitleResearch / kwHubLoad / kwHubApply / writeAssetFields / queueProductResearch / generateTitleResearch), so the same
+    // guards apply as in the flyout. Guide for outside writers: docs/flyout-addresses.md.
+    if (body.action === "flyout") {
+      const F = globalThis.FlyoutMap, self = this;
+      const invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+      const need = r => { if (!r || r.error) throw new Error((r && r.error) || "no response"); return r; };
+      const op = String(body.op || "map");
+      try {
+        if (op === "find") {   // by name: Notion pages in the four record databases (+ a hub's topics / clusters when campaignId is given)
+          const q = String(body.q || "").trim(); if (!q) return json({ error: "q required" }, 400);
+          const KIND = { [hubAssetId(CAMPAIGNS_DB)]: "hub", [hubAssetId(PRODUCTS_DB)]: "product", [hubAssetId(CONTENT_STRATEGY_DB)]: "title", [hubAssetId(ASSETS_DB)]: "asset" };
+          NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+          const sr = await fetch("https://api.notion.com/v1/search", { method: "POST", headers: ivHdr(), body: JSON.stringify({ query: q, filter: { property: "object", value: "page" }, page_size: 30 }) });
+          const sd = await sr.json(); if (!sr.ok) throw new Error(sd.message || "Notion search " + sr.status);
+          const results = [];
+          (sd.results || []).forEach(p => { const kind = KIND[hubAssetId((p.parent && p.parent.database_id) || "")]; if (!kind) return;
+            const tp = Object.values(p.properties || {}).find(x => x.type === "title"); const name = ((tp && tp.title) || []).map(t => t.plain_text || "").join("");
+            results.push({ address: F.address(kind, hubAssetId(p.id)), kind, name }); });
+          if (body.campaignId) { const cid = hubAssetId(body.campaignId), m = (need(await invoke({ action: "kwHubLoad", campaignId: cid, name: "" })).model) || {}, ql = q.toLowerCase();
+            (m.topics || []).filter(t => String(t.name || "").toLowerCase().includes(ql)).forEach(t => results.push({ address: F.address("topic", cid + "." + F.nid(t.id)), kind: "topic", name: t.name }));
+            (m.clusters || []).filter(c => String(c).toLowerCase().includes(ql)).forEach(c => results.push({ address: F.address("cluster", cid + "." + F.slug(c)), kind: "cluster", name: c })); }
+          return json({ ok: true, q, results });
+        }
+        const A = F.parse(body.address);
+        if (!A) return json({ error: "Bad address — expected <kind>:<record>[/<tab>/<key>], e.g. asset:<pageId>/post/blurb (see docs/flyout-addresses.md)" }, 400);
+        // load the record and every position on it
+        const load = async () => {
+          if (F.NOTION_KINDS.includes(A.kind)) {
+            const e = need(await invoke({ action: "entityGet", pageId: A.pageId }));
+            let research = null; if (A.kind === "product") { const r = await invoke({ action: "getProductStrategy", productId: A.pageId }); research = (r && r.strategy && r.strategy.fields) || {}; }
+            return { kind: A.kind, name: e.title, notionUrl: e.url, database: e.database, props: e.props, positions: F.positions({ kind: A.kind, record: A.pageId, props: e.props, research }) };
+          }
+          const m = (need(await invoke({ action: "kwHubLoad", campaignId: A.campaignId, name: "" })).model) || { topics: [], clusters: [] }, at = (t, k) => F.address(A.kind, A.record, t, k);
+          if (A.kind === "topic") { const t = (m.topics || []).find(x => F.nid(x.id) === F.nid(A.sub)); if (!t) throw new Error("Topic not found in this hub's keyword model");
+            return { kind: "topic", name: t.name, topic: t, model: m, positions: [
+              { address: at("fields", "name"), tab: "fields", label: "Name", field: "name", type: "title", value: t.name, editable: true },
+              { address: at("fields", "cluster"), tab: "fields", label: "Cluster", field: "cluster", type: "select", value: t.cluster || "", options: m.clusters || [], editable: true },
+              { address: at("keywords", "list"), tab: "keywords", label: "Keywords", field: "keywords", type: "multi_select", value: t.keywords || [], editable: true }] }; }
+          const c = (m.clusters || []).find(x => F.slug(x) === A.sub); if (!c) throw new Error("Cluster not found in this hub's keyword model");
+          return { kind: "cluster", name: c, cluster: c, model: m, positions: [
+            { address: at("fields", "name"), tab: "fields", label: "Name", field: "name", type: "title", value: c, editable: true },
+            { address: at("keywords", "topics"), tab: "keywords", label: "Topics", field: "topics", type: "multi_select", value: (m.topics || []).filter(t => t.cluster === c).map(t => t.name), editable: false }] };
+        };
+        const R = await load();
+        if (op === "map") return json({ ok: true, address: F.address(A.kind, A.record), kind: R.kind, name: R.name, notionUrl: R.notionUrl || "", database: R.database || "", tabs: F.tabsFor(A.kind), positions: R.positions });
+        if (!A.tab || !A.key) return json({ error: "set / rewrite need a position address (…/<tab>/<key>) — op:map lists them" }, 400);
+        const pos = R.positions.find(p => p.address === F.address(A.kind, A.record, A.tab, A.key));
+        if (!pos) return json({ error: "No such position on this record — op:map lists them", address: body.address }, 404);
+        if (op === "set") {
+          if (!pos.editable) return json({ error: pos.label + " is read-only" }, 400);
+          const v = body.value, before = pos.value;
+          if (F.NOTION_KINDS.includes(A.kind)) {
+            if (A.tab === "research") { if (A.kind === "product") need(await invoke({ action: "updateProductStrategyField", productId: A.pageId, field: pos.field, value: String(v == null ? "" : v) }));
+              else need(await invoke({ action: "saveTitleResearch", titleId: A.pageId, fields: { [pos.field]: String(v == null ? "" : v) } })); }
+            else need(await invoke({ action: "entitySave", pageId: A.pageId, changes: { [pos.field]: v } }));
+          } else {
+            const ops = [];
+            if (A.kind === "cluster") ops.push({ op: "renameCluster", from: R.cluster, to: String(v || "").trim() });
+            else if (pos.field === "name") ops.push({ op: "rename", id: R.topic.id, name: String(v || "").trim() });
+            else if (pos.field === "cluster") ops.push({ op: "setCluster", ids: [R.topic.id], cluster: String(v || "").trim() });
+            else { const next = [...new Set((Array.isArray(v) ? v : String(v || "").split(/[\n,]/)).map(x => String(x).trim().toLowerCase()).filter(Boolean))], cur = R.topic.keywords || [];
+              if (!next.length) return json({ error: "A topic needs at least one keyword" }, 400);
+              const add = next.filter(k => !cur.includes(k)), del = cur.filter(k => !next.includes(k));
+              if (add.length) ops.push({ op: "assign", keywords: add, to: R.topic.id, move: false }); if (del.length) ops.push({ op: "unassign", keywords: del, from: R.topic.id }); }
+            if (ops.some(o => (o.op === "rename" && !o.name) || (o.op === "renameCluster" && !o.to))) return json({ error: "A name can't be blank" }, 400);
+            if (ops.length) { const r = need(await invoke({ action: "kwHubApply", campaignId: A.campaignId, name: "", ops })); if (r.errors && r.errors.length) throw new Error(r.errors.join(" · ")); }
+          }
+          return json({ ok: true, op, address: pos.address, field: pos.field, before, after: v });
+        }
+        if (op === "rewrite") {   // run a writer on ONE position, directed by guidance
+          const guidance = String(body.guidance || "").trim().slice(0, 4000);
+          if (A.tab === "research" && A.kind === "product") {
+            const q = need(await invoke({ action: "queueProductResearch", productId: A.pageId, name: R.name, fields: [pos.field], guidance }));
+            return json({ ok: true, op, address: pos.address, field: pos.field, queued: q.id || true, note: "Runs in the background job queue — read it back with op:map in a minute or two" });
+          }
+          if (A.tab === "research" && A.kind === "title") {   // the title research action runs all four; keep only this one, put the others back
+            const before = Object.fromEntries(F.RESEARCH.title.map(f => [f, String((R.props.find(p => p.name === f) || {}).value || "")]));
+            const g = need(await invoke({ action: "generateTitleResearch", titleId: A.pageId, force: true, ...(guidance ? { guidance } : {}) }));
+            const keep = { ...before, [pos.field]: String((g.fields || {})[pos.field] || "") };
+            need(await invoke({ action: "saveTitleResearch", titleId: A.pageId, fields: keep }));
+            return json({ ok: true, op, address: pos.address, field: pos.field, before: before[pos.field], after: keep[pos.field] });
+          }
+          if (A.kind === "asset" && (A.tab === "fields" || A.tab === "post")) {   // the governed writer, one contract field
+            const w = need(await invoke({ action: "writeAssetFields", assetId: A.pageId, fields: [pos.field], ...(guidance ? { guidance } : {}) }));
+            const after = need(await invoke({ action: "entityGet", pageId: A.pageId })), np = (after.props || []).find(p => p.name === pos.field);
+            return json({ ok: true, op, address: pos.address, field: pos.field, before: pos.value, after: np ? np.value : null, violations: w.violations || [], written: w.written });
+          }
+          return json({ error: "No writer runs this position — write the text yourself and use op:set", address: pos.address }, 400);
+        }
+        return json({ error: "op must be find, map, set or rewrite" }, 400);
+      } catch (e) { return json({ error: e.message || String(e) }, 400); }
+    }
     // ── Hub Dash 2 entity flyout (operator 2026-11-19): load EVERY property of one Notion record (hub campaign, product, title or
     // asset) with the database's options, and save the fields the operator changed. Reads are plain; saves go through the module
     // fetch, so the Keywords-hierarchy guard, the Review → Development rule and the Asset Type mapping all apply as for any other write.
