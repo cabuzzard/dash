@@ -12282,6 +12282,14 @@ function hd2Render() {
   const dueB = assets => { const o = { p: 0, w: 0, f: 0, t: 0 }; assets.forEach(a => { const b = a && bk(a.deadline); if (b) { o[b]++; o.t++; } }); return o; };
   const dueAttr = assets => { const o = dueB(assets); return ` data-dp="${o.p}" data-dw="${o.w}" data-df="${o.f}"`; };
   const md = d => +String(d).slice(5, 7) + '/' + +String(d).slice(8, 10);
+  // due dots (operator 2026-11-19: "a dot on any heading that contains assets that are due and the dot carries down to the title level and that
+  // title heading will be orange highlight … multiple dots in a heading are counts … disappearing"): hub / cluster / topic / product headings
+  // show one orange dot when one title under them has a dated asset, the number when several; an open heading drops its dot (its rows carry
+  // it). The title itself gets the orange highlight instead. "Due" = any asset with a due date, as the counts. The counts are unchanged.
+  const titlesIn = (w, kids) => w === 'title' ? kids : w === 'product' ? kids.flatMap(P => P.titles || []) : w === 'topic' ? kids.flatMap(T => (T.products || []).flatMap(P => P.titles || []))
+    : w === 'cluster' ? kids.flatMap(C => (C.topics || []).flatMap(T => (T.products || []).flatMap(P => P.titles || []))) : null;
+  const dotH = (w, kids) => { const L = titlesIn(w, kids || []); if (!L) return ''; const n = L.filter(Ti => (Ti.assets || []).some(a => a && a.deadline)).length;
+    return n ? `<span class="hd2dot${n > 1 ? ' hd2dotn' : ''}" title="${n} title${n === 1 ? '' : 's'} with due assets">${n > 1 ? n : ''}</span>` : ''; };
   // Initiative / Sub columns: an asset's own Initiative / Sub Initiative fields, else its product's entry in the product map
   // (hd:productmap:v1). A heading shows the one value everything under it shares, or "n initiatives" when they differ.
   const PM = (_hd2PM && _hd2PM.hubs) || {}; let pmc = {};
@@ -12309,7 +12317,7 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}${w === 'asset' && pids && k ? ' hd2tdue' : ''}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${dotH(w, kids)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
@@ -12338,7 +12346,7 @@ function hd2Render() {
     // Shading stays, but quiet — a faint step per level, so the Due numbers are the strongest thing in the table.
     + '#hd2Body summary.hd2r{font-weight:700;color:var(--text)}#hd2Body div.hd2r{font-weight:400;color:var(--text2)}'
     // one shade for every heading; an open heading draws a 1px line under its chevron, down through its open children to its next sibling
-    + '#hd2Body summary.hd2r{background:#1b1b1b;position:relative;z-index:1}#hd2Body summary[data-lv="1"]{font-size:15.5px}#hd2Body summary[data-lv="2"]{font-size:14.5px}#hd2Body summary[data-lv="3"]{font-size:14px}#hd2Body summary[data-lv="4"]{font-size:13.5px}#hd2Body summary[data-lv="5"]{font-size:13px}#hd2Body summary[data-lv="6"]{font-size:12.5px}#hd2Body summary[data-lv="7"]{font-size:12px}'
+    + '#hd2Body summary.hd2r{background:#1b1b1b;position:relative;z-index:1}#hd2Body summary.hd2r.hd2tdue{background:#3a2412;box-shadow:inset 3px 0 0 #ff8a1f}#hd2Body .hd2dot{display:inline-block;width:9px;height:9px;border-radius:999px;background:#ff8a1f;margin-left:8px;vertical-align:middle;box-sizing:border-box}#hd2Body .hd2dot.hd2dotn{width:auto;min-width:17px;height:16px;padding:0 5px;font-size:10.5px;line-height:16px;font-weight:800;color:#141414;text-align:center;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary .hd2dot{display:none}#hd2Body summary[data-lv="1"]{font-size:15.5px}#hd2Body summary[data-lv="2"]{font-size:14.5px}#hd2Body summary[data-lv="3"]{font-size:14px}#hd2Body summary[data-lv="4"]{font-size:13.5px}#hd2Body summary[data-lv="5"]{font-size:13px}#hd2Body summary[data-lv="6"]{font-size:12.5px}#hd2Body summary[data-lv="7"]{font-size:12px}'
     + '#hd2Body details[open]{position:relative}#hd2Body details[open]::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:1px;background:#4a4a4a}'
     // the current group (an open heading with nothing open inside it): a guide line down its rows, and those rows in regular weight
     + '#hd2Body details.hd2cur>details>summary.hd2r,#hd2Body details.hd2cur>div.hd2r{font-weight:400}'
