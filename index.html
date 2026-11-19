@@ -11481,9 +11481,12 @@ function loadInformationFlowTables() {
 // ── Hub Dash 2 (operator 2026-11-18, fresh start): one collapsed tree Hub → Cluster → Topic → Product → Title. Read-only.
 // Reuses the Hub Dashboard data (devAssetsTable rows, hdHubs, hdTree); nothing else yet.
 let _hd2Rows = null, _hd2PM = null, _hd2Lists = [], _hd2Only = false;   // _hd2Only = the top toggle: Initiatives only
-try { _hd2Only = localStorage.getItem('hd2Only') === '1'; } catch (e) {}
+let _hd2Due = false;   // second top toggle: Due only
+try { _hd2Only = localStorage.getItem('hd2Only') === '1'; _hd2Due = localStorage.getItem('hd2Due') === '1'; } catch (e) {}
+function hd2SetDue(v) { _hd2Due = !!v; try { localStorage.setItem('hd2Due', v ? '1' : '0'); } catch (e) {}
+  document.querySelectorAll('#hd2Body .hd2tgd').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === _hd2Due)); hd2FilterRun(); }
 function hd2SetOnly(v) { _hd2Only = !!v; try { localStorage.setItem('hd2Only', v ? '1' : '0'); } catch (e) {}
-  document.querySelectorAll('#hd2Body .hd2tg').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === _hd2Only)); hd2FilterRun(); }
+  document.querySelectorAll('#hd2Body .hd2tgi').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === _hd2Only)); hd2FilterRun(); }
 // Filter (operator 2026-11-18): a multi-value Initiative / Sub count opens a small popup with exactly those values. Apply hides,
 // IN PLACE, only the rows inside the heading it was opened from — nothing re-renders, so open / closed headings stay as they are.
 // An asset row matches by its own value (its field, else its product's map entry, carried as data-in / data-sb). A product
@@ -11524,6 +11527,11 @@ function hd2FilterRun() {
   const attr = { init: 'in', sub: 'sb' }, hide = el => { el.classList.add('hd2fx'); el.style.display = 'none'; };
   tree.querySelectorAll('.hd2fx').forEach(x => { x.classList.remove('hd2fx'); x.style.display = ''; });
   tree.querySelectorAll('.hd2cnt.hd2on').forEach(c => c.classList.remove('hd2on'));
+  if (_hd2Due) {   // Due only: drop asset rows without a deadline, then any heading left empty
+    tree.querySelectorAll('div.hd2r[data-i]').forEach(r => { if (r.dataset.due !== '1') hide(r); });
+    [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
+      if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
+  }
   if (_hd2Only) {   // Initiatives only: drop asset rows with neither value, then any heading left empty (a product heading with its own value stays)
     tree.querySelectorAll('div.hd2r[data-i]').forEach(r => { if (!r.dataset.in && !r.dataset.sb) hide(r); });
     [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.dataset.in || d.dataset.sb) return;
@@ -11594,7 +11602,7 @@ function hd2Render() {
     // shading by level (operator 2026-11-18): titles (+ their type groups) = surface2; every heading above = one step lighter; asset rows stay dark
     + '#hd2Body .hd2t{background:var(--surface2)}#hd2Body .hd2h{background:#242424}#hd2Body .hd2t:hover,#hd2Body .hd2h:hover{filter:brightness(1.3)}'
     + '#hd2Body .hd2r{margin-bottom:1px}</style>'
-    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span></div>`
+    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
     + `<span style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('type')" title="Sort by asset type — click: A→Z ▲ · Z→A ▼ · off" style="${H}flex:0 0 150px;margin-left:8px;">Type<span class="hd2arw" data-col="type"></span></span>`
