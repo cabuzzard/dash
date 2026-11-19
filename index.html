@@ -11595,7 +11595,7 @@ function hd2Render() {
       .map(([t, L]) => node(t, L, 'asset', L.map(leaf).join(''), L, t === '(no type)' ? '' : t)).join(''); };
   const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
   el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
-    + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body .hd2r:hover{background:var(--surface2)}'
+    + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body summary.hd2r:hover{background:var(--surface2)}#hd2Body div.hd2r{background:none;box-shadow:none}'
     + '#hd2Body .hd2mk{flex:0 0 14px;font-size:9px;color:var(--text3);transition:transform .1s}#hd2Body details[open]>summary>.hd2mk{transform:rotate(90deg)}'
     + '#hd2Body .hd2lb{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}'
     + '#hd2Body.hd2noic .hd2in,#hd2Body.hd2noic .hd2sb,#hd2Body.hd2noic .hd2ic{display:none}'
