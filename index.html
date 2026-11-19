@@ -11542,6 +11542,12 @@ function hd2FilterRun() {
     [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.dataset.in || d.dataset.sb) return;
       if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
   }
+  if (_hd2Ini) {   // 🎯 Initiatives flyout: only the picked initiative's assets (same value as the Initiative column), then any heading left empty
+    const v = _hd2Ini.toLowerCase();
+    tree.querySelectorAll('div.hd2r[data-i]').forEach(r => { if ((r.dataset.in || '').toLowerCase() !== v) hide(r); });
+    [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
+      if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
+  }
   tree.querySelectorAll('details[data-fk]').forEach(box => {
     let S; try { S = new Set(JSON.parse(box.dataset.fv || '[]')); } catch (e) { return; }
     const k = attr[box.dataset.fk];
@@ -12275,13 +12281,15 @@ function hd2Render() {
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
   const nm = (label, ent) => { if (!ent) return '<span class="hd2nm">' + esc(label) + '</span>'; const i = _hd2Ents.push(ent) - 1;
     return '<a href="#" class="hd2nm hd2lnk" data-e="' + i + '" onclick="event.preventDefault();event.stopPropagation();hd2EntOpen(' + i + ')" title="Open this record — all its fields">' + esc(label) + '</a>'; };
+  let hubNm = ''; _hd2A = new Map();
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Asset')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Asset')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
-    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, k, agg([a]))}</div>`; };
+    const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
+    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -12309,15 +12317,23 @@ function hd2Render() {
     + '#hd2Body .hd2dl{flex:0 0 52px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
-    + '#hd2Body .hd2r{margin-bottom:1px}</style>'
-    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button></div>`
+    + '#hd2Body .hd2r{margin-bottom:1px}'
+    // 🎯 Initiatives flyout: select-mode boxes; the table makes room for the flyout on a wide screen
+    + '#hd2Body .hd2ck{display:none;flex:0 0 15px;width:15px;height:15px;border:1.5px solid var(--text3);border-radius:3px;margin-right:7px;box-sizing:border-box;cursor:pointer;font-size:11px;line-height:12px;text-align:center;font-weight:700;color:#000}'
+    + '#hd2Body.hd2selm .hd2ck{display:inline-block}#hd2Body .hd2ck.on{background:var(--accent);border-color:var(--accent)}#hd2Body .hd2ck.on::after{content:"✓"}#hd2Body .hd2ck.part{border-color:var(--accent);background:linear-gradient(var(--accent),var(--accent)) center/7px 2px no-repeat}'
+    + '#hd2Body.hd2selm div.hd2r.hd2on{background:rgba(255,122,0,.08)}@media (min-width:1100px){#hd2Body.hd2inio{padding-right:410px}}'
+    + '#hd2Ini{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:950;background:var(--bg);border-left:1px solid var(--border2);box-shadow:-8px 0 30px rgba(0,0,0,.3);display:flex;flex-direction:column;font-size:13px;color:var(--text)}'
+    + '#hd2Ini .hi-r{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer}#hd2Ini .hi-r:hover{background:var(--surface2)}#hd2Ini .hi-r.on{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}'
+    + '#hd2Ini .hi-n{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}#hd2Ini .hi-c{font-size:11.5px;color:var(--text3);white-space:nowrap}'
+    + '@media (max-width:720px){#hd2Ini{top:auto;height:55vh;width:100vw;border-left:none;border-top:1px solid var(--border2);border-radius:12px 12px 0 0}#hd2Body.hd2inio{padding-bottom:56vh}}</style>'
+    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
     + `<div style="display:flex;justify-content:flex-end;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
     + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
     + `<span onclick="hd2SortBy('due')" title="Sort by Due — click: most first ▼ · fewest first ▲ · off" style="${H}flex:0 0 52px;text-align:right;">Due<span class="hd2arw" data-col="due"></span></span></div>`
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) );
 
-    const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {};
+    const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {}; hubNm = h.name || h.slug || '';
     const hb = { slug: h.slug, cid: h.campaignId, hub: h.campaign || h.name || h.slug }, okC = n => !['(no cluster)', 'No topic assigned', '★ Main'].includes(n), okT = k => k && k !== '__none' && k !== '__main' && !/^ip:/.test(k);
     const aC = C => C.topics.flatMap(hdAssetsOf), pT = T => T.products.map(P => P.key).filter(k => k !== '__none'), pC = C => C.topics.flatMap(pT);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
@@ -12327,9 +12343,128 @@ function hd2Render() {
             hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name, ...hb, src: P } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb, src: T } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb, src: C } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb, src: tree });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
-  hd2ApplySort(); hd2FilterRun(); hd2Cur();
+  hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw();
   if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', () => hd2Cur(), true); }
 }
+// ── 🎯 Initiatives flyout (operator 2026-11-19: "a flyout on the hub dash 2 main page that has initiatives in it and when I click on them, it opens
+// the table to the assets that belong to the initiative. and I can bulk select groups of assets and put them in the initiatives … the ability to
+// add new through bulk select"). Lists every initiative: the names list (KV initiative:names) + every value in the table, with its asset count.
+// An asset belongs to an initiative by the same value the Initiative column shows (its own Initiative field, else its product's map entry).
+// Click one = the table shows only its assets, every heading on the way opened (click again / ✕ = all back, the headings it opened close).
+// ☑ Select assets = a box on every asset row and heading (a heading = all its shown assets). Put in → writes each asset's Initiative field
+// (cplanAssetBulkEdit, 20 per call, logged, stops at the first failure); a name not in the list yet is added to it first. Take out = clears it.
+let _hd2Ini = '', _hd2IniOpen = false, _hd2Sel = new Set(), _hd2SelM = false, _hd2A = new Map(), _hd2IniNames = null, _hd2IniBusy = false, _hd2IniMsg = '', _hd2IniL = [], _hd2IniV = '';
+function hd2IniToggle(on) { _hd2IniOpen = on == null ? !_hd2IniOpen : !!on; if (!_hd2IniOpen) _hd2SelM = false; if (_hd2IniOpen && !_hd2IniNames) hd2IniNamesLoad(); hd2IniDraw(); }
+function hd2IniNamesLoad() { _hd2IniNames = []; call('initiativeNames', { op: 'list' }).then(r => { if (r && !r.error) { _hd2IniNames = r.names || []; hd2IniDraw(); } else _hd2IniNames = null; }).catch(() => { _hd2IniNames = null; }); }
+function hd2IniList() {
+  const m = new Map(), add = (v, id, hub) => { v = String(v || '').trim(); if (!v) return; const k = v.toLowerCase();
+    if (!m.has(k)) m.set(k, { name: v, ids: new Set(), hubs: new Set() }); if (id) { m.get(k).ids.add(id); if (hub) m.get(k).hubs.add(hub); } };
+  (_hd2IniNames || []).forEach(v => add(v));
+  document.querySelectorAll('#hd2Tree div.hd2r[data-a]').forEach(r => add(r.dataset.in, r.dataset.a, r.dataset.h));
+  return [...m.values()].sort((a, b) => (!a.ids.size) - (!b.ids.size) || a.name.localeCompare(b.name));
+}
+function hd2IniDraw() {
+  const body = document.getElementById('hd2Body'); let d = document.getElementById('hd2Ini');
+  if (body) { body.classList.toggle('hd2inio', _hd2IniOpen); body.classList.toggle('hd2selm', _hd2IniOpen && _hd2SelM); }
+  const btn = document.getElementById('hd2IniBtn'); if (btn) btn.classList.toggle('on', _hd2IniOpen);
+  const bar = document.getElementById('hd2IniBar');
+  if (bar) bar.innerHTML = _hd2Ini ? `<span style="font-size:11.5px;padding:3px 4px 3px 10px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);">🎯 ${esc(_hd2Ini)}<button onclick="hd2IniPick(-1)" title="Show the whole table again" style="margin-left:6px;border:none;background:transparent;color:var(--accent);cursor:pointer;font-size:12px;">✕</button></span>` : '';
+  if (!_hd2IniOpen) { if (d) d.remove(); return; }
+  if (!d) { d = document.createElement('div'); d.id = 'hd2Ini'; (body || document.body).appendChild(d); }
+  const L = _hd2IniL = hd2IniList(), n = _hd2Sel.size, cur = _hd2Ini.toLowerCase(), S = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);';
+  const inp = document.getElementById('hd2IniV'); if (inp) _hd2IniV = inp.value;
+  const msgC = /^✗/.test(_hd2IniMsg) ? '#f87171' : /^✓/.test(_hd2IniMsg) ? '#4ade80' : 'var(--text3)';
+  d.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;">🎯 Initiatives</div><span style="flex:1"></span>
+      <button onclick="hd2IniToggle(false)" title="Close" style="${HD2_B()}padding:3px 10px;">✕</button></div>
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border);">
+      <div style="${S}margin-bottom:8px;">Put assets in an initiative</div>
+      <button onclick="hd2SelMode()" style="${_hd2SelM ? HD2_B('var(--accent)', 'var(--accent)') : HD2_B()}">${_hd2SelM ? '☑ Selecting in the table — done' : '☐ Select assets in the table'}</button>
+      ${_hd2SelM ? `<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">Tick asset rows, or a heading for every asset under it.</div>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;">
+        <b>${n}</b> asset${n === 1 ? '' : 's'} selected
+        <a href="#" onclick="event.preventDefault();hd2SelShown()" style="color:var(--accent);" title="Every asset the table shows right now (with an initiative open: its assets)">Select all shown</a>
+        ${n ? `<a href="#" onclick="event.preventDefault();hd2SelClear()" style="color:var(--text3);">Clear</a>` : ''}</div>
+      <input id="hd2IniV" list="hd2IniDl" value="${esc(_hd2IniV)}" placeholder="Initiative — pick one or type a new name" style="width:100%;box-sizing:border-box;margin-top:10px;font-size:13px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">
+      <datalist id="hd2IniDl">${L.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button onclick="hd2IniApply(false)" ${n && !_hd2IniBusy ? '' : 'disabled'} style="${HD2_B('var(--accent)', 'var(--accent)')}${n ? '' : 'opacity:.5;'}">Put ${n || ''} in initiative</button>
+        <button onclick="hd2IniApply(true)" ${n && !_hd2IniBusy ? '' : 'disabled'} style="${HD2_B()}${n ? '' : 'opacity:.5;'}" title="Clears each selected asset's own Initiative field">Take out of initiative</button></div>
+      ${_hd2IniMsg ? `<div style="font-size:12px;margin-top:8px;color:${msgC};">${esc(_hd2IniMsg)}</div>` : ''}</div>
+    <div style="display:flex;align-items:center;padding:12px 14px 6px;"><div style="${S}">All initiatives (${L.length})</div><span style="flex:1"></span>
+      ${_hd2Ini ? `<a href="#" onclick="event.preventDefault();hd2IniPick(-1)" style="font-size:12px;color:var(--accent);">✕ Show whole table</a>` : ''}</div>
+    <div style="flex:1;overflow:auto;padding:0 4px 12px;">${L.map((x, i) => `<div class="hi-r${x.name.toLowerCase() === cur ? ' on' : ''}" onclick="hd2IniPick(${i})" title="${x.ids.size ? 'Open the table to its assets' : 'No assets in the table yet'}">
+        <span class="hi-n">${esc(x.name)}</span><span class="hi-c">${x.ids.size ? `${x.ids.size} asset${x.ids.size === 1 ? '' : 's'}${x.hubs.size > 1 ? ' · ' + x.hubs.size + ' hubs' : x.hubs.size ? ' · ' + esc([...x.hubs][0]) : ''}` : 'no assets'}</span></div>`).join('')
+      || '<div style="font-size:12.5px;color:var(--text3);padding:8px 10px;">No initiatives yet — select assets and type a name above to start one.</div>'}</div>`;
+}
+// open the table to one initiative (or back to everything): headings it opened close again when it changes
+function hd2IniPick(i) {
+  const x = _hd2IniL[i]; _hd2Ini = !x || _hd2Ini.toLowerCase() === x.name.toLowerCase() ? '' : x.name;
+  const tree = document.getElementById('hd2Tree');
+  if (tree) tree.querySelectorAll('details.hd2iop').forEach(d => { d.classList.remove('hd2iop'); d.open = false; });
+  hd2FilterRun();
+  if (tree && _hd2Ini) tree.querySelectorAll('div.hd2r[data-a]:not(.hd2fx)').forEach(r => {
+    for (let d = r.parentElement; d && d !== tree; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.open) { d.open = true; d.classList.add('hd2iop'); } });
+  hd2Cur(); hd2SelPaint(); hd2IniDraw();
+}
+function hd2SelMode() { _hd2SelM = !_hd2SelM; hd2IniDraw(); }
+const hd2Shown = root => [...root.querySelectorAll('div.hd2r[data-a]')].filter(r => r.dataset.a && !r.closest('.hd2fx'));
+function hd2Ck(el) {
+  const row = el.closest('.hd2r'); if (!row) return;
+  const ids = [...new Set((row.tagName === 'DIV' ? [row] : hd2Shown(row.parentElement)).map(r => r.dataset.a))]; if (!ids.length) return;
+  const all = ids.every(id => _hd2Sel.has(id)); ids.forEach(id => all ? _hd2Sel.delete(id) : _hd2Sel.add(id));
+  hd2SelPaint(); hd2IniDraw();
+}
+function hd2SelShown() { const t = document.getElementById('hd2Tree'); if (t) hd2Shown(t).forEach(r => _hd2Sel.add(r.dataset.a)); if (!_hd2SelM) _hd2SelM = true; hd2SelPaint(); hd2IniDraw(); }
+function hd2SelClear() { _hd2Sel.clear(); hd2SelPaint(); hd2IniDraw(); }
+function hd2SelPaint() {
+  const tree = document.getElementById('hd2Tree'); if (!tree) return;
+  tree.querySelectorAll('div.hd2r[data-a]').forEach(r => { const on = _hd2Sel.has(r.dataset.a); r.classList.toggle('hd2on', on); const c = r.querySelector('.hd2ck'); if (c) c.classList.toggle('on', on); });
+  tree.querySelectorAll('details').forEach(d => { const c = d.querySelector(':scope>summary .hd2ck'); if (!c) return;
+    const L = hd2Shown(d), k = L.filter(r => _hd2Sel.has(r.dataset.a)).length;
+    c.classList.toggle('on', !!L.length && k === L.length); c.classList.toggle('part', k > 0 && k < L.length); });
+}
+// re-render after a write, keeping open headings, the scroll position and the selection
+function hd2Rerender() {
+  const t = document.getElementById('hd2Tree'), open = t ? [...t.querySelectorAll('details[open]')].map(d => [d.dataset.i, d.classList.contains('hd2iop')]) : [], y = window.scrollY;
+  hd2Render(); const t2 = document.getElementById('hd2Tree');
+  if (t2) open.forEach(([i, iop]) => { const d = t2.querySelector(`details[data-i="${i}"]`); if (d) { d.open = true; if (iop) d.classList.add('hd2iop'); } });
+  hd2Cur(); try { window.scrollTo(0, y); } catch (e) {}
+}
+async function hd2IniApply(remove) {
+  if (_hd2IniBusy) return; const inp = document.getElementById('hd2IniV'); _hd2IniV = inp ? inp.value : _hd2IniV;
+  const typed = String(_hd2IniV || '').trim();
+  if (!remove && !typed) { _hd2IniMsg = '✗ Pick an initiative or type a new name first'; return hd2IniDraw(); }
+  const bad = !remove && initiativeBad(typed); if (bad) { _hd2IniMsg = '✗ ' + bad; return hd2IniDraw(); }
+  const ex = remove ? null : hd2IniList().find(x => x.name.toLowerCase() === typed.toLowerCase()), val = remove ? '' : ex ? ex.name : typed;   // an existing name keeps its spelling
+  const all = [..._hd2Sel].map(id => _hd2A.get(id)).filter(Boolean), items = all.filter(a => String(a.initiative || '').trim() !== val);
+  if (!items.length) { _hd2IniMsg = remove ? '✓ None of them has its own initiative — nothing to clear' : `✓ They are already in “${val}”`; return hd2IniDraw(); }
+  _hd2IniBusy = true; _hd2IniMsg = `Saving… 0 / ${items.length}`; hd2IniDraw();
+  if (!remove && !(_hd2IniNames || []).some(x => x.toLowerCase() === val.toLowerCase())) {   // a new name joins the names list first
+    const r = await call('initiativeNames', { op: 'add', name: val }).catch(e => ({ error: e.message }));
+    if (r && !r.error) (_hd2IniNames = _hd2IniNames || []).push(val);
+  }
+  let done = 0, err = '';
+  for (let i = 0; i < items.length && !err; i += 20) {
+    const chunk = items.slice(i, i + 20);
+    const r = await call('cplanAssetBulkEdit', { field: 'initiative', items: chunk.map(a => ({ assetId: hdNid(a.assetId), value: val })) }).catch(e => ({ error: e.message }));
+    if (!r || r.error) { err = (r && r.error) || 'no response'; break; }
+    (r.done || []).forEach(x => { const a = chunk.find(y => hdNid(y.assetId) === x.assetId); if (a) { a.initiative = (x.after || {}).initiative || ''; _hd2Sel.delete(hdNid(a.assetId)); done++; } });
+    if (r.stopped) err = r.stopped.error || 'stopped';
+    _hd2IniMsg = `Saving… ${done} / ${items.length}`; hd2IniDraw();
+  }
+  _hd2IniBusy = false;
+  const what = remove ? 'taken out of their initiative' : `put in “${val}”`;
+  _hd2IniMsg = err ? `✗ ${done} of ${items.length} ${what}, then stopped: ${err}${items.length - done ? ' — the rest stay selected; press again to continue' : ''}` : `✓ ${done} asset${done === 1 ? '' : 's'} ${what}`;
+  if (done) hd2Rerender();
+  if (remove && done) {   // the Initiative column falls back to the product's map entry — say so when that still names one
+    const still = items.filter(a => { const r = document.querySelector(`#hd2Tree div.hd2r[data-a="${hdNid(a.assetId)}"]`); return r && r.dataset.in; }).length;
+    if (still) _hd2IniMsg += ` · ${still} still show${still === 1 ? 's' : ''} an initiative from ${still === 1 ? 'its' : 'their'} product`;
+  }
+  hd2IniDraw();
+  showToast(_hd2IniMsg, err ? 'error' : 'success');
+}
+
 // the current group = an open heading with no open heading inside it (one per open branch)
 function hd2Cur() {
   const tree = document.getElementById('hd2Tree'); if (!tree) return;
