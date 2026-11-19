@@ -11743,8 +11743,9 @@ function hd2Render() {
     // typography carries the level (operator 2026-11-19): every heading bold, size stepping down hub → type group; asset rows regular.
     // Shading stays, but quiet — a faint step per level, so the Due numbers are the strongest thing in the table.
     + '#hd2Body summary.hd2r{font-weight:700;color:var(--text)}#hd2Body div.hd2r{font-weight:400;color:var(--text2)}'
-    // one shade for every heading; the level shows as a coloured left edge (operator 2026-11-19): hub amber · cluster violet · topic sky · product green · title pink · type slate
-    + '#hd2Body summary.hd2r{background:#1b1b1b}#hd2Body summary[data-lv="1"]{font-size:15.5px;box-shadow:inset 3px 0 0 #f59e0b}#hd2Body summary[data-lv="2"]{font-size:14.5px;box-shadow:inset 3px 0 0 #a78bfa}#hd2Body summary[data-lv="3"]{font-size:14px;box-shadow:inset 3px 0 0 #38bdf8}#hd2Body summary[data-lv="4"]{font-size:13.5px;box-shadow:inset 3px 0 0 #4ade80}#hd2Body summary[data-lv="5"]{font-size:13px;box-shadow:inset 3px 0 0 #f472b6}#hd2Body summary[data-lv="6"]{font-size:12.5px;box-shadow:inset 3px 0 0 #94a3b8}'
+    // one shade for every heading; an open heading draws a 1px line under its chevron, down through its open children to its next sibling
+    + '#hd2Body summary.hd2r{background:#1b1b1b;position:relative;z-index:1}#hd2Body summary[data-lv="1"]{font-size:15.5px}#hd2Body summary[data-lv="2"]{font-size:14.5px}#hd2Body summary[data-lv="3"]{font-size:14px}#hd2Body summary[data-lv="4"]{font-size:13.5px}#hd2Body summary[data-lv="5"]{font-size:13px}#hd2Body summary[data-lv="6"]{font-size:12.5px}'
+    + '#hd2Body details[open]{position:relative}#hd2Body details[open]::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:1px;background:#4a4a4a}'
     // the current group (an open heading with nothing open inside it): a guide line down its rows, and those rows in regular weight
     + '#hd2Body details.hd2cur>details>summary.hd2r,#hd2Body details.hd2cur>div.hd2r{font-weight:400}'
     + '#hd2Body .hd2lnk{color:inherit;text-decoration:none}#hd2Body .hd2lnk:hover{text-decoration:underline;text-underline-offset:3px;color:var(--accent)}'
