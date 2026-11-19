@@ -71,6 +71,27 @@ Each rule says its `source` (e.g. `Current Methods · Single Post · contract`, 
 of ✎ Fields and each field's rules under it (`● contract` marks contract fields). Only **assets** have writing rules today; other
 records return a trail `note` saying so — never invent rules for them.
 
+## Structured HTML for hub pages — `fields/page-html`
+
+Assets that publish as a hub page (SEO / news / topical posts, offer blog pages, QA pages, sub pages — every type
+`hubPublishableType` accepts) have a **Page HTML** field. When it is filled, its HTML **is the page body**: the hub keeps its own shell —
+header, nav, the h1 title (Platform Title), date, hero (Thumbnail), CTA button, footer, fonts and colours — and the HTML replaces the
+body the page would otherwise build from Body / Offer Page / the page blocks. Clear the field to go back to those.
+
+Write it with `set` on `asset:<id>/fields/page-html` (it saves as text; up to ~200,000 characters). On publish, and on every re-publish
+of a live page, it is cleaned by an allow-list (`sanitizePageHtml` in worker.js):
+
+- **Kept:** p, h2–h6, ul / ol / li, strong / b / em / i / u / s, a, img, picture / source, figure / figcaption, blockquote / q / cite,
+  table (thead / tbody / tfoot / tr / th / td / caption / colgroup / col), hr, br, code / pre / kbd, span, div, section, article, aside,
+  header, footer, nav, details / summary, small, sup / sub, mark, abbr, time, dl / dt / dd, video / audio, and iframes **only** for
+  YouTube / Vimeo embeds. Attributes: class, id, style (no url()/expression), href / src (http(s), relative, #, mailto:, tel:), alt,
+  width / height, loading, colspan / rowspan, target (adds rel=noopener), aria-* and data-*.
+- **Removed:** script, style blocks, forms and inputs, svg, object / embed, any other iframe, every on* handler, javascript: / data: links.
+  `<h1>` becomes `<h2>` (the page title is the h1). Unknown tags are dropped but their text is kept. Unclosed tags are closed.
+- Style with the hub's look: use plain semantic HTML and let the hub's fonts / colours apply; `class` names are kept if you need hooks.
+
+Page HTML counts as written content (the publish "not written yet" check passes on it), and a change to it re-publishes a live page.
+
 ## Procedure for an outside writer
 
 1. Resolve the record: `find` by name (or take the address the operator pasted).

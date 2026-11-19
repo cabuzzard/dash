@@ -2261,15 +2261,69 @@ async function topicalWriteInputs(env, assetId, options = {}) {
 }
 
 // One emptiness test for writing, publishing and the shell audit. Planning notes are not articles.
+// ── Page HTML (operator 2026-11-19: "an external has to be able to put structured html into assets that are page published") ──
+// An asset's "Page HTML" field, when filled, IS the article body of its hub page — on every page-published type (SEO / news / topical
+// posts, offer blog pages, QA pages and sub pages): the hub's own shell (header, nav, title, date, hero thumbnail, CTA, footer, fonts)
+// stays; the HTML replaces the markdown-built body. It is always cleaned first by an allow-list (below) — no scripts, styles blocks,
+// event handlers, forms or javascript: links ever reach a live page; <h1> becomes <h2> (the page title is the h1); unknown tags are
+// dropped but their text kept; tags are balanced so the body can't swallow the page footer. Iframes only for YouTube / Vimeo embeds.
+const PAGE_HTML_TAGS = new Set(["p","h2","h3","h4","h5","h6","ul","ol","li","strong","b","em","i","u","s","a","img","figure","figcaption","blockquote","q","cite",
+  "table","thead","tbody","tfoot","tr","th","td","caption","colgroup","col","hr","br","code","pre","kbd","span","div","section","article","aside","header","footer",
+  "details","summary","small","sup","sub","mark","abbr","time","dl","dt","dd","picture","source","video","audio","iframe","nav"]);
+const PAGE_HTML_VOID = new Set(["img","hr","br","col","source"]);
+const PAGE_HTML_DROP = new Set(["script","style","noscript","template","object","embed","applet","form","input","button","select","textarea","option","link","meta","base","svg","math","frame","frameset","title","head"]);
+const PAGE_HTML_ATTRS = new Set(["class","id","title","alt","src","srcset","sizes","href","target","rel","width","height","loading","decoding","colspan","rowspan","scope","headers",
+  "style","datetime","cite","lang","dir","start","reversed","type","media","controls","poster","muted","loop","playsinline","allow","allowfullscreen","frameborder","open","role","name"]);
+function sanitizePageHtml(html) {
+  let s = String(html || "").replace(/<!--[\s\S]*?-->/g, "").replace(/<!\[CDATA\[[\s\S]*?\]\]>/gi, "").replace(/<!doctype[^>]*>/gi, "");
+  // whole elements whose content must never render
+  for (const t of PAGE_HTML_DROP) s = s.replace(new RegExp("<" + t + "\\b[^>]*>[\\s\\S]*?<\\/" + t + "\\s*>", "gi"), "").replace(new RegExp("<\\/?" + t + "\\b[^>]*\\/?>", "gi"), "");
+  const okUrl = (u, img) => { const v = String(u || "").trim().replace(/[\u0000-\u001f\s]+/g, ""); if (!v) return "";
+    if (/^(https?:|mailto:|tel:|#|\/|\.{1,2}\/)/i.test(v) || (!/^[a-z][a-z0-9+.-]*:/i.test(v))) return v;
+    if (img && /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(v)) return v; return ""; };
+  const okStyle = v => String(v || "").replace(/expression\s*\(|javascript:|vbscript:|@import|behavior\s*:|-moz-binding|url\s*\(\s*['"]?\s*(?!https?:|\/|data:image)/gi, "").replace(/[<>]/g, "");
+  const okFrame = u => /^https:\/\/(www\.)?(youtube\.com\/embed\/|youtube-nocookie\.com\/embed\/|player\.vimeo\.com\/video\/)/i.test(String(u || "").trim());
+  const escAttr = v => String(v).replace(/&(?!(?:[a-z]+|#\d+|#x[0-9a-f]+);)/gi, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const out = [], stack = [];
+  const re = /<\s*(\/)?\s*([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>/g; let last = 0, m;
+  const text = t => out.push(String(t).replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+  while ((m = re.exec(s))) {
+    text(s.slice(last, m.index)); last = re.lastIndex;
+    let tag = m[2].toLowerCase(); const closing = !!m[1]; if (tag === "h1") tag = "h2";
+    if (!PAGE_HTML_TAGS.has(tag)) continue;   // unknown tag: drop the tag, keep its text
+    if (closing) { const i = stack.lastIndexOf(tag); if (i < 0) continue; while (stack.length > i) out.push("</" + stack.pop() + ">"); continue; }
+    const attrs = [], ar = /([^\s=\/"'<>]+)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g; let a, src = "";
+    while ((a = ar.exec(m[3]))) {
+      const name = a[1].toLowerCase(), val = a[3] ?? a[4] ?? a[5] ?? "";
+      if (/^on/.test(name)) continue;
+      if (!(PAGE_HTML_ATTRS.has(name) || /^(aria|data)-[a-z0-9-]+$/.test(name))) continue;
+      let v = val;
+      if (name === "href" || name === "src" || name === "poster" || name === "cite") { v = okUrl(val, name !== "href"); if (!v) continue; if (name === "src") src = v; }
+      if (name === "srcset") v = String(val).split(",").map(x => { const [u, d] = x.trim().split(/\s+/); const ok = okUrl(u, true); return ok ? ok + (d ? " " + d : "") : ""; }).filter(Boolean).join(", ");
+      if (name === "style") v = okStyle(val);
+      if (name === "target" && v === "_blank") attrs.push('rel="noopener"');
+      attrs.push(a[2] === undefined ? name : name + '="' + escAttr(v) + '"');
+    }
+    if (tag === "iframe" && !okFrame(src)) continue;
+    out.push("<" + tag + (attrs.length ? " " + [...new Set(attrs)].join(" ") : "") + ">");
+    if (!PAGE_HTML_VOID.has(tag) && !/\/\s*$/.test(m[3])) stack.push(tag);
+  }
+  text(s.slice(last));
+  while (stack.length) out.push("</" + stack.pop() + ">");
+  return out.join("").trim();
+}
+const pageHtmlOf = props => hubRichText(props?.["Page HTML"]?.rich_text).trim();
+const pageHtmlText = html => String(html || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 function assetWritingContent(page, blocks = []) {
   const body = hubRichText(page.properties?.Body?.rich_text).trim();
   const prose = blocks.filter(b => !b.archived && !['child_page','child_database','divider','table_of_contents'].includes(b.type)).filter(b => {
     const text = hubRichText(b[b.type]?.rich_text).trim();
     return !(/^Series idea:|^RUN\s*[·—]|^Run\s*[·—]/i.test(text) || (b.type === 'callout' && /^(Series idea:|Run plan:)/i.test(text)));
   }).filter(b => hubRichText(b[b.type]?.rich_text).trim() || ['image','video','audio','file','embed','bookmark','table'].includes(b.type));
-  return { hasWriting: !!body || prose.length > 0, body, text: prose.map(b => {
+  const pageHtml = pageHtmlOf(page.properties);
+  return { hasWriting: !!body || !!pageHtml || prose.length > 0, body, pageHtml, text: prose.map(b => {
     const t = hubRichText(b[b.type]?.rich_text);return b.type === 'heading_2' ? '## '+t : b.type === 'heading_3' ? '### '+t : t;
-  }).filter(Boolean).join('\n\n') || body };
+  }).filter(Boolean).join('\n\n') || body || pageHtmlText(pageHtml) };
 }
 async function assetWritingState(page) { return assetWritingContent(page, await offerBlogBlocks(ivHdr(),page.id)); }
 async function requireAssetWriting(page) {
@@ -4354,7 +4408,7 @@ async function publishTopicalAsset(env, assetId, publishOptions = {}) {
   }
   const p = state.page.properties, headline = lfReadRich(p['Platform Title']) || (p['Asset Title']?.title || []).map(t => t.plain_text).join('');
   const result = await publishSeoPostToLiveSite({ env, hdr: ivHdr(), dash: ivDash, campaignId: ivRid(p, 'Campaign'), spec: null,
-    seoTitle: headline, workingTitle: headline, ...topicalArticleParts(writing.text), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
+    seoTitle: headline, workingTitle: headline, ...topicalArticleParts(writing.text), html: pageHtmlOf(p), assetId: state.assetId, thumbnail: p.Thumbnail?.url || '' });
   if (!result.published) return result;
   const saved = await fetch('https://api.notion.com/v1/pages/' + ivDash(state.assetId), { method: 'PATCH', headers: ivHdr(), body: JSON.stringify({ properties: {
     'Content URL': { url: result.liveUrl }, 'Site URL': { url: result.liveUrl }, 'Asset Status': { select: { name: 'Published' } }, 'Deployment Status': { select: { name: 'Deployed' } }, 'Publishing': { select: { name: 'Published' } }
@@ -7616,7 +7670,8 @@ async function salesProofFor(productId) {
   };
 }
 
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId, previewOnly = false }) {
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId, previewOnly = false, html = '' }) {
+  const htmlBody = html ? sanitizePageHtml(html) : '';   // Page HTML: the cleaned HTML is the article body
   if (!previewOnly) {
     const prior = typeof hubWriteScope === 'undefined' ? null : hubWriteScope.getStore()?.writes.get(hubAssetId(assetId))?.before;
     const priorUrl = prior?.properties?.['Content URL']?.url || prior?.properties?.['Site URL']?.url;
@@ -7657,7 +7712,7 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
   let slug = mine ? mine.slug : base0;
   if (!mine && aid && posts.some(p => p && p.slug === base0 && p.assetId && p.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
   posts = posts.filter(p => p && p.slug !== slug && !(aid && p.assetId === aid));
-  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').replace(/\*\*/g, '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}), ...(env.__hubPublication?.stamp || {}) });
+  posts.unshift({ slug, title: displayTitle, intro: String(intro || pageHtmlText(htmlBody)).replace(/\*\*/g, '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}), ...(env.__hubPublication?.stamp || {}) });
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // body text: escaped, then Markdown **bold** → <strong> (contract-written pages are Markdown; was shown as literal asterisks)
@@ -7721,9 +7776,10 @@ ${bodyHtml}
   const postBody = `${thumbnail ? `<img class="hero" src="${esc(thumbnail)}" alt="${esc(displayTitle)}">` : ''}
 <h1>${esc(displayTitle)}</h1>
 <div class="meta">${esc(today)}</div>
-${intro ? String(intro).split(/\n{2,}/).map(p => para(p)).join('\n') : ''}
-${(sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => para(p)).join('\n')}`).join('\n')}
-${conclusion ? `<p>${md(conclusion)}</p>` : ''}
+${htmlBody}
+${!htmlBody && intro ? String(intro).split(/\n{2,}/).map(p => para(p)).join('\n') : ''}
+${(htmlBody ? [] : sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => para(p)).join('\n')}`).join('\n')}
+${!htmlBody && conclusion ? `<p>${md(conclusion)}</p>` : ''}
 ${salesExtras}
 ${(Array.isArray(sources) && sources.filter(s => s && s.url).length) ? `<h2>Sources</h2>\n<ul>\n${sources.filter(s => s && s.url).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label || s.url)}</a></li>`).join('\n')}\n</ul>` : ''}
 ${(cta && cta.href) ? `<p style="margin-top:32px;"><a href="${esc(cta.href)}" style="display:inline-block;background:var(--accent);color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;">${esc(cta.label || 'Get Started')}</a></p>` : ''}`;
@@ -7785,6 +7841,8 @@ function offerBlogParts(props, blocks) {
     else intro += (intro ? '\n\n' : '') + text;
   }
   const body = rt(props.Body?.rich_text).trim();
+  const pageHtml = rt(props['Page HTML']?.rich_text).trim();   // Page HTML = the page body (any page-published type)
+  if (pageHtml) return { intro: '', sections: [], conclusion: '', sources: [], html: pageHtml, cta: card?.ctaUrl ? { href: card.ctaUrl, label: rt(props['CTA Label']?.rich_text).trim() || card.ctaLabel } : undefined };
   // Contract-written offer (Current Methods "Offer – Content Hub": Offer Page = the full page, Body = the card blurb) —
   // its Offer Page wins over older page blocks; the old OFFER CARD still supplies the CTA link
   const offerPage = rt(props['Offer Page']?.rich_text).trim();
@@ -7861,9 +7919,9 @@ async function publishSubPage(env, hdr, page, hub) {
   const entry = { assetId: aid, slug, label, title, ...(env.__hubPublication?.stamp || {}) };
   if (mine) next.splice(list.indexOf(mine), 0, entry); else next.push(entry);   // a republish keeps its place in the nav; a new page goes last
   const navLinks = next.map(x => `<a href="../${esc(x.slug)}/"${x.slug === slug ? ' aria-current="page"' : ''}>${esc(x.label || x.title)}</a>`).join('');
-  const body = `${(parts.intro ? String(parts.intro).split(/\n{2,}/).map(para).join('\n') : '')}
-${(parts.sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(para).join('\n')}`).join('\n')}
-${parts.conclusion ? `<p>${md(parts.conclusion)}</p>` : ''}
+  const body = `${parts.html ? sanitizePageHtml(parts.html) : (parts.intro ? String(parts.intro).split(/\n{2,}/).map(para).join('\n') : '')}
+${(parts.html ? [] : parts.sections || []).map(sec => `<h2>${esc(String(sec.heading).replace(/\*\*/g, ''))}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(para).join('\n')}`).join('\n')}
+${!parts.html && parts.conclusion ? `<p>${md(parts.conclusion)}</p>` : ''}
 ${cta && cta.href ? `<p class="cta"><a href="${esc(cta.href)}">${esc(cta.label || 'Get started')}</a></p>` : ''}`;
   const html = `<!doctype html>
 <html lang="en">
@@ -8474,7 +8532,8 @@ async function hubRefreshPlacedAsset(env, assetId, options = {}) {
     const placement = await hierarchyPlacement(env, page, 'asset');
     const blocks = await offerBlogBlocks(ivHdr(), page.id);
     const offerPage = hubRichText(p['Offer Page']?.rich_text);   // contract-written offers (only when present, so older hashes don't move)
-    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage, ctaLabel:hubRichText(p['CTA Label']?.rich_text) } : {}) };
+    const pageHtml = pageHtmlOf(p);
+    const content = { body: hubRichText(p.Body?.rich_text), blocks: blocks.filter(b => !b.archived).map(b => ({ type: b.type, value: b[b.type] })), ...(offerPage ? { offerPage, ctaLabel:hubRichText(p['CTA Label']?.rich_text) } : {}), ...(pageHtml ? { pageHtml } : {}) };
     const contentHash = await hubContentHash(content), bodyHash = await hubContentHash(content.body), blocksHash = await hubContentHash(content.blocks);
     const hash = await hubContentHash({ content, title: payload.title, thumbnail: p.Thumbnail?.url || '', section: sec, hub: hub.slug });
     payload.blocks = blocks; payload.hash = hash;
@@ -20902,6 +20961,7 @@ export default {
     // Only changed fields are sent. Rich text is saved as plain text (formatting / links inside a text field are not kept).
     if (body.action === "entityGet" || body.action === "entitySave") {
       if (externalCaller) return json({ error: "operator only" }, 403);
+      await assetsTextPropEnsure(env, "Page HTML", "pagehtml:prop").catch(() => {});   // Page HTML = a page-published asset's body (see sanitizePageHtml)
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       const pid = hubAssetId(String(body.pageId || ""));
       if (!/^[0-9a-f]{32}$/i.test(pid)) return json({ error: "pageId required" }, 400);
