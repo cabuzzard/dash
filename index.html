@@ -11548,6 +11548,14 @@ function hd2FilterRun() {
     [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
       if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
   }
+  tree.querySelectorAll('.hd2dc.hd2on').forEach(x => x.classList.remove('hd2on'));
+  tree.querySelectorAll('details[data-dfk]').forEach(box => {   // a clicked due count: only the assets it counts
+    const k = box.dataset.dfk, c = Object.keys(HD2_DCOL).find(x => HD2_DCOL[x] === k);
+    box.querySelectorAll(':scope>summary .hd2dc').forEach(x => { if (x.dataset.c === c) x.classList.add('hd2on'); });
+    box.querySelectorAll('div.hd2r[data-i]').forEach(r => { if (!(+r.dataset[k] > 0)) hide(r); });
+    [...box.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
+      if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
+  });
   tree.querySelectorAll('details[data-fk]').forEach(box => {
     let S; try { S = new Set(JSON.parse(box.dataset.fv || '[]')); } catch (e) { return; }
     const k = attr[box.dataset.fk];
@@ -12291,7 +12299,7 @@ function hd2Render() {
     + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? md(own) : '') : dcl(D[b], 'd' + b)}</span>`).join('') + `<span class="hd2dl">${own ? (D.t || '') : dcl(D.t, 'due')}</span>`;
   // a heading's count opens that heading down to exactly the assets it counts (operator 2026-11-19: "click on the count in the heading and it opens
   // the asset level records that carry the count")
-  const dcl = (n, c) => n ? `<a href="#" class="hd2dc" onclick="event.preventDefault();event.stopPropagation();hd2DueOpen(this,'${c}')" title="Open the ${n} asset${n === 1 ? '' : 's'} this counts">${n}</a>` : '';
+  const dcl = (n, c) => n ? `<a href="#" class="hd2dc" data-c="${c}" onclick="event.preventDefault();event.stopPropagation();hd2DueOpen(this,'${c}')" title="Show only the ${n} asset${n === 1 ? '' : 's'} this counts (click again: show all)">${n}</a>` : '';
   // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
   _hd2Ents = [];
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
@@ -12339,7 +12347,7 @@ function hd2Render() {
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2dl{flex:0 0 50px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
-    + '#hd2Body .hd2dc{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}#hd2Body .hd2dc:hover{text-decoration-style:solid}#hd2Body div.hd2r.hd2flash{background:rgba(255,138,31,.2)!important;transition:background .4s}#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
+    + '#hd2Body .hd2dc{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}#hd2Body .hd2dc:hover{text-decoration-style:solid}#hd2Body .hd2dc.hd2on{font-weight:800;text-decoration-style:solid;outline:1px solid currentColor;outline-offset:2px;border-radius:3px}#hd2Body details.hd2dfo[open]>summary>.hd2dl,#hd2Body details.hd2dfo details[open]>summary>.hd2dl{visibility:visible}#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}'
@@ -12716,13 +12724,19 @@ function hd2Weeks() {
   const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), md = d => (d.getMonth() + 1) + '/' + d.getDate();
   return { sun: ymd(sun), last: ymd(last), sunL: md(sun), lastL: md(last), monL: md(mon) };
 }
-// open a heading down to the assets one of its due counts counts: everything inside it closes, then only the paths to those assets open; they flash
+// a due count = a filtered open (operator 2026-11-19: "have it be a filtered open. just those assets with headers still showing" + "other counts
+// still show in the headers"): the heading keeps the filter (data-dfk = which count), and hd2FilterRun hides, inside it, every asset row that
+// count doesn't count and every heading left empty; the paths to the matches open. Inside a filtered heading the open headings keep showing
+// their counts. The active count is highlighted; clicking it again (or another count) clears / switches it.
 function hd2DueOpen(el, c) {
   const box = el.closest('details'), k = HD2_DCOL[c]; if (!box || !k) return;
-  box.querySelectorAll('details').forEach(d => { d.open = false; d.classList.remove('hd2iop'); }); box.open = true;
-  const hits = [...box.querySelectorAll('div.hd2r[data-a]')].filter(r => +r.dataset[k] > 0 && !r.closest('.hd2fx'));
-  hits.forEach(r => { for (let d = r.parentElement; d && d !== box; d = d.parentElement) if (d.tagName === 'DETAILS') d.open = true;
-    r.classList.add('hd2flash'); setTimeout(() => r.classList.remove('hd2flash'), 2500); });
+  const off = box.dataset.dfk === k;
+  box.querySelectorAll('details').forEach(d => { d.open = false; d.classList.remove('hd2iop'); });
+  if (off) { delete box.dataset.dfk; box.classList.remove('hd2dfo'); }
+  else { box.dataset.dfk = k; box.classList.add('hd2dfo'); box.querySelectorAll('details[data-dfk]').forEach(d => { delete d.dataset.dfk; d.classList.remove('hd2dfo'); }); }
+  box.open = true; hd2FilterRun();
+  if (!off) box.querySelectorAll('div.hd2r[data-a]').forEach(r => { if (r.closest('.hd2fx')) return;
+    for (let d = r.parentElement; d && d !== box; d = d.parentElement) if (d.tagName === 'DETAILS') d.open = true; });
   hd2Cur();
 }
 function hd2SortBy(col) {
