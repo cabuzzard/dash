@@ -12285,15 +12285,23 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product' })[w] || (pids ? 'Title' : 'Asset')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}" data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}</span><span class="hd2lv">${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', k, agg(assets, pids))}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = a.deadline ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
     return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}" data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, k, agg([a]))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
+  // Run level (operator 2026-11-19: "add another level … asset type and we can have run inside of asset type"): inside an asset type, assets
+  // with a Run (asset field "Run"; "none" = no run) sit under one heading per run, runs in natural order (R2 before R10); assets without a run
+  // get a (no run) heading, last (operator: "no run. can also be a heading"). The "Run" asset type itself (one record per run) is not split.
+  const runOf = a => { const r = String(a.run || '').trim(); return /^none$/i.test(r) ? '' : r; };
+  const byRun = (t, L) => { if (/^run$/i.test(t) || !L.some(runOf)) return L.map(leaf).join('');
+    const m = new Map(); L.forEach(a => { const r = runOf(a); if (r) { if (!m.has(r)) m.set(r, []); m.get(r).push(a); } });
+    return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
+      .map(([r, RL]) => node(r, RL, 'run', RL.map(leaf).join(''), RL, t === '(no type)' ? '' : t)).join('') + (L.some(a => !runOf(a)) ? node('(no run)', [], 'run', L.filter(a => !runOf(a)).map(leaf).join(''), L.filter(a => !runOf(a)), t === '(no type)' ? '' : t) : ''); };
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
-      .map(([t, L]) => node(t, L, 'asset', L.map(leaf).join(''), L, t === '(no type)' ? '' : t)).join(''); };
+      .map(([t, L]) => node(t, L, 'asset', byRun(t, L), L, t === '(no type)' ? '' : t)).join(''); };
   const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
   el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
     + '#hd2Body summary.hd2r::-webkit-details-marker{display:none}#hd2Body div.hd2r{background:none;box-shadow:none}'
@@ -12306,7 +12314,7 @@ function hd2Render() {
     // Shading stays, but quiet — a faint step per level, so the Due numbers are the strongest thing in the table.
     + '#hd2Body summary.hd2r{font-weight:700;color:var(--text)}#hd2Body div.hd2r{font-weight:400;color:var(--text2)}'
     // one shade for every heading; an open heading draws a 1px line under its chevron, down through its open children to its next sibling
-    + '#hd2Body summary.hd2r{background:#1b1b1b;position:relative;z-index:1}#hd2Body summary[data-lv="1"]{font-size:15.5px}#hd2Body summary[data-lv="2"]{font-size:14.5px}#hd2Body summary[data-lv="3"]{font-size:14px}#hd2Body summary[data-lv="4"]{font-size:13.5px}#hd2Body summary[data-lv="5"]{font-size:13px}#hd2Body summary[data-lv="6"]{font-size:12.5px}'
+    + '#hd2Body summary.hd2r{background:#1b1b1b;position:relative;z-index:1}#hd2Body summary[data-lv="1"]{font-size:15.5px}#hd2Body summary[data-lv="2"]{font-size:14.5px}#hd2Body summary[data-lv="3"]{font-size:14px}#hd2Body summary[data-lv="4"]{font-size:13.5px}#hd2Body summary[data-lv="5"]{font-size:13px}#hd2Body summary[data-lv="6"]{font-size:12.5px}#hd2Body summary[data-lv="7"]{font-size:12px}'
     + '#hd2Body details[open]{position:relative}#hd2Body details[open]::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:1px;background:#4a4a4a}'
     // the current group (an open heading with nothing open inside it): a guide line down its rows, and those rows in regular weight
     + '#hd2Body details.hd2cur>details>summary.hd2r,#hd2Body details.hd2cur>div.hd2r{font-weight:400}'
@@ -12543,8 +12551,8 @@ async function hd2IniApply(remove) {
 // ── ↕ Expand / collapse (operator 2026-11-19: "a button that is expand / collapse, and a pop up with a select box of heading levels" → "literally
 // a select list. not a single select" + "with an all option"). A checkbox per heading level: ticked = every heading of that level is open,
 // unticked = closed. A change applies at once. All ticks / unticks every level. Level = the summary's data-lv: 1 Hub · 2 Cluster · 3 Topic ·
-// 4 Product · 5 Title · 6 Asset type (open = its assets show). Rows hidden by a filter follow too. The ticks are remembered per browser.
-const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types']];
+// 4 Product · 5 Title · 6 Asset type · 7 Run (open = its assets show). Rows hidden by a filter follow too. The ticks are remembered per browser.
+const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types'], [7, 'Runs']];
 let _hd2LvOn = new Set([1]); try { const s = JSON.parse(localStorage.getItem('hd2LvOn') || 'null'); if (Array.isArray(s)) _hd2LvOn = new Set(s.map(Number)); } catch (e) {}
 function hd2LvApply() {
   try { localStorage.setItem('hd2LvOn', JSON.stringify([..._hd2LvOn])); } catch (e) {}
