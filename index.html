@@ -11548,6 +11548,12 @@ function hd2FilterRun() {
     [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
       if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
   }
+  if (hd2FOn(_hd2F)) {   // ⏷ Filter: levels AND, names within a level OR; then headings left empty
+    const FL = Object.entries(_hd2F).filter(([, S]) => S && S.size);
+    tree.querySelectorAll('div.hd2r[data-i]').forEach(r => { if (r.classList.contains('hd2fx')) return; const A = hd2Anc(r, tree); if (FL.some(([lv, S]) => !S.has(A[lv] || ''))) hide(r); });
+    [...tree.querySelectorAll('details')].reverse().forEach(d => { if (d.classList.contains('hd2fx')) return;
+      if (![...d.querySelectorAll('div.hd2r[data-i]')].some(r => !r.classList.contains('hd2fx'))) hide(d); });
+  }
   tree.querySelectorAll('.hd2dc.hd2on').forEach(x => x.classList.remove('hd2on'));
   tree.querySelectorAll('details[data-dfk]').forEach(box => {   // a clicked due count: only the assets it counts
     const k = box.dataset.dfk, c = Object.keys(HD2_DCOL).find(x => HD2_DCOL[x] === k);
@@ -12367,7 +12373,7 @@ function hd2Render() {
     + '#hd2Ini .hi-r{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer}#hd2Ini .hi-r:hover{background:var(--surface2)}#hd2Ini .hi-r.on{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}'
     + '#hd2Ini .hi-nl{font-size:14px;line-height:1;padding:0 2px;color:var(--text3);text-decoration:none;white-space:nowrap;opacity:.75}#hd2Ini .hi-nl:hover{color:var(--accent);opacity:1}#hd2Ini .hi-nl.has{color:var(--accent);opacity:1;font-weight:600}#hd2Ini .hi-del.arm{color:#f87171;opacity:1;font-weight:700}#hd2Ini .hi-r{flex-wrap:wrap;row-gap:4px}#hd2Ini .hi-n{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}#hd2Ini .hi-c{font-size:11.5px;color:var(--text3);white-space:nowrap}'
     + '@media (max-width:720px){#hd2Ini{top:auto;height:55vh;width:100vw;border-left:none;border-top:1px solid var(--border2);border-radius:12px 12px 0 0}#hd2Body.hd2inio{padding-bottom:56vh}}</style>'
-    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2SelBtn" class="hd2tg" onclick="hd2SelModeT()" title="Select assets for bulk edit — move, initiative, due date, status, delete" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">☑ Select</button><button id="hd2LvBtn" class="hd2tg" onclick="hd2LvOpen(this)" title="Expand or collapse the table to a heading level" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">↕ Expand / collapse</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
+    + `<div style="display:flex;margin:0 0 8px;"><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;"><button class="hd2tg hd2tgi${_hd2Only ? '' : ' on'}" data-v="0" onclick="hd2SetOnly(false)">All</button><button class="hd2tg hd2tgi${_hd2Only ? ' on' : ''}" data-v="1" onclick="hd2SetOnly(true)" title="Only records with an initiative or sub-initiative">Initiatives only</button></span><span style="display:inline-flex;border:1px solid var(--border2);border-radius:6px;overflow:hidden;font-size:11.5px;margin-left:8px;"><button class="hd2tg hd2tgd${_hd2Due ? '' : ' on'}" data-v="0" onclick="hd2SetDue(false)">All</button><button class="hd2tg hd2tgd${_hd2Due ? ' on' : ''}" data-v="1" onclick="hd2SetDue(true)" title="Only assets with a deadline">Due only</button></span><button id="hd2ColBtn" class="hd2tg${_hd2Cols ? ' on' : ''}" onclick="hd2ToggleCols()" title="Show / hide the Initiative and Sub-initiative columns" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">Initiative columns</button><button id="hd2FltBtn" class="hd2tg" onclick="hd2FltOpen(this)" title="Filter by heading and asset type" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">⏷ Filter</button><button id="hd2FltReset" class="hd2tg" onclick="hd2FltReset()" title="Clear the filter" style="display:none;margin-left:4px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">✕ Reset</button><button id="hd2SelBtn" class="hd2tg" onclick="hd2SelModeT()" title="Select assets for bulk edit — move, initiative, due date, status, delete" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">☑ Select</button><button id="hd2LvBtn" class="hd2tg" onclick="hd2LvOpen(this)" title="Expand or collapse the table to a heading level" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">↕ Expand / collapse</button><button id="hd2IniBtn" class="hd2tg" onclick="hd2IniToggle()" title="Initiatives: open one in the table, or bulk-select assets and put them in an initiative" style="margin-left:8px;border:1px solid var(--border2);border-radius:6px;font-size:11.5px;">🎯 Initiatives</button><span id="hd2IniBar" style="margin-left:8px;display:inline-flex;align-items:center;"></span></div>`
     + `<div style="display:flex;justify-content:flex-end;align-items:center;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;">`
     + `<label class="hd2cka" onclick="event.preventDefault();hd2SelAll()" title="Select / unselect every asset the table shows" style="${H}margin-right:auto;align-items:center;"><span class="hd2ck" id="hd2CkAll"></span>All</label>`
     + `<span class="hd2ic" style="${H}cursor:default;flex:0 0 140px;margin-left:8px;">Initiative</span><span class="hd2ic" style="${H}cursor:default;flex:0 0 170px;margin-left:8px;">Sub-initiative</span>`
@@ -12387,7 +12393,7 @@ function hd2Render() {
             hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name, ...hb, src: P } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb, src: T } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb, src: C } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb, src: tree });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
-  hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw();
+  hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw(); hd2FltBtn();
   if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', () => hd2Cur(), true); }
 }
 // ── 🎯 Initiatives flyout (operator 2026-11-19: "a flyout on the hub dash 2 main page that has initiatives in it and when I click on them, it opens
@@ -12622,6 +12628,63 @@ async function hd2Reload() {
   const t2 = document.getElementById('hd2Tree'); if (t2) t2.querySelectorAll('details').forEach(d => { if (open.has(key(d, t2))) d.open = true; });
   hd2Cur(); hd2SelPaint(); try { window.scrollTo(0, y); } catch (e) {}
 }
+// ── ⏷ Filter (operator 2026-11-19: "add filter by drop down to tool bar. multi select with reset button. filters by heading and asset type").
+// A popup of checklists, one per level: Hub · Cluster · Topic · Product · Title · Asset type (names taken from the table; a search box narrows
+// every list). ✓ Apply keeps only the asset rows whose heading at each ticked level is one of the ticked names (levels AND, names within a level
+// OR), hides headings left empty, and opens the way down to what is left. ✕ Reset (toolbar or popup) clears it and closes what it opened.
+// Session only; works together with the other filters (Initiatives only, Due only, 🎯, count filters).
+const HD2_FLV = [[1, 'Hub'], [2, 'Cluster'], [3, 'Topic'], [4, 'Product'], [5, 'Title'], [6, 'Asset type']];
+let _hd2F = {}, _hd2FD = null, _hd2FQ = '';   // _hd2F = applied {lv: Set(names)}; _hd2FD = the popup's draft
+const hd2FOn = F => Object.values(F || {}).some(S => S && S.size);
+const hd2NameOf = s => { const a = s.querySelector('.hd2nm'); return a ? a.textContent.trim() : ''; };
+function hd2Anc(r, tree) { const o = {}; for (let d = r.parentElement; d && d !== tree; d = d.parentElement) if (d.tagName === 'DETAILS') { const s = d.querySelector(':scope>summary'); if (s) o[s.dataset.lv] = hd2NameOf(s); } return o; }
+function hd2FltBtn() {
+  const n = Object.values(_hd2F).reduce((a, S) => a + (S ? S.size : 0), 0), b = document.getElementById('hd2FltBtn'), r = document.getElementById('hd2FltReset');
+  if (b) { b.classList.toggle('on', n > 0); b.textContent = '⏷ Filter' + (n ? ' (' + n + ')' : ''); }
+  if (r) r.style.display = n ? '' : 'none';
+}
+function hd2FltOpen(btn) {
+  if (document.getElementById('hd2FltPop')) return hd2FltClose();
+  _hd2FD = {}; Object.entries(_hd2F).forEach(([k, S]) => { _hd2FD[k] = new Set(S); }); _hd2FQ = '';
+  const r = btn.getBoundingClientRect(), m = document.createElement('div'); m.id = 'hd2FltPop';
+  m.style.cssText = `position:fixed;z-index:2000;left:${Math.max(8, Math.min(r.left, innerWidth - 328))}px;top:${r.bottom + 6}px;width:320px;max-height:min(70vh,560px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4);font-size:12.5px;color:var(--text);`;
+  document.body.appendChild(m); btn.classList.add('on'); hd2FltDraw();
+  setTimeout(() => document.addEventListener('mousedown', hd2FltOut, true), 0);
+}
+function hd2FltLists() {   // every name at each level, from the table as it is rendered
+  const tree = document.getElementById('hd2Tree'), L = {}; if (!tree) return L;
+  tree.querySelectorAll('summary.hd2r').forEach(s => { const lv = +s.dataset.lv; if (lv < 1 || lv > 6) return; const n = hd2NameOf(s); if (!n) return; (L[lv] = L[lv] || new Set()).add(n); });
+  Object.keys(L).forEach(k => { L[k] = [...L[k]].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); }); return L;
+}
+function hd2FltDraw() {
+  const m = document.getElementById('hd2FltPop'); if (!m) return;
+  const L = hd2FltLists(), q = _hd2FQ.toLowerCase(), D = _hd2FD;
+  const sec = ([lv, t]) => { const all = L[lv] || [], S = D[lv] || new Set(), list = all.filter(n => !q || n.toLowerCase().includes(q) || S.has(n)); if (!list.length) return '';
+    return `<div style="margin:6px 0 2px;display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">${t}${S.size ? ` <span style="color:var(--accent);">(${S.size})</span>` : ''}<span style="flex:1"></span>${S.size ? `<a href="#" onclick="event.preventDefault();hd2FltClr(${lv})" style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">clear</a>` : ''}</div>`
+      + list.map(n => `<label style="display:flex;gap:6px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text2);"><input type="checkbox" ${S.has(n) ? 'checked' : ''} data-lv="${lv}" data-n="${esc(n)}" onchange="hd2FltTick(this)">${esc(n)}</label>`).join(''); };
+  const body = HD2_FLV.map(sec).join('') || '<div style="color:var(--text3);padding:8px 0;">Nothing matches.</div>';
+  const st = m.querySelector('#hd2FltBody'), keep = st ? st.scrollTop : 0;
+  m.innerHTML = `<div style="padding:10px 12px 6px;"><div style="font-weight:700;margin-bottom:6px;">Filter by heading and asset type</div>
+      <input id="hd2FltQ" value="${esc(_hd2FQ)}" placeholder="Search names…" oninput="_hd2FQ=this.value;hd2FltDraw();const q=document.getElementById('hd2FltQ');q.focus();q.setSelectionRange(q.value.length,q.value.length)" style="width:100%;box-sizing:border-box;font-size:12.5px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);"></div>
+    <div id="hd2FltBody" style="overflow:auto;padding:0 12px;flex:1;">${body}</div>
+    <div style="display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--border);"><button onclick="hd2FltApply()" style="${HD2_B('var(--accent)', 'var(--accent)')}padding:5px 14px;font-size:12.5px;">✓ Apply</button>
+      <button onclick="hd2FltReset()" style="${HD2_B()}padding:5px 12px;font-size:12.5px;">✕ Reset</button><span style="flex:1"></span><button onclick="hd2FltClose()" style="${HD2_B()}padding:5px 12px;font-size:12.5px;">Close</button></div>`;
+  const nb = m.querySelector('#hd2FltBody'); if (nb) nb.scrollTop = keep;
+}
+function hd2FltTick(c) { const lv = c.dataset.lv, S = _hd2FD[lv] = _hd2FD[lv] || new Set(); if (c.checked) S.add(c.dataset.n); else S.delete(c.dataset.n); hd2FltDraw(); }
+function hd2FltClr(lv) { if (_hd2FD) _hd2FD[lv] = new Set(); hd2FltDraw(); }
+function hd2FltApply() { _hd2F = {}; Object.entries(_hd2FD || {}).forEach(([k, S]) => { if (S.size) _hd2F[k] = new Set(S); }); hd2FltClose(); hd2FltRun(); }
+function hd2FltReset() { _hd2F = {}; _hd2FD = {}; hd2FltClose(); hd2FltRun(); }
+function hd2FltRun() {
+  const tree = document.getElementById('hd2Tree'); if (!tree) return;
+  tree.querySelectorAll('details.hd2fop').forEach(d => { d.classList.remove('hd2fop'); d.open = false; });
+  hd2FilterRun(); hd2FltBtn();
+  if (hd2FOn(_hd2F)) tree.querySelectorAll('div.hd2r[data-a]').forEach(r => { if (r.closest('.hd2fx')) return;
+    for (let d = r.parentElement; d && d !== tree; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.open) { d.open = true; d.classList.add('hd2fop'); } });
+  hd2Cur(); hd2SelPaint();
+}
+function hd2FltOut(e) { const m = document.getElementById('hd2FltPop'), b = document.getElementById('hd2FltBtn'); if (m && !m.contains(e.target) && !(b && b.contains(e.target))) hd2FltClose(); }
+function hd2FltClose() { const m = document.getElementById('hd2FltPop'); if (m) m.remove(); document.removeEventListener('mousedown', hd2FltOut, true); hd2FltBtn(); }
 function hd2SelMode() { _hd2SelM = !_hd2SelM; hd2IniDraw(); }
 const hd2Shown = root => [...root.querySelectorAll('div.hd2r[data-a]')].filter(r => r.dataset.a && !r.closest('.hd2fx'));
 function hd2Ck(el) {
