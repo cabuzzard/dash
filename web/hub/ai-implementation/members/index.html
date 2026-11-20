@@ -62,8 +62,8 @@ function renderButton() {
 }
 function appsView(d) {
   const pic = store.get("mb_pic");
-  out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}</span><button onclick="signOut()">Sign out</button></div>`
-    + (d.apps.length ? d.apps.map(a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc([a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open →</div></a>`).join("")
+  out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
+    + (d.apps.length ? d.apps.map(a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open →</div></a>`).join("")
       : `<div class="card">You're signed in, but no apps are set up for you yet.</div>`);
 }
 async function onCredential(resp) {

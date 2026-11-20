@@ -1312,10 +1312,12 @@ async function memberFromToken(env, tok) {
 }
 async function memberApps(env, rec) {
   const out = [];
-  for (const id of (rec.links || [])) {
+  // links ["*"] = every studio link, including ones made later (the operator's own account — 2026-11-20 "put flipoclock@gmail.com on all of the client accounts")
+  const ids = (rec.links || []).includes("*") ? (await env.TRADES.list({ prefix: "client:link:" })).keys.map(k => k.name.slice(12)) : (rec.links || []);
+  for (const id of ids) {
     const l = await env.TRADES.get("client:link:" + id, "json").catch(() => null); if (!l || l.revoked) continue;
     const key = `${id}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + id)).slice(0, 32)}`;
-    out.push({ id, kind: "studio", name: l.titleName || l.productName || "Script Studio", hub: l.hubName || "", product: l.productName || "", path: "/studio/?k=" + key });
+    out.push({ id, kind: "studio", name: l.titleName || l.productName || "Script Studio", client: l.label || "", hub: l.hubName || "", product: l.productName || "", path: "/studio/?k=" + key });
   }
   return out;
 }
@@ -1329,7 +1331,7 @@ async function handleMember(env, body) {
   if (!rec) return { ok: false, code: "not_member", email };
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
   const exp = Date.now() + MEMBER_DAYS * 864e5;
-  return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec) };
+  return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", superadmin: (rec.links || []).includes("*"), ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec) };
 }
 async function handleStudio(env, body) {
   const link = await studioLinkFromKey(env, body.k);
@@ -21241,8 +21243,8 @@ export default {
       }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "A valid email is required" }, 400);
       if (body.action === "memberRemove") { await env.TRADES.delete("member:email:" + email); return json({ ok: true, removed: email }); }
-      const links = (Array.isArray(body.links) ? body.links : []).map(String).filter(x => /^[a-z0-9]{8,24}$/.test(x));
-      for (const id of links) if (!(await env.TRADES.get("client:link:" + id))) return json({ error: "No studio link " + id }, 400);
+      const links = (Array.isArray(body.links) ? body.links : []).map(String).filter(x => x === "*" || /^[a-z0-9]{8,24}$/.test(x));
+      for (const id of links) if (id !== "*" && !(await env.TRADES.get("client:link:" + id))) return json({ error: "No studio link " + id }, 400);
       const prev = (await env.TRADES.get("member:email:" + email, "json").catch(() => null)) || {};
       const rec = { ...prev, name: String(body.name ?? prev.name ?? "").slice(0, 120), links, at: prev.at || Date.now(), updatedAt: Date.now() };
       await env.TRADES.put("member:email:" + email, JSON.stringify(rec)); return json({ ok: true, email, member: rec });
