@@ -32,6 +32,8 @@ p.lede { color: var(--ink-soft); margin: 0 0 28px; }
 .who button { margin-left: auto; font: 500 14px "Hanken Grotesk", sans-serif; background: none; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
 .msg { padding: 14px 16px; border-radius: 12px; background: #fbe4dc; color: #7c2d12; font-size: 15px; margin: 0 0 16px; }
 #gbtn { min-height: 44px; }
+.share { margin-left: auto; font: 600 14px "Hanken Grotesk", sans-serif; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 999px; padding: 8px 16px; min-height: 38px; cursor: pointer; }
+.share:hover { border-color: var(--accent); color: var(--accent); }
 .hidden { display: none !important; }
 </style>
 </head>
@@ -63,7 +65,8 @@ function renderButton() {
 function appsView(d) {
   const pic = store.get("mb_pic");
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
-    + (d.apps.length ? d.apps.map(a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open →</div></a>`).join("")
+    + (d.apps.length ? d.apps.map(a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`).join("")
       : `<div class="card">You're signed in, but no apps are set up for you yet.</div>`);
 }
 async function onCredential(resp) {
@@ -76,6 +79,14 @@ async function onCredential(resp) {
     try { store.set("mb_pic", JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).picture || null); } catch (e) {}
     appsView(d);
   } catch (e) { signInView("Sign-in didn't go through. Try again."); }
+}
+// Superadmin: share the members page with a client — the phone's share sheet (Messages, email…), else copy. The client signs in with
+// their own Google account; the link itself carries no access.
+async function shareMembers(btn) {
+  const url = location.origin + "/members/", text = "Here's your members page — tap Continue with Google and sign in with the email I have for you:";
+  try { if (navigator.share) { await navigator.share({ title: "Members", text, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(text + " " + url); btn.textContent = "✓ Copied"; } catch (e) { btn.textContent = url; }
+  setTimeout(() => { btn.textContent = "Share with client"; }, 2500);
 }
 function signOut() { store.set("mb_token", null); store.set("mb_pic", null); try { google.accounts.id.disableAutoSelect(); } catch (e) {} signInView(); }
 let gReady = false;
