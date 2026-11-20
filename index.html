@@ -12388,14 +12388,18 @@ function hd2Render() {
   // Only Development assets count as due (operator 2026-11-19: "only count due dates on dev assets"). Publish / Published / Review / Planning
   // assets keep their dates (they show on the flyout 📅 Schedule) but never reach the tree's counts, dots, Due-only filter or row dates.
   const dueD = a => a && a.deadline && /^development$/i.test(hdSt(a).trim()) ? a.deadline : '';
-  const due = assets => assets.filter(a => dueD(a)).length;
   // Due buckets (operator 2026-11-19: "past (red), this week (orange), following week and beyond (yellow) (sunday 11:59 PM cutoff) and total
   // — just use m/d numbers as headings based on sunday nights"). Weeks run Mon → Sun 11:59 PM: Past = due by last Sunday night, This week =
   // due by this Sunday night, After = later. Every dated asset counts (status doesn't matter), as the old Due count did. An asset row shows
   // its own m/d in its bucket.
   const W = hd2Weeks(), bk = d => { d = String(d || '').slice(0, 10); return !d ? '' : d <= W.last ? 'p' : d <= W.sun ? 'w' : 'f'; };
-  const dueB = assets => { const o = { p: 0, w: 0, f: 0, t: 0 }; assets.forEach(a => { const b = bk(dueD(a)); if (b) { o[b]++; o.t++; } }); return o; };
-  const dueAttr = assets => { const o = dueB(assets); return ` data-dp="${o.p}" data-dw="${o.w}" data-df="${o.f}"`; };
+  // pubW: a Publish asset (not yet Published) dated up to this Sunday 11:59 PM — overdue or this week. It joins Past / This / Total as a second,
+  // yellow number (dev/pub); Next stays Development only, and the dots stay Development only.
+  const pubW = a => a && a.deadline && /^publish$/i.test(hdSt(a).trim()) && /^[pw]$/.test(bk(a.deadline)) ? a.deadline : '';
+  const due = assets => assets.filter(a => dueD(a) || pubW(a)).length;
+  const dueB = assets => { const o = { p: 0, w: 0, f: 0, t: 0, pp: 0, pw: 0, pf: 0, pt: 0 };
+    assets.forEach(a => { const b = bk(dueD(a)); if (b) { o[b]++; o.t++; } else if (pubW(a)) { o['p' + bk(a.deadline)]++; o.pt++; } }); return o; };
+  const dueAttr = assets => { const o = dueB(assets); return ` data-dp="${o.p + o.pp}" data-dw="${o.w + o.pw}" data-df="${o.f}"`; };
   const md = d => +String(d).slice(5, 7) + '/' + +String(d).slice(8, 10);
   // due dots (operator 2026-11-19: "a dot on any heading that contains assets that are due and the dot carries down to the title level and that
   // title heading will be orange highlight … multiple dots in a heading are counts … disappearing"): hub / cluster / topic / product headings
@@ -12419,10 +12423,11 @@ function hd2Render() {
     (pids || []).forEach(p => { const m = pmOf(p); if (m && m.initiative) I.add(m.initiative); if (m && m.sub) Su.add(m.sub); });
     return [one(I, 'init'), one(Su, 'sub'), [...I].join(' · '), [...Su].join(' · ')]; };
   const cols = (t, D, g, own, dot) => `<span class="hd2in" title="${esc(g[2])}">${g[0]}</span><span class="hd2sb" title="${esc(g[3])}">${g[1]}</span><span class="hd2dotc">${dot || ''}</span>`
-    + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? md(own) : '') : dcl(D[b], 'd' + b)}</span>`).join('') + `<span class="hd2dl">${own ? (D.t || '') : dcl(D.t, 'due')}</span>`;
+    + ['p', 'w', 'f'].map(b => `<span class="hd2dl hd2d${b}">${own ? (bk(own) === b ? (D.pt ? '<span class="hd2pw">' + md(own) + '</span>' : md(own)) : '') : dcl(D[b], 'd' + b, D['p' + b])}</span>`).join('')
+    + `<span class="hd2dl">${own ? (D.pt ? '<span class="hd2pw">1</span>' : (D.t || '')) : dcl(D.t, 'due', D.pt)}</span>`;
   // a heading's count opens that heading down to exactly the assets it counts (operator 2026-11-19: "click on the count in the heading and it opens
   // the asset level records that carry the count")
-  const dcl = (n, c) => n ? `<a href="#" class="hd2dc" data-c="${c}" onclick="event.preventDefault();event.stopPropagation();hd2DueOpen(this,'${c}')" title="Show only the ${n} asset${n === 1 ? '' : 's'} this counts (click again: show all)">${n}</a>` : '';
+  const dcl = (n, c, pw) => { pw = pw || 0; const all = n + pw; return all ? `<a href="#" class="hd2dc" data-c="${c}" onclick="event.preventDefault();event.stopPropagation();hd2DueOpen(this,'${c}')" title="${pw ? `${n} Development / ${pw} Publish — ` : ''}Show only the ${all} asset${all === 1 ? '' : 's'} this counts (click again: show all)">${pw ? `<span class="hd2dv">${n}</span>/<span class="hd2pw">${pw}</span>` : n}</a>` : ''; };
   // Level column: names the row; Hub / Cluster / Topic / Product / Title / Asset open the entity flyout (type groups aren't records)
   _hd2Ents = [];
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
@@ -12433,10 +12438,10 @@ function hd2Render() {
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
     return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : ''}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', w === 'asset' && pids ? (k ? '<span class="hd2dot hd2dott" title="This title has due assets"></span>' : '') : dotH(w, kids))}</summary>${body}</details>`; };
-  const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) ? 1 : 0;
+  const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) || pubW(a) ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
-    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}"${dueAttr([a])} data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, dueB([a]), agg([a]), dueD(a))}</div>`; };
+    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}"${dueAttr([a])} data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, dueB([a]), agg([a]), dueD(a) || pubW(a))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   // Run level (operator 2026-11-19: "add another level … asset type and we can have run inside of asset type"): inside an asset type, assets
   // with a Run (asset field "Run"; "none" = no run) sit under one heading per run, runs in natural order (R2 before R10); assets without a run
@@ -12470,7 +12475,7 @@ function hd2Render() {
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2dl{flex:0 0 50px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
-    + '#hd2Body .hd2dc{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}#hd2Body .hd2dc:hover{text-decoration-style:solid}#hd2Body .hd2dc.hd2on{font-weight:800;text-decoration-style:solid;outline:1px solid currentColor;outline-offset:2px;border-radius:3px}#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
+    + '#hd2Body .hd2dc{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}#hd2Body .hd2dc:hover{text-decoration-style:solid}#hd2Body .hd2dc.hd2on{font-weight:800;text-decoration-style:solid;outline:1px solid currentColor;outline-offset:2px;border-radius:3px}#hd2Body .hd2dp{color:#f87171}#hd2Body .hd2dw{color:#ff8a1f}#hd2Body .hd2dv{color:#ff8a1f}#hd2Body .hd2pw{color:#facc15}#hd2Body .hd2df{color:#facc15}@media (max-width:720px){#hd2Body .hd2dl{flex-basis:36px;font-size:11.5px}}'
     // hover: any heading brightens a step
     + '#hd2Body summary.hd2r:hover{filter:brightness(1.35)}'
     + '#hd2Body .hd2r{margin-bottom:1px}'
