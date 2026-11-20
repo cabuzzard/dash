@@ -54,7 +54,22 @@ async function call(extra) {
   const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "member", ...extra }) });
   return r.json();
 }
+// In-app browsers (Instagram, Facebook, Messenger, LinkedIn, TikTok, Snapchat, Android WebViews …): Google refuses sign-in there, which showed
+// as a blank white screen (operator 2026-11-20). Detect them and send the member to their real browser instead of the Google button.
+const UA = navigator.userAgent || "", IS_ANDROID = /Android/i.test(UA), IS_IOS = /iPhone|iPad|iPod/i.test(UA);
+const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Messenger|LinkedInApp|Line\/|Twitter|TikTok|musical_ly|Snapchat|Pinterest/i.test(UA)
+  || (IS_ANDROID && /; wv\)/.test(UA)) || (IS_IOS && !/Safari\//.test(UA) && !/CriOS|FxiOS|EdgiOS/.test(UA));
+function inAppView() {
+  const here = location.origin + "/members/";
+  const chrome = "intent://" + here.replace(/^https?:\/\//, "") + "#Intent;scheme=https;package=com.android.chrome;end";
+  out.innerHTML = `<div class="card"><b>Open this page in ${IS_IOS ? "Safari" : "Chrome"} to sign in.</b>
+    <p style="margin:8px 0 16px;color:var(--ink-soft);">You opened this link inside another app, and Google doesn't allow sign-in there.
+    ${IS_IOS ? "Tap the <b>⋯</b> or share menu and choose <b>Open in Safari</b> (or Open in browser), or copy the link and paste it into Safari." : "Tap the button below, or use the app's <b>⋮</b> menu → <b>Open in Chrome</b> / Open in browser."}</p>
+    ${IS_ANDROID ? `<a class="share" style="display:inline-block;text-decoration:none;margin:0 8px 8px 0;" href="${esc(chrome)}">Open in Chrome</a>` : ""}
+    <button class="share" style="margin:0;" onclick="navigator.clipboard.writeText('${here}').then(()=>{this.textContent='✓ Link copied'}).catch(()=>{this.textContent='${here}'})">Copy link</button></div>`;
+}
 function signInView(note) {
+  if (IN_APP) return inAppView();
   out.innerHTML = (note ? `<div class="msg">${note}</div>` : "") + `<p class="lede">Sign in with your Google account to open your apps.</p><div id="gbtn"></div>`;
   renderButton();
 }
@@ -94,13 +109,13 @@ function gInit() {
   // redirect, not pop-up: on phones Google's pop-up tab came up blank white (2026-11-20). Google posts the sign-in to /members/login,
   // which hands it back to this page (see the start-up block below).
   google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: "redirect", login_uri: location.origin + "/members/login", auto_select: true });
-  gReady = true; if (!store.get("mb_token")) renderButton();
+  gReady = true; if (!store.get("mb_token") && !IN_APP) renderButton();
 }
 (async () => {
   let cred = null, err = null; try { cred = sessionStorage.getItem("mb_cred"); err = sessionStorage.getItem("mb_err"); sessionStorage.removeItem("mb_cred"); sessionStorage.removeItem("mb_err"); } catch (e) {}
   if (cred) return onCredential({ credential: cred });
   if (err) return signInView("Sign-in didn't go through. Try again.");
-  const tok = store.get("mb_token"); if (!tok) return;
+  const tok = store.get("mb_token"); if (!tok) { if (IN_APP) inAppView(); return; }
   out.innerHTML = `<p class="lede">Loading your apps…</p>`;
   try { const d = await call({ op: "me", token: tok }); if (d.ok) return appsView(d); store.set("mb_token", null); signInView(d.code === "not_member" ? "Your account isn't on the members list any more." : ""); }
   catch (e) { signInView("Couldn't reach the server. Try again in a minute."); }
