@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Members — Small Business Tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Members area (2026-11-20): Continue with Google → worker action "member" checks the Google sign-in and the members list →
+     the member's apps (Client Studio links, opened at /studio/ on this domain). Token kept in this browser for 30 days. -->
+<style>
+:root { --bg: #ffffff; --surface: #f2f7f2; --ink: #1a2a1a; --ink-head: #0f1f2e; --ink-soft: #5f715f; --line: #d4e4d4; --accent: #1b881b; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #101611; --surface: #18211a; --ink: #e3ece3; --ink-head: #f2f7f2; --ink-soft: #9db09d; --line: #2b3a2d; --accent: #5fc45f; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 "Hanken Grotesk", system-ui, sans-serif; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 48px 16px 80px; }
+a.home { color: var(--ink-soft); text-decoration: none; font-size: 14px; }
+h1 { font: 700 34px/1.15 "Bricolage Grotesque", system-ui, sans-serif; color: var(--ink-head); margin: 18px 0 8px; }
+p.lede { color: var(--ink-soft); margin: 0 0 28px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin: 0 0 14px; }
+.app { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
+.app:hover, .app:focus-visible { border-color: var(--accent); outline: none; }
+.app .t { font: 600 19px/1.3 "Bricolage Grotesque", system-ui, sans-serif; color: var(--ink-head); }
+.app .m { font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
+.app .go { color: var(--accent); font-weight: 600; font-size: 15px; margin-top: 12px; }
+.who { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-soft); margin: 0 0 22px; }
+.who img { width: 28px; height: 28px; border-radius: 50%; }
+.who button { margin-left: auto; font: 500 14px "Hanken Grotesk", sans-serif; background: none; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.msg { padding: 14px 16px; border-radius: 12px; background: #fbe4dc; color: #7c2d12; font-size: 15px; margin: 0 0 16px; }
+#gbtn { min-height: 44px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="home" href="/">← Small Business Tools</a>
+  <h1>Members</h1>
+  <div id="out"><p class="lede">Sign in with your Google account to open your apps.</p><div id="gbtn"></div></div>
+</div>
+<script src="https://accounts.google.com/gsi/client" async defer onload="gInit()"></script>
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const CLIENT_ID = "903072898801-vccprv4hqfltslrdsl7b2dm3s6v0lenj.apps.googleusercontent.com";
+const out = document.getElementById("out");
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+async function call(extra) {
+  const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "member", ...extra }) });
+  return r.json();
+}
+function signInView(note) {
+  out.innerHTML = (note ? `<div class="msg">${note}</div>` : "") + `<p class="lede">Sign in with your Google account to open your apps.</p><div id="gbtn"></div>`;
+  renderButton();
+}
+function renderButton() {
+  const el = document.getElementById("gbtn"); if (!el || !window.google || !google.accounts) return;
+  google.accounts.id.renderButton(el, { theme: "outline", size: "large", text: "continue_with", shape: "pill", width: 280 });
+}
+function appsView(d) {
+  const pic = store.get("mb_pic");
+  out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}</span><button onclick="signOut()">Sign out</button></div>`
+    + (d.apps.length ? d.apps.map(a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc([a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open →</div></a>`).join("")
+      : `<div class="card">You're signed in, but no apps are set up for you yet.</div>`);
+}
+async function onCredential(resp) {
+  out.innerHTML = `<p class="lede">Signing you in…</p>`;
+  try {
+    const d = await call({ op: "google", credential: resp.credential });
+    if (d.error) return signInView(esc(d.error));
+    if (!d.ok && d.code === "not_member") return signInView(`<b>${esc(d.email)}</b> isn't on the members list yet. If you were invited with a different Google account, sign in with that one.`);
+    store.set("mb_token", d.token);
+    try { store.set("mb_pic", JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).picture || null); } catch (e) {}
+    appsView(d);
+  } catch (e) { signInView("Sign-in didn't go through. Try again."); }
+}
+function signOut() { store.set("mb_token", null); store.set("mb_pic", null); try { google.accounts.id.disableAutoSelect(); } catch (e) {} signInView(); }
+let gReady = false;
+function gInit() {
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true });
+  gReady = true; if (!store.get("mb_token")) renderButton();
+}
+(async () => {
+  const tok = store.get("mb_token"); if (!tok) return;
+  out.innerHTML = `<p class="lede">Loading your apps…</p>`;
+  try { const d = await call({ op: "me", token: tok }); if (d.ok) return appsView(d); store.set("mb_token", null); signInView(d.code === "not_member" ? "Your account isn't on the members list any more." : ""); }
+  catch (e) { signInView("Couldn't reach the server. Try again in a minute."); }
+})();
+</script>
+</body>
+</html>

@@ -20,6 +20,9 @@ const HUBS = {
   "sustainableaquarium.com":    "sustainable-aquarium",
 };
 
+// Hubs with a members area (/members/) whose apps open at /studio/ on the same domain.
+const STUDIO_HUBS = new Set(["ai-implementation"]);
+
 // A missing page used to come back as a bare 404 — no body, no content type — which browsers save as a download instead of showing
 // (operator 2026-11-08: a just-published post "tries to download a text file" while its deploy was still running). Every 404 is now an
 // HTML page: the hub's own 404.html when it has one, else a short note with a link home.
@@ -46,6 +49,15 @@ export default {
     // Unknown host (e.g. the raw *.pages.dev preview URL) → serve as-is so
     // https://dash-hubs.pages.dev/<slug>/ still works for previews.
     if (!slug) return served(env, request, url.pathname.split("/")[1] || "");
+
+    // Members area apps (2026-11-20): /studio/ on a members hub is the one Client Studio page on GitHub Pages, passed through, so the
+    // app keeps a single copy and the member stays on this domain. The page's own key (?k=) is the credential, checked by the worker.
+    if (STUDIO_HUBS.has(slug) && (url.pathname === "/studio" || url.pathname.startsWith("/studio/"))) {
+      if (url.pathname === "/studio") return Response.redirect(url.origin + "/studio/" + url.search, 301);
+      const up = await fetch("https://cabuzzard.github.io/dash/web" + url.pathname + url.search, { cf: { cacheTtl: 60 } });
+      const h = new Headers(up.headers); h.set("cache-control", "no-cache"); h.set("x-robots-tag", "noindex, nofollow");
+      return new Response(up.body, { status: up.status, headers: h });
+    }
 
     // Already inside the hub's own path — serve directly.
     if (url.pathname === `/${slug}` || url.pathname.startsWith(`/${slug}/`)) {

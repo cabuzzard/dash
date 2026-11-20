@@ -1281,6 +1281,56 @@ function studioPublicItem(x) {
     at: x.at, updatedAt: x.updatedAt || x.at, generating: !!(x.generating && Date.now() - x.generating < 10 * 60000),
     status: x.assetId ? "script" : answered ? "answering" : "new" };
 }
+// ── Members area (operator 2026-11-20: "its basically a members area … people can log in with google") ── aisystemimplementation.com/members/
+// Continue with Google → Google ID token checked here (RS256 against Google's keys, our client id, verified email) → the email must be on the
+// members list (KV member:email:<lowercase email> = {name?, links:[studio link id…], at}) → a 30-day member token (HMAC) + the member's apps.
+// An app is a Client Studio link; its url is the hub-domain studio with the link's own key. Not on the list → code not_member (nothing else).
+// Operator: memberList / memberSet {email, links, name?} / memberRemove {email} (session-gated, below).
+const MEMBER_GOOGLE_CLIENT_ID = "903072898801-vccprv4hqfltslrdsl7b2dm3s6v0lenj.apps.googleusercontent.com";
+const MEMBER_DAYS = 30;
+let _gCerts = null;
+async function googleIdTokenEmail(token) {
+  const [h64, p64, s64] = String(token || "").split(".");
+  if (!h64 || !p64 || !s64) throw new Error("Sign-in didn't come through. Try again.");
+  const dec = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+  const hdr = JSON.parse(new TextDecoder().decode(dec(h64))), pl = JSON.parse(new TextDecoder().decode(dec(p64)));
+  if (!_gCerts || Date.now() - _gCerts.at > 3600e3) _gCerts = { at: Date.now(), keys: (await (await fetch("https://www.googleapis.com/oauth2/v3/certs")).json()).keys || [] };
+  let jwk = _gCerts.keys.find(k => k.kid === hdr.kid);
+  if (!jwk) { _gCerts = { at: Date.now(), keys: (await (await fetch("https://www.googleapis.com/oauth2/v3/certs")).json()).keys || [] }; jwk = _gCerts.keys.find(k => k.kid === hdr.kid); }
+  if (!jwk || hdr.alg !== "RS256") throw new Error("Sign-in couldn't be checked. Try again.");
+  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+  if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, dec(s64), new TextEncoder().encode(h64 + "." + p64)))) throw new Error("Sign-in couldn't be checked. Try again.");
+  if (pl.aud !== MEMBER_GOOGLE_CLIENT_ID || !["accounts.google.com", "https://accounts.google.com"].includes(pl.iss) || !(pl.exp * 1000 > Date.now()) || !pl.email || pl.email_verified === false)
+    throw new Error("Sign-in couldn't be checked. Try again.");
+  return { email: String(pl.email).toLowerCase(), name: pl.name || "", picture: pl.picture || "" };
+}
+async function memberToken(env, email, exp) { return `${btoa(email).replace(/=+$/, "")}.${exp}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "mb:" + email + ":" + exp)).slice(0, 40)}`; }
+async function memberFromToken(env, tok) {
+  const [e64, exp, sig] = String(tok || "").split("."); if (!e64 || !exp || !sig || +exp < Date.now()) return null;
+  let email; try { email = atob(e64); } catch (e) { return null; }
+  return sig === (await hmacHex((env.HMAC_SECRET || "").trim(), "mb:" + email + ":" + exp)).slice(0, 40) ? email : null;
+}
+async function memberApps(env, rec) {
+  const out = [];
+  for (const id of (rec.links || [])) {
+    const l = await env.TRADES.get("client:link:" + id, "json").catch(() => null); if (!l || l.revoked) continue;
+    const key = `${id}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + id)).slice(0, 32)}`;
+    out.push({ id, kind: "studio", name: l.titleName || l.productName || "Script Studio", hub: l.hubName || "", product: l.productName || "", path: "/studio/?k=" + key });
+  }
+  return out;
+}
+async function handleMember(env, body) {
+  const op = String(body.op || "me");
+  let email = null, g = null;
+  if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
+  else if (op === "me") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else return { error: "Unknown member request" };
+  const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
+  if (!rec) return { ok: false, code: "not_member", email };
+  if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
+  const exp = Date.now() + MEMBER_DAYS * 864e5;
+  return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec) };
+}
 async function handleStudio(env, body) {
   const link = await studioLinkFromKey(env, body.k);
   if (!link) return { error: "This link isn't active any more. Ask for a new one.", code: "bad_link" };
@@ -20732,6 +20782,7 @@ export default {
       const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
+    if (body.action === "member") { try { return json(await handleMember(env, body)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "studio") {
       if (!["start", "generate", "expertCheck"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       const { readable, writable } = new TransformStream();
@@ -21179,6 +21230,22 @@ export default {
         }
         return json({ error: "op must be list | set | remove" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
+    }
+    // Members area list (operator only): who can sign in at aisystemimplementation.com/members/ and which studio links they get.
+    if (["memberList", "memberSet", "memberRemove"].includes(body.action)) {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      const email = String(body.email || "").trim().toLowerCase();
+      if (body.action === "memberList") {
+        const out = []; for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r) out.push({ email: k.name.slice(13), ...r }); }
+        return json({ ok: true, members: out });
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "A valid email is required" }, 400);
+      if (body.action === "memberRemove") { await env.TRADES.delete("member:email:" + email); return json({ ok: true, removed: email }); }
+      const links = (Array.isArray(body.links) ? body.links : []).map(String).filter(x => /^[a-z0-9]{8,24}$/.test(x));
+      for (const id of links) if (!(await env.TRADES.get("client:link:" + id))) return json({ error: "No studio link " + id }, 400);
+      const prev = (await env.TRADES.get("member:email:" + email, "json").catch(() => null)) || {};
+      const rec = { ...prev, name: String(body.name ?? prev.name ?? "").slice(0, 120), links, at: prev.at || Date.now(), updatedAt: Date.now() };
+      await env.TRADES.put("member:email:" + email, JSON.stringify(rec)); return json({ ok: true, email, member: rec });
     }
     if (body.action === "initiativeNames") {
       if (externalCaller) return json({ error: "operator only" }, 403);

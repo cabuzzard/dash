@@ -83,7 +83,7 @@ textarea:focus, input[type=text]:focus { outline: 2px solid var(--accent); outli
 <body>
 <div class="wrap" id="app"><div class="busy"><div class="spin"></div>Loading…</div></div>
 <div class="sticky hidden" id="foot"><div class="in" id="footIn"></div></div>
-<script src="../../shared/interview-panel.js?v=2026102408"></script>
+<script src="https://cabuzzard.github.io/dash/shared/interview-panel.js?v=2026102408"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const KEY = new URLSearchParams(location.search).get("k") || "";
@@ -125,7 +125,9 @@ async function load() {
 // reload the same link + screen, bypassing the cached page (a fresh ?v= keeps the link's key and the #/ screen)
 function freshReload() { try { const u = new URL(location.href); u.searchParams.set("v", Date.now().toString(36)); location.replace(u.toString()); } catch (e) { location.reload(); } }
 function header(sub) {
-  return `<header class="top"><div class="brand"><div class="eyebrow">${esc(INFO.hub || "Script Studio")}</div><h1>${esc(INFO.title || INFO.product || "Your scripts")}</h1></div>${sub || ""}<button class="refresh" type="button" onclick="freshReload()" title="Refresh" aria-label="Refresh the page">↻</button></header>`;
+  // served on a members hub (aisystemimplementation.com/studio/): a way back to the members page
+  const members = /github\.io$/.test(location.hostname) ? "" : `<a href="/members/" style="display:inline-block;font-size:13px;color:var(--text3);text-decoration:none;margin-bottom:4px;">← Members</a>`;
+  return `<header class="top"><div class="brand">${members}<div class="eyebrow">${esc(INFO.hub || "Script Studio")}</div><h1>${esc(INFO.title || INFO.product || "Your scripts")}</h1></div>${sub || ""}<button class="refresh" type="button" onclick="freshReload()" title="Refresh" aria-label="Refresh the page">↻</button></header>`;
 }
 
 async function route() {
