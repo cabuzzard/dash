@@ -1295,7 +1295,12 @@ async function handleStudio(env, body) {
   };
   const cleanAnswers = (arr, n) => (Array.isArray(arr) ? arr : []).slice(0, n).map(a => String(a == null ? "" : a).slice(0, 4000));
   const op = body.op || "info";
-  if (op === "info") return { ok: true, hub: link.hubName || "", product: link.productName || "", title: link.titleName || "", label: link.label || "", items: items.slice().reverse().map(studioPublicItem) };
+  // Pages (operator 2026-11-20: "sections … that feature the following html pages" → tabs in the client's studio): KV client:pages:<id> =
+  // [{id, name, html}] set by the operator; info lists {id, name}, op "page" returns one page's html (shown sandboxed, no scripts).
+  const pages = (await env.TRADES.get("client:pages:" + link.id, "json").catch(() => null)) || [];
+  if (op === "info") return { ok: true, hub: link.hubName || "", product: link.productName || "", title: link.titleName || "", label: link.label || "", items: items.slice().reverse().map(studioPublicItem),
+    pages: pages.map(p => ({ id: p.id, name: p.name })) };
+  if (op === "page") { const p = pages.find(x => x.id === String(body.pid || "")); return p ? { ok: true, id: p.id, name: p.name, html: p.html } : { error: "That page wasn't found." }; }
   if (op === "start") {
     const topic = String(link.titleName || link.productName || "").trim().slice(0, 300);
     if (!topic) return { error: "This link has no title set up yet." };

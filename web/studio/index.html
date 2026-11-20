@@ -75,6 +75,9 @@ textarea:focus, input[type=text]:focus { outline: 2px solid var(--accent); outli
 .examples button { display: block; text-align: left; width: 100%; font-weight: 400; font-size: 14px; color: var(--text2); background: var(--surface2); border: 0; border-radius: 10px; padding: 10px 12px; margin: 6px 0 0; min-height: 0; }
 .back { margin: -6px 0 10px; }
 .hidden { display: none !important; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; margin: -8px 0 18px; padding-bottom: 2px; }
+.tabs .tab { flex: none; min-height: 38px; padding: 9px 16px; font-size: 14px; }
+.tabs .tab.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -131,7 +134,26 @@ async function route() {
   if (h[0] === "new") return viewNew();
   if (h[0] === "i" && h[1]) return viewInterview(h[1]);
   if (h[0] === "s" && h[1]) return viewScript(h[1]);
+  if (h[0] === "p" && h[1]) return viewPage(h[1]);
   return viewList();
+}
+
+// ── pages: extra tabs (Meetings, Contacts, …) the operator adds to this link; each is a stored HTML page shown sandboxed ──
+function tabs(active) {
+  const P = (INFO && INFO.pages) || []; if (!P.length) return "";
+  const t = (h, label, on) => `<button class="tab${on ? " on" : ""}" onclick="go('${h}')">${esc(label)}</button>`;
+  return `<nav class="tabs">${t("#/", "Scripts", active === "")}${P.map(p => t("#/p/" + p.id, p.name, active === p.id)).join("")}</nav>`;
+}
+async function viewPage(pid) {
+  CUR = null; SCRIPT = null; setFoot("");
+  let p; try { p = await api("page", { pid }); } catch (e) { return fail(e); }
+  app.innerHTML = header() + tabs(pid) + `<div id="err" class="msg err hidden"></div><div class="card" style="padding:0;overflow:hidden;"><iframe id="pageFrame" title="${esc(p.name)}"
+    sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="display:block;width:100%;border:0;min-height:300px;background:#fff;"></iframe></div>`;
+  const f = document.getElementById("pageFrame");
+  const fit = () => { try { f.style.height = (f.contentDocument.documentElement.scrollHeight + 4) + "px"; } catch (e) {} };
+  f.onload = () => { fit(); setTimeout(fit, 300); };
+  const extra = `<base target="_blank"><style>body{margin:14px!important}table{display:block;overflow-x:auto;max-width:100%}</style>`;
+  f.srcdoc = /<head[^>]*>/i.test(p.html) ? p.html.replace(/<head[^>]*>/i, m => m + extra) : extra + p.html;
 }
 
 // ── list ──
@@ -140,7 +162,7 @@ async function viewList() {
   try { INFO = await api("info"); } catch (e) { return fail(e); }
   const items = INFO.items || [];
   const STATUS = { script: "Script ready", answering: "In progress", new: "Not started" };
-  app.innerHTML = header() + `
+  app.innerHTML = header() + tabs("") + `
     <p class="lede">Each interview becomes a video script in your own words, shaped around the topic of ${esc(INFO.title || INFO.product || "this offer")}. Press <b>New script</b>, answer the questions, and we'll write it for you. You can come back and edit it any time.</p>
     <div id="err" class="msg err hidden"></div>
     <button class="primary" style="width:100%;margin:0 0 18px;font-size:17px;padding:16px;" onclick="go('#/new')">+ New script</button>
