@@ -12077,7 +12077,7 @@ function hd2SchedItems() {
   return all.map(a => ({ k: 'asset', id: a.assetId, name: hdName(a), st: hdSt(a), sub: String(a.rawAssetType || a.assetType || '') + (many && a.title ? ' · ' + a.title : ''), due: d(a.deadline), a }));
 }
 const hd2Today = () => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
-const HD2_ST_C = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#60a5fa' : /^review$/i.test(s) ? '#facc15' : /^development$/i.test(s) ? '#ff7a00' : 'var(--text3)';
+const HD2_ST_C = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#4ade80' : /^review$/i.test(s) ? '#facc15' : /^development$/i.test(s) ? '#ff7a00' : 'var(--text3)';
 function hd2SchedHtml() {
   const e = EF.e, L = EF.schItems = hd2SchedItems(), today = hd2Today();
   const dated = L.filter(x => x.due).sort((a, b) => a.due.localeCompare(b.due)), none = L.filter(x => !x.due);
