@@ -91,10 +91,15 @@ async function shareMembers(btn) {
 function signOut() { store.set("mb_token", null); store.set("mb_pic", null); try { google.accounts.id.disableAutoSelect(); } catch (e) {} signInView(); }
 let gReady = false;
 function gInit() {
-  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true });
+  // redirect, not pop-up: on phones Google's pop-up tab came up blank white (2026-11-20). Google posts the sign-in to /members/login,
+  // which hands it back to this page (see the start-up block below).
+  google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: "redirect", login_uri: location.origin + "/members/login", auto_select: true });
   gReady = true; if (!store.get("mb_token")) renderButton();
 }
 (async () => {
+  let cred = null, err = null; try { cred = sessionStorage.getItem("mb_cred"); err = sessionStorage.getItem("mb_err"); sessionStorage.removeItem("mb_cred"); sessionStorage.removeItem("mb_err"); } catch (e) {}
+  if (cred) return onCredential({ credential: cred });
+  if (err) return signInView("Sign-in didn't go through. Try again.");
   const tok = store.get("mb_token"); if (!tok) return;
   out.innerHTML = `<p class="lede">Loading your apps…</p>`;
   try { const d = await call({ op: "me", token: tok }); if (d.ok) return appsView(d); store.set("mb_token", null); signInView(d.code === "not_member" ? "Your account isn't on the members list any more." : ""); }

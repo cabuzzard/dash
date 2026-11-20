@@ -50,6 +50,19 @@ export default {
     // https://dash-hubs.pages.dev/<slug>/ still works for previews.
     if (!slug) return served(env, request, url.pathname.split("/")[1] || "");
 
+    // Members sign-in return (2026-11-20, phones showed a blank white pop-up): Google's redirect flow POSTs the sign-in here
+    // (form fields credential + g_csrf_token, which must match the g_csrf_token cookie). The page gets it back through sessionStorage
+    // and checks it with the worker as before — nothing is trusted here, this only hands it over.
+    if (STUDIO_HUBS.has(slug) && url.pathname === "/members/login" && request.method === "POST") {
+      const f = await request.formData().catch(() => null);
+      const cred = f && String(f.get("credential") || ""), csrf = f && String(f.get("g_csrf_token") || "");
+      const cookie = (request.headers.get("cookie") || "").match(/(?:^|;\s*)g_csrf_token=([^;]+)/);
+      const ok = cred && csrf && cookie && cookie[1] === csrf && /^[A-Za-z0-9_\-.]+$/.test(cred);
+      const js = ok ? `try{sessionStorage.setItem("mb_cred",${JSON.stringify(cred)})}catch(e){}` : `try{sessionStorage.setItem("mb_err","1")}catch(e){}`;
+      return new Response(`<!doctype html><meta charset="utf-8"><meta name="robots" content="noindex"><title>Signing in…</title><script>${js};location.replace("/members/")</script>`,
+        { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+
     // Members area apps (2026-11-20): /studio/ on a members hub is the one Client Studio page on GitHub Pages, passed through, so the
     // app keeps a single copy and the member stays on this domain. The page's own key (?k=) is the credential, checked by the worker.
     if (STUDIO_HUBS.has(slug) && (url.pathname === "/studio" || url.pathname.startsWith("/studio/"))) {
