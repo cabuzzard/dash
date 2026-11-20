@@ -45,6 +45,8 @@ p.lede { color: var(--ink-soft); margin: 0 0 28px; }
 </div>
 <script src="https://accounts.google.com/gsi/client" async defer onload="gInit()"></script>
 <script>
+// www. or the *.pages.dev preview → the one registered address, so Google's sign-in cookie and return address match (redirect_uri_mismatch, 2026-11-20)
+if (location.hostname !== "aisystemimplementation.com" && /aisystemimplementation\.com$/.test(location.hostname)) location.replace("https://aisystemimplementation.com" + location.pathname + location.search);
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CLIENT_ID = "903072898801-vccprv4hqfltslrdsl7b2dm3s6v0lenj.apps.googleusercontent.com";
 const out = document.getElementById("out");
@@ -108,7 +110,8 @@ let gReady = false;
 function gInit() {
   // redirect, not pop-up: on phones Google's pop-up tab came up blank white (2026-11-20). Google posts the sign-in to /members/login,
   // which hands it back to this page (see the start-up block below).
-  google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: "redirect", login_uri: location.origin + "/members/login", auto_select: true });
+  // login_uri is the exact address registered in Google Cloud (Authorized redirect URIs) — never www. or any other host
+  google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: "redirect", login_uri: "https://aisystemimplementation.com/members/login", auto_select: true });
   gReady = true; if (!store.get("mb_token") && !IN_APP) renderButton();
 }
 (async () => {
