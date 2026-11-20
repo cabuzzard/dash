@@ -21236,7 +21236,7 @@ export default {
       if (!list) errs.push("list is required (a short slug, e.g. event-austin-expo-2026-11)");
       if (!String(body.source || "").trim()) errs.push("source is required (where these contacts came from)");
       if (!CONSENTS.includes(consent0)) errs.push("consent must be one of " + CONSENTS.join(", "));
-      if (hub && !H) errs.push("unknown hub '" + hub + "' — use a hub slug: " + HUB_SITES.map(x => x.slug).join(", "));
+      if (hub && !/^[a-z0-9-]{2,60}$/.test(hub)) errs.push("hub must be a hub slug (lower-case, hyphens), e.g. " + HUB_SITES.map(x => x.slug).slice(0, 4).join(", "));
       if (!contacts.length) errs.push("contacts is empty");
       if (contacts.length > 100) errs.push("at most 100 contacts per call — send the rest in another call with the same list");
       if (errs.length) return json({ error: errs.join("; "), errors: errs }, 400);
@@ -21272,7 +21272,7 @@ export default {
         consent: consent0, count: ids.size, updatedAt: now, by: externalCaller ? "external" : "dash",
         imports: [...(cur.imports || []), { at: now, sent: contacts.length, created, updated, skipped: skipped.length, errors: results.filter(x => x.error).length }].slice(-50) };
       await env.TRADES.put("contactlists:v1", JSON.stringify(reg));
-      return json({ ok: true, list, tag: "list:" + list, created, updated, skipped, errors: results.filter(x => x.error), listCount: ids.size });
+      return json({ ok: true, list, tag: "list:" + list, ...(hub && !H ? { hubNote: "hub " + hub + " is not in the built-in hub list — tagged anyway" } : {}), created, updated, skipped, errors: results.filter(x => x.error), listCount: ids.size });
     }
     if (body.action === "getInitiatives") {
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();

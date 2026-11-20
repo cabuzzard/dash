@@ -35,7 +35,7 @@ List slug naming: `event-<event>-<yyyy-mm>` for events, `lead-<vertical>` for le
 ```
 - Required: `list`, `source`, `contacts` (1–100; send more in further calls with the same `list`). Each contact needs an email or a phone.
 - `name` may be sent instead of `firstName` / `lastName`. Per-contact `consent` overrides the list's.
-- `hub` = a hub slug or leave it out. Unknown slugs are refused with the list of valid ones.
+- `hub` = a hub slug (e.g. `home-services`, `ai-implementation`, `medicare-services-consulting`) or leave it out.
 - **`dryRun: true`** checks everything and returns the cleaned rows and the skipped ones — nothing is written. Always do one dry run first.
 - Writing: each contact is added or updated in GHL; tags are **added** (existing tags stay); company / role / interest / note go in a contact note.
   No opportunities are created and nobody is added to a newsletter or SMS list.
