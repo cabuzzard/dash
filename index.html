@@ -12508,7 +12508,9 @@ function hd2Render() {
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
   hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw(); hd2FltBtn(); hd2ViewSet(_hd2View);
-  if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', () => hd2Cur(), true); }
+  if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', e => { const d = e.target;   // a heading closed while a count filter was on it: the filter (and its outlined count) goes
+    if (d && d.tagName === 'DETAILS' && !d.open && d.dataset.dfk) { delete d.dataset.dfk; d.classList.remove('hd2dfo'); hd2FilterRun(); }
+    hd2Cur(); }, true); }
 }
 // ── 🎯 Initiatives flyout (operator 2026-11-19: "a flyout on the hub dash 2 main page that has initiatives in it and when I click on them, it opens
 // the table to the assets that belong to the initiative. and I can bulk select groups of assets and put them in the initiatives … the ability to
