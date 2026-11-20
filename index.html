@@ -1069,7 +1069,9 @@
   <div class="tab-panel" id="tabHubdash2">
     <div style="max-width:1200px;margin:0 auto;min-width:0;">
       <h2 style="font-size:18px;margin:0 0 6px;">Hub Dash 2</h2>
+      <div id="hd2Views" style="display:flex;gap:2px;border-bottom:1px solid var(--border2);margin:0 0 12px;"><button data-v="tree" onclick="hd2ViewSet('tree')">🌳 Tree</button><button data-v="cal" onclick="hd2ViewSet('cal')">📅 Calendar</button></div>
       <div id="hd2Body"></div>
+      <div id="hd2Cal" style="display:none;"></div>
     </div>
   </div>
   <div class="tab-panel" id="tabTracking">
@@ -11635,6 +11637,7 @@ async function hd2EntOpen(i) {
 function hd2EfClose() {
   if (EF && Object.keys(EF.dirty).length && !EF.warnClose) { EF.warnClose = true; EF.msg = 'Unsaved changes — 💾 Save, or close again to discard them.'; hd2EfDraw(); return; }
   const bg = document.getElementById('efBg'); if (bg) bg.classList.remove('open'); document.body.style.overflow = ''; document.body.classList.remove('amf-open'); EF = null;
+  if (_hd2View === 'cal') hd2CalDraw();
 }
 function hd2EfSet(k, v) { if (!EF) return; EF.dirty[k] = v; EF.warnClose = false; const b = document.getElementById('efSave'); if (b) { const n = Object.keys(EF.dirty).length; b.textContent = '💾 Save' + (n ? ' (' + n + ')' : ''); b.disabled = !n; } }
 function hd2EfVal(p) { return p.name in EF.dirty ? EF.dirty[p.name] : p.value; }
@@ -12320,6 +12323,61 @@ async function hd2Load(force) {
   if (!d || d.error) { el.textContent = 'Not loaded: ' + ((d && d.error) || 'no response'); return; }
   _hd2PM = (pm && pm.map) || null; _hd2Rows = d.rows || []; hd2Render();
 }
+// ── 🌳 Tree / 📅 Calendar (operator 2026-11-19) ── The calendar is every hub's assets that have a date (Deadline), any status, on a month
+// grid; the chip colour is the status (Development orange · Review yellow · Publish / Published green). A click opens the same record
+// flyout the tree opens. Hub and status pickers narrow it. The view is remembered per browser.
+let _hd2View = (() => { try { return localStorage.getItem('hd2View') || 'tree'; } catch (e) { return 'tree'; } })(), _hd2CalS = null;
+function hd2ViewSet(v) {
+  _hd2View = v === 'cal' ? 'cal' : 'tree'; try { localStorage.setItem('hd2View', _hd2View); } catch (e) {}
+  const b = document.getElementById('hd2Body'), c = document.getElementById('hd2Cal'); if (!b || !c) return;
+  b.style.display = _hd2View === 'cal' ? 'none' : ''; c.style.display = _hd2View === 'cal' ? '' : 'none';
+  document.querySelectorAll('#hd2Views button').forEach(x => { const on = x.dataset.v === _hd2View;
+    x.style.cssText = 'padding:7px 14px;border:none;border-bottom:2px solid ' + (on ? 'var(--accent)' : 'transparent') + ';background:transparent;cursor:pointer;font-size:13px;font-weight:' + (on ? '700' : '400') + ';color:' + (on ? 'var(--text)' : 'var(--text3)') + ';margin-bottom:-1px;'; });
+  if (_hd2View === 'cal') { if (!_hd2Rows) hd2Load(); else hd2CalDraw(); }
+}
+function hd2CalItems() {
+  const hubs = {}, seen = new Set(); hdHubs().forEach(x => { hubs[hdNid(x.campaignId)] = x.name || x.slug || ''; });
+  return (_hd2Rows || []).filter(a => a && a.kind === 'asset' && a.deadline && a.assetId && !seen.has(hdNid(a.assetId)) && seen.add(hdNid(a.assetId))).map(a => {
+    const cs = (a.hubCids || [a.campId]).map(hdNid).filter(Boolean);
+    return { a, id: a.assetId, name: hdName(a) || '(untitled)', st: hdSt(a).trim(), due: String(a.deadline).slice(0, 10), hub: cs.map(c => hubs[c]).filter(Boolean).join(', '), cids: cs,
+      type: String(a.rawAssetType || a.assetType || '') };
+  });
+}
+function hd2CalDraw() {
+  const el = document.getElementById('hd2Cal'); if (!el) return;
+  if (!_hd2Rows) { el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>'; return; }
+  const today = hd2Today(), all = hd2CalItems();
+  if (!_hd2CalS) _hd2CalS = { ym: today.slice(0, 7), hub: '', st: '' };
+  const S = _hd2CalS, stOf = s => /^publish(ed)?$/i.test(s) ? 'pub' : /^development$/i.test(s) ? 'dev' : /^review$/i.test(s) ? 'rev' : 'oth';
+  const L = all.filter(x => (!S.hub || x.cids.includes(S.hub)) && (!S.st || stOf(x.st) === S.st));
+  const [Y, M] = S.ym.split('-').map(Number), first = new Date(Y, M - 1, 1), days = new Date(Y, M, 0).getDate(), lead = (first.getDay() + 6) % 7;
+  const monthName = first.toLocaleString('en-US', { month: 'long', year: 'numeric' }), inMonth = L.filter(x => x.due.slice(0, 7) === S.ym);
+  const B = 'padding:5px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;font-size:12.5px;';
+  const chip = x => { const i = _hd2Ents.push({ k: 'asset', id: x.id, name: x.name }) - 1;
+    return `<a href="#" class="hc-chip" style="--c:${HD2_ST_C(x.st)};" onclick="event.preventDefault();hd2EntOpen(${i})" title="${esc(x.name + (x.st ? ' · ' + x.st : '') + (x.type ? ' · ' + x.type : '') + (x.hub ? ' · ' + x.hub : ''))}">${esc(x.name)}</a>`; };
+  let cells = '';
+  for (let i = 0; i < lead; i++) cells += '<div class="hc-day hc-off"></div>';
+  for (let d = 1; d <= days; d++) { const ds = S.ym + '-' + String(d).padStart(2, '0'), on = inMonth.filter(x => x.due === ds).sort((a, b) => stOf(a.st).localeCompare(stOf(b.st)) || a.name.localeCompare(b.name));
+    cells += `<div class="hc-day${ds === today ? ' hc-today' : ''}${on.length ? ' hc-has' : ''}"><div class="hc-dn"><span>${d}</span>${on.length ? `<span class="hc-dc">${on.length}</span>` : ''}</div>${on.map(chip).join('')}</div>`; }
+  for (let i = (7 - (lead + days) % 7) % 7; i > 0; i--) cells += '<div class="hc-day hc-off"></div>';
+  const hubOpts = hdHubs().map(x => [hdNid(x.campaignId), x.name || x.slug]).filter(([c]) => all.some(y => y.cids.includes(c)));
+  const cnt = k => all.filter(x => (!S.hub || x.cids.includes(S.hub)) && stOf(x.st) === k && x.due.slice(0, 7) === S.ym).length;
+  el.innerHTML = '<style>#hd2Cal .hc-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}#hd2Cal .hc-dh{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);text-align:center;padding:2px 0}'
+    + '#hd2Cal .hc-day{min-height:110px;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:4px;display:flex;flex-direction:column;gap:2px;min-width:0}#hd2Cal .hc-off{border-color:transparent}'
+    + '#hd2Cal .hc-has{background:var(--surface2)}#hd2Cal .hc-today{border-color:var(--accent)}#hd2Cal .hc-dn{font-size:11px;color:var(--text3);display:flex;justify-content:space-between}#hd2Cal .hc-dc{font-weight:700;color:var(--text)}'
+    + '#hd2Cal .hc-chip{display:block;font-size:11.5px;line-height:1.4;padding:1px 5px;border-left:3px solid var(--c);border-radius:3px;background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+    + '#hd2Cal .hc-chip:hover{color:var(--accent)}@media (max-width:720px){#hd2Cal .hc-day{min-height:54px}#hd2Cal .hc-chip{font-size:0;height:6px;padding:0;border:none;background:var(--c)}}</style>'
+    + `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <button style="${B}" onclick="hd2CalMove(-1)" title="Previous month">‹</button><div style="font-size:16px;font-weight:700;min-width:160px;text-align:center;">${esc(monthName)}</div><button style="${B}" onclick="hd2CalMove(1)" title="Next month">›</button>
+      <button style="${B}" onclick="_hd2CalS.ym=hd2Today().slice(0,7);hd2CalDraw()">Today</button><span style="flex:1"></span>
+      <select style="${B}" onchange="_hd2CalS.hub=this.value;hd2CalDraw()" title="Hub"><option value="">All hubs</option>${hubOpts.map(([c, n]) => `<option value="${esc(c)}"${S.hub === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <select style="${B}" onchange="_hd2CalS.st=this.value;hd2CalDraw()" title="Status"><option value="">All statuses</option>${[['dev', 'Development'], ['rev', 'Review'], ['pub', 'Publish + Published'], ['oth', 'Other']].map(([k, n]) => `<option value="${k}"${S.st === k ? ' selected' : ''}>${n}</option>`).join('')}</select>
+      <button style="${B}" onclick="hd2Load(true)" title="Reload every hub's assets">↻</button></div>`
+    + `<div class="hc-cal">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<div class="hc-dh">${d}</div>`).join('')}${cells}</div>`
+    + `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text3);margin-top:10px;"><span>${inMonth.length} dated asset${inMonth.length === 1 ? '' : 's'} this month · click one to open it</span>`
+    + [['dev', 'Development'], ['rev', 'Review'], ['pub', 'Publish / Published'], ['oth', 'Other']].map(([k, s]) => `<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${HD2_ST_C(k === 'pub' ? 'Published' : k === 'oth' ? '' : s)};margin-right:5px;"></span>${s} ${cnt(k)}</span>`).join('') + '</div>';
+}
+function hd2CalMove(n) { const [Y, M] = _hd2CalS.ym.split('-').map(Number), d = new Date(Y, M - 1 + n, 1); _hd2CalS.ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); hd2CalDraw(); }
 function hd2Render() {
   const el = document.getElementById('hd2Body'); if (!el || !_hd2Rows) return;
   // Every row is one flex line: ▶ marker · label (flex) · Type (150px) · Due (52px) — fixed columns, so spacing never depends on
@@ -12444,7 +12502,7 @@ function hd2Render() {
             hdAssetsOf(P), '', [P.key], P.key !== '__none' ? { k: 'product', id: P.key, name: P.name, ...hb, src: P } : null)).join(''), hdAssetsOf(T), '', pT(T), okT(T.key) ? { k: 'topic', id: T.key, name: T.name, ...hb, src: T } : null)).join(''), aC(C), '', pC(C), okC(C.name) ? { k: 'cluster', name: C.name, ...hb, src: C } : null)).join(''), tree.flatMap(aC), '', tree.flatMap(pC), { k: 'hub', id: h.campaignId, name: h.name, ...hb, src: tree });
   }).join('') + '</div>';
   el.classList.toggle('hd2noic', !_hd2Cols);
-  hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw(); hd2FltBtn();
+  hd2ApplySort(); hd2FilterRun(); hd2Cur(); hd2SelPaint(); hd2IniDraw(); hd2FltBtn(); hd2ViewSet(_hd2View);
   if (!el._hd2Tog) { el._hd2Tog = true; el.addEventListener('toggle', () => hd2Cur(), true); }
 }
 // ── 🎯 Initiatives flyout (operator 2026-11-19: "a flyout on the hub dash 2 main page that has initiatives in it and when I click on them, it opens
