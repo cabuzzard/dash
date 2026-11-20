@@ -474,6 +474,9 @@ async function addSubPageNav() {
     for (const x of list) { if (!x || !/^[a-z0-9-]+$/.test(x.slug || "")) continue;
       const a = document.createElement("a"); a.href = "./" + x.slug + "/"; a.textContent = x.label || x.title || x.slug; $("nav").appendChild(a); }
   } catch (e) { /* no extra links */ }
+  finally {   // Members area (2026-11-20): always the last link, after any sub pages (even when pages.json is missing)
+    const m = document.createElement("a"); m.href = "/members/"; m.textContent = "Members"; $("nav").appendChild(m);
+  }
 }
 
 function renderChrome() {
