@@ -11572,7 +11572,7 @@ async function contentPlanCronAction(env, body) {   // operator only: status · 
   } else if (op !== "status") return { error: "op must be status | on | off | start | preview" };
   return { ok: true, on: (await env.TRADES.get(CPC_ON)) === "1", start: (await env.TRADES.get(CPC_START)) || "", scanned: S.scanned || "", queue: S.queue || [], held: S.held || {}, stopped: S.stopped || null, log: (S.log || []).slice(-50).reverse() };
 }
-const EXTERNAL_ACTIONS = new Set(["flyout", "saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "getInitiatives"]);
+const EXTERNAL_ACTIONS = new Set(["flyout", "saveOfferImage", "createRunAssets", "getRun", "updateContentPlan", "getContentPlanGoals", "getContentPlanRows", "getInitiatives", "importContacts", "getContactLists"]);
 async function verifyToken(token, secret) {
   try {
     const [payloadB64, sigB64] = (token || "").split(".");
@@ -21220,6 +21220,60 @@ export default {
     // (from 2026-11-19 on, KV initiative:names .added); "all" adds the old ones (new:false). Per initiative: created date, its notes, every live
     // asset whose Initiative field is that name (id, name, type, status, deadline, run, title, product, hub, flyout address) and the products the
     // product map (hd:productmap:v1) gives that initiative — the Hub Dash 2 Initiative column falls back to those for assets with no own value.
+    // ── Contact lists (operator 2026-11-19) ── One contact store: GoHighLevel holds every person once (deduped by email / phone); a "list" is a
+    // tag on the contact — list:<slug>, plus hub:<slug> and consent:<none|email|sms|email-sms>. KV contactlists:v1 is the registry (one row per
+    // list: name, source, hub, purpose, event, counts, import history); KV contactlist:ids:<slug> keeps the list's GHL contact ids for the count.
+    // importContacts {list, listName?, hub?, source, purpose?, event?{name,date,location}, consent, contacts:[…≤100], dryRun?} — adds or updates
+    // each contact (tags are ADDED, never replaced; a note carries company / role / interest / note), never creates opportunities, never adds
+    // anyone to a newsletter or SMS. dryRun validates and returns the cleaned rows without writing. Spec: docs/contact-lists.md.
+    if (body.action === "importContacts" || body.action === "getContactLists") {
+      const reg = (await env.TRADES.get("contactlists:v1", "json")) || { lists: {} };
+      if (body.action === "getContactLists") return json({ ok: true, lists: Object.values(reg.lists || {}).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))) });
+      const slugify = s => String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+      const list = slugify(body.list), CONSENTS = ["none", "email", "sms", "email-sms"], consent0 = String(body.consent || "none").toLowerCase();
+      const hub = String(body.hub || "").trim(), H = hub ? HUB_SITES.find(x => x.slug === hub) : null, contacts = Array.isArray(body.contacts) ? body.contacts : [];
+      const errs = [];
+      if (!list) errs.push("list is required (a short slug, e.g. event-austin-expo-2026-11)");
+      if (!String(body.source || "").trim()) errs.push("source is required (where these contacts came from)");
+      if (!CONSENTS.includes(consent0)) errs.push("consent must be one of " + CONSENTS.join(", "));
+      if (hub && !H) errs.push("unknown hub '" + hub + "' — use a hub slug: " + HUB_SITES.map(x => x.slug).join(", "));
+      if (!contacts.length) errs.push("contacts is empty");
+      if (contacts.length > 100) errs.push("at most 100 contacts per call — send the rest in another call with the same list");
+      if (errs.length) return json({ error: errs.join("; "), errors: errs }, 400);
+      const clean = s => String(s == null ? "" : s).trim(), emailOk = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+      const rows = contacts.map((c, i) => { c = c || {}; let first = clean(c.firstName), last = clean(c.lastName);
+        if (!first && !last && clean(c.name)) { const [a, ...r] = clean(c.name).split(/\s+/); first = a; last = r.join(" "); }
+        const email = clean(c.email).toLowerCase(), phone = clean(c.phone), cons = clean(c.consent).toLowerCase() || consent0;
+        const tags = [...new Set([...(Array.isArray(c.tags) ? c.tags : []).map(t => slugify(t)).filter(Boolean)])].slice(0, 10);
+        const why = !email && !phone ? "no email or phone" : email && !emailOk(email) ? "email looks wrong: " + email : !CONSENTS.includes(cons) ? "bad consent: " + cons : "";
+        return { i, firstName: first, lastName: last, email, phone, companyName: clean(c.company), role: clean(c.role), website: clean(c.website), city: clean(c.city), state: clean(c.state),
+          interest: clean(c.interest), note: clean(c.note), consent: cons, tags, skip: why }; });
+      const ok = rows.filter(r => !r.skip), skipped = rows.filter(r => r.skip).map(r => ({ i: r.i, name: (r.firstName + " " + r.lastName).trim(), reason: r.skip }));
+      if (body.dryRun) return json({ ok: true, dryRun: true, list, valid: ok.length, skipped, rows: ok });
+      if (!String(env.GHL_TOKEN || "").trim()) return json({ error: "GHL_TOKEN is not set on the worker" }, 500);
+      const name = clean(body.listName) || clean(body.list), ev = body.event && typeof body.event === "object" ? { name: clean(body.event.name), date: clean(body.event.date), location: clean(body.event.location) } : null;
+      const results = []; let created = 0, updated = 0;
+      for (let k = 0; k < ok.length; k += 5) await Promise.all(ok.slice(k, k + 5).map(async r => {
+        try {
+          const up = await ghl(env, "/contacts/upsert", { method: "POST", body: { locationId: GHL_LOCATION_ID, ...(r.email ? { email: r.email } : {}), ...(r.phone ? { phone: r.phone } : {}),
+            ...(r.firstName ? { firstName: r.firstName } : {}), ...(r.lastName ? { lastName: r.lastName } : {}), ...(r.companyName ? { companyName: r.companyName } : {}),
+            ...(r.website ? { website: r.website } : {}), ...(r.city ? { city: r.city } : {}), ...(r.state ? { state: r.state } : {}), source: clean(body.source).slice(0, 100) } });
+          const cid = up.contact && up.contact.id; if (!cid) { results.push({ i: r.i, error: up.error || "upsert failed" }); return; }
+          await ghl(env, `/contacts/${cid}/tags`, { method: "POST", body: { tags: ["list:" + list, ...(hub ? ["hub:" + hub] : []), "consent:" + r.consent, ...r.tags] } });
+          const lines = [`[List: ${name}] ${clean(body.source)}${ev && ev.name ? " · " + ev.name + (ev.date ? " " + ev.date : "") : ""}`, r.role && "Role: " + r.role, r.interest && "Interest: " + r.interest, r.note].filter(Boolean);
+          if (lines.length > 1) await ghl(env, `/contacts/${cid}/notes`, { method: "POST", body: { body: lines.join("\n").slice(0, 2000) } }).catch(() => {});
+          if (up.new) created++; else updated++; results.push({ i: r.i, contactId: cid, new: !!up.new });
+        } catch (e) { results.push({ i: r.i, error: e.message }); }
+      }));
+      const idKey = "contactlist:ids:" + list, ids = new Set((await env.TRADES.get(idKey, "json")) || []); results.forEach(x => x.contactId && ids.add(x.contactId));
+      await env.TRADES.put(idKey, JSON.stringify([...ids]));
+      const now = new Date().toISOString(), cur = (reg.lists || {})[list] || { slug: list, tag: "list:" + list, createdAt: now, imports: [] };
+      reg.lists = reg.lists || {}; reg.lists[list] = { ...cur, name, source: clean(body.source), hub: hub || cur.hub || "", purpose: clean(body.purpose) || cur.purpose || "", event: ev || cur.event || null,
+        consent: consent0, count: ids.size, updatedAt: now, by: externalCaller ? "external" : "dash",
+        imports: [...(cur.imports || []), { at: now, sent: contacts.length, created, updated, skipped: skipped.length, errors: results.filter(x => x.error).length }].slice(-50) };
+      await env.TRADES.put("contactlists:v1", JSON.stringify(reg));
+      return json({ ok: true, list, tag: "list:" + list, created, updated, skipped, errors: results.filter(x => x.error), listCount: ids.size });
+    }
     if (body.action === "getInitiatives") {
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
       try {
