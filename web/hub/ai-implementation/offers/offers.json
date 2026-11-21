@@ -1,5 +1,15 @@
 [
   {
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
+    "slug": "ai-operations-partner",
+    "name": "AI Automation Services for Small Businesses",
+    "promise": "For small business owners whose manual workflows are eating owner time — a done-for-you build that implements, integrates, and hands over working AI automation your team can operate from day one.",
+    "url": "../blog/ai-operations-partner/",
+    "contentHash": "0bee06b82be0acb150dd3b74e90bb85e36e59d200114e67de323b4c9aa698e85",
+    "contentEditedAt": "2026-11-21T05:51:00.000Z",
+    "refreshedAt": "2026-11-21T05:51:46.170Z"
+  },
+  {
     "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
     "slug": "done-for-you-lead-gen",
     "name": "Your AI Workflow Audit & Roadmap",
@@ -18,15 +28,5 @@
     "contentHash": "47f41bf4ded7c2934e6ad3f6f0cae5c362956e680a4e94dd62cc3a5800e8d81b",
     "contentEditedAt": "2026-11-21T04:52:00.000Z",
     "refreshedAt": "2026-11-21T04:52:08.240Z"
-  },
-  {
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
-    "slug": "ai-operations-partner",
-    "name": "AI Automation Services for Small Businesses",
-    "promise": "For small business owners whose manual workflows are eating owner time — a done-for-you build that implements, integrates, and hands over working AI automation your team can operate from day one.",
-    "url": "../blog/ai-operations-partner/",
-    "contentHash": "b54eba409cc69b83d2288576afb70b0aafb686f2ccd716ea7f77f81fb1a0baaa",
-    "contentEditedAt": "2026-11-21T04:51:00.000Z",
-    "refreshedAt": "2026-11-21T04:51:57.486Z"
   }
 ]
