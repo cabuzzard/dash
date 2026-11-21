@@ -8231,12 +8231,12 @@ function thumbStyleCHtml(rule, title, topic) {
   const disp = F.display || 'Bricolage Grotesque', mono = F.mono || 'JetBrains Mono', len = String(title || '').length;
   const size = len > 80 ? 76 : len > 60 ? 86 : len > 42 ? 98 : 110;
   const fam = n => encodeURIComponent(n).replace(/%20/g, '+');
-  return '<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=' + fam(disp) + ':wght@700&family=' + fam(mono) + ':wght@500&display=block" rel="stylesheet"><style>'
+  return '<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=' + fam(disp) + ':wght@700&family=' + fam(mono) + ':wght@500&display=swap" rel="stylesheet"><style>'
     + 'html,body{margin:0;width:1600px;height:900px;overflow:hidden}body{background:' + (T.surface || '#f2f7f2') + ';position:relative;font-family:"' + disp + '",system-ui,sans-serif}'
     + '.t{position:absolute;left:9%;right:9%;top:18%;text-align:center;font-weight:700;font-size:' + size + 'px;line-height:1.1;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
     + '.i{position:absolute;left:50%;bottom:21%;width:150px;height:150px;margin-left:-75px;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
     + '.l{position:absolute;left:0;right:0;bottom:11%;text-align:center;font:500 38px/1 "' + mono + '",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:' + (T.ink || '#1a2a1a') + ';opacity:.72}'
-    + '</style></head><body><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div><div class="l">' + e(topic.label) + '</div></body></html>';
+    + '</style></head><body><script>document.fonts.ready.then(()=>document.body.classList.add("ready"));setTimeout(()=>document.body.classList.add("ready"),5000)</script><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div><div class="l">' + e(topic.label) + '</div></body></html>';
 }
 async function renderThumbStyleC(env, rule, title, topicText, keyBase) {
   const acct = String(env.CF_ACCOUNT_ID || '').trim(), tok = String(env.CF_API_TOKEN || '').trim();
@@ -8244,7 +8244,7 @@ async function renderThumbStyleC(env, rule, title, topicText, keyBase) {
   if (!env.MEDIA) throw new Error('MEDIA (R2) binding missing');
   const topic = thumbTopic(topicText), html = thumbStyleCHtml(rule, title, topic);
   const go = () => fetch('https://api.cloudflare.com/client/v4/accounts/' + acct + '/browser-rendering/screenshot', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html, viewport: { width: 1600, height: 900, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: 'networkidle0', timeout: 20000 }, screenshotOptions: { type: 'png' } }) });
+    body: JSON.stringify({ html, viewport: { width: 1600, height: 900, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: 'networkidle0', timeout: 20000 }, waitForSelector: { selector: 'body.ready', timeout: 8000 }, screenshotOptions: { type: 'png' } }) });
   let r = await go(); if (r.status === 422 || r.status === 429) { await new Promise(x => setTimeout(x, 2500)); r = await go(); }
   if (!r.ok) throw new Error('Thumbnail render failed (HTTP ' + r.status + '): ' + (await r.text()).slice(0, 200));
   const bytes = new Uint8Array(await r.arrayBuffer());
@@ -43718,7 +43718,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (body.background && SLOT[kind].srcProp) { props[SLOT[kind].srcProp] = { url }; ensureProps[SLOT[kind].srcProp] = { type: "url" }; }
         if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = kind==='blog-thumbnail'?thumbnailPromptProperty(prompt):{ rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
         try { await ensureAssetsDbProperties(hdr, ensureProps); } catch (e) {}
-        await libraryArchive(hdr, assetPage, { [SLOT[kind].prop]: url });   // the old image goes to the asset's Library first
+        if (!body.skipLibrary) await libraryArchive(hdr, assetPage, { [SLOT[kind].prop]: url });   // skipLibrary: replacing a broken render of our own   // the old image goes to the asset's Library first
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: props }),
