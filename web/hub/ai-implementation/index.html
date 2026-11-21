@@ -217,7 +217,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     <a class="brand" href="#top" id="brand"></a>
     <button class="nav-toggle" aria-label="Menu" aria-expanded="false" id="navToggle">☰</button>
     <nav class="nav" id="nav"></nav>
-    <a class="nav-cta" href="#report">The audit</a>
+    <a class="nav-cta" href="#talk">Book the audit</a>
   </div>
 </header>
 
@@ -368,8 +368,9 @@ const HUB = {
     eyebrow: "For small business owners running too many apps and paying for every one of them",
     headline: "Twelve tools. Half of them overlap. None of them talk.",
     sub: "Between the free trial that looked great and the stack you're actually billed for every month, a small business collects software the way a garage collects boxes. This is a map of the tools a small business actually needs — the six categories that matter, what each one is for, where an all-in-one beats buying à la carte, and how to get the whole thing running with no coding and no IT department.",
-    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
-    ctaSecondary: { label: "Talk to us", href: "#talk" },
+    // 2026-11-20 brief: the strategy call (the audit) leads; the newsletter is the lighter second option, never an equal button.
+    ctaPrimary:   { label: "Book your free strategy call", href: "#talk" },
+    ctaSecondary: { label: "Not ready? Get the newsletter", href: "#report" },
   },
 
   projectExperience: {
@@ -830,29 +831,32 @@ async function renderHubOffers() {
 #talkDlg .tk-x{position:absolute;top:10px;right:12px;background:none;border:0;color:inherit;font-size:22px;cursor:pointer;opacity:.6}
 #talkDlg .tk-msg{min-height:1.2em;font-size:.9rem;margin-top:10px}
 #talkDlg .tk-msg.err{color:#d9534f}
+#talkDlg .tk-alt{margin:12px 0 0;font-size:.9rem;opacity:.85}
+#talkDlg .tk-alt a{color:inherit;text-decoration:underline}
 </style>
 <dialog id="talkDlg" aria-labelledby="tkTitle">
   <button class="tk-x" type="button" aria-label="Close" onclick="document.getElementById('talkDlg').close()">×</button>
   <form class="tk" id="tkForm" novalidate>
-    <h3 id="tkTitle">Talk to us</h3>
-    <p class="tk-sub" id="tkSub">We'll call you in a minute or two, or you can pick a time that suits you.</p>
+    <h3 id="tkTitle">Book your free strategy call</h3>
+    <p class="tk-sub" id="tkSub">Pick a time that suits you. We'll confirm by email.</p>
     <div class="tk-tabs" role="tablist">
-      <button type="button" role="tab" id="tkTabCall" aria-selected="true">Call me now</button>
-      <button type="button" role="tab" id="tkTabBook" aria-selected="false">Book a time</button>
+      <button type="button" role="tab" id="tkTabBook" aria-selected="true">Schedule a time</button>
+      <button type="button" role="tab" id="tkTabCall" aria-selected="false">Call me now</button>
     </div>
     <label>Your name<input name="name" autocomplete="name" required></label>
     <label>Phone<input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
-    <label id="tkEmailRow" hidden>Email<input name="email" type="email" autocomplete="email"></label>
+    <label id="tkEmailRow">Email<input name="email" type="email" autocomplete="email"></label>
     <div id="tkTs"></div>
-    <div class="tk-row"><button class="btn" type="submit" id="tkGo">Call me now</button></div>
+    <div class="tk-row"><button class="btn" type="submit" id="tkGo">Pick a time</button></div>
     <div class="tk-msg" id="tkMsg" role="status"></div>
+    <p class="tk-alt">Or reach us directly: <a href="sms:+19259400014">Text (925) 940-0014</a> · <a href="mailto:info@webguyleadgeneration.com?subject=Strategy%20call">Email us</a></p>
   </form>
 </dialog>
 <script>
 (function () {
   const dlg = document.getElementById("talkDlg"), form = document.getElementById("tkForm"), msg = document.getElementById("tkMsg"), go = document.getElementById("tkGo");
   const slug = String((typeof HUB !== "undefined" && HUB.campaignTag) || "").replace(/^hub-/, "");
-  let op = "callback", tok = "", wid = null;
+  let op = "book", tok = "", wid = null;   // 2026-11-20: scheduling is the default; call-me-now is the second tab
   function setOp(o) {
     op = o; document.getElementById("tkTabCall").setAttribute("aria-selected", String(o === "callback")); document.getElementById("tkTabBook").setAttribute("aria-selected", String(o === "book"));
     document.getElementById("tkEmailRow").hidden = o !== "book"; go.textContent = o === "book" ? "Pick a time" : "Call me now";
