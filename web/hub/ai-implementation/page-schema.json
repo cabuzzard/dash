@@ -1,0 +1,774 @@
+{
+  "page": "aisystemimplementation.com/ (web/hub/ai-implementation/index.html)",
+  "updated": "2026-11-21",
+  "rules": [
+    "The page markup is the operator's and is never written; assets fill text, attributes and images in the slots below.",
+    "slot = design-fields.json id (Site designer 🧩 Fields); source.field = the asset's writing-contract field (Current Methods).",
+    "Collections are dynamic: their items are filled from Published assets of the given type; the item count is fixed by the markup."
+  ],
+  "assets": {
+    "CTA": {
+      "row": "Current Methods \"CTA\"",
+      "kinds": [
+        "Hero",
+        "Inline Slim",
+        "Flyout",
+        "Email"
+      ],
+      "parent": "Offer",
+      "fields": [
+        "Eyebrow ≤30",
+        "Platform Title ≤60",
+        "Body ≤160",
+        "CTA Label ≤30",
+        "image"
+      ]
+    },
+    "Offer": {
+      "row": "Current Methods \"Sales - Offer Blog Post\" (writes Asset Type Offer)",
+      "fields": [
+        "Card Kicker ≤18",
+        "Card Title ≤32",
+        "Body ≤160",
+        "published page URL"
+      ]
+    },
+    "Hub": {
+      "row": "Current Methods \"Hub\" (mapped blank until a clean test write)",
+      "fields": [
+        "Hub Page Copy: 16 lines \"Slot: text\""
+      ]
+    }
+  },
+  "sections": [
+    {
+      "section": "Header",
+      "selector": "header",
+      "serves": [
+        "Hub",
+        "CTA",
+        "site settings"
+      ],
+      "objects": [
+        {
+          "object": "Logo text",
+          "slot": "logo_text",
+          "selector": ".logo",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "site settings"
+          }
+        },
+        {
+          "object": "Nav: Services",
+          "slot": "nav_services",
+          "selector": "header nav a[href=\"#services\"]",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Services Nav"
+          }
+        },
+        {
+          "object": "Nav: How It Works",
+          "slot": "nav_process",
+          "selector": "header nav a[href=\"#process\"]",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Process Nav"
+          }
+        },
+        {
+          "object": "Nav \"Book a Call\" link",
+          "slot": null,
+          "selector": "header nav a:nth-child(3)",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy (no line yet)"
+          },
+          "value": "Book a Call",
+          "note": "no designer field yet"
+        },
+        {
+          "object": "Nav CTA button",
+          "slot": "nav_cta",
+          "selector": "header nav a.nav-cta",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "CTA Label"
+          }
+        }
+      ]
+    },
+    {
+      "section": "Hero",
+      "selector": ".hero",
+      "serves": [
+        "CTA (Hero kind)",
+        "Hub"
+      ],
+      "objects": [
+        {
+          "object": "Hero eyebrow",
+          "slot": "hero_eyebrow",
+          "selector": ".hero .eyebrow",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "Eyebrow"
+          }
+        },
+        {
+          "object": "Hero headline",
+          "slot": "hero_headline",
+          "selector": ".hero h1",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "Platform Title"
+          }
+        },
+        {
+          "object": "Hero subheadline",
+          "slot": "hero_sub",
+          "selector": ".hero p.lead",
+          "type": "textarea",
+          "source": {
+            "asset": "CTA",
+            "field": "Body"
+          }
+        },
+        {
+          "object": "Hero primary CTA",
+          "slot": "hero_cta_primary",
+          "selector": ".hero-actions a:first-child",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "CTA Label"
+          }
+        },
+        {
+          "object": "Hero secondary CTA",
+          "slot": "hero_cta_secondary",
+          "selector": ".hero-actions a.btn-ghost",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Services Jump Button"
+          }
+        },
+        {
+          "object": "Hero image URL or base64",
+          "slot": "hero_image",
+          "selector": ".hero-visual img",
+          "attr": "src",
+          "type": "image",
+          "source": {
+            "asset": "CTA",
+            "field": "image (asset image, not the writer)"
+          }
+        },
+        {
+          "object": "Hero image alt text",
+          "slot": null,
+          "selector": ".hero-visual img",
+          "attr": "alt",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "image alt (not in contract yet)"
+          },
+          "value": "Happy business owner reviewing results on her phone",
+          "note": "no designer field yet"
+        }
+      ]
+    },
+    {
+      "section": "Services",
+      "selector": ".services",
+      "serves": [
+        "Hub",
+        "Offer ×3"
+      ],
+      "objects": [
+        {
+          "object": "Services eyebrow",
+          "slot": "services_eyebrow",
+          "selector": ".services .section-head .eyebrow",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Services Eyebrow"
+          }
+        },
+        {
+          "object": "Services title",
+          "slot": "services_title",
+          "selector": ".services .section-head h2",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Services Heading"
+          }
+        },
+        {
+          "object": "Services subtitle",
+          "slot": "services_subtitle",
+          "selector": ".services .section-head p",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Services Intro"
+          }
+        }
+      ],
+      "collection": {
+        "name": "Service cards",
+        "selector": ".services .grid-3 > .card",
+        "count": 3,
+        "dynamic": true,
+        "itemAsset": "Offer",
+        "query": "Published Offer assets of this hub (ladder order: Audit, Speed-to-Lead, Full Stack — not decided yet)",
+        "items": [
+          {
+            "index": 1,
+            "serves": "Offer — one Published Offer (which one: unassigned)",
+            "objects": [
+              {
+                "object": "Service 1 kicker",
+                "slot": "service1_kicker",
+                "selector": ".services .card:nth-child(1) .kicker",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Kicker"
+                }
+              },
+              {
+                "object": "Service 1 title",
+                "slot": "service1_title",
+                "selector": ".services .card:nth-child(1) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Title"
+                }
+              },
+              {
+                "object": "Service 1 description",
+                "slot": "service1_body",
+                "selector": ".services .card:nth-child(1) p",
+                "type": "textarea",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Body"
+                }
+              },
+              {
+                "object": "Service 1 link",
+                "slot": "service1_link",
+                "selector": ".services .card:nth-child(1) a.more",
+                "attr": "href",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "published page URL (not the writer)"
+                }
+              },
+              {
+                "object": "Card link label",
+                "slot": null,
+                "selector": ".services .card:nth-child(1) a.more",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "Learn more →",
+                "note": "same on every card"
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "serves": "Offer — one Published Offer (which one: unassigned)",
+            "objects": [
+              {
+                "object": "Service 2 kicker",
+                "slot": "service2_kicker",
+                "selector": ".services .card:nth-child(2) .kicker",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Kicker"
+                }
+              },
+              {
+                "object": "Service 2 title",
+                "slot": "service2_title",
+                "selector": ".services .card:nth-child(2) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Title"
+                }
+              },
+              {
+                "object": "Service 2 description",
+                "slot": "service2_body",
+                "selector": ".services .card:nth-child(2) p",
+                "type": "textarea",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Body"
+                }
+              },
+              {
+                "object": "Service 2 link",
+                "slot": "service2_link",
+                "selector": ".services .card:nth-child(2) a.more",
+                "attr": "href",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "published page URL (not the writer)"
+                }
+              },
+              {
+                "object": "Card link label",
+                "slot": null,
+                "selector": ".services .card:nth-child(2) a.more",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "Learn more →",
+                "note": "same on every card"
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "serves": "Offer — one Published Offer (which one: unassigned)",
+            "objects": [
+              {
+                "object": "Service 3 kicker",
+                "slot": "service3_kicker",
+                "selector": ".services .card:nth-child(3) .kicker",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Kicker"
+                }
+              },
+              {
+                "object": "Service 3 title",
+                "slot": "service3_title",
+                "selector": ".services .card:nth-child(3) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Card Title"
+                }
+              },
+              {
+                "object": "Service 3 description",
+                "slot": "service3_body",
+                "selector": ".services .card:nth-child(3) p",
+                "type": "textarea",
+                "source": {
+                  "asset": "Offer",
+                  "field": "Body"
+                }
+              },
+              {
+                "object": "Service 3 link",
+                "slot": "service3_link",
+                "selector": ".services .card:nth-child(3) a.more",
+                "attr": "href",
+                "type": "text",
+                "source": {
+                  "asset": "Offer",
+                  "field": "published page URL (not the writer)"
+                }
+              },
+              {
+                "object": "Card link label",
+                "slot": null,
+                "selector": ".services .card:nth-child(3) a.more",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "Learn more →",
+                "note": "same on every card"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "Process",
+      "selector": ".process",
+      "serves": [
+        "Hub"
+      ],
+      "objects": [
+        {
+          "object": "Process eyebrow",
+          "slot": "process_eyebrow",
+          "selector": ".process .section-head .eyebrow",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Process Eyebrow"
+          }
+        },
+        {
+          "object": "Process title",
+          "slot": "process_title",
+          "selector": ".process .section-head h2",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Process Heading"
+          }
+        },
+        {
+          "object": "Process subtitle",
+          "slot": "process_subtitle",
+          "selector": ".process .section-head p",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Process Intro"
+          }
+        }
+      ],
+      "collection": {
+        "name": "Process steps",
+        "selector": ".steps > .step",
+        "count": 3,
+        "dynamic": false,
+        "itemAsset": "Hub",
+        "items": [
+          {
+            "index": 1,
+            "serves": "Hub (Hub Page Copy lines)",
+            "objects": [
+              {
+                "object": "Step number",
+                "slot": null,
+                "selector": ".steps .step:nth-child(1) .step-num",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "1"
+              },
+              {
+                "object": "Step 1 title",
+                "slot": "step1_title",
+                "selector": ".steps .step:nth-child(1) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 1 Title"
+                }
+              },
+              {
+                "object": "Step 1 body",
+                "slot": "step1_body",
+                "selector": ".steps .step:nth-child(1) p",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 1 Body"
+                }
+              }
+            ]
+          },
+          {
+            "index": 2,
+            "serves": "Hub (Hub Page Copy lines)",
+            "objects": [
+              {
+                "object": "Step number",
+                "slot": null,
+                "selector": ".steps .step:nth-child(2) .step-num",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "2"
+              },
+              {
+                "object": "Step 2 title",
+                "slot": "step2_title",
+                "selector": ".steps .step:nth-child(2) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 2 Title"
+                }
+              },
+              {
+                "object": "Step 2 body",
+                "slot": "step2_body",
+                "selector": ".steps .step:nth-child(2) p",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 2 Body"
+                }
+              }
+            ]
+          },
+          {
+            "index": 3,
+            "serves": "Hub (Hub Page Copy lines)",
+            "objects": [
+              {
+                "object": "Step number",
+                "slot": null,
+                "selector": ".steps .step:nth-child(3) .step-num",
+                "type": "text",
+                "source": {
+                  "asset": null,
+                  "from": "markup (fixed)"
+                },
+                "value": "3"
+              },
+              {
+                "object": "Step 3 title",
+                "slot": "step3_title",
+                "selector": ".steps .step:nth-child(3) h3",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 3 Title"
+                }
+              },
+              {
+                "object": "Step 3 body",
+                "slot": "step3_body",
+                "selector": ".steps .step:nth-child(3) p",
+                "type": "text",
+                "source": {
+                  "asset": "Hub",
+                  "field": "Hub Page Copy › Step 3 Body"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "section": "Contact band",
+      "selector": ".cta#talk",
+      "serves": [
+        "CTA (kind unset)",
+        "site settings"
+      ],
+      "objects": [
+        {
+          "object": "Bottom CTA image (business owners with phones)",
+          "slot": "cta_image",
+          "selector": ".cta-image img",
+          "attr": "src",
+          "type": "image",
+          "source": {
+            "asset": "CTA",
+            "field": "image (asset image, not the writer)"
+          }
+        },
+        {
+          "object": "Contact image alt text",
+          "slot": null,
+          "selector": ".cta-image img",
+          "attr": "alt",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "image alt (not in contract yet)"
+          },
+          "value": "Business owners reviewing results on their phones",
+          "note": "no designer field yet"
+        },
+        {
+          "object": "Bottom CTA headline",
+          "slot": "cta_headline",
+          "selector": ".cta h2",
+          "type": "text",
+          "source": {
+            "asset": "CTA",
+            "field": "Platform Title"
+          }
+        },
+        {
+          "object": "Bottom CTA body",
+          "slot": "cta_body",
+          "selector": ".cta .wrap > p:first-of-type",
+          "type": "textarea",
+          "source": {
+            "asset": "CTA",
+            "field": "Body"
+          }
+        },
+        {
+          "object": "Bottom CTA button text",
+          "slot": "cta_button",
+          "selector": ".cta a.btn",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "site settings"
+          }
+        },
+        {
+          "object": "SMS link",
+          "slot": "cta_sms",
+          "selector": ".cta a.btn",
+          "attr": "href",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "site settings"
+          }
+        },
+        {
+          "object": "Email link label",
+          "slot": null,
+          "selector": ".cta a[href^=\"mailto:\"]",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "markup (fixed)"
+          },
+          "value": "Or email us"
+        },
+        {
+          "object": "Email address",
+          "slot": "cta_email",
+          "selector": ".cta a[href^=\"mailto:\"]",
+          "attr": "href",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "site settings"
+          }
+        }
+      ]
+    },
+    {
+      "section": "Footer",
+      "selector": "footer",
+      "serves": [
+        "site settings",
+        "Hub"
+      ],
+      "objects": [
+        {
+          "object": "Copyright line",
+          "slot": "footer_copyright",
+          "selector": "footer .footer-inner > div:first-child",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "site settings"
+          }
+        },
+        {
+          "object": "Footer \"Services\" link",
+          "slot": null,
+          "selector": "footer a[href=\"#services\"]",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "markup (fixed)"
+          },
+          "value": "Services"
+        },
+        {
+          "object": "Footer blog label",
+          "slot": "footer_blog_label",
+          "selector": "footer a[href=\"/blog/\"]",
+          "type": "text",
+          "source": {
+            "asset": "Hub",
+            "field": "Hub Page Copy › Blog Nav"
+          }
+        },
+        {
+          "object": "Footer \"Book a Call\" link",
+          "slot": null,
+          "selector": "footer a[href=\"#talk\"]",
+          "type": "text",
+          "source": {
+            "asset": null,
+            "from": "markup (fixed)"
+          },
+          "value": "Book a Call"
+        }
+      ]
+    }
+  ],
+  "design": {
+    "serves": "no asset — Site designer + color combo switcher",
+    "variables": [
+      "--green (color_green)",
+      "--green-bright (color_green_bright)",
+      "--green-dark (color_green_dark)",
+      "--green-darker (color_green_darker)",
+      "--green-soft (color_green_soft)",
+      "--green-mid (color_green_mid)",
+      "--ink (color_ink)",
+      "--muted (color_muted)",
+      "--line (color_line)",
+      "--bg (color_bg)",
+      "--font (font_family)",
+      "--text-base (base_font_size)",
+      "--radius-sm (radius_sm)",
+      "--radius-md (radius_md)",
+      "--radius-lg (radius_lg)",
+      "--white (var_white)",
+      "--space-xs (var_space_xs)",
+      "--space-sm (var_space_sm)",
+      "--space-md (var_space_md)",
+      "--space-lg (var_space_lg)",
+      "--space-xl (var_space_xl)",
+      "--space-2xl (var_space_2xl)",
+      "--space-3xl (var_space_3xl)",
+      "--space-4xl (var_space_4xl)",
+      "--shadow-sm (var_shadow_sm)",
+      "--shadow-md (var_shadow_md)",
+      "--shadow-hero (var_shadow_hero)",
+      "--shadow-btn (var_shadow_btn)",
+      "--leading (var_leading)"
+    ]
+  },
+  "offPage": {
+    "note": "Linked, not on this page",
+    "links": [
+      {
+        "href": "/blog/",
+        "what": "Field Notes — the hub's Published posts (News SEO · Blog, Topical SEO Post, Offer Blog Post)"
+      },
+      {
+        "href": "card links",
+        "what": "each Offer's published page"
+      }
+    ]
+  }
+}
