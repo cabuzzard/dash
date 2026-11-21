@@ -8812,6 +8812,27 @@ async function hubAssetOf(env, campaignId) {   // the hub's Hub asset (Asset Typ
   const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: ivDash(campaignId) } }, { property: "Asset Type", select: { equals: "Hub" } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("hubAssetOf:", e.message); return []; });
   return rows.find(r => !r.archived && !r.in_trash) || null;
 }
+const HUB_TOKEN_KEYS = ["bg", "surface", "ink", "ink-head", "ink-soft", "line", "sea", "deep", "deep-ink", "accent"];
+function hubDesignClean(tokens, fonts) {   // only hex colors for the 10 hub tokens and plain font names get through
+  const out = {};
+  if (tokens && typeof tokens === "object") { const t = {}; for (const k of HUB_TOKEN_KEYS) if (/^#[0-9a-f]{6}$/i.test(String(tokens[k] || ""))) t[k] = String(tokens[k]).toLowerCase(); if (Object.keys(t).length === HUB_TOKEN_KEYS.length) out.tokens = t; }
+  if (fonts && typeof fonts === "object") { const ok = x => typeof x === "string" && /^[A-Za-z0-9 ]{2,40}$/.test(x); if (ok(fonts.display) && ok(fonts.body)) out.fonts = { display: fonts.display, body: fonts.body, ...(ok(fonts.mono) ? { mono: fonts.mono } : {}) }; }
+  return out;
+}
+async function hubApplyAssetDesign(env, hub, d) {   // the Hub asset's colors + fonts → publishHubDesign (Research + hubs.design.json + the page), only when they differ
+  if (!d || (!d.tokens && !d.fonts)) return { skipped: true };
+  const GT = (env.GITHUB_TOKEN || "").trim();
+  const r = await fetch("https://api.github.com/repos/cabuzzard/dash/contents/web/hub/hubs.design.json?ref=main", { headers: { Authorization: "Bearer " + GT, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } });
+  if (!r.ok) throw new Error("could not read hubs.design.json (" + r.status + ")");
+  const cur = (JSON.parse(await r.text()).hubs || {})[hub.slug] || {}, ct = cur.tokens || {}, cf = cur.fonts || {};
+  const tokDiff = d.tokens && HUB_TOKEN_KEYS.some(k => String(ct[k] || "").toLowerCase() !== d.tokens[k]);
+  const fontDiff = d.fonts && (d.fonts.display !== cf.display || d.fonts.body !== cf.body || (d.fonts.mono && d.fonts.mono !== cf.mono));
+  if (!tokDiff && !fontDiff) return { skipped: true };
+  const res = await selfAction(env, "publishHubDesign", { slug: hub.slug, campaignId: hub.campaignId, palette: d.tokens || ct,
+    ...(fontDiff ? { fonts: { display: d.fonts.display, body: d.fonts.body, mono: d.fonts.mono || cf.mono }, fontsNote: "Hub asset (🧱 Site designer)." } : {}), rationale: "Hub asset (🧱 Site designer)." });
+  if (!res || res.error) throw new Error((res && res.error) || "publishHubDesign failed");
+  return { applied: true };
+}
 function hubCssCheck(page, blocks) {
   if (blocks.some(x => /<\/?style|<script/i.test(x))) return "CSS may not contain <style> or <script> tags";
   if (page === "home" && !/:root\{\r?\n[\s\S]*?\r?\n\}/.test(blocks[0] || "")) return "the first block must keep the :root design-token block (build-hubs.mjs and 🎨 Design rewrite it)";
@@ -8828,6 +8849,9 @@ async function hubWritePageCss(env, slug, page, blocks) {   // replace the page'
   const gj = await gr.json(), html = fromB64(gj.content || ""), eol = html.includes("\r\n") ? "\r\n" : "\n";
   const found = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
   if (found.length !== blocks.length) throw new Error("the page has " + found.length + " <style> blocks, the saved CSS has " + blocks.length + " — reopen the designer");
+  // the :root block (colors + fonts) is owned by the design pipeline (publishHubDesign / build-hubs): always keep the live one
+  const liveRoot = (found[0][1].match(/:root\{\r?\n[\s\S]*?\r?\n\}/) || [])[0];
+  if (liveRoot) blocks = blocks.map((x, n) => n === 0 ? x.replace(/:root\{\r?\n[\s\S]*?\r?\n\}/, () => liveRoot) : x);
   const h = await sha256Hex(JSON.stringify(blocks));
   let i = 0; const out = html.replace(/<style>([\s\S]*?)<\/style>/g, () => "<style>" + eol + blocks[i++].replace(/\r?\n/g, eol).trim() + eol + "</style>");
   if (out === html) { await env.TRADES.put("hubsite:written:" + slug + ":" + page, h); return { unchanged: true }; }
@@ -43021,7 +43045,7 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
           const rules = Array.isArray(body.rules) ? body.rules : null;
           if (!rules || !rules.length) return json({ error: "rules required" }, 400);
           const raw = JSON.stringify(rules); if (raw.length > 900000) return json({ error: "sandbox too large" }, 400);
-          const at = new Date().toISOString(), sb = { rules, at, note: String(body.note || "").slice(0, 200) };
+          const at = new Date().toISOString(), sb = { rules, at, note: String(body.note || "").slice(0, 200), ...hubDesignClean(body.tokens, body.fonts) };
           await env.TRADES.put(kS, JSON.stringify(sb));
           const vs = (await env.TRADES.get(kV, "json")) || []; vs.unshift(sb); await env.TRADES.put(kV, JSON.stringify(vs.slice(0, 40)));
           return json({ ok: true, at, versions: Math.min(vs.length, 40) });
@@ -43036,13 +43060,15 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
         if (!asset) return json({ error: "This hub has no Hub asset (Asset Type \"Hub\") yet — create it under the hub, then save again. The sandbox is kept." }, 400);
         const chk = hubCssCheck(page, blocks); if (chk) return json({ error: chk }, 400);
         await assetsTextPropEnsure(env, "Page CSS", "pagecss:prop");
-        const payload = JSON.stringify({ v: 1, page, savedAt: new Date().toISOString(), blocks });
+        const payload = JSON.stringify({ v: 1, page, savedAt: new Date().toISOString(), blocks, ...hubDesignClean(body.tokens, body.fonts) });
         if (payload.length > 48000) return json({ error: "CSS too large for the Hub asset (" + payload.length + " of 48,000 chars — Notion returns at most 25 text pieces of a field)" }, 400);
         const hdrN = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const pr = await fetch("https://api.notion.com/v1/pages/" + asset.id, { method: "PATCH", headers: hdrN, body: JSON.stringify({ properties: { "Page CSS": { rich_text: Array.from({ length: Math.ceil(payload.length / 2000) }, (_, i) => ({ type: "text", text: { content: payload.slice(i * 2000, i * 2000 + 2000) } })) } } }) });
         if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: "Could not save to the Hub asset: " + (e.message || pr.status) }, 502); }
         const status = asset.properties?.["Asset Status"]?.select?.name || "";
         if (status !== "Published") return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: false });
+        const des = await hubApplyAssetDesign(env, hub, JSON.parse(payload)).catch(e => ({ error: e.message }));
+        if (des && des.error) return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: false, liveError: "colors/fonts: " + des.error });
         const w = await hubWritePageCss(env, slug, page, blocks).catch(e => ({ error: e.message }));
         if (w.error) return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: false, liveError: w.error });
         return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: !w.unchanged, ...w });
@@ -43057,9 +43083,11 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
         const raw = hubRichText(asset.properties?.["Page CSS"]?.rich_text); if (!raw) return json({ ok: true, skipped: "no Page CSS" });
         let d; try { d = JSON.parse(raw); } catch (e) { return json({ error: "Page CSS is not valid JSON" }, 400); }
         const page = d.page || "home", blocks = (d.blocks || []).map(String), kW = "hubsite:written:" + hub.slug + ":" + page;
-        const h = await sha256Hex(JSON.stringify(blocks)); if ((await env.TRADES.get(kW)) === h) return json({ ok: true, skipped: "already written" });
+        const h = await sha256Hex(JSON.stringify([blocks, d.tokens || null, d.fonts || null])); if ((await env.TRADES.get(kW + ":all")) === h) return json({ ok: true, skipped: "already written" });
         const chk = hubCssCheck(page, blocks); if (chk) return json({ error: chk }, 400);
+        const des = await hubApplyAssetDesign(env, hub, d).catch(e => ({ error: e.message })); if (des && des.error) return json({ error: "colors/fonts: " + des.error });
         const w = await hubWritePageCss(env, hub.slug, page, blocks).catch(e => ({ error: e.message }));
+        if (!w.error) await env.TRADES.put(kW + ":all", h);
         return json(w.error ? { error: w.error } : { ok: true, ...w });
       }
       if (body.action === "restyleHubThumbnails") {

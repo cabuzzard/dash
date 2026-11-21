@@ -12518,6 +12518,10 @@ async function hd2SdLoad(fromLive) {
     const blocks = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(m => m[1]); _sdN = 0;
     const live = blocks.flatMap((css, b) => sdParse(css, b));
     const sb = fromLive ? null : await call('hubSandboxGet', { slug, page: 'home' }).catch(() => null);
+    const base = 'https://cabuzzard.github.io/dash/web/hub/', v = '?v=' + Date.now();
+    const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
+    _hd2DsLib = lib; const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
+    Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '' });
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
     Object.assign(EF.sd, { busy: '', blocks: blocks.length, live, rules: useSb ? sb.sandbox.rules : JSON.parse(JSON.stringify(live)), source: useSb ? 'sandbox' : 'live',
@@ -12542,7 +12546,7 @@ function hd2SdHtml() {
     + '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Save this sandbox onto the hub’s Hub asset (Page CSS). The Hub asset writes the live hub page when it is Published. Second click confirms.">⬆ Save to Hub asset</button>'
     + '<span id="sdMsg" style="font-size:12.5px;color:var(--text2);">' + esc(D.msg || '') + '</span></div>'
     + '<div class="sd-cols">'
-    + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div><div id="sdFocus"></div><div id="sdList"></div></div>'
+    + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div><div id="sdLook">' + hd2SdLookHtml() + '</div><div id="sdFocus"></div><div id="sdList"></div></div>'
     + '<div class="sd-mid"><div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' + [390, 768, 1440].map(w => '<button style="' + B(D.vw === w ? 'var(--accent)' : undefined, D.vw === w ? 'var(--accent)' : undefined) + '" onclick="hd2SdVw(' + w + ')">' + w + '</button>').join('')
     + '<button id="sdInsBtn" style="' + B(D.inspect ? 'var(--accent)' : undefined, D.inspect ? 'var(--accent)' : undefined) + '" onclick="hd2SdInspect()">⊕ Inspect</button><span style="font-size:11.5px;color:var(--text3);">Preview only. It goes live through the Hub asset (⬆ Save to Hub asset, then the asset at Published).</span></div>'
     + '<div id="sdStage" class="sd-stage"><iframe id="sdFrame" title="Site designer preview" src="' + sdUrl(EF.e.slug) + '?sd=' + Date.now() + '" onload="hd2SdFrameReady()"></iframe></div></div>'
@@ -12551,6 +12555,45 @@ function hd2SdHtml() {
     + '<button style="' + B('var(--accent)', 'var(--accent)') + 'margin-top:6px;" onclick="hd2SdAsk()">Send (Ctrl+Enter)</button></div>'
     + '</div></div>';
 }
+// 🎨 Colors & fonts inside the Site designer (operator 2026-11-21): a starting look from the design library, a font pairing,
+// the 10 hub colors — applied to the preview as CSS variables + a Google Fonts link. Saved with the sandbox; ⬆ Save to Hub
+// asset carries them, and a Published Hub asset applies them through publishHubDesign (Research + hubs.design.json + the page).
+function hd2SdTokOut() { const o = {}; for (const [k] of HD2_DS_KEYS) o[k] = String(EF.sd.tokens[k] || '').toLowerCase(); return o; }
+function hd2SdLookHtml() {
+  const D = EF.sd; if (!D || !_hd2DsLib || !D.tokens) return '';
+  const L = _hd2DsLib, sel = (on, opts) => '<select style="' + HD2_IN + 'font-size:12.5px;" onchange="' + on + '">' + opts + '</select>';
+  const looks = '<option value="">Current look (' + (D.look ? 'change…' : 'the hub now') + ')</option>'
+    + '<optgroup label="Brand systems">' + L.looks.filter(l => l.source === 'awesome-design-md').map(l => '<option value="' + esc(l.id) + '"' + (D.look === l.id ? ' selected' : '') + '>' + esc(l.name) + (l.checks && l.checks.length ? ' ⚠' : '') + '</option>').join('') + '</optgroup>'
+    + '<optgroup label="Palettes">' + L.looks.filter(l => l.source === 'taste-skill').map(l => '<option value="' + esc(l.id) + '"' + (D.look === l.id ? ' selected' : '') + '>' + esc(l.name) + (l.checks && l.checks.length ? ' ⚠' : '') + '</option>').join('') + '</optgroup>';
+  const fonts = '<option value="">' + esc([D.fonts.display, D.fonts.body].filter(Boolean).join(' / ') || 'Hub fonts') + '</option>' + L.fonts.map(f => '<option value="' + esc(f.id) + '"' + (D.font === f.id ? ' selected' : '') + '>' + esc(f.display + ' / ' + f.body) + '</option>').join('');
+  const warn = hd2DsChecks(D.tokens);
+  return '<details class="sd-grp" open><summary>🎨 Colors &amp; fonts <span>' + esc(D.fonts.display || '') + '</span><button onclick="event.preventDefault();hd2SdLook(\'\',true)" title="Back to the hub\'s current colors and fonts">reset</button></summary><div style="padding:6px 8px 8px;display:grid;gap:8px;">'
+    + '<label style="font-size:11.5px;color:var(--text3);">Look' + sel('hd2SdLook(this.value)', looks) + '</label>'
+    + '<label style="font-size:11.5px;color:var(--text3);">Fonts (display / body)' + sel('hd2SdFont(this.value)', fonts) + '</label>'
+    + '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;">' + HD2_DS_KEYS.map(([k, l]) => '<label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="color" value="' + esc(D.tokens[k] || '#000000') + '" oninput="hd2SdTokSet(\'' + k + '\',this.value)" style="width:30px;height:24px;border:1px solid var(--border2);border-radius:4px;padding:0;background:none;flex:none;">' + l + '</label>').join('') + '</div>'
+    + '<div id="sdTokWarn" style="font-size:11.5px;color:#f59e0b;">' + warn.map(w => '⚠ ' + esc(w)).join('<br>') + '</div></div></details>';
+}
+function hd2SdTok() {   // push colors + fonts into the preview
+  const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens) return;
+  const r = d.documentElement.style; for (const [k] of HD2_DS_KEYS) if (D.tokens[k]) r.setProperty('--' + k, D.tokens[k]);
+  if (D.tokens.surface) r.setProperty('--paper', D.tokens.surface);
+  const fam = [D.fonts.display, D.fonts.body, D.fonts.mono].filter(x => x && /^[A-Za-z0-9 ]{2,40}$/.test(x));
+  let l = d.getElementById('sdFonts'); if (!l) { l = d.createElement('link'); l.id = 'sdFonts'; l.rel = 'stylesheet'; l.dataset.sd = '1'; d.head.appendChild(l); }
+  l.href = 'https://fonts.googleapis.com/css2?' + fam.map(x => 'family=' + x.replace(/ /g, '+') + ':wght@400;500;600;700').join('&') + '&display=swap';
+  if (D.fonts.display) r.setProperty('--font-display', '"' + D.fonts.display + '", system-ui, sans-serif');
+  if (D.fonts.body) r.setProperty('--font-body', '"' + D.fonts.body + '", system-ui, sans-serif');
+  if (D.fonts.mono) r.setProperty('--font-mono', '"' + D.fonts.mono + '", ui-monospace, monospace');
+  const w = document.getElementById('sdTokWarn'); if (w) w.innerHTML = hd2DsChecks(D.tokens).map(x => '⚠ ' + esc(x)).join('<br>');
+}
+function hd2SdLookDraw() { const el = document.getElementById('sdLook'); if (el) el.innerHTML = hd2SdLookHtml(); }
+function hd2SdLook(id, reset) {
+  const D = EF.sd, l = id && _hd2DsLib.looks.find(x => x.id === id); D.look = id || '';
+  D.tokens = { ...D.curTokens }; if (l) for (const [k] of HD2_DS_KEYS) if (l.tokens[k]) D.tokens[k] = l.tokens[k];
+  if (reset) { D.fonts = { ...D.curFonts }; D.font = ''; }
+  hd2SdTok(); hd2SdLookDraw(); hd2SdTouch();
+}
+function hd2SdFont(id) { const D = EF.sd, f = id && _hd2DsLib.fonts.find(x => x.id === id); D.font = id || ''; D.fonts = f ? { display: f.display, body: f.body, mono: f.mono || D.curFonts.mono } : { ...D.curFonts }; hd2SdTok(); hd2SdLookDraw(); hd2SdTouch(); }
+function hd2SdTokSet(k, v) { const D = EF.sd; D.tokens[k] = v; if (k === 'ink' && D.curTokens['ink-head'] === D.curTokens.ink) D.tokens['ink-head'] = v; hd2SdTok(); hd2SdTouch(); }
 function hd2SdChatHtml() {
   const c = (EF.sd && EF.sd.chat) || [];
   if (!c.length) return '<div style="font-size:12.5px;color:var(--text3);">Chat with Claude about the design. CSS changes are applied to the preview for you to keep or undo. Anything that needs new HTML (a wrapper div, a new section) is written up and queued for a Claude Code session.</div>';
@@ -12561,7 +12604,7 @@ function hd2SdFrameReady() {
   d.querySelectorAll('style:not([data-sd])').forEach(s => { s.media = 'not all'; s.dataset.sdOff = '1'; });
   if (!d.getElementById('sdCss')) { const s = d.createElement('style'); s.id = 'sdCss'; s.dataset.sd = '1'; d.head.appendChild(s); const h = d.createElement('style'); h.id = 'sdHi'; h.dataset.sd = '1'; d.head.appendChild(h); }
   if (!d._sdClick) { d._sdClick = true; d.addEventListener('click', e => { if (!EF || !EF.sd || !EF.sd.inspect) return; e.preventDefault(); e.stopPropagation(); hd2SdPick(e.target); }, true); }
-  hd2SdApply(); hd2SdList(); hd2SdVw(EF.sd.vw, true);
+  hd2SdApply(); hd2SdTok(); hd2SdList(); hd2SdVw(EF.sd.vw, true);
 }
 let _sdApplyT = 0;
 function hd2SdApply(now) {
@@ -12611,11 +12654,11 @@ function hd2SdAll(on) { EF.sd.rules.forEach(r => { if (!r.locked) r.on = on; });
 async function hd2SdVersion(n) {
   const r = await call('hubSandboxVersion', { slug: EF.e.slug, page: 'home', n: +n }).catch(e => ({ error: e.message }));
   const m = document.getElementById('sdMsg'); if (!r || r.error) { if (m) m.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
-  EF.sd.rules = r.version.rules; EF.sd.dirty = true; if (m) m.textContent = 'Loaded the version from ' + new Date(r.version.at).toLocaleString() + ' (not saved yet).'; hd2SdApply(true); hd2SdList();
+  EF.sd.rules = r.version.rules; EF.sd.dirty = true; if (r.version.tokens) EF.sd.tokens = { ...EF.sd.curTokens, ...r.version.tokens }; if (r.version.fonts) EF.sd.fonts = { ...EF.sd.curFonts, ...r.version.fonts }; hd2SdTok(); hd2SdLookDraw(); if (m) m.textContent = 'Loaded the version from ' + new Date(r.version.at).toLocaleString() + ' (not saved yet).'; hd2SdApply(true); hd2SdList();
 }
 async function hd2SdSave(btn) {
   const m = document.getElementById('sdMsg'), note = (document.getElementById('sdNote') || {}).value || '';
-  btn.disabled = true; const r = await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note }).catch(e => ({ error: e.message })); btn.disabled = false;
+  btn.disabled = true; const r = await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note, tokens: hd2SdTokOut(), fonts: EF.sd.fonts }).catch(e => ({ error: e.message })); btn.disabled = false;
   if (!r || r.error) { if (m) m.textContent = '✗ Not saved: ' + ((r && r.error) || 'no response'); return; }
   Object.assign(EF.sd, { dirty: false, source: 'sandbox', savedAt: r.at }); const s = document.getElementById('sdSrc'); if (s) s.textContent = 'Sandbox · saved ' + new Date(r.at).toLocaleString();
   const v = await call('hubSandboxGet', { slug: EF.e.slug, page: 'home' }).catch(() => null); if (v && v.versions) EF.sd.versions = v.versions;
@@ -12625,9 +12668,9 @@ async function hd2SdPublish(btn) {
   const m = document.getElementById('sdMsg');
   if (!btn.dataset.arm) { btn.dataset.arm = '1'; btn.textContent = '⬆ Click again: save to the Hub asset'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '⬆ Save to Hub asset'; } }, 6000); return; }
   delete btn.dataset.arm; btn.disabled = true; btn.textContent = 'Saving to the Hub asset…';
-  await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note: 'saved to hub' }).catch(() => null);
+  await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note: 'saved to hub', tokens: hd2SdTokOut(), fonts: EF.sd.fonts }).catch(() => null);
   const blocks = Array.from({ length: EF.sd.blocks }, (_, b) => sdCompile(EF.sd.rules, b));
-  const r = await call('hubSaveToHub', { slug: EF.e.slug, page: 'home', blocks }).catch(e => ({ error: e.message }));
+  const r = await call('hubSaveToHub', { slug: EF.e.slug, page: 'home', blocks, tokens: hd2SdTokOut(), fonts: EF.sd.fonts }).catch(e => ({ error: e.message }));
   btn.disabled = false; btn.textContent = '⬆ Save to Hub asset';
   if (!r || r.error) { if (m) m.textContent = '✗ Not saved to the Hub asset: ' + ((r && r.error) || 'no response'); return; }
   EF.sd.dirty = false; if (m) m.textContent = '✓ Saved to the Hub asset. ' + (r.status !== 'Published' ? 'It is ' + (r.status || 'not Published') + ', so the live hub is unchanged; it writes the hub page once the asset is Published.' : r.liveError ? 'The hub page was not written: ' + r.liveError : r.live ? 'The asset is Published, so it wrote the hub page (previous CSS archived); the hub redeploys in about a minute.' : 'The live hub already matches.');
