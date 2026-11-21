@@ -42990,6 +42990,21 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
       // hubsite:requests:<slug>:<page> for a Claude Code session, and the reply says so.
       // designTags {op:"get"|"set", kind:"fonts"|"looks", id?, tags?} — operator tags on design-library items (Site designer
       // steppers, 2026-11-21: "tag font groups … then filter the scroller for tagged"). KV design:tags:<kind> = { id: [tags] }.
+      // designLooks {op:"get"|"save"|"delete", name?, tokens?, hub?, id?} — operator-saved color looks (2026-11-21: "save current as
+      // a look" so trying a library look never loses the hub's own colors). KV design:looks:saved = [{ id, name, tokens, hub, savedAt }].
+      if (body.action === "designLooks") {
+        const k = "design:looks:saved", all = (await env.TRADES.get(k, "json")) || [];
+        if (body.op === "save") {
+          const t = hubDesignClean(body.tokens, null).tokens; if (!t) return json({ error: "tokens must hold all 10 hub colors as #rrggbb" }, 400);
+          const name = String(body.name || "").trim().slice(0, 60) || "Saved look";
+          all.unshift({ id: "saved:" + Date.now().toString(36), name, tokens: t, hub: String(body.hub || "").slice(0, 60), savedAt: new Date().toISOString() });
+          await env.TRADES.put(k, JSON.stringify(all.slice(0, 200)));
+        } else if (body.op === "delete") {
+          const i = all.findIndex(x => x.id === body.id); if (i < 0) return json({ error: "no such saved look" }, 404);
+          all.splice(i, 1); await env.TRADES.put(k, JSON.stringify(all));
+        }
+        return json({ ok: true, looks: all });
+      }
       if (body.action === "designTags") {
         const kind = String(body.kind || ""); if (!/^(fonts|looks)$/.test(kind)) return json({ error: "kind must be fonts or looks" }, 400);
         const k = "design:tags:" + kind, all = (await env.TRADES.get(k, "json")) || {};

@@ -12369,7 +12369,7 @@ async function hd2DsLoad() {
   try {
     const base = 'https://cabuzzard.github.io/dash/web/hub/', v = '?v=' + Date.now();
     const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
-    _hd2DsLib = lib; const h = (spec.hubs || {})[EF.e.slug];
+    _hd2DsLib = lib; await hd2SavedLooksMerge(); const h = (spec.hubs || {})[EF.e.slug];
     if (!h) throw new Error('no "' + EF.e.slug + '" in hubs.design.json');
     Object.assign(EF.ds, { busy: '', bespoke: !!h.bespoke, cur: { tokens: { ...h.tokens }, fonts: { ...(h.fonts || {}) } }, tokens: { ...h.tokens }, fonts: { ...(h.fonts || {}) } });
   } catch (e) { EF.ds.busy = ''; EF.ds.err = e.message; }
@@ -12401,7 +12401,7 @@ function hd2DsHtml() {
   const sel = (v, opts, on) => '<select style="' + HD2_IN + 'width:auto;" onchange="' + on + '">' + opts.map(([k, l]) => '<option value="' + k + '"' + (k === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
   const card = l => '<button onclick="hd2DsPick(\'' + esc(l.id) + '\')" data-ds="' + esc(l.id) + '" title="' + esc(l.note || '') + '" style="text-align:left;padding:8px;border:2px solid ' + (D.sel === l.id ? 'var(--accent)' : 'var(--border2)') + ';border-radius:8px;background:var(--surface2);color:var(--text);cursor:pointer;min-width:0;">'
     + hd2DsSwatch(l.tokens) + '<div style="font-size:12.5px;font-weight:700;margin-top:6px;overflow-wrap:anywhere;">' + esc(l.name) + '</div>'
-    + '<div style="font-size:11px;color:var(--text3);">' + (l.source === 'taste-skill' ? 'Palette' : 'Brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') + '</div></button>';
+    + '<div style="font-size:11px;color:var(--text3);">' + (l.source === 'saved' ? '★ Saved look' : l.source === 'taste-skill' ? 'Palette' : 'Brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') + '</div></button>';
   const fontOpts = [['', 'Keep the hub\'s fonts (' + esc([D.cur.fonts.display, D.cur.fonts.body].filter(Boolean).join(' / ')) + ')'], ...L.fonts.map(f => [f.id, esc(f.display + ' / ' + f.body + (f.suits ? ' — ' + f.suits.slice(0, 50) : ''))])];
   const warn = hd2DsChecks(D.tokens);
   const changed = JSON.stringify(D.tokens) !== JSON.stringify(D.cur.tokens) || JSON.stringify(D.fonts) !== JSON.stringify(D.cur.fonts);
@@ -12409,7 +12409,7 @@ function hd2DsHtml() {
     + '<div style="font-size:12.5px;color:var(--text3);">Pick a starting look, then a font pairing, then nudge any color. The preview is your real hub page; nothing is saved until ✓ Apply. Layout stays the same; only colors and fonts change.</div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'
     + '<input id="dsQ" style="' + HD2_IN + 'width:220px;" placeholder="Search looks (e.g. green, saas, warm)…" value="' + esc(D.q) + '" oninput="EF.ds.q=this.value;clearTimeout(window._dsT);window._dsT=setTimeout(()=>{hd2EfDraw();const i=document.getElementById(\'dsQ\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">'
-    + sel(D.src, [['all', 'All sources'], ['awesome-design-md', 'Brand systems (' + L.counts.brands + ')'], ['taste-skill', 'Palettes (' + L.counts.palettes + ')']], 'EF.ds.src=this.value;hd2EfDraw()')
+    + sel(D.src, [['all', 'All sources'], ['saved', '★ Saved (' + L.looks.filter(l => l.source === 'saved').length + ')'], ['awesome-design-md', 'Brand systems (' + L.counts.brands + ')'], ['taste-skill', 'Palettes (' + L.counts.palettes + ')']], 'EF.ds.src=this.value;hd2EfDraw()')
     + sel(D.tone, [['all', 'Light + dark'], ['light', 'Light pages'], ['dark', 'Dark pages']], 'EF.ds.tone=this.value;hd2EfDraw()')
     + '<span style="font-size:12px;color:var(--text3);">' + looks.length + ' looks</span></div>'
     + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:330px;overflow:auto;padding:2px;">'
@@ -12527,7 +12527,7 @@ async function hd2SdLoad(fromLive) {
     const base = 'https://cabuzzard.github.io/dash/web/hub/', v = '?v=' + Date.now();
     const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
     if (!_sdTags) await hd2SdTagsLoad();
-    _hd2DsLib = lib; const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
+    _hd2DsLib = lib; await hd2SavedLooksMerge(); const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
     Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '', fontTag: (EF.sd && EF.sd.fontTag) || '', lookTag: (EF.sd && EF.sd.lookTag) || '' });
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
@@ -12585,12 +12585,36 @@ function hd2SdLookHtml() {
 // groups … then filter the scroller for tagged'): worker designTags, KV design:tags:fonts; 'Show' limits the arrows to one tag.
 // Colors stepper (operator 2026-11-21: "same with colors"): ◀ ▶ walk every look in the design library (position 0 = the hub's
 // current colors), showing its color strip; arrow keys work while it has focus. The 10 pickers below still fine-tune.
+// ★ Saved looks (operator 2026-11-21): the colors on screen saved as a named look (worker designLooks, KV design:looks:saved),
+// listed right after "Current colors" in both steppers and the 🎨 Design grid, taggable, removable — so trying a library look
+// never loses the hub's own colors again.
+async function hd2SavedLooksMerge(list) {
+  if (!_hd2DsLib) return;
+  if (!list) { const r = await call('designLooks', { op: 'get' }).catch(() => null); list = (r && r.looks) || []; }
+  _hd2DsLib.looks = _hd2DsLib.looks.filter(l => l.source !== 'saved');
+  _hd2DsLib.looks.unshift(...list.map(x => ({ id: x.id, source: 'saved', name: x.name, note: 'Saved ' + new Date(x.savedAt).toLocaleDateString() + (x.hub ? ' from ' + x.hub : ''),
+    tokens: { ...x.tokens, paper: x.tokens.surface }, checks: hd2DsChecks(x.tokens) })));
+}
+async function hd2SdLookSave(btn) {
+  const D = EF.sd, name = (EF.e.name || EF.e.slug) + ' colors · ' + new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (D.look ? ' (from ' + ((_hd2DsLib.looks.find(x => x.id === D.look) || {}).name || 'a look') + ')' : '');
+  btn.disabled = true; const r = await call('designLooks', { op: 'save', name, tokens: hd2SdTokOut(), hub: EF.e.slug }).catch(e => ({ error: e.message })); btn.disabled = false;
+  const m = document.getElementById('sdMsg'); if (!r || r.error) { if (m) m.textContent = '✗ Look not saved: ' + ((r && r.error) || 'no response'); return; }
+  await hd2SavedLooksMerge(r.looks); D.look = r.looks[0].id; hd2SdLookDraw(); if (m) m.textContent = '★ Saved as a look: ' + r.looks[0].name;
+}
+async function hd2SdLookDelete(id) {
+  const r = await call('designLooks', { op: 'delete', id }).catch(e => ({ error: e.message })); const m = document.getElementById('sdMsg');
+  if (!r || r.error) { if (m) m.textContent = '✗ Not removed: ' + ((r && r.error) || 'no response'); return; }
+  await hd2SavedLooksMerge(r.looks); if (EF.sd.look === id) EF.sd.look = ''; hd2SdLookDraw(); if (m) m.textContent = 'Saved look removed (the colors on screen are unchanged).';
+}
 function hd2SdLookStepper() {
   const D = EF.sd, T = (_sdTags && _sdTags.looks) || {}, list = sdLookList(), l = D.look ? _hd2DsLib.looks.find(x => x.id === D.look) : null;
   const i = list.findIndex(x => (x ? x.id : '') === (D.look || '')), n = list.length;
   const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
   const allTags = [...new Set(Object.values(T).flat())].sort(), mine = l ? (T[l.id] || []) : [];
-  return '<div style="font-size:11.5px;color:var(--text3);">Colors · ' + (l ? (l.source === 'taste-skill' ? 'palette' : 'brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') : 'the hub now') + '</div>'
+  const sb = 'font-size:11px;padding:1px 7px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;';
+  return '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text3);"><span style="flex:1;min-width:0;">Colors · ' + (l ? (l.source === 'saved' ? 'saved look · ' + esc(l.note || '') : l.source === 'taste-skill' ? 'palette' : 'brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') : 'the hub now') + '</span>'
+    + (l && l.source === 'saved' ? '<button style="' + sb + '" onclick="hd2SdLookDelete(\x27' + esc(l.id) + '\x27)" title="Remove this saved look (the colors on screen stay)">✕ remove</button>' : '')
+    + '<button style="' + sb + '" onclick="hd2SdLookSave(this)" title="Save the colors on screen as a look you can come back to">★ Save</button></div>'
     + sdTagFilterHtml('looks', allTags, T, D.lookTag)
     + '<div tabindex="0" data-step="look" onkeydown="if(event.key===\'ArrowRight\'||event.key===\'ArrowDown\'){event.preventDefault();hd2SdLookStep(1)}else if(event.key===\'ArrowLeft\'||event.key===\'ArrowUp\'){event.preventDefault();hd2SdLookStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
     + '<button style="' + btn + '" onclick="hd2SdLookStep(-1)" title="Previous look (←)"' + (n ? '' : ' disabled') + '>◀</button>'
