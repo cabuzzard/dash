@@ -125,6 +125,10 @@
           "Console-navy + cyan (the original palette) — the exact look of the vendors this audience already distrusts"
         ],
         "superseded": "2026-09-01 to 09-02: --bg #080c14 console navy / --sea #60a5fa signal blue / --accent #06b6d4 cyan (type unchanged). Dropped because navy+cyan is the vendors' palette and leaned on the near-black-plus-acid-accent AI default.  2026-09-03: content re-pointed from 'AI rollout postmortem' to the Sm-business-software-tools campaign keywords (small business tools/software, tool-stack consolidation, all-in-one, no coding, 10-minute setup, affordable) — domain/slug stay ai-implementation; logo.png still reads 'AI Implementation' and needs replacing."
+      },
+      "thumbnail": {
+        "style": "C",
+        "rule": "Post thumbnails (operator 2026-11-20): the hub surface color, the post title centered 18% down in the display font, one small tool line icon for the post feature in the sea color, and a short uppercase tool label in the mono font. No photos, no scenes, no image model. Hero images and the heading icon are not affected."
       }
     },
     "care-gap": {

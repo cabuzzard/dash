@@ -8175,6 +8175,82 @@ async function removeSubPage(env, hdr, page) {
   await t.putFile(`web/hub/${hub.slug}/pages.json`, JSON.stringify(list.filter(x => x !== mine), null, 2) + '\n', `Sub pages: remove ${mine.label || mine.slug}`);
   return { slug: mine.slug, label: mine.label };
 }
+// ── Library (operator 2026-11-20: "assets should have a library history of their attachments … a new feature of the asset type
+// database … offered in the new flyout on hub dash 2"): every image an asset's slot held before it was replaced is kept on the asset's
+// own "Library" files property, newest first, each named "<slot> · <date>". Best-effort: a failure here never blocks the save itself.
+let LIBRARY_PROP_OK = false;
+async function libraryArchive(hdr, page, slots) {
+  try {
+    const p = (page && page.properties) || {}, day = new Date().toISOString().slice(0, 10), add = [];
+    for (const [prop, next] of Object.entries(slots || {})) { const cur = String((p[prop] && p[prop].url) || '').trim(); if (cur && cur !== String(next || '').trim() && /^https?:\/\//i.test(cur)) add.push({ type: 'external', name: (prop + ' · ' + day).slice(0, 100), external: { url: cur } }); }
+    if (!add.length) return 0;
+    if (!LIBRARY_PROP_OK) { const db = await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+      if (!(db.properties || {}).Library) await fetch('https://api.notion.com/v1/databases/' + ASSETS_DB, { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ properties: { Library: { files: {} } } }) });
+      LIBRARY_PROP_OK = true; }
+    const old = (p.Library && p.Library.files) || [];
+    if (old.some(f => f.type !== 'external')) return 0;   // an uploaded file cannot be re-sent through the API: never drop it, skip instead
+    const files = [...add, ...old.filter(f => !add.some(a => a.external.url === f.external.url)).map(f => ({ type: 'external', name: f.name, external: { url: f.external.url } }))].slice(0, 100);
+    const r = await fetch('https://api.notion.com/v1/pages/' + ivDash(hubAssetId(page.id)), { method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json' }, body: JSON.stringify({ properties: { Library: { files } } }) });
+    return r.ok ? add.length : 0;
+  } catch (e) { console.error('libraryArchive', e.message); return 0; }
+}
+
+// ── Post thumbnail style C (operator 2026-11-20, AI hub: "my thumbnails are too much … really very simplified small icons … still a tool
+// theme but much less busy" → picked C): the hub's pale surface, the post title, one small tool line icon and a short tool label. No
+// image model: the card is drawn as HTML and screenshotted (Browser Rendering), colors + fonts from the hub's own hubs.design.json
+// entry. The rule lives on that entry: "thumbnail": { "style": "C" }. Hero images, the heading icon, colors and fonts are untouched.
+const THUMB_ICONS = {
+  phone: '<path d="M14 6h6l3 9-4 3a24 24 0 0 0 11 11l3-4 9 3v6a4 4 0 0 1-4 4C21 38 10 27 10 10a4 4 0 0 1 4-4z"/><path d="M30 8a10 10 0 0 1 10 10M30 14a4 4 0 0 1 4 4"/>',
+  calendar: '<rect x="7" y="10" width="34" height="30" rx="4"/><path d="M7 19h34M16 6v8M32 6v8M18 29l4 4 8-8"/>',
+  star: '<path d="M24 6l5.3 11 12 1.6-8.8 8.3 2.2 11.9L24 33l-10.7 5.8 2.2-11.9-8.8-8.3 12-1.6z"/>',
+  chart: '<path d="M7 41h34M12 33V23M22 33V15M32 33V20M42 9l-10 6-10-5-12 8"/>',
+  mail: '<rect x="6" y="11" width="36" height="26" rx="3"/><path d="M7 13l17 13 17-13"/>',
+  refresh: '<path d="M38 18a15 15 0 0 0-27-4M10 30a15 15 0 0 0 27 4"/><path d="M11 6v8h8M37 42v-8h-8"/>',
+  funnel: '<path d="M6 8h36L28 25v13l-8 4V25z"/>',
+  users: '<circle cx="18" cy="16" r="6"/><path d="M6 40c0-7 5-12 12-12s12 5 12 12"/><circle cx="34" cy="18" r="5"/><path d="M32 28c6 0 10 4 10 11"/>',
+  dollar: '<circle cx="24" cy="24" r="17"/><path d="M30 17c-1-2-3-3-6-3-4 0-6 2-6 5 0 7 13 3 13 10 0 3-3 5-7 5-3 0-5-1-7-3M24 10v4M24 34v4"/>',
+  wrench: '<path d="M30 6a10 10 0 0 0-9 14L7 34a4 4 0 0 0 6 6l14-14a10 10 0 0 0 14-9l-6 6-6-2-2-6z"/>',
+};
+const THUMB_TOPICS = [
+  [/missed[- ]?calls?|text[- ]?back/i, 'phone', 'Missed-call text-back'], [/speed[- ]to[- ]lead/i, 'phone', 'Speed-to-Lead'],
+  [/receptionist|after[- ]hours|voice agent|answering/i, 'phone', 'AI receptionist'], [/no[- ]shows?|remind|appointment|booking|schedul/i, 'calendar', 'Booking & reminders'],
+  [/reviews?\b/i, 'star', 'Review requests'], [/reactivat|past[- ]customers?|re-?engage|win[- ]back/i, 'refresh', 'Reactivation'],
+  [/follow[- ]?up|quotes?\b|estimates?\b/i, 'mail', 'Follow-up'], [/\bcrm\b|pipeline/i, 'funnel', 'CRM pipeline'], [/newsletter/i, 'mail', 'Newsletter'],
+  [/dashboard|reporting|metrics|analytics/i, 'chart', 'Reporting'], [/members? area|client portal|members\b/i, 'users', 'Client portal'],
+  [/\bleads?\b/i, 'chart', 'Lead generation'], [/cost|price|pricing|budget|money|waste|spend/i, 'dollar', 'Costs'],
+];
+function thumbTopic(text) { for (const [re, icon, label] of THUMB_TOPICS) if (re.test(String(text || ''))) return { icon, label }; return { icon: 'wrench', label: 'AI tools' }; }
+async function hubThumbRule(slug) {
+  try { const d = await fetch('https://cabuzzard.github.io/dash/web/hub/hubs.design.json', { cf: { cacheTtl: 120 } }).then(r => r.json()); const h = d.hubs && d.hubs[slug];
+    return h && h.thumbnail && h.thumbnail.style ? { ...h.thumbnail, tokens: h.tokens || {}, fonts: h.fonts || {} } : null; } catch (e) { return null; }
+}
+function thumbStyleCHtml(rule, title, topic) {
+  const T = rule.tokens || {}, F = rule.fonts || {}, e = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const disp = F.display || 'Bricolage Grotesque', mono = F.mono || 'JetBrains Mono', len = String(title || '').length;
+  const size = len > 80 ? 76 : len > 60 ? 86 : len > 42 ? 98 : 110;
+  const fam = n => encodeURIComponent(n).replace(/%20/g, '+');
+  return '<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=' + fam(disp) + ':wght@700&family=' + fam(mono) + ':wght@500&display=block" rel="stylesheet"><style>'
+    + 'html,body{margin:0;width:1600px;height:900px;overflow:hidden}body{background:' + (T.surface || '#f2f7f2') + ';position:relative;font-family:"' + disp + '",system-ui,sans-serif}'
+    + '.t{position:absolute;left:9%;right:9%;top:18%;text-align:center;font-weight:700;font-size:' + size + 'px;line-height:1.1;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
+    + '.i{position:absolute;left:50%;bottom:21%;width:150px;height:150px;margin-left:-75px;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
+    + '.l{position:absolute;left:0;right:0;bottom:11%;text-align:center;font:500 38px/1 "' + mono + '",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:' + (T.ink || '#1a2a1a') + ';opacity:.72}'
+    + '</style></head><body><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div><div class="l">' + e(topic.label) + '</div></body></html>';
+}
+async function renderThumbStyleC(env, rule, title, topicText, keyBase) {
+  const acct = String(env.CF_ACCOUNT_ID || '').trim(), tok = String(env.CF_API_TOKEN || '').trim();
+  if (!acct || !tok) throw new Error('CF_ACCOUNT_ID / CF_API_TOKEN not configured');
+  if (!env.MEDIA) throw new Error('MEDIA (R2) binding missing');
+  const topic = thumbTopic(topicText), html = thumbStyleCHtml(rule, title, topic);
+  const go = () => fetch('https://api.cloudflare.com/client/v4/accounts/' + acct + '/browser-rendering/screenshot', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html, viewport: { width: 1600, height: 900, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: 'networkidle0', timeout: 20000 }, screenshotOptions: { type: 'png' } }) });
+  let r = await go(); if (r.status === 422 || r.status === 429) { await new Promise(x => setTimeout(x, 2500)); r = await go(); }
+  if (!r.ok) throw new Error('Thumbnail render failed (HTTP ' + r.status + '): ' + (await r.text()).slice(0, 200));
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  const key = 'images/thumbs/' + String(keyBase || 'post').replace(/[^a-z0-9-]/gi, '') + '-c-' + Date.now().toString(36) + '.png';
+  await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000, immutable' } });
+  return { url: String(env.MEDIA_PUBLIC_BASE || '').replace(/\/$/, '') + '/' + key, topic };
+}
+
 function hubPublishableType(type) {
   return isSubPageType(type) || /\bseo post\b|\boffer\b/i.test(type || '') || /^blog (post|article)$/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || '')) || /^QA\s*[?-]/i.test(type || '');
 }
@@ -21059,7 +21135,7 @@ export default {
           if (br.ok) ((await br.json()).results || []).forEach(b => { const x = b[b.type] || {};
             if (b.type === "image") { const u = (x.external && x.external.url) || (x.file && x.file.url) || ""; if (u) bodyImages.push({ url: u, caption: rt(x.caption), from: "page image" }); return; }
             (x.rich_text || []).forEach(t => { if (t.href) bodyImages.push({ url: t.href, from: "page link" }); (String(t.plain_text || "").match(/https?:\/\/[^\s)"'<>]+/g) || []).forEach(u => bodyImages.push({ url: u, from: "page text" })); }); }); } catch (e) {}
-        return json({ ok: true, id: pid, url: page.url || "", database: db ? rt(db.title) : "", databaseId: dbId, title: titleProp ? titleProp.value : "", props, bodyImages });
+        return json({ ok: true, id: pid, url: page.url || "", database: db ? rt(db.title) : "", databaseId: dbId, title: titleProp ? titleProp.value : "", props, bodyImages, library: ((page.properties || {}).Library?.files || []).map(f => ({ name: f.name || "", url: (f.external && f.external.url) || (f.file && f.file.url) || "" })).filter(x => x.url) });   // 🗂 Library tab (2026-11-20)
       }
       // entitySave: { pageId, changes: { [propertyName]: value } } — types come from the page itself, never from the client
       const changes = body.changes && typeof body.changes === "object" ? body.changes : {};
@@ -21082,6 +21158,8 @@ export default {
         }
       }
       if (!Object.keys(out).length) return json({ ok: !refused.length, saved: [], refused, error: refused.length ? "Nothing saved: " + refused.join(", ") : "" });
+      { const sl = {}; ["Thumbnail", "Post Image", "Instagram Background"].forEach(n => { if (out[n] && out[n].url !== undefined) sl[n] = out[n].url || ""; });   // Library: keep what the slot held
+        if (Object.keys(sl).length) await libraryArchive(H, page, sl); }
       let ur; try { ur = await fetch("https://api.notion.com/v1/pages/" + pid, { method: "PATCH", headers: H, body: JSON.stringify({ properties: out }) }); }
       catch (e) { return json({ error: "Not saved: " + (e.message || e), refused }, 400); }   // e.g. the Keywords-hierarchy guard refused a status
       const ud = await ur.json().catch(() => ({}));
@@ -42832,6 +42910,22 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         return json({ imageUrl, prompt, kind: "blog-thumbnail", thumbText, model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
+      // restyleHubThumbnails { campaignId, offset?, limit? }: re-draws the thumbnail of every Published post in a hub's News / Articles
+      // sections in the hub's thumbnail style (the old one goes to each asset's Library). Paged: call again with "next" until it is null.
+      if (body.action === "restyleHubThumbnails") {
+        await hubSitesMerge(env).catch(() => {});
+        const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(body.campaignId || ""));
+        if (!hub) return json({ error: "Unknown hub" }, 400);
+        const rule = await hubThumbRule(hub.slug); if (!rule) return json({ error: "This hub has no thumbnail style rule (hubs.design.json: thumbnail.style)" }, 400);
+        const rows = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: ivDash(hub.campaignId) } }, { property: "Asset Status", select: { equals: "Published" } }] } }))
+          .filter(r => !r.archived && !r.in_trash && ["news", "articles"].includes(hubSectionOf(r.properties || {})) && (!r.properties?.["Content Hub"]?.select?.name || r.properties["Content Hub"].select.name === hub.slug))
+          .sort((a, b) => String(a.created_time).localeCompare(String(b.created_time)));
+        const off = Math.max(0, +body.offset || 0), lim = Math.max(1, Math.min(6, +body.limit || 4)), part = rows.slice(off, off + lim), results = [];
+        for (const r of part) { const t = hubRichText(r.properties?.["Platform Title"]?.rich_text) || hubRichText(r.properties?.["Asset Title"]?.title);
+          const g = await selfAction(env, "generateBlogPostThumbnail", { assetId: hubAssetId(r.id), save: true }).catch(e => ({ error: e.message }));
+          results.push({ assetId: hubAssetId(r.id), title: t, ok: !!(g && g.saved), url: (g && g.url) || "", error: (g && (g.error || g.saveError)) || "" }); }
+        return json({ ok: true, hub: hub.slug, style: rule.style, total: rows.length, done: off + part.length, next: off + lim < rows.length ? off + lim : null, results });
+      }
       if (body.action === "generateBlogPostThumbnail") {
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
@@ -42848,6 +42942,11 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const platformTitle = rtp(ap, "Platform Title") || assetTitle;
         const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+        { await hubSitesMerge(env).catch(() => {}); const hubT = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(campaignId)), rule = hubT && !body.grok ? await hubThumbRule(hubT.slug) : null;
+          if (rule && /^c$/i.test(String(rule.style))) {   // the hub's simplified thumbnail style: drawn, not generated (see THUMB_ICONS)
+            try { const r = await renderThumbStyleC(env, rule, platformTitle, platformTitle + " " + assetTitle, hubT.slug + "-" + hubAssetId(assetId).slice(0, 12));
+              return json({ imageUrl: r.url, prompt: "Post thumbnail style C · " + r.topic.label, kind: "blog-thumbnail", model: "style-c", style: "C", sync: true }); }
+            catch (e) { return json({ error: e.message }, 502); } } }
         const subject       = await thumbnailAssetSubject(hdr, assetId, ap);
         const exclusions    = await hubImageExclusions(env, campaignId);
 
@@ -43612,6 +43711,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (body.background && SLOT[kind].srcProp) { props[SLOT[kind].srcProp] = { url }; ensureProps[SLOT[kind].srcProp] = { type: "url" }; }
         if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = kind==='blog-thumbnail'?thumbnailPromptProperty(prompt):{ rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
         try { await ensureAssetsDbProperties(hdr, ensureProps); } catch (e) {}
+        await libraryArchive(hdr, assetPage, { [SLOT[kind].prop]: url });   // the old image goes to the asset's Library first
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: props }),
@@ -47274,6 +47374,11 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // is a new clean background for that slot, same as a fresh
         // generation, so "re-render title text" has a real plate to
         // recomposite from rather than the previous slot's stale source.
+        if (thumbnail !== undefined || postImage !== undefined || instagramBackground !== undefined) {   // Library: keep what these slots held
+          const lp = await ivPage(assetId).catch(() => null), sl = {};
+          if (thumbnail !== undefined) sl["Thumbnail"] = thumbnail || ""; if (postImage !== undefined) sl["Post Image"] = postImage || ""; if (instagramBackground !== undefined) sl["Instagram Background"] = instagramBackground || "";
+          if (lp) await libraryArchive({ "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }, lp, sl);
+        }
         if (thumbnail !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Thumbnail Source": { type: "url" } });
           props["Thumbnail"] = { url: thumbnail || null };

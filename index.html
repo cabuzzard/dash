@@ -11707,6 +11707,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'keywords') bd = hd2KwHtml();
   else if (EF.tab === 'post') bd = hd2PostHtml();
   else if (EF.tab === 'images') bd = hd2ImagesHtml();
+  else if (EF.tab === 'library') bd = hd2LibraryHtml();
   else if (EF.tab === 'kids') bd = hd2KidsHtml();
   else if (EF.tab === 'sched') bd = hd2SchedHtml();
   else if (D.kind === 'notion') {
@@ -11780,6 +11781,7 @@ function hd2EfTabs() {
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
   if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
+  if (k === 'asset') t.push(['library', '🗂 Library' + (EF.data && EF.data.library && EF.data.library.length ? ' (' + EF.data.library.length + ')' : '')]);
   return t;
 }
 function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
@@ -12297,6 +12299,28 @@ function hd2ImgPrev(inp) { const im = inp.parentElement.querySelector('img.hd2-p
 // preview + editable link (saved with 💾 Save); then every other image on the record: files attached to it, images in the page body,
 // and image links inside its text fields. ✎ Edit on an asset's Thumbnail / Post Image / Instagram Background opens care-gap's full
 // image modal (Grok render, text render, text boxes, typography) on that asset in a new tab — until that editor is ported here.
+// ── 🗂 Library (operator 2026-11-20: "assets should have a library history of their attachments"): every image this asset's Thumbnail /
+// Post Image / Instagram Background held before it was replaced, newest first, from the asset's "Library" files property (the worker
+// fills it on every image save). ↺ Use puts one back in its slot, and the image it replaces goes into the Library in turn.
+function hd2LibraryHtml() {
+  const D = EF.data; if (!D || D.kind !== 'notion') return '';
+  const L = D.library || [], slotOf = n => (/^(Thumbnail|Post Image|Instagram Background)\b/.exec(n || '') || [])[1] || 'Thumbnail';
+  if (!L.length) return '<div style="font-size:13px;color:var(--text3);">No earlier images yet. When this asset\'s thumbnail, post image or Instagram background is replaced, the old one is kept here.</div>';
+  return '<div style="font-size:12.5px;color:var(--text3);margin-bottom:10px;">' + L.length + ' earlier image' + (L.length === 1 ? '' : 's') + ', newest first. ↺ Use puts one back; the current one is kept here in its place.</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">' + L.map((x, n) => '<div style="border:1px solid var(--border2);border-radius:8px;padding:8px;min-width:0;">'
+    + '<a href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(x.url) + '" alt="" loading="lazy" style="display:block;width:100%;height:140px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.opacity=.15"></a>'
+    + '<div style="font-size:12px;font-weight:700;margin:6px 0 6px;overflow-wrap:anywhere;">' + esc(x.name || slotOf(x.name)) + '</div>'
+    + '<button style="' + HD2_B('var(--accent)', 'var(--accent)') + '" onclick="hd2LibUse(' + n + ')">↺ Use as ' + esc(slotOf(x.name)) + '</button></div>').join('') + '</div>';
+}
+async function hd2LibUse(n) {
+  if (!EF || !EF.data) return; const x = (EF.data.library || [])[n]; if (!x) return;
+  const slot = (/^(Thumbnail|Post Image|Instagram Background)\b/.exec(x.name || '') || [])[1] || 'Thumbnail', key = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' }[slot];
+  EF.msg = 'Putting it back…'; hd2EfDraw();
+  const r = await call('updatePublishFields', { assetId: EF.e.id, [key]: x.url }).catch(e => ({ error: e.message }));
+  if (!EF) return; if (!r || r.error) { EF.msg = '✗ Not restored: ' + ((r && r.error) || 'no response'); return hd2EfDraw(); }
+  const d = await call('entityGet', { pageId: EF.e.id }).catch(() => null); if (EF && d && !d.error) Object.assign(EF.data, { props: d.props, library: d.library || [] });
+  if (EF) { EF.msg = '✓ ' + slot + ' restored'; hd2EfDraw(); }
+}
 const hd2ImgLike = u => FlyoutMap.imgLike(u);   // rules: worker/flyout-map.mjs
 const HD2_CG_SLOT = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' };
 function hd2ImagesHtml() {
@@ -25599,6 +25623,17 @@ function hub2Hierarchy(slug) {
     if (prodOk.has(nid(r.productId))) titleOk.add(nid(r.titleId)); });
   return { has: r => r.type === 'Product' ? prodOk.has(nid(r.id)) : r.type === 'Title' ? titleOk.has(nid(r.id)) : titleOk.has(nid(r.titleId)) };
 }
+// 🖼 Restyle thumbnails (2026-11-20): pages through restyleHubThumbnails until every published News / Articles post is re-drawn
+async function hub2RestyleThumbs(slug, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId) return; const orig = btn.textContent; btn.disabled = true;
+  let next = 0, ok = 0, bad = [];
+  try { while (next !== null) { btn.textContent = '🖼 Restyling ' + (next ? next + '…' : '…');
+      const r = await call('restyleHubThumbnails', { campaignId: h.campaignId, offset: next, limit: 4 }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      (r.results || []).forEach(x => x.ok ? ok++ : bad.push(x.title + ': ' + x.error)); next = r.next; btn.textContent = '🖼 ' + r.done + ' of ' + r.total; }
+    btn.textContent = '✓ ' + ok + ' restyled' + (bad.length ? ' · ' + bad.length + ' failed' : ''); if (bad.length) console.warn('restyle failures', bad);
+  } catch (e) { btn.textContent = '✗ ' + (e.message || e).slice(0, 60); }
+  setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 8000);
+}
 function hub2HideIdea() { try { return localStorage.getItem('hub2:hideidea:v1') !== '0'; } catch (e) { return true; } }
 function hub2HideIdeaToggle() { try { localStorage.setItem('hub2:hideidea:v1', hub2HideIdea() ? '0' : '1'); } catch (e) {} HUB_SITES.forEach(h => hub2ContentPaint(h.slug)); hub2ContentPaint(HUB2_ALL); }
 function hub2ColHidden() { try { return new Set(JSON.parse(localStorage.getItem('hub2:colhidden:v1') || '[]') || []); } catch (e) { return new Set(); } }
@@ -26010,7 +26045,7 @@ function hub2ContentHtml(slug) {
   if (all) bulk = bulk.replace(/(hub2DevAssetsModal|hub2LoadRunModal|hub2BulkResearch|hub2BulkInterviews|hub2BulkThumbnailPrompts|hub2BulkGenerateThumbnails|hub2BulkWriteAssets|hub2BulkAssetStatus|hub2BulkDelete)\('__all_hubs'(?:,this)?\)/g, (_, fn) => `hub2AllAction('${fn}',this)`)
     .replace(/hub2BulkKeywords\('__all_hubs',this,(false|true)\)/g, (_, research) => `hub2AllKeywordAction(this,${research})`);
   const outsideHeader = document.getElementById('hub2Outside-' + slug); if (outsideHeader) outsideHeader.textContent = outside ? outside + ' outside the Keywords hierarchy' : '';
-  const controls = `<div style="display:flex;gap:7px;align-items:center;margin-bottom:6px;"><button onclick="hub2IdleSweep('${slug}',this)" title="Every out-of-sync hub title at Development with no Published asset moves to Idea (in-sync titles never) — the same rule as the weekly Monday cron" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">💤 Move idle titles to Idea</button><button onclick="hub2HideIdeaToggle()" title="${hideIdea ? 'Idea and Archived items are hidden — click to show them' : 'Click to hide everything at Status Idea or Archived'}" style="font-size:9.5px;padding:2px 8px;border:1px solid ${hideIdea ? '#f5c542' : 'var(--border2)'};border-radius:4px;background:transparent;color:${hideIdea ? '#f5c542' : 'var(--text2)'};cursor:pointer;">💡 Hide Idea & Archived: ${hideIdea ? 'on' + (ideaN ? ' (' + ideaN + ' hidden)' : '') : 'off'}</button><button onclick="hub2ColsModal('${slug}')" title="Show / hide columns" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▦ Columns${hub2ColHidden().size ? ' (' + hub2ColHidden().size + ' hidden)' : ''}</button><button onclick="hub2ContentToggleGroup('${slug}')" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">☰ Group by sort: ${grouped ? 'on' : 'off'}</button>${all ? '' : `<button onclick="hub2ImageExclusions('${slug}')" title="Tag unwanted image subjects for every future thumbnail in this hub" style="font-size:9.5px;padding:2px 8px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;">🚫 Thumbnail exclusions</button>`}<span style="font-size:9.5px;color:var(--text3);">${rows.length} item${rows.length === 1 ? '' : 's'}${outside ? ' · ' + outside + ' outside the Keywords hierarchy not shown' : ''}</span></div>`;
+  const controls = `<div style="display:flex;gap:7px;align-items:center;margin-bottom:6px;"><button onclick="hub2IdleSweep('${slug}',this)" title="Every out-of-sync hub title at Development with no Published asset moves to Idea (in-sync titles never) — the same rule as the weekly Monday cron" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">💤 Move idle titles to Idea</button>${all ? '' : `<button onclick="hub2RestyleThumbs('${slug}',this)" title="Re-draw every published post's thumbnail in this hub's thumbnail style (hubs.design.json → thumbnail). Each old thumbnail is kept in its asset's 🗂 Library." style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">🖼 Restyle thumbnails</button>`}<button onclick="hub2HideIdeaToggle()" title="${hideIdea ? 'Idea and Archived items are hidden — click to show them' : 'Click to hide everything at Status Idea or Archived'}" style="font-size:9.5px;padding:2px 8px;border:1px solid ${hideIdea ? '#f5c542' : 'var(--border2)'};border-radius:4px;background:transparent;color:${hideIdea ? '#f5c542' : 'var(--text2)'};cursor:pointer;">💡 Hide Idea & Archived: ${hideIdea ? 'on' + (ideaN ? ' (' + ideaN + ' hidden)' : '') : 'off'}</button><button onclick="hub2ColsModal('${slug}')" title="Show / hide columns" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▦ Columns${hub2ColHidden().size ? ' (' + hub2ColHidden().size + ' hidden)' : ''}</button><button onclick="hub2ContentToggleGroup('${slug}')" style="font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">☰ Group by sort: ${grouped ? 'on' : 'off'}</button>${all ? '' : `<button onclick="hub2ImageExclusions('${slug}')" title="Tag unwanted image subjects for every future thumbnail in this hub" style="font-size:9.5px;padding:2px 8px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;">🚫 Thumbnail exclusions</button>`}<span style="font-size:9.5px;color:var(--text3);">${rows.length} item${rows.length === 1 ? '' : 's'}${outside ? ' · ' + outside + ' outside the Keywords hierarchy not shown' : ''}</span></div>`;
   return tfChip + filterPanel + bulk + controls + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}width:20px;padding-left:2px;padding-right:2px;"><input type="checkbox" title="Select / clear every row shown (filters, Hide Idea & Archived and the Keywords hierarchy apply)" ${allSel ? 'checked' : ''} onclick="hub2SelectAll('${slug}', this.checked)"></th>${ordCols.map(c => { const i = sort.findIndex(x => x.col === c.key), mark = i < 0 ? '' : ' ' + (sort[i].asc ? '▲' : '▼') + (sort.length > 1 ? i + 1 : ''), count = c.key === 'product' ? researchCount : c.key === 'short' ? interviewCount : 0, countTip = c.key === 'product' ? 'Products with research out of sync' : c.key === 'short' ? 'Titles with written pillars needing an interview' : ''; return `<th draggable="true" ondragstart="event.dataTransfer.setData('text/h2col','${c.key}');event.dataTransfer.effectAllowed='move'" ondragover="event.preventDefault();this.style.boxShadow='inset 2px 0 0 var(--accent)'" ondragleave="this.style.boxShadow=''" ondrop="event.preventDefault();this.style.boxShadow='';hub2ContentColMove('${slug}',event.dataTransfer.getData('text/h2col'),'${c.key}')" onclick="hub2ContentSetSort('${slug}','${c.key}',event)" title="Click to sort · drag to move the column" style="${TH}cursor:grab;user-select:none;">${esc(c.label)}${count ? ` <span title="${esc(countTip)}" style="color:#ff7a00;">${count}</span>` : ''}${mark}</th>`; }).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${ordCols.length + 1}" style="${TD}color:var(--text3);">No items match these filters.</td></tr>`}</tbody></table></div>`;
 }
 function hub2CodexAttach(slug) {
