@@ -8233,10 +8233,10 @@ function thumbStyleCHtml(rule, title, topic) {
   const fam = n => encodeURIComponent(n).replace(/%20/g, '+');
   return '<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=' + fam(disp) + ':wght@700&family=' + fam(mono) + ':wght@500&display=swap" rel="stylesheet"><style>'
     + 'html,body{margin:0;width:1600px;height:900px;overflow:hidden}body{background:' + (T.surface || '#f2f7f2') + ';position:relative;font-family:"' + disp + '",system-ui,sans-serif}'
-    + '.t{position:absolute;left:7%;right:8%;top:31%;text-align:left;font-weight:700;font-size:' + size + 'px;line-height:1.06;letter-spacing:-.01em;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
-    + '.i{position:absolute;left:7%;top:10%;width:120px;height:120px;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
+    + '.t{position:absolute;left:7%;right:8%;top:16%;text-align:left;font-weight:700;font-size:' + size + 'px;line-height:1.06;letter-spacing:-.01em;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
+    + '.i{float:left;width:' + Math.round(size * 1.7) + 'px;height:' + Math.round(size * 1.7) + 'px;margin:' + Math.round(size * .14) + 'px ' + Math.round(size * .3) + 'px 0 0;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
     + '.l{position:absolute;left:0;right:0;bottom:11%;text-align:center;font:500 38px/1 "' + mono + '",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:' + (T.ink || '#1a2a1a') + ';opacity:.72}'
-    + '</style></head><body><script>document.fonts.ready.then(()=>document.body.classList.add("ready"));setTimeout(()=>document.body.classList.add("ready"),5000)</script><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div></body></html>';
+    + '</style></head><body><script>document.fonts.ready.then(()=>document.body.classList.add("ready"));setTimeout(()=>document.body.classList.add("ready"),5000)</script><div class="t"><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div>' + e(title) + '</div></body></html>';
 }
 async function renderThumbStyleC(env, rule, title, topicText, keyBase) {
   const acct = String(env.CF_ACCOUNT_ID || '').trim(), tok = String(env.CF_API_TOKEN || '').trim();

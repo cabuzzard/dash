@@ -128,7 +128,7 @@
       },
       "thumbnail": {
         "style": "C",
-        "rule": "Post thumbnails (operator 2026-11-20): the hub surface color, one small tool line icon for the post feature in the sea color, indented in the upper left, and the post title below it, left-justified and large, in the display font. No label text (operator 2026-11-20). No photos, no scenes, no image model. Hero images and the heading icon are not affected."
+        "rule": "Post thumbnails (operator 2026-11-20): the hub surface color, the post title left-justified and large in the display font, with one small tool line icon for the post feature in the sea color set into the top left of the title block (the first lines indent around it; the icon is never above the title). No label text (operator 2026-11-20). No photos, no scenes, no image model. Hero images and the heading icon are not affected."
       }
     },
     "care-gap": {
