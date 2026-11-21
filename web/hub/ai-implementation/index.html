@@ -48,7 +48,7 @@
 html{-webkit-text-size-adjust:100%;scroll-padding-top:84px} /* web-interface-guidelines 2026-11-20: anchors + focus land below the sticky header */
 a,button{touch-action:manipulation}
 h1,h2,h3{text-wrap:balance}
-.skip{position:absolute;left:1rem;top:-3rem;z-index:50;background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:8px;text-decoration:none;font-family:var(--font-mono);font-size:.8rem}
+.skip{position:absolute;left:1rem;top:-3rem;z-index:50;background:var(--ink);color:var(--bg);padding:.6rem 1rem;border-radius:9px;text-decoration:none;font-family:var(--font-mono);font-size:.8rem}
 .skip:focus{top:.75rem}
 .dispatch .d-date{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){a.card:hover,.btn:hover{transform:none}}
@@ -59,7 +59,7 @@ body{
 }
 img{max-width:100%;display:block}
 a{color:inherit}
-:focus-visible{outline:2px solid var(--sea);outline-offset:3px;border-radius:2px}
+:focus-visible{outline:2px solid var(--sea);outline-offset:3px;border-radius:9px}
 
 .wrap{width:min(1120px,100% - 2.5rem);margin-inline:auto}
 
@@ -94,7 +94,7 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter
   font-family:var(--font-mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--deep-ink);
 }
 .ribbon-track span{display:inline-flex;align-items:center;gap:.55rem;white-space:nowrap}
-.ribbon-track span::before{content:"";width:7px;height:7px;background:color-mix(in srgb,var(--accent) 72%,#fff);border-radius:1px;transform:rotate(45deg);flex:none}
+.ribbon-track span::before{content:"";width:7px;height:7px;background:color-mix(in srgb,var(--accent) 72%,#fff);border-radius:9px;transform:rotate(45deg);flex:none}
 
 .hero{padding:clamp(3.5rem,9vw,7rem) 0 clamp(3rem,7vw,5rem);background:color-mix(in srgb,var(--sea) 7%,var(--bg));border-bottom:4px solid var(--sea)}
 .hero .eyebrow{display:inline-block;margin-bottom:1.4rem;background:var(--sea);color:var(--bg);padding:.42rem .8rem;border-radius:9px}
@@ -122,7 +122,7 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;line-height:1.04;letter
 .grid.cols-2{grid-template-columns:repeat(2,1fr)}
 
 .card{
-  background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--sea);border-radius:4px 4px 14px 14px;
+  background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--sea);border-radius:9px;
   padding:1.5rem;display:flex;flex-direction:column;gap:.65rem;text-decoration:none;color:inherit;
   transition:border-color .15s ease,transform .15s ease;
 }
@@ -142,7 +142,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .dispatch .d-src{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em}
 
 .empty{
-  border:1px dashed var(--line);border-radius:14px;padding:2.25rem 1.75rem;
+  border:1px dashed var(--line);border-radius:9px;padding:2.25rem 1.75rem;
   color:var(--ink-soft);font-size:1rem;max-width:52ch;
 }
 .empty strong{display:block;font-family:var(--font-display);font-weight:600;color:var(--ink);font-size:1.05rem;margin-bottom:.4rem}
@@ -200,21 +200,21 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
   .nav a{padding:1rem 1.25rem;border-top:1px solid var(--line)}
   .site-head .wrap{gap:.75rem}
   .nav-cta{order:2;margin-left:auto}
-  .nav-toggle{order:3;display:inline-flex;background:none;border:1px solid var(--line);border-radius:8px;width:38px;height:38px;align-items:center;justify-content:center;cursor:pointer;font-size:1.1rem}
+  .nav-toggle{order:3;display:inline-flex;background:none;border:1px solid var(--line);border-radius:9px;width:38px;height:38px;align-items:center;justify-content:center;cursor:pointer;font-size:1.1rem}
   .grid.cols-3,.grid.cols-2{grid-template-columns:1fr}
   .dispatch a{grid-template-columns:1fr;gap:.3rem}
   .dispatch .d-src{display:none}
 }
 .hero .wrap, .sec.report .wrap { display:grid; gap:1.8rem; }
 .hub-aside { margin:0; align-self:center; }
-.hub-aside img { display:block; width:100%; height:auto; border-radius:14px; }
-.hub-aside.ph { aspect-ratio:4/3; border-radius:14px; background:linear-gradient(135deg, var(--sea) 0%, var(--accent) 100%); opacity:.30; }
+.hub-aside img { display:block; width:100%; height:auto; border-radius:9px; }
+.hub-aside.ph { aspect-ratio:4/3; border-radius:9px; background:linear-gradient(135deg, var(--sea) 0%, var(--accent) 100%); opacity:.30; }
 @media (min-width:820px){
   .hero .wrap, .sec.report .wrap { grid-template-columns: minmax(0,2fr) minmax(0,1fr); align-items:center; }
   .hub-aside { order:2; }
   .hub-aside img, .hub-aside.ph { width:100%; max-width:340px; height:auto; aspect-ratio:3/4; object-fit:cover; object-position:center; margin-inline:auto; }
 }
-.card-img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:8px;margin:0 0 12px;}
+.card-img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:9px;margin:0 0 12px;}
 .card h3{display:flow-root}
 .card h3 .card-ico{float:left;width:2.05em;height:2.05em;margin:.06em .45em 0 0;color:var(--sea)} /* operator 2026-11-20: the tool icon indented into the title */
 .card .card-img{display:none} /* operator 2026-11-20: no thumbnails on the hub cards; the title text below the card carries it */
@@ -832,7 +832,7 @@ async function renderHubOffers() {
 
 <!-- Talk to us (2026-10-10): Call me now / Book a time → worker hubIntake → GoHighLevel (hub tag + field, one calendar) -->
 <style>
-#talkDlg{border:0;border-radius:16px;padding:0;max-width:440px;width:calc(100% - 32px);background:var(--bg,#fff);color:var(--ink,#1a1a1a);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#talkDlg{border:0;border-radius:9px;padding:0;max-width:440px;width:calc(100% - 32px);background:var(--bg,#fff);color:var(--ink,#1a1a1a);box-shadow:0 20px 60px rgba(0,0,0,.35)}
 #talkDlg::backdrop{background:rgba(0,0,0,.5)}
 #talkDlg .tk{padding:22px 22px 18px}
 #talkDlg h3{margin:0 0 4px;font-size:1.35rem}
@@ -841,7 +841,7 @@ async function renderHubOffers() {
 #talkDlg .tk-tabs button{flex:1;padding:9px;border-radius:999px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;cursor:pointer;opacity:.7}
 #talkDlg .tk-tabs button[aria-selected="true"]{opacity:1;font-weight:700;background:rgba(127,127,127,.15)}
 #talkDlg label{display:block;font-size:.85rem;margin:0 0 10px}
-#talkDlg input{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:11px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;font:inherit;font-size:16px}
+#talkDlg input{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:11px 12px;border-radius:9px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;font:inherit;font-size:16px}
 #talkDlg .tk-row{display:flex;gap:8px;align-items:center;margin-top:12px}
 #talkDlg .tk-row .btn{flex:1;text-align:center}
 #talkDlg .tk-x{position:absolute;top:10px;right:12px;background:none;border:0;color:inherit;font-size:22px;cursor:pointer;opacity:.6}
