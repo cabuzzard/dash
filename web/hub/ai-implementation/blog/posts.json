@@ -1,5 +1,15 @@
 [
   {
+    "slug": "ai-operations-partner",
+    "title": "AI Automation Services for Small Businesses",
+    "intro": "You Googled \"done-for-you AI automation\" at 11pm because you already know the tools exist. You've seen what they can do. The gap isn't knowledge — it's that nobody has built the thing inside your actual business and left it running.\n\nThat's the difference between knowing automation works and having ",
+    "date": "2026-11-21",
+    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
+    "contentHash": "b54eba409cc69b83d2288576afb70b0aafb686f2ccd716ea7f77f81fb1a0baaa",
+    "contentEditedAt": "2026-11-21T04:51:00.000Z",
+    "refreshedAt": "2026-11-21T04:51:57.486Z"
+  },
+  {
     "slug": "done-for-you-lead-gen",
     "title": "Your AI Workflow Audit & Roadmap",
     "intro": "You are already running. You have tools, vendors, and some version of a lead generation process in motion. The problem is nothing connects, you cannot tell what is actually working, and every hour you spend manually following up, qualifying, or chasing approvals is an hour your competitors are not s",
@@ -18,16 +28,6 @@
     "contentHash": "8e3bf47900d431f1dda949a6d17145f46863c94241239b9763e9252131ad5e43",
     "contentEditedAt": "2026-11-21T04:49:00.000Z",
     "refreshedAt": "2026-11-21T04:49:27.211Z"
-  },
-  {
-    "slug": "ai-operations-partner",
-    "title": "AI Automation Services for Small Businesses",
-    "intro": "You Googled \"done-for-you AI automation\" at 11pm because you already know the tools exist. You've seen what they can do. The gap isn't knowledge — it's that nobody has built the thing inside your actual business and left it running.\n\nThat's the difference between knowing automation works and having ",
-    "date": "2026-11-21",
-    "assetId": "4001f7d3a4bb81b1bc52c0df8abced05",
-    "contentHash": "57d3fde16f72ce5126bb96d279bf36a8510e1c1a04f8b5032c9c652eaffb5a20",
-    "contentEditedAt": "2026-11-21T04:49:00.000Z",
-    "refreshedAt": "2026-11-21T04:49:16.804Z"
   },
   {
     "slug": "fractional-ai-operations-get-an-ai-systems-partner-without-hiring",
