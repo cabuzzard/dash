@@ -12533,6 +12533,8 @@ async function hd2SdLoad(fromLive) {
     if (hj.frozen) {
       const fd = await fetch(sdUrl(slug) + 'design-fields.json?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
       if (fd && Array.isArray(fd.fields)) { const live = sdFieldsRead(fd, html); Object.assign(EF.sd, { fieldsDef: fd, liveFields: live, fields: { ...live, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fields) || {}) } }); }
+      const cb = fd && fd.combos && fd.comboMap ? await fetch(sdUrl(slug) + fd.combos + '?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null) : null;
+      EF.sd.combos = (cb && Array.isArray(cb.color_combos)) ? cb.color_combos : null; EF.sd.combo = '';
     }
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
@@ -12737,7 +12739,7 @@ function sdFieldsRead(fd, html) {
 function sdFieldsOut() { const D = EF.sd, o = {}; for (const f of sdFieldAll()) if (D.fields[f.id] !== undefined && !(f.bind || {}).readonly) o[f.id] = D.fields[f.id]; return o; }
 function hd2SdFieldsHtml() {
   const D = EF.sd; if (!D.fieldsDef) return ''; const ch = sdFieldAll().filter(f => D.fields[f.id] !== D.liveFields[f.id]).length;
-  return '<div style="font-size:11.5px;color:var(--text3);margin:0 0 6px;">🧩 Fields · ' + sdFieldAll().length + ' from design-fields.json' + (ch ? ' · <b style="color:#f59e0b;">' + ch + ' changed</b>' : ' · matches the live page') + '</div>'
+  return hd2SdComboHtml() + '<div style="font-size:11.5px;color:var(--text3);margin:0 0 6px;">🧩 Fields · ' + sdFieldAll().length + ' from design-fields.json' + (ch ? ' · <b style="color:#f59e0b;">' + ch + ' changed</b>' : ' · matches the live page') + '</div>'
     + D.fieldsDef.fields.map((g, gi) => '<details class="sd-grp"' + (D.open['f:' + g.group] ?? gi < 2 ? ' open' : '') + ' ontoggle="EF.sd.open[\'f:' + esc(g.group).replace(/'/g, '&#39;') + '\']=this.open"><summary>' + esc(g.group) + ' <span>' + (g.fields || []).length + '</span></summary><div style="padding:6px 8px 8px;display:grid;gap:7px;">'
       + (g.fields || []).map(f => hd2SdFieldRow(f)).join('') + '</div></details>').join('');
 }
@@ -12753,6 +12755,37 @@ function hd2SdFieldRow(f) {
     + (b.var && sdNums(v).some(t => t.u) ? '<span class="sd-num" style="padding:1px;"><button onmousedown="event.preventDefault();hd2SdFieldStep(\'' + id + '\',1,event.shiftKey)" title="Up (Shift ×10)">▴</button><button onmousedown="event.preventDefault();hd2SdFieldStep(\'' + id + '\',-1,event.shiftKey)" title="Down (Shift ×10)">▾</button></span>' : '') + '</div>';
   return '<label style="display:grid;gap:3px;font-size:11.5px;color:var(--text3);" onmouseenter="' + (b.sel ? 'hd2SdHi(' + "'" + esc(b.sel).replace(/'/g, '&#39;') + "'" + ')' : '') + '" onmouseleave="hd2SdHi(\'\')"><span style="display:flex;gap:6px;align-items:center;">' + esc(f.label) + (b.var ? ' <code style="font-size:10.5px;">' + esc(b.var) + '</code>' : '')
     + (changed ? ' <b style="color:#f59e0b;" title="Live: ' + esc(live) + '">•</b><button style="font-size:10.5px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;" onclick="event.preventDefault();hd2SdField(\'' + id + '\',EF.sd.liveFields[\'' + id + '\'],true)" title="Back to the live value">↺</button>' : '') + '</span>' + ctl + '</label>';
+}
+// Color combos (operator 2026-11-21, Grok workspace color-combos.json): ◀ ▶ cycles the page's palettes; each combo fills the
+// color fields named in design-fields.json comboMap (primary → --green …). Position 1 = the live page's colors.
+function sdComboList() { return [null, ...(EF.sd.combos || [])]; }
+function sdComboChecks(F, M) {
+  const c = k => F[M[k]], w = [], cr = (a, b) => hd2DsCr(a, b);
+  if (cr(c('ink'), c('bg')) < 4.5) w.push('Text on the page ' + cr(c('ink'), c('bg')).toFixed(1) + ':1 (needs 4.5)');
+  if (cr(c('muted'), c('bg')) < 4.5) w.push('Muted text ' + cr(c('muted'), c('bg')).toFixed(1) + ':1 (needs 4.5)');
+  if (cr(c('primary'), c('bg')) < 4.5) w.push('Green labels / links on the page ' + cr(c('primary'), c('bg')).toFixed(1) + ':1 (needs 4.5)');
+  const btn = Math.min(cr('#ffffff', c('bright')), cr('#ffffff', c('primary'))); if (btn < 4.5) w.push('White button text ' + btn.toFixed(1) + ':1 (needs 4.5)');
+  if (cr(c('primary'), c('soft')) < 3) w.push('Step numbers ' + cr(c('primary'), c('soft')).toFixed(1) + ':1 (needs 3)');
+  return w;
+}
+function hd2SdComboHtml() {
+  const D = EF.sd; if (!D.combos || !D.fieldsDef.comboMap) return '';
+  const M = D.fieldsDef.comboMap, list = sdComboList(), i = list.findIndex(x => (x ? x.id : '') === (D.combo || '')), c = list[i] || null;
+  const sw = Object.keys(M).map(k => '<span title="' + k + ' ' + esc(D.fields[M[k]] || '') + '" style="flex:1;height:18px;background:' + esc(D.fields[M[k]] || '#fff') + ';"></span>').join('');
+  const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
+  const warn = sdComboChecks(D.fields, M);
+  return '<div style="font-size:11.5px;color:var(--text3);">Color combo</div>'
+    + '<div tabindex="0" data-step="combo" onkeydown="if(event.key===\'ArrowRight\'||event.key===\'ArrowDown\'){event.preventDefault();hd2SdComboStep(1)}else if(event.key===\'ArrowLeft\'||event.key===\'ArrowUp\'){event.preventDefault();hd2SdComboStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;margin:3px 0 4px;">'
+    + '<button style="' + btn + '" onclick="hd2SdComboStep(-1)" title="Previous combo (←)">◀</button>'
+    + '<div style="flex:1;min-width:0;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;"><div style="display:flex;border-radius:4px;overflow:hidden;">' + sw + '</div>'
+    + '<div style="display:flex;justify-content:space-between;gap:6px;margin-top:3px;"><span style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(c ? c.name : 'Live page colors') + '</span><span style="font-size:10.5px;color:var(--text3);flex:none;">' + (i + 1) + ' of ' + list.length + '</span></div></div>'
+    + '<button style="' + btn + '" onclick="hd2SdComboStep(1)" title="Next combo (→)">▶</button></div>'
+    + (warn.length ? '<div style="font-size:11px;color:#f59e0b;margin-bottom:6px;">' + warn.map(x => '⚠ ' + esc(x)).join('<br>') + '</div>' : '');
+}
+function hd2SdComboStep(dir) {
+  const D = EF.sd, list = sdComboList(), n = list.length, i = list.findIndex(x => (x ? x.id : '') === (D.combo || '')), j = i < 0 ? 0 : (i + dir + n) % n, c = list[j];
+  D.combo = c ? c.id : ''; for (const [k, fid] of Object.entries(D.fieldsDef.comboMap)) { D.fields[fid] = c && c[k] ? c[k] : D.liveFields[fid]; hd2SdFieldPush(fid); }
+  hd2SdTouch(); hd2SdFieldsDraw(); const st = document.querySelector('#sdFields [data-step="combo"]'); if (st) st.focus();
 }
 function hd2SdFieldsDraw() { const el = document.getElementById('sdFields'); if (el) el.innerHTML = hd2SdFieldsHtml(); }
 function hd2SdField(id, v, redraw) { EF.sd.fields[id] = v; hd2SdFieldPush(id); hd2SdTouch(); clearTimeout(window._sdFDraw); if (redraw) hd2SdFieldsDraw(); else window._sdFDraw = setTimeout(() => { const a = document.activeElement, aid = a && a.id, ss = a && a.selectionStart; hd2SdFieldsDraw(); const n = aid && document.getElementById(aid); if (n) { n.focus(); try { n.setSelectionRange(ss, ss); } catch (e) {} } }, 700); }

@@ -653,6 +653,16 @@
             "attr": "href",
             "fmt": "mailto:{v}"
           }
+        },
+        {
+          "id": "cta_image",
+          "label": "Bottom CTA image (business owners with phones)",
+          "type": "image",
+          "default": "",
+          "bind": {
+            "sel": ".cta-image img",
+            "attr": "src"
+          }
         }
       ]
     },
@@ -680,5 +690,17 @@
       ]
     }
   ],
-  "note": "Operator-authored fields (Grok workspace 2026-11-21) + bindings into the hand-authored index.html. bind.var = a :root variable; bind.sel (+attr, fmt) = the element whose text / attribute the value fills. Values are text only; the markup is never changed."
+  "note": "Operator-authored fields (Grok workspace 2026-11-21) + bindings into the hand-authored index.html. bind.var = a :root variable; bind.sel (+attr, fmt) = the element whose text / attribute the value fills. Values are text only; the markup is never changed.",
+  "combos": "color-combos.json",
+  "comboMap": {
+    "primary": "color_green",
+    "bright": "color_green_bright",
+    "dark": "color_green_dark",
+    "darker": "color_green_darker",
+    "soft": "color_green_soft",
+    "mid": "color_green_mid",
+    "ink": "color_ink",
+    "muted": "color_muted",
+    "bg": "color_bg"
+  }
 }
