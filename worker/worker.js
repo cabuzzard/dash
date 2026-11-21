@@ -8210,6 +8210,7 @@ const THUMB_ICONS = {
   users: '<circle cx="18" cy="16" r="6"/><path d="M6 40c0-7 5-12 12-12s12 5 12 12"/><circle cx="34" cy="18" r="5"/><path d="M32 28c6 0 10 4 10 11"/>',
   dollar: '<circle cx="24" cy="24" r="17"/><path d="M30 17c-1-2-3-3-6-3-4 0-6 2-6 5 0 7 13 3 13 10 0 3-3 5-7 5-3 0-5-1-7-3M24 10v4M24 34v4"/>',
   wrench: '<path d="M30 6a10 10 0 0 0-9 14L7 34a4 4 0 0 0 6 6l14-14a10 10 0 0 0 14-9l-6 6-6-2-2-6z"/>',
+  clipboard: '<rect x="10" y="8" width="28" height="34" rx="3"/><path d="M18 8V5h12v3M16 20h16M16 27h16M16 34h10"/>',
 };
 const THUMB_TOPICS = [
   [/missed[- ]?calls?|text[- ]?back/i, 'phone', 'Missed-call text-back'], [/speed[- ]to[- ]lead/i, 'phone', 'Speed-to-Lead'],
@@ -8217,6 +8218,7 @@ const THUMB_TOPICS = [
   [/reviews?\b/i, 'star', 'Review requests'], [/reactivat|past[- ]customers?|re-?engage|win[- ]back/i, 'refresh', 'Reactivation'],
   [/follow[- ]?up|quotes?\b|estimates?\b/i, 'mail', 'Follow-up'], [/\bcrm\b|pipeline/i, 'funnel', 'CRM pipeline'], [/newsletter/i, 'mail', 'Newsletter'],
   [/dashboard|reporting|metrics|analytics/i, 'chart', 'Reporting'], [/members? area|client portal|members\b/i, 'users', 'Client portal'],
+  [/\baudit\b|roadmap/i, 'clipboard', 'AI audit'], [/fractional|systems partner|ai operations/i, 'users', 'AI partner'], [/automation/i, 'wrench', 'Automation'],
   [/\bleads?\b/i, 'chart', 'Lead generation'], [/cost|price|pricing|budget|money|waste|spend/i, 'dollar', 'Costs'],
 ];
 function thumbTopic(text) { for (const [re, icon, label] of THUMB_TOPICS) if (re.test(String(text || ''))) return { icon, label }; return { icon: 'wrench', label: 'AI tools' }; }
@@ -42706,6 +42708,11 @@ Rules:
       if (body.action === "generateOfferImage") {
         const { assetId, kind } = body;
         if (!assetId || !["ig-background", "blog-thumbnail"].includes(kind)) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
+        if (kind === "blog-thumbnail" && !body.grok) {   // an Offer card's thumbnail follows the hub's thumbnail style rule too (2026-11-21: "the top section didn't re style")
+          const op = await ivPage(assetId).catch(() => null), ocid = op && op.properties?.Campaign?.relation?.[0]?.id;
+          await hubSitesMerge(env).catch(() => {}); const oh = ocid && HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(ocid)), orule = oh ? await hubThumbRule(oh.slug) : null;
+          if (orule && /^c$/i.test(String(orule.style))) return json(await selfAction(env, "generateBlogPostThumbnail", { assetId }));
+        }
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured — offer images render on xAI Grok Imagine." }, 500);
         const PROMPT_PROP = kind === "ig-background" ? "Image Prompt (IG Background)" : "Image Prompt (Blog Thumbnail)";
@@ -42918,7 +42925,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         if (!hub) return json({ error: "Unknown hub" }, 400);
         const rule = await hubThumbRule(hub.slug); if (!rule) return json({ error: "This hub has no thumbnail style rule (hubs.design.json: thumbnail.style)" }, 400);
         const rows = (await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: ivDash(hub.campaignId) } }, { property: "Asset Status", select: { equals: "Published" } }] } }))
-          .filter(r => !r.archived && !r.in_trash && ["news", "articles"].includes(hubSectionOf(r.properties || {})) && (!r.properties?.["Content Hub"]?.select?.name || r.properties["Content Hub"].select.name === hub.slug))
+          .filter(r => !r.archived && !r.in_trash && (Array.isArray(body.sections) && body.sections.length ? body.sections : ["news", "articles", "offers"]).includes(hubSectionOf(r.properties || {})) && (!r.properties?.["Content Hub"]?.select?.name || r.properties["Content Hub"].select.name === hub.slug))
           .sort((a, b) => String(a.created_time).localeCompare(String(b.created_time)));
         const off = Math.max(0, +body.offset || 0), lim = Math.max(1, Math.min(6, +body.limit || 4)), part = rows.slice(off, off + lim), results = [];
         for (const r of part) { const t = hubRichText(r.properties?.["Platform Title"]?.rich_text) || hubRichText(r.properties?.["Asset Title"]?.title);
