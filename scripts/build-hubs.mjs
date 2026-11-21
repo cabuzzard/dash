@@ -99,6 +99,8 @@ let drift = 0;
 const slugs = Object.keys(spec.hubs);
 for (const slug of slugs) {
   const hub = spec.hubs[slug];
+  // hand-authored page (operator 2026-11-21): its HTML is the master; the spec never rewrites it
+  if (hub.frozen) { console.log(`  ❄ ${slug} — hand-authored, skipped`); continue; }
   const file = path.join(HUB_DIR, slug, "index.html");
   const src = fs.readFileSync(file, "utf8");
   const eol = src.includes("\r\n") ? "\r\n" : "\n";

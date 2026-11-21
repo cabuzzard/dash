@@ -80,6 +80,7 @@
   },
   "hubs": {
     "ai-implementation": {
+      "frozen": "2026-11-21 operator: hand-authored index.html is the master; writers fill text only",
       "email": "info@webguyleadgeneration.com",
       "meta": {
         "title": "Small Business Tools — the stack you actually need, no coding",

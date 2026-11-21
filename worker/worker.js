@@ -5256,6 +5256,10 @@ let HUB_PUT_LAST = 0;
 // trusting any routing status noted elsewhere (CLAUDE.md's table has gone
 // stale more than once — Build Watcher and Mountainwize were both marked
 // unrouted there while actually serving correctly).
+// Hand-authored hub pages (operator 2026-11-21: "drop it in as index as is … asset writing will have to conform to external
+// markup"). The page's HTML is the master: no automated writer may rewrite web/hub/<slug>/index.html for these slugs — design
+// publish, page-CSS writes, logo upload, scaffold all skip it. Asset output gets mapped INTO this markup section by section.
+const HUB_HTML_FROZEN = new Set(["ai-implementation"]);
 const HUB_SITES = [
   { slug: "surf-vacations",       name: "Surf Vacations",       campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770",  domain: "outsidesessions.com" },
   { slug: "sunflower-acres",      name: "Sunflower Acres",      campaignId: "3871f7d3a4bb814997e5f3400fc3ff57", domain: "accessiblefarms.com" },
@@ -8842,6 +8846,7 @@ async function sha256Hex(t) { const b = await crypto.subtle.digest("SHA-256", ne
 async function hubWritePageCss(env, slug, page, blocks) {   // replace the page's <style> blocks, one commit; previous live CSS archived 180 days
   const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) throw new Error("GITHUB_TOKEN not set");
   const PAGES = { home: "web/hub/" + slug + "/index.html" }, path = PAGES[page]; if (!path) throw new Error("unknown page " + page);
+  if (HUB_HTML_FROZEN.has(slug)) throw new Error("this hub's page is hand-authored (frozen) — page CSS is not written to it");
   const REPO = "cabuzzard/dash", gh = { Authorization: "Bearer " + GT, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
   const toB64 = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
   const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
@@ -22163,6 +22168,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
         if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
         const slug = String(body.slug || "").trim();
         if (!HUB_SITES.find(h => h.slug === slug)) return json({ error: "unknown hub" }, 400);
+        if (HUB_HTML_FROZEN.has(slug)) return json({ error: "this hub's page is hand-authored (frozen) — edit the logo in its HTML" }, 409);
         const dataB64 = String(body.fileData || "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
         if (!dataB64) return json({ error: "fileData (base64) required" }, 400);
         const src = `${body.contentType || ""} ${body.fileName || ""}`;
@@ -22906,7 +22912,7 @@ Return ONLY this minified JSON object, nothing before or after:
             if (m.description) html = html.replace(/<meta name="description" content="[^"]*">/, () => `<meta name="description" content="${escH(m.description)}">`);
             if (m.ogTitle) html = html.replace(/<meta property="og:title" content="[^"]*">/, () => `<meta property="og:title" content="${escH(m.ogTitle)}">`);
             if (m.ogDescription) html = html.replace(/<meta property="og:description" content="[^"]*">/, () => `<meta property="og:description" content="${escH(m.ogDescription)}">`);
-            await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);
+            if (!HUB_HTML_FROZEN.has(slug)) await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);   // frozen = hand-authored page, spec only
 
             // ── image spec goes live in the same save ──────────────────────
             // Regenerate the wordless-plate art-direction spec from the
@@ -23545,7 +23551,7 @@ Return: {
   footer: { tagline: "${esc2(hb.footer?.tagline || campName)}", legal: "\\u00A9 2026 ${esc2(hb.brand || campName)}" },
 };`;
             html = html.replace(/const HUB = \{[\s\S]*?\n\};/, hubObj.replace(/\n/g, "\r\n"));
-            await ghPut(`web/hub/${slug}/index.html`, html, `hub: scaffold ${slug} from Content Hub asset`, idxF.sha);
+            if (!HUB_HTML_FROZEN.has(slug)) await ghPut(`web/hub/${slug}/index.html`, html, `hub: scaffold ${slug} from Content Hub asset`, idxF.sha);
             committed.push(`web/hub/${slug}/index.html`);
 
             // 4. hubs.design.json
@@ -43106,6 +43112,7 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
       if (body.action === "hubAssetHtmlSync") {
         await hubSitesMerge(env).catch(() => {});
         const hub = HUB_SITES.find(h => h.slug === String(body.slug || "")); if (!hub) return json({ error: "unknown hub" }, 400);
+        if (HUB_HTML_FROZEN.has(hub.slug)) return json({ ok: true, skipped: "hand-authored page (frozen)" });
         const asset = await hubAssetOf(env, hub.campaignId); if (!asset) return json({ ok: true, skipped: "no Hub asset" });
         if (asset.properties?.["Asset Status"]?.select?.name !== "Published") return json({ ok: true, skipped: "Hub asset not Published" });
         const raw = hubRichText(asset.properties?.["Page CSS"]?.rich_text); if (!raw) return json({ ok: true, skipped: "no Page CSS" });
