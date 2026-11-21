@@ -1,5 +1,15 @@
 [
   {
+    "slug": "done-for-you-lead-gen",
+    "title": "Your AI Workflow Audit & Roadmap",
+    "intro": "You are already running. You have tools, vendors, and some version of a lead generation process in motion. The problem is nothing connects, you cannot tell what is actually working, and every hour you spend manually following up, qualifying, or chasing approvals is an hour your competitors are not s",
+    "date": "2026-11-21",
+    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
+    "contentHash": "9ae4846dae172025e5c3c0b145c01fc6edaa430db208fdd6bc7b42746a970e78",
+    "contentEditedAt": "2026-11-21T04:49:00.000Z",
+    "refreshedAt": "2026-11-21T04:49:05.582Z"
+  },
+  {
     "slug": "fractional-ai-operations-get-an-ai-systems-partner-without-hiring",
     "title": "Fractional AI Operations: Get an AI Systems Partner Without Hiring",
     "intro": "You've got AI tools running. A scheduler, ChatGPT open in a tab, maybe a contractor you brief manually every week. The content exists in pieces. What doesn't exist is a system — and you're the thing holding the pieces together. The moment your attention moves, output stalls. You already know this is",
@@ -72,15 +82,5 @@
     "contentHash": "31837aa438de41f0b9e91cb15544fbd75ee1f69dcc13e1b8e512cd28480c1abc",
     "contentEditedAt": "2026-10-22T16:30:00.000Z",
     "refreshedAt": "2026-10-22T16:30:22.498Z"
-  },
-  {
-    "slug": "done-for-you-lead-gen",
-    "title": "Your AI Workflow Audit & Roadmap",
-    "intro": "You are already running. You have tools, vendors, and some version of a lead generation process in motion. The problem is nothing connects, you cannot tell what is actually working, and every hour you spend manually following up, qualifying, or chasing approvals is an hour your competitors are not s",
-    "date": "2026-10-22",
-    "assetId": "4001f7d3a4bb814d81dbf60932ef765c",
-    "contentHash": "7ad9d250136dce939bc0e17c059f0dc825eae8ef43acbe1ad41853d6bd34b2a5",
-    "contentEditedAt": "2026-10-22T16:29:00.000Z",
-    "refreshedAt": "2026-10-22T16:29:28.358Z"
   }
 ]
