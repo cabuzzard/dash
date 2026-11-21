@@ -94,17 +94,17 @@
       },
       "logoText": "Small Business Tools",
       "tokens": {
-        "bg": "#141415",
-        "surface": "#2e3035",
-        "ink": "#f0f2f5",
-        "ink-head": "#f0f2f5",
-        "ink-soft": "#838c9f",
-        "line": "#2d2f33",
-        "sea": "#00b24b",
-        "deep": "#2e3035",
-        "deep-ink": "#f0f2f5",
-        "accent": "#008a3b",
-        "paper": "#2e3035"
+        "bg": "#ffffff",
+        "surface": "#f2f7f2",
+        "ink": "#1a2a1a",
+        "ink-head": "#0f1f2e",
+        "ink-soft": "#5f715f",
+        "line": "#d4e4d4",
+        "sea": "#2b832b",
+        "deep": "#0f2910",
+        "deep-ink": "#f0faf0",
+        "accent": "#1b881b",
+        "paper": "#f2f7f2"
       },
       "tokenNotes": {
         "bg": "clean daylight — not a dev console",
