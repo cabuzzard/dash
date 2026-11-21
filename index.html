@@ -12529,6 +12529,11 @@ async function hd2SdLoad(fromLive) {
     if (!_sdTags) await hd2SdTagsLoad();
     _hd2DsLib = lib; await hd2SavedLooksMerge(); const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
     Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '', fontTag: (EF.sd && EF.sd.fontTag) || '', lookTag: (EF.sd && EF.sd.lookTag) || '' });
+    EF.sd.fieldsDef = null; EF.sd.fields = null; EF.sd.liveFields = null;
+    if (hj.frozen) {
+      const fd = await fetch(sdUrl(slug) + 'design-fields.json?v=' + Date.now()).then(r => r.ok ? r.json() : null).catch(() => null);
+      if (fd && Array.isArray(fd.fields)) { const live = sdFieldsRead(fd, html); Object.assign(EF.sd, { fieldsDef: fd, liveFields: live, fields: { ...live, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fields) || {}) } }); }
+    }
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
     Object.assign(EF.sd, { busy: '', blocks: blocks.length, live, rules: useSb ? sb.sandbox.rules : JSON.parse(JSON.stringify(live)), source: useSb ? 'sandbox' : 'live',
@@ -12550,10 +12555,11 @@ function hd2SdHtml() {
     + '<button style="' + B() + '" onclick="hd2SdLoad(true)" title="Throw away the sandbox in this window and start again from the live page CSS (the saved sandbox stays until you save over it)">⟲ From live</button>'
     + '<input id="sdNote" style="' + HD2_IN + 'width:170px;" placeholder="Note for this save…">'
     + '<button style="' + B('var(--accent)', 'var(--accent)') + '" onclick="hd2SdSave(this)">💾 Save sandbox</button>'
-    + '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Save this sandbox onto the hub’s Hub asset (Page CSS). The Hub asset writes the live hub page when it is Published. Second click confirms.">⬆ Save to Hub asset</button>'
+    + (D.fieldsDef ? '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdFieldsApply(this)" title="Write the changed Fields into the live hub page: text, links and variable values only, never markup. CSS rule edits stay in the sandbox. Second click confirms.">⬆ Write fields to page</button>' : '')
+    + (D.fieldsDef ? '' : '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Save this sandbox onto the hub’s Hub asset (Page CSS). The Hub asset writes the live hub page when it is Published. Second click confirms.">⬆ Save to Hub asset</button>')
     + '<span id="sdMsg" style="font-size:12.5px;color:var(--text2);">' + esc(D.msg || '') + '</span></div>'
     + '<div class="sd-cols">'
-    + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div><div id="sdLook">' + hd2SdLookHtml() + '</div><div id="sdFocus"></div><div id="sdList"></div></div>'
+    + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div>' + (D.fieldsDef ? '<div id="sdFields">' + hd2SdFieldsHtml() + '</div>' : '<div id="sdLook">' + hd2SdLookHtml() + '</div>') + '<div id="sdFocus"></div><div id="sdList"></div></div>'
     + '<div class="sd-mid"><div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' + [390, 768, 1440].map(w => '<button style="' + B(D.vw === w ? 'var(--accent)' : undefined, D.vw === w ? 'var(--accent)' : undefined) + '" onclick="hd2SdVw(' + w + ')">' + w + '</button>').join('')
     + '<button id="sdInsBtn" style="' + B(D.inspect ? 'var(--accent)' : undefined, D.inspect ? 'var(--accent)' : undefined) + '" onclick="hd2SdInspect()">⊕ Inspect</button><span style="font-size:11.5px;color:var(--text3);">Preview only. It goes live through the Hub asset (⬆ Save to Hub asset, then the asset at Published).</span></div>'
     + '<div id="sdStage" class="sd-stage"><iframe id="sdFrame" title="Site designer preview" src="' + sdUrl(EF.e.slug) + '?sd=' + Date.now() + '" onload="hd2SdFrameReady()"></iframe></div></div>'
@@ -12693,7 +12699,7 @@ function hd2SdFontStep(dir) {
   const st = document.querySelector('#sdLook [data-step="font"]'); if (st) st.focus();
 }
 function hd2SdTok() {   // push colors + fonts into the preview
-  const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens) return;
+  const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens || D.fieldsDef) return;
   const r = d.documentElement.style; for (const [k] of HD2_DS_KEYS) if (D.tokens[k]) r.setProperty('--' + k, D.tokens[k]);
   if (D.tokens.surface) r.setProperty('--paper', D.tokens.surface);
   const fam = [D.fonts.display, D.fonts.body, D.fonts.mono].filter(x => x && /^[A-Za-z0-9 ]{2,40}$/.test(x));
@@ -12713,6 +12719,69 @@ function hd2SdLook(id, reset) {
 }
 function hd2SdFont(id) { const D = EF.sd, f = id && _hd2DsLib.fonts.find(x => x.id === id); D.font = id || ''; D.fonts = f ? { display: f.display, body: f.body, mono: f.mono || D.curFonts.mono } : { ...D.curFonts }; hd2SdTok(); hd2SdLookDraw(); hd2SdTouch(); }
 function hd2SdTokSet(k, v) { const D = EF.sd; D.tokens[k] = v; if (k === 'ink' && D.curTokens['ink-head'] === D.curTokens.ink) D.tokens['ink-head'] = v; hd2SdTok(); hd2SdTouch(); }
+// 🧩 Fields (operator 2026-11-21): a hand-authored hub page (hubs.design.json "frozen") ships web/hub/<slug>/design-fields.json —
+// the operator's design tokens + content fields, each bound to a :root variable or an element (text / attribute). The panel is
+// pre-filled from the live page, changes show in the preview at once, the sandbox keeps them, and ⬆ Write fields to page sends
+// ONLY the changed values to hubFieldsApply (text, links, variable values; the markup is never touched).
+const sdFieldAll = () => (EF.sd.fieldsDef.fields || []).flatMap(g => g.fields || []);
+function sdFieldsRead(fd, html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html'), root = ((html.match(/:root\s*\{([\s\S]*?)\}/) || [])[1] || ''), out = {};
+  for (const g of fd.fields) for (const f of g.fields || []) {
+    const b = f.bind || {}; let v = '';
+    if (b.var) { const m = root.match(new RegExp(b.var.replace(/-/g, '\\-') + '\\s*:\\s*([^;]+);')); v = m ? m[1].trim() : (f.default || ''); }
+    else if (b.sel) { let el = null; try { el = doc.querySelector(b.sel); } catch (e) {} if (el) { if (b.attr) { v = el.getAttribute(b.attr) || ''; const pre = (b.fmt || '{v}').split('{v}')[0]; if (pre && v.startsWith(pre)) v = v.slice(pre.length); if (/^data:/i.test(v)) v = ''; } else v = el.textContent.replace(/\s+/g, ' ').trim(); } else v = f.default || ''; }
+    out[f.id] = v;
+  }
+  return out;
+}
+function sdFieldsOut() { const D = EF.sd, o = {}; for (const f of sdFieldAll()) if (D.fields[f.id] !== undefined && !(f.bind || {}).readonly) o[f.id] = D.fields[f.id]; return o; }
+function hd2SdFieldsHtml() {
+  const D = EF.sd; if (!D.fieldsDef) return ''; const ch = sdFieldAll().filter(f => D.fields[f.id] !== D.liveFields[f.id]).length;
+  return '<div style="font-size:11.5px;color:var(--text3);margin:0 0 6px;">🧩 Fields · ' + sdFieldAll().length + ' from design-fields.json' + (ch ? ' · <b style="color:#f59e0b;">' + ch + ' changed</b>' : ' · matches the live page') + '</div>'
+    + D.fieldsDef.fields.map((g, gi) => '<details class="sd-grp"' + (D.open['f:' + g.group] ?? gi < 2 ? ' open' : '') + ' ontoggle="EF.sd.open[\'f:' + esc(g.group).replace(/'/g, '&#39;') + '\']=this.open"><summary>' + esc(g.group) + ' <span>' + (g.fields || []).length + '</span></summary><div style="padding:6px 8px 8px;display:grid;gap:7px;">'
+      + (g.fields || []).map(f => hd2SdFieldRow(f)).join('') + '</div></details>').join('');
+}
+function hd2SdFieldRow(f) {
+  const D = EF.sd, b = f.bind || {}, v = D.fields[f.id] ?? '', live = D.liveFields[f.id] ?? '', changed = v !== live, id = f.id;
+  const on = 'hd2SdField(\'' + id + '\',this.value)', inp = HD2_IN + 'font-size:12.5px;padding:4px 7px;';
+  let ctl;
+  if (b.readonly) ctl = '<input style="' + inp + 'opacity:.6;" value="' + esc(v) + '" disabled title="' + esc(b.readonly) + '">';
+  else if (f.type === 'color') ctl = '<div style="display:flex;gap:6px;align-items:center;"><input type="color" value="' + esc(/^#[0-9a-f]{6}$/i.test(v) ? v : '#000000') + '" oninput="' + on + ';this.nextElementSibling.value=this.value" style="width:34px;height:26px;border:1px solid var(--border2);border-radius:4px;padding:0;background:none;flex:none;"><input id="sdf-' + id + '" style="' + inp + 'font-family:ui-monospace,Consolas,monospace;" value="' + esc(v) + '" oninput="' + on + '"></div>';
+  else if (f.type === 'textarea') ctl = '<textarea id="sdf-' + id + '" rows="3" style="' + inp + 'resize:vertical;" oninput="' + on + '">' + esc(v) + '</textarea>';
+  else if (f.type === 'image') ctl = '<input id="sdf-' + id + '" style="' + inp + '" value="' + esc(v) + '" placeholder="Image URL — blank keeps the current image" oninput="' + on + '">';
+  else ctl = '<div style="display:flex;gap:4px;align-items:center;"><input id="sdf-' + id + '" style="' + inp + (b.var ? 'font-family:ui-monospace,Consolas,monospace;' : '') + '" value="' + esc(v) + '" oninput="' + on + '"' + (b.var ? ' onkeydown="if(event.altKey&&(event.key===\'ArrowUp\'||event.key===\'ArrowDown\')){event.preventDefault();hd2SdFieldStep(\'' + id + '\',event.key===\'ArrowUp\'?1:-1,event.shiftKey)}"' : '') + '>'
+    + (b.var && sdNums(v).some(t => t.u) ? '<span class="sd-num" style="padding:1px;"><button onmousedown="event.preventDefault();hd2SdFieldStep(\'' + id + '\',1,event.shiftKey)" title="Up (Shift ×10)">▴</button><button onmousedown="event.preventDefault();hd2SdFieldStep(\'' + id + '\',-1,event.shiftKey)" title="Down (Shift ×10)">▾</button></span>' : '') + '</div>';
+  return '<label style="display:grid;gap:3px;font-size:11.5px;color:var(--text3);" onmouseenter="' + (b.sel ? 'hd2SdHi(' + "'" + esc(b.sel).replace(/'/g, '&#39;') + "'" + ')' : '') + '" onmouseleave="hd2SdHi(\'\')"><span style="display:flex;gap:6px;align-items:center;">' + esc(f.label) + (b.var ? ' <code style="font-size:10.5px;">' + esc(b.var) + '</code>' : '')
+    + (changed ? ' <b style="color:#f59e0b;" title="Live: ' + esc(live) + '">•</b><button style="font-size:10.5px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;" onclick="event.preventDefault();hd2SdField(\'' + id + '\',EF.sd.liveFields[\'' + id + '\'],true)" title="Back to the live value">↺</button>' : '') + '</span>' + ctl + '</label>';
+}
+function hd2SdFieldsDraw() { const el = document.getElementById('sdFields'); if (el) el.innerHTML = hd2SdFieldsHtml(); }
+function hd2SdField(id, v, redraw) { EF.sd.fields[id] = v; hd2SdFieldPush(id); hd2SdTouch(); clearTimeout(window._sdFDraw); if (redraw) hd2SdFieldsDraw(); else window._sdFDraw = setTimeout(() => { const a = document.activeElement, aid = a && a.id, ss = a && a.selectionStart; hd2SdFieldsDraw(); const n = aid && document.getElementById(aid); if (n) { n.focus(); try { n.setSelectionRange(ss, ss); } catch (e) {} } }, 700); }
+function hd2SdFieldStep(id, dir, big) {
+  const v = EF.sd.fields[id] || '', t = sdNums(v).find(x => x.u) || sdNums(v)[0]; if (!t) return; const nv = sdBump(v, t, '', dir, big);
+  const el = document.getElementById('sdf-' + id); if (el) el.value = nv; hd2SdField(id, nv);
+}
+function hd2SdFieldPush(id) {
+  const D = EF && EF.sd, fr = document.getElementById('sdFrame'), d = fr && fr.contentDocument; if (!D || !D.fieldsDef || !d) return;
+  const f = sdFieldAll().find(x => x.id === id), b = f && f.bind; if (!b || b.readonly) return; const v = D.fields[id] ?? '';
+  if (b.var) { v ? d.documentElement.style.setProperty(b.var, v) : d.documentElement.style.removeProperty(b.var); return; }
+  let el = null; try { el = d.querySelector(b.sel); } catch (e) {} if (!el) return;
+  if (b.attr) { if (b.attr === 'src' && el.dataset.sdSrc === undefined) el.dataset.sdSrc = el.getAttribute('src') || ''; el.setAttribute(b.attr, f.type === 'image' && !v ? (el.dataset.sdSrc || '') : (b.fmt || '{v}').replace('{v}', v)); }
+  else el.textContent = v;
+}
+function hd2SdFieldsPush() { const D = EF && EF.sd; if (!D || !D.fieldsDef) return; for (const f of sdFieldAll()) if (D.fields[f.id] !== D.liveFields[f.id]) hd2SdFieldPush(f.id); }
+async function hd2SdFieldsApply(btn) {
+  const D = EF.sd, m = document.getElementById('sdMsg'), out = {};
+  for (const f of sdFieldAll()) { const b = f.bind || {}; if (b.readonly || D.fields[f.id] === D.liveFields[f.id]) continue; if (f.type === 'image' && !D.fields[f.id]) continue; out[f.id] = D.fields[f.id]; }
+  const n = Object.keys(out).length; if (!n) { if (m) m.textContent = 'No field differs from the live page.'; return; }
+  if (!btn.dataset.arm) { btn.dataset.arm = '1'; btn.textContent = '⬆ Click again: write ' + n + ' field' + (n > 1 ? 's' : '') + ' to the live page'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '⬆ Write fields to page'; } }, 6000); return; }
+  delete btn.dataset.arm; btn.disabled = true; btn.textContent = 'Writing…';
+  await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: D.rules, note: 'fields written to page', tokens: hd2SdTokOut(), fonts: D.fonts, fields: sdFieldsOut() }).catch(() => null);
+  const r = await call('hubFieldsApply', { slug: EF.e.slug, fields: out }).catch(e => ({ error: e.message }));
+  btn.disabled = false; btn.textContent = '⬆ Write fields to page';
+  if (!r || r.error) { if (m) m.textContent = '✗ Not written: ' + ((r && r.error) || 'no response'); return; }
+  for (const id of r.applied || []) D.liveFields[id] = D.fields[id];
+  hd2SdFieldsDraw(); if (m) m.textContent = (r.committed ? '✓ Wrote ' + (r.applied || []).length + ' field(s) to the hub page — live in about a minute.' : '✓ Nothing to change.') + ((r.skipped || []).length ? ' Skipped: ' + r.skipped.join('; ') : '');
+}
 function hd2SdChatHtml() {
   const c = (EF.sd && EF.sd.chat) || [];
   if (!c.length) return '<div style="font-size:12.5px;color:var(--text3);">Chat with Claude about the design. CSS changes are applied to the preview for you to keep or undo. Anything that needs new HTML (a wrapper div, a new section) is written up and queued for a Claude Code session.</div>';
@@ -12723,7 +12792,7 @@ function hd2SdFrameReady() {
   d.querySelectorAll('style:not([data-sd])').forEach(s => { s.media = 'not all'; s.dataset.sdOff = '1'; });
   if (!d.getElementById('sdCss')) { const s = d.createElement('style'); s.id = 'sdCss'; s.dataset.sd = '1'; d.head.appendChild(s); const h = d.createElement('style'); h.id = 'sdHi'; h.dataset.sd = '1'; d.head.appendChild(h); }
   if (!d._sdClick) { d._sdClick = true; d.addEventListener('click', e => { if (!EF || !EF.sd || !EF.sd.inspect) return; e.preventDefault(); e.stopPropagation(); hd2SdPick(e.target); }, true); }
-  hd2SdApply(); hd2SdTok(); hd2SdList(); hd2SdVw(EF.sd.vw, true);
+  hd2SdApply(); hd2SdTok(); hd2SdFieldsPush(); hd2SdList(); hd2SdVw(EF.sd.vw, true);
 }
 let _sdApplyT = 0;
 function hd2SdApply(now) {
@@ -12757,7 +12826,7 @@ function hd2SdList() {
     const rs = groups[g], open = want || q || D.open[g];
     return '<details class="sd-grp"' + (open ? ' open' : '') + ' ontoggle="EF.sd.open[\'' + g + '\']=this.open"><summary>' + esc(g) + ' <span>' + rs.filter(r => r.on).length + '/' + rs.length + ' on</span>'
       + '<button onclick="event.preventDefault();hd2SdGroup(\'' + g + '\',true)">on</button><button onclick="event.preventDefault();hd2SdGroup(\'' + g + '\',false)">off</button></summary>'
-      + rs.map(r => r.locked ? '<div class="sd-rule"><div class="sd-sel">:root <span class="sd-m">colors + fonts · edit in 🎨 Design</span></div></div>'
+      + rs.map(r => r.locked ? '<div class="sd-rule"><div class="sd-sel">:root <span class="sd-m">' + (D.fieldsDef ? 'page variables · edit in 🧩 Fields' : 'colors + fonts · edit in 🎨 Design') + '</span></div></div>'
         : '<div class="sd-rule' + (r.on ? '' : ' off') + '" onmouseenter="hd2SdHi(' + "EF.sd.rules.find(x=>x.id==='" + r.id + "').sel" + ')" onmouseleave="hd2SdHi(\'\')">'
         + '<div class="sd-sel"><input type="checkbox"' + (r.on ? ' checked' : '') + ' onchange="hd2SdRuleOn(\'' + r.id + '\',this.checked)" title="Rule on/off">'
         + '<input class="sd-seli" value="' + esc(r.sel) + '" onchange="hd2SdSel(\'' + r.id + '\',this.value)" spellcheck="false">' + (r.media ? '<span class="sd-m">@' + esc(r.media) + '</span>' : '') + '</div>'
@@ -12819,11 +12888,11 @@ function hd2SdAll(on) { EF.sd.rules.forEach(r => { if (!r.locked) r.on = on; });
 async function hd2SdVersion(n) {
   const r = await call('hubSandboxVersion', { slug: EF.e.slug, page: 'home', n: +n }).catch(e => ({ error: e.message }));
   const m = document.getElementById('sdMsg'); if (!r || r.error) { if (m) m.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
-  EF.sd.rules = r.version.rules; EF.sd.dirty = true; if (r.version.tokens) EF.sd.tokens = { ...EF.sd.curTokens, ...r.version.tokens }; if (r.version.fonts) EF.sd.fonts = { ...EF.sd.curFonts, ...r.version.fonts }; hd2SdTok(); hd2SdLookDraw(); if (m) m.textContent = 'Loaded the version from ' + new Date(r.version.at).toLocaleString() + ' (not saved yet).'; hd2SdApply(true); hd2SdList();
+  EF.sd.rules = r.version.rules; EF.sd.dirty = true; if (r.version.tokens) EF.sd.tokens = { ...EF.sd.curTokens, ...r.version.tokens }; if (r.version.fonts) EF.sd.fonts = { ...EF.sd.curFonts, ...r.version.fonts }; if (r.version.fields && EF.sd.fieldsDef) { EF.sd.fields = { ...EF.sd.liveFields, ...r.version.fields }; hd2SdFieldsPush(); hd2SdFieldsDraw(); } hd2SdTok(); hd2SdLookDraw(); if (m) m.textContent = 'Loaded the version from ' + new Date(r.version.at).toLocaleString() + ' (not saved yet).'; hd2SdApply(true); hd2SdList();
 }
 async function hd2SdSave(btn) {
   const m = document.getElementById('sdMsg'), note = (document.getElementById('sdNote') || {}).value || '';
-  btn.disabled = true; const r = await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note, tokens: hd2SdTokOut(), fonts: EF.sd.fonts }).catch(e => ({ error: e.message })); btn.disabled = false;
+  btn.disabled = true; const r = await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note, tokens: hd2SdTokOut(), fonts: EF.sd.fonts, fields: EF.sd.fieldsDef ? sdFieldsOut() : undefined }).catch(e => ({ error: e.message })); btn.disabled = false;
   if (!r || r.error) { if (m) m.textContent = '✗ Not saved: ' + ((r && r.error) || 'no response'); return; }
   Object.assign(EF.sd, { dirty: false, source: 'sandbox', savedAt: r.at }); const s = document.getElementById('sdSrc'); if (s) s.textContent = 'Sandbox · saved ' + new Date(r.at).toLocaleString();
   const v = await call('hubSandboxGet', { slug: EF.e.slug, page: 'home' }).catch(() => null); if (v && v.versions) EF.sd.versions = v.versions;

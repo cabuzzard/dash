@@ -8817,6 +8817,11 @@ async function hubAssetOf(env, campaignId) {   // the hub's Hub asset (Asset Typ
   return rows.find(r => !r.archived && !r.in_trash) || null;
 }
 const HUB_TOKEN_KEYS = ["bg", "surface", "ink", "ink-head", "ink-soft", "line", "sea", "deep", "deep-ink", "accent"];
+function hubFieldValuesClean(f) {   // Fields values: plain strings by safe id, size-capped; data: URIs never stored
+  if (!f || typeof f !== "object") return null; const o = {}; let n = 0;
+  for (const [k, v] of Object.entries(f)) { if (!/^[a-z0-9_]{1,60}$/.test(k) || typeof v !== "string" || v.length > 4000 || /^data:/i.test(v)) continue; o[k] = v; if (++n >= 300) break; }
+  return n ? o : null;
+}
 function hubDesignClean(tokens, fonts) {   // only hex colors for the 10 hub tokens and plain font names get through
   const out = {};
   if (tokens && typeof tokens === "object") { const t = {}; for (const k of HUB_TOKEN_KEYS) if (/^#[0-9a-f]{6}$/i.test(String(tokens[k] || ""))) t[k] = String(tokens[k]).toLowerCase(); if (Object.keys(t).length === HUB_TOKEN_KEYS.length) out.tokens = t; }
@@ -43060,6 +43065,47 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
         }
         return json({ ok: true, reply: out.reply || "", ops: Array.isArray(out.ops) ? out.ops : [], structural: !!out.structural, structuralSpec: out.structuralSpec || "", usage: j.usage || null });
       }
+      // hubFieldsApply {slug, fields:{id: value}} — a hand-authored (frozen) hub page's Fields (web/hub/<slug>/design-fields.json,
+      // operator 2026-11-21) written into the page: each value fills ONLY the bound element's text / attribute or a :root
+      // variable's value (HTMLRewriter), never markup. Bindings come from the repo file, not the request. One commit.
+      if (body.action === "hubFieldsApply") {
+        const slug = String(body.slug || "").trim();
+        if (!HUB_HTML_FROZEN.has(slug)) return json({ error: "Fields write only to hand-authored hub pages" }, 400);
+        const vals = hubFieldValuesClean(body.fields); if (!vals) return json({ error: "no field values" }, 400);
+        const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const gh = { Authorization: "Bearer " + GT, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" }, api = "https://api.github.com/repos/cabuzzard/dash/contents/";
+        const getF = async p => { const r = await fetch(api + p + "?ref=main", { headers: gh }); if (!r.ok) throw new Error(p + " " + r.status); const j = await r.json(); return { sha: j.sha, text: new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, "")), c => c.charCodeAt(0))) }; };
+        try {
+          const defF = await getF("web/hub/" + slug + "/design-fields.json"), def = JSON.parse(defF.text);
+          const binds = {}; for (const g of def.fields || []) for (const f of g.fields || []) if (f.bind && !f.bind.readonly) binds[f.id] = { ...f.bind, type: f.type };
+          const pg = await getF("web/hub/" + slug + "/index.html"); let html = pg.text;
+          const applied = [], skipped = [];
+          for (const [id, v] of Object.entries(vals)) {
+            const b = binds[id]; if (!b) { skipped.push(id + " (no binding)"); continue; }
+            if (b.var) {
+              if (/[;{}<>]/.test(v)) { skipped.push(id + " (bad value)"); continue; }
+              const re = new RegExp("(:root\\s*\\{[\\s\\S]*?" + b.var.replace(/[-]/g, "\\-") + "\\s*:\\s*)[^;]+;");
+              if (!re.test(html)) { skipped.push(id + " (variable not in :root)"); continue; }
+              html = html.replace(re, (m, a) => a + v + ";"); applied.push(id);
+            }
+          }
+          let rw = new HTMLRewriter(), hits = {};
+          for (const [id, v] of Object.entries(vals)) {
+            const b = binds[id]; if (!b || b.var || !b.sel) continue;
+            if (b.attr && b.type === "image" && (!v || /^data:/i.test(v))) { skipped.push(id + " (image: URL only)"); continue; }
+            if (b.attr === "href" && /^\s*javascript:/i.test(v)) { skipped.push(id + " (bad link)"); continue; }
+            hits[id] = 0;
+            rw = rw.on(b.sel, { element(el) { hits[id]++; if (hits[id] > 1) return; if (b.attr) el.setAttribute(b.attr, (b.fmt || "{v}").replace("{v}", v)); else el.setInnerContent(v); } });
+          }
+          html = await rw.transform(new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } })).text();
+          for (const [id, n] of Object.entries(hits)) (n ? applied : skipped).push(n ? id : id + " (selector found nothing)");
+          if (html === pg.text) return json({ ok: true, unchanged: true, applied, skipped });
+          const b64 = (() => { const by = new TextEncoder().encode(html); let x = ""; for (let i = 0; i < by.length; i += 0x8000) x += String.fromCharCode.apply(null, by.subarray(i, i + 0x8000)); return btoa(x); })();
+          const pr = await fetch(api + "web/hub/" + slug + "/index.html", { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message: "hub " + slug + ": fields → page (" + applied.join(", ").slice(0, 300) + ")", content: b64, sha: pg.sha, branch: "main" }) });
+          if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || "commit failed " + pr.status }, 502); }
+          return json({ ok: true, committed: true, applied, skipped });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
       if (["hubSandboxGet", "hubSandboxSave", "hubSandboxVersion", "hubSaveToHub"].includes(body.action)) {
         await hubSitesMerge(env).catch(() => {});
         const slug = String(body.slug || "").trim(), page = String(body.page || "home");
@@ -43080,6 +43126,7 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
           if (!rules || !rules.length) return json({ error: "rules required" }, 400);
           const raw = JSON.stringify(rules); if (raw.length > 900000) return json({ error: "sandbox too large" }, 400);
           const at = new Date().toISOString(), sb = { rules, at, note: String(body.note || "").slice(0, 200), ...hubDesignClean(body.tokens, body.fonts) };
+          const fv = hubFieldValuesClean(body.fields); if (fv) sb.fields = fv;
           await env.TRADES.put(kS, JSON.stringify(sb));
           const vs = (await env.TRADES.get(kV, "json")) || []; vs.unshift(sb); await env.TRADES.put(kV, JSON.stringify(vs.slice(0, 40)));
           return json({ ok: true, at, versions: Math.min(vs.length, 40) });
