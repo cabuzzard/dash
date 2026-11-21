@@ -633,6 +633,12 @@
   .sd-seli:focus { border-color: var(--border2); background: var(--surface2); }
   .sd-m { font-size: 10.5px; color: var(--text3); white-space: nowrap; }
   .sd-dec { width: 100%; box-sizing: border-box; margin-top: 4px; font: 12px/1.45 ui-monospace, Consolas, monospace; padding: 5px 7px; border: 1px solid var(--border2); border-radius: 5px; background: var(--surface2); color: var(--text); resize: vertical; }
+  .sd-nums { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .sd-nums:empty { display: none; }
+  .sd-num { display: inline-flex; align-items: center; gap: 3px; font: 11px ui-monospace, Consolas, monospace; padding: 1px 2px 1px 6px; border: 1px solid var(--border2); border-radius: 5px; color: var(--text2); white-space: nowrap; }
+  .sd-num b { font-weight: 600; color: var(--text3); }
+  .sd-num button { font-size: 10px; line-height: 1; width: 18px; height: 18px; padding: 0; border: 1px solid var(--border2); border-radius: 4px; background: var(--surface2); color: var(--text); cursor: pointer; user-select: none; }
+  .sd-num button:hover { border-color: var(--accent); color: var(--accent); }
   .sd-focus { font-size: 12px; padding: 6px 8px; margin-bottom: 8px; border: 1px solid #e11d48; border-radius: 6px; overflow-wrap: anywhere; }
   .sd-chat { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
   .sd-msg { font-size: 12.5px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border2); overflow-wrap: anywhere; }
@@ -12684,8 +12690,54 @@ function hd2SdList() {
         : '<div class="sd-rule' + (r.on ? '' : ' off') + '" onmouseenter="hd2SdHi(' + "EF.sd.rules.find(x=>x.id==='" + r.id + "').sel" + ')" onmouseleave="hd2SdHi(\'\')">'
         + '<div class="sd-sel"><input type="checkbox"' + (r.on ? ' checked' : '') + ' onchange="hd2SdRuleOn(\'' + r.id + '\',this.checked)" title="Rule on/off">'
         + '<input class="sd-seli" value="' + esc(r.sel) + '" onchange="hd2SdSel(\'' + r.id + '\',this.value)" spellcheck="false">' + (r.media ? '<span class="sd-m">@' + esc(r.media) + '</span>' : '') + '</div>'
-        + '<textarea class="sd-dec" spellcheck="false" rows="' + Math.min(10, Math.max(1, r.decls.length)) + '" oninput="hd2SdDec(\'' + r.id + '\',this.value)">' + esc(sdDeclText(r)) + '</textarea></div>').join('') + '</details>';
+        + '<textarea class="sd-dec" data-rid="' + r.id + '" spellcheck="false" rows="' + Math.min(10, Math.max(1, r.decls.length)) + '" oninput="hd2SdDec(\'' + r.id + '\',this.value);hd2SdNumsDraw(\'' + r.id + '\')" onkeydown="hd2SdNumKey(event,\'' + r.id + '\',this)" title="Alt+↑ / Alt+↓ on a number steps it (Shift = ×10)">' + esc(sdDeclText(r)) + '</textarea>'
+        + '<div class="sd-nums" id="sdn-' + r.id + '">' + hd2SdNumsHtml(r) + '</div></div>').join('') + '</details>';
   }).join('') || '<div style="font-size:12.5px;color:var(--text3);">No rules match.</div>';
+}
+// ▴▾ on every number in the CSS (operator 2026-11-21: "any numeric value in css would be nice to have an up down changer").
+// Chips under each rule (click, hold to repeat, Shift = ×10) and Alt+↑/↓ inside the text box. Colors (#hex, rgb/hsl) are skipped.
+const SD_NUM_RE = /(^|[\s,(\/:*+])(-?(?:\d+\.?\d*|\.\d+))(px|rem|em|%|vw|vh|vmin|vmax|ch|ex|deg|ms|s|fr|cqi)?(?=$|[\s,);\/*+])/g;
+function sdNums(v) {
+  const out = [], skip = []; String(v).replace(/(?:rgba?|hsla?)\([^)]*\)/gi, (m, i) => { skip.push([i, i + m.length]); return m; });
+  let m; SD_NUM_RE.lastIndex = 0;
+  while ((m = SD_NUM_RE.exec(v))) { const st = m.index + m[1].length, en = st + m[2].length + (m[3] || '').length; if (!skip.some(([a, b]) => st >= a && st < b)) out.push({ st, en, n: parseFloat(m[2]), u: m[3] || '', raw: m[2] }); if (SD_NUM_RE.lastIndex === m.index) SD_NUM_RE.lastIndex++; SD_NUM_RE.lastIndex = en; }
+  return out;
+}
+const SD_UNITLESS = /line-height|opacity|z-index|font-weight|flex|order|scale|columns|zoom|aspect-ratio|tab-size|orphans|widows|counter|fill-opacity|stroke-width/;   // where a bare number is a real value (elsewhere a bare 0 gets no stepper)
+function sdStep(t, prop) {
+  if (['px', '%', 'vw', 'vh', 'vmin', 'vmax', 'deg', 'fr', 'cqi'].includes(t.u)) return 1;
+  if (t.u === 'ms') return 10; if (t.u === 's') return .05; if (/letter-spacing|word-spacing/.test(prop) && ['rem', 'em'].includes(t.u)) return .005; if (['rem', 'em', 'ch', 'ex'].includes(t.u)) return .05;
+  if (/font-weight/.test(prop) || t.n >= 100) return 100; if (/z-index|order|flex-grow|flex-shrink|columns/.test(prop)) return 1;
+  return .05;
+}
+const sdFmt = x => { let s = String(Math.round(x * 10000) / 10000); if (s.startsWith('0.')) s = s.slice(1); else if (s.startsWith('-0.')) s = '-' + s.slice(2); return s; };
+function sdBump(v, t, prop, dir, big) { const n = t.n + dir * sdStep(t, prop) * (big ? 10 : 1); return v.slice(0, t.st) + sdFmt(n) + t.u + v.slice(t.en); }
+function hd2SdNumsHtml(r) {
+  const chips = [];
+  r.decls.forEach((d, di) => { if (!d.on) return; sdNums(d.v).forEach((t, ti) => !t.u && !SD_UNITLESS.test(d.p) ? 0 : chips.push('<span class="sd-num" title="' + esc(d.p + ': ' + d.v) + '"><b>' + esc(d.p) + '</b> ' + esc(t.raw + t.u)
+    + '<button onmousedown="hd2SdNumHold(event,\'' + r.id + '\',' + di + ',' + ti + ',1)" title="Up (Shift ×10, hold to repeat)">▴</button><button onmousedown="hd2SdNumHold(event,\'' + r.id + '\',' + di + ',' + ti + ',-1)" title="Down (Shift ×10, hold to repeat)">▾</button></span>')); });
+  return chips.join('');
+}
+function hd2SdNumsDraw(id) { const r = EF.sd.rules.find(x => x.id === id), el = document.getElementById('sdn-' + id); if (r && el) el.innerHTML = hd2SdNumsHtml(r); }
+function hd2SdNumBump(id, di, ti, dir, big) {
+  const r = EF.sd.rules.find(x => x.id === id), d = r && r.decls[di]; if (!d) return; const t = sdNums(d.v)[ti]; if (!t) return;
+  d.v = sdBump(d.v, t, d.p, dir, big);
+  const ta = document.querySelector('#sdList textarea[data-rid="' + id + '"]'); if (ta) ta.value = sdDeclText(r);
+  hd2SdNumsDraw(id); hd2SdTouch();
+}
+function hd2SdNumHold(e, id, di, ti, dir) {
+  e.preventDefault(); const big = e.shiftKey; hd2SdNumBump(id, di, ti, dir, big);
+  let iv = 0; const to = setTimeout(() => { iv = setInterval(() => hd2SdNumBump(id, di, ti, dir, big), 70); }, 380);
+  const stop = () => { clearTimeout(to); clearInterval(iv); document.removeEventListener('mouseup', stop); }; document.addEventListener('mouseup', stop);
+}
+function hd2SdNumKey(e, id, ta) {
+  if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+  const text = ta.value, pos = ta.selectionStart, ls = text.lastIndexOf('\n', pos - 1) + 1, le = text.indexOf('\n', pos) < 0 ? text.length : text.indexOf('\n', pos), line = text.slice(ls, le);
+  const ci = line.indexOf(':'); if (ci < 0) return; const prop = line.slice(0, ci).replace(/^\/\/\s*/, '').trim(), vOff = ls + ci + 1, val = text.slice(vOff, le);
+  const t = sdNums(val).find(x => pos - vOff >= x.st && pos - vOff <= x.en) || sdNums(val)[0]; if (!t) return;
+  e.preventDefault(); const nv = sdBump(val, t, prop, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey);
+  ta.value = text.slice(0, vOff) + nv + text.slice(le); const np = vOff + t.st + (sdFmt(t.n + (e.key === 'ArrowUp' ? 1 : -1) * sdStep(t, prop) * (e.shiftKey ? 10 : 1)) + t.u).length;
+  ta.setSelectionRange(np, np); hd2SdDec(id, ta.value); hd2SdNumsDraw(id);
 }
 function hd2SdTouch() { EF.sd.dirty = true; const s = document.getElementById('sdSrc'); if (s && !/unsaved/.test(s.textContent)) s.textContent += ' · unsaved changes'; hd2SdApply(); }
 function hd2SdRuleOn(id, on) { const r = EF.sd.rules.find(x => x.id === id); if (r) { r.on = on; hd2SdTouch(); hd2SdList(); } }
