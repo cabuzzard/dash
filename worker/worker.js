@@ -8221,6 +8221,8 @@ const THUMB_TOPICS = [
   [/\baudit\b|roadmap/i, 'clipboard', 'AI audit'], [/fractional|systems partner|ai operations/i, 'users', 'AI partner'], [/automation/i, 'wrench', 'Automation'],
   [/\bleads?\b/i, 'chart', 'Lead generation'], [/cost|price|pricing|budget|money|waste|spend/i, 'dollar', 'Costs'],
 ];
+// the same tool icon as the post thumbnail, as SVG children (viewBox 0 0 48 48) — hub cards set it into the title (operator 2026-11-20)
+const thumbIconOf = text => THUMB_ICONS[thumbTopic(text).icon] || THUMB_ICONS.wrench;
 function thumbTopic(text) { for (const [re, icon, label] of THUMB_TOPICS) if (re.test(String(text || ''))) return { icon, label }; return { icon: 'wrench', label: 'AI tools' }; }
 async function hubThumbRule(slug) {
   try { const d = await fetch('https://cabuzzard.github.io/dash/web/hub/hubs.design.json', { cf: { cacheTtl: 120 } }).then(r => r.json()); const h = d.hubs && d.hubs[slug];
@@ -8292,7 +8294,8 @@ async function hubFeedEntries(rows, manifest, hub, env, model) {
     seen.add(url);
     entries.push({ id: aid, hubSlug: hub.slug, section: sec, kicker: sec === 'offers' ? 'Offer' : sec === 'news' ? 'News analysis' : 'Article',
       title: hubRichText(p['Platform Title']?.rich_text) || hubRichText(p['Asset Title']?.title) || 'Untitled',
-      excerpt: String(hubRichText(p.Body?.rich_text) || indexed.intro || '').slice(0,240), image: p.Thumbnail?.url || '', url });
+      excerpt: String(hubRichText(p.Body?.rich_text) || indexed.intro || '').slice(0,240), image: p.Thumbnail?.url || '', url,
+      icon: thumbIconOf((hubRichText(p['Platform Title']?.rich_text) || '') + ' ' + (hubRichText(p['Asset Title']?.title) || '')) });
   }
   return entries;
 }

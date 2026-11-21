@@ -215,6 +215,8 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
   .hub-aside img, .hub-aside.ph { width:100%; max-width:340px; height:auto; aspect-ratio:3/4; object-fit:cover; object-position:center; margin-inline:auto; }
 }
 .card-img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:8px;margin:0 0 12px;}
+.card h3{display:flow-root}
+.card h3 .card-ico{float:left;width:2.05em;height:2.05em;margin:.06em .45em 0 0;color:var(--sea)} /* operator 2026-11-20: the tool icon indented into the title */
 .card .card-img{display:none} /* operator 2026-11-20: no thumbnails on the hub cards; the title text below the card carries it */
 </style>
 </head>
@@ -517,6 +519,11 @@ function renderHero() {
   else { c2.hidden = true; }
   paintAside("heroAside", HUB.hero.image);
 }
+// the post's tool icon set into the top left of its card title (operator 2026-11-20); only plain SVG shapes from the worker are drawn
+function cardIco(it) {
+  const s = String(it.icon || "");
+  return /^(<(path|rect|circle|line|polyline) [^<>]*\/>)+$/.test(s) ? `<svg class="card-ico" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s}</svg>` : "";
+}
 function paintAside(id, url) {
   const el = document.getElementById(id); if (!el) return;
   if (url) { el.innerHTML = id === "heroAside" ? `<img src="${esc(url)}" alt="" width="900" height="1200" fetchpriority="high">` : `<img src="${esc(url)}" alt="" width="900" height="1200" loading="lazy">`; el.className = "hub-aside"; }
@@ -564,7 +571,7 @@ async function renderHubJournal() {
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
       <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" width="1600" height="900" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
-        <h3>${esc(it.title)}</h3>
+        <h3>${cardIco(it)}${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         <span class="more">Read →</span>
       </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
@@ -599,7 +606,7 @@ async function renderHubArticles() {
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
       <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" width="1600" height="900" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
-        <h3>${esc(it.title)}</h3>
+        <h3>${cardIco(it)}${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         <span class="more">Read →</span>
       </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
@@ -777,7 +784,7 @@ async function renderHubOffers() {
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
       <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" width="1600" height="900" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
-        <h3>${esc(it.title)}</h3>
+        <h3>${cardIco(it)}${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         <span class="more">Read →</span>
       </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
