@@ -8229,14 +8229,14 @@ async function hubThumbRule(slug) {
 function thumbStyleCHtml(rule, title, topic) {
   const T = rule.tokens || {}, F = rule.fonts || {}, e = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const disp = F.display || 'Bricolage Grotesque', mono = F.mono || 'JetBrains Mono', len = String(title || '').length;
-  const size = len > 80 ? 76 : len > 60 ? 86 : len > 42 ? 98 : 110;
+  const size = len > 80 ? 92 : len > 60 ? 104 : len > 42 ? 120 : 136;   // operator 2026-11-20: bigger, left-justified, icon upper left, no label
   const fam = n => encodeURIComponent(n).replace(/%20/g, '+');
   return '<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=' + fam(disp) + ':wght@700&family=' + fam(mono) + ':wght@500&display=swap" rel="stylesheet"><style>'
     + 'html,body{margin:0;width:1600px;height:900px;overflow:hidden}body{background:' + (T.surface || '#f2f7f2') + ';position:relative;font-family:"' + disp + '",system-ui,sans-serif}'
-    + '.t{position:absolute;left:9%;right:9%;top:18%;text-align:center;font-weight:700;font-size:' + size + 'px;line-height:1.1;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
-    + '.i{position:absolute;left:50%;bottom:21%;width:150px;height:150px;margin-left:-75px;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
+    + '.t{position:absolute;left:7%;right:8%;top:31%;text-align:left;font-weight:700;font-size:' + size + 'px;line-height:1.06;letter-spacing:-.01em;color:' + (T.ink || '#1a2a1a') + ';text-wrap:balance}'
+    + '.i{position:absolute;left:7%;top:10%;width:120px;height:120px;color:' + (T.sea || T.accent || '#2b832b') + '}.i svg{width:100%;height:100%}'
     + '.l{position:absolute;left:0;right:0;bottom:11%;text-align:center;font:500 38px/1 "' + mono + '",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:' + (T.ink || '#1a2a1a') + ';opacity:.72}'
-    + '</style></head><body><script>document.fonts.ready.then(()=>document.body.classList.add("ready"));setTimeout(()=>document.body.classList.add("ready"),5000)</script><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div><div class="l">' + e(topic.label) + '</div></body></html>';
+    + '</style></head><body><script>document.fonts.ready.then(()=>document.body.classList.add("ready"));setTimeout(()=>document.body.classList.add("ready"),5000)</script><div class="t">' + e(title) + '</div><div class="i"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (THUMB_ICONS[topic.icon] || THUMB_ICONS.wrench) + '</svg></div></body></html>';
 }
 async function renderThumbStyleC(env, rule, title, topicText, keyBase) {
   const acct = String(env.CF_ACCOUNT_ID || '').trim(), tok = String(env.CF_API_TOKEN || '').trim();
