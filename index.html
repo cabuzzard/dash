@@ -12528,7 +12528,7 @@ async function hd2SdLoad(fromLive) {
     const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
     if (!_sdTags) await hd2SdTagsLoad();
     _hd2DsLib = lib; const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
-    Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '', fontTag: (EF.sd && EF.sd.fontTag) || '' });
+    Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '', fontTag: (EF.sd && EF.sd.fontTag) || '', lookTag: (EF.sd && EF.sd.lookTag) || '' });
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
     Object.assign(EF.sd, { busy: '', blocks: blocks.length, live, rules: useSb ? sb.sandbox.rules : JSON.parse(JSON.stringify(live)), source: useSb ? 'sandbox' : 'live',
@@ -12586,47 +12586,76 @@ function hd2SdLookHtml() {
 // Colors stepper (operator 2026-11-21: "same with colors"): ◀ ▶ walk every look in the design library (position 0 = the hub's
 // current colors), showing its color strip; arrow keys work while it has focus. The 10 pickers below still fine-tune.
 function hd2SdLookStepper() {
-  const D = EF.sd, L = _hd2DsLib.looks, i = D.look ? L.findIndex(x => x.id === D.look) + 1 : 0, n = L.length + 1, l = i ? L[i - 1] : null;
+  const D = EF.sd, T = (_sdTags && _sdTags.looks) || {}, list = sdLookList(), l = D.look ? _hd2DsLib.looks.find(x => x.id === D.look) : null;
+  const i = list.findIndex(x => (x ? x.id : '') === (D.look || '')), n = list.length;
   const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
+  const allTags = [...new Set(Object.values(T).flat())].sort(), mine = l ? (T[l.id] || []) : [];
   return '<div style="font-size:11.5px;color:var(--text3);">Colors · ' + (l ? (l.source === 'taste-skill' ? 'palette' : 'brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') : 'the hub now') + '</div>'
-    + '<div tabindex="0" data-step="look" onkeydown="if(event.key===\x27ArrowRight\x27||event.key===\x27ArrowDown\x27){event.preventDefault();hd2SdLookStep(1)}else if(event.key===\x27ArrowLeft\x27||event.key===\x27ArrowUp\x27){event.preventDefault();hd2SdLookStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
-    + '<button style="' + btn + '" onclick="hd2SdLookStep(-1)" title="Previous look (←)">◀</button>'
+    + sdTagFilterHtml('looks', allTags, T, D.lookTag)
+    + '<div tabindex="0" data-step="look" onkeydown="if(event.key===\'ArrowRight\'||event.key===\'ArrowDown\'){event.preventDefault();hd2SdLookStep(1)}else if(event.key===\'ArrowLeft\'||event.key===\'ArrowUp\'){event.preventDefault();hd2SdLookStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
+    + '<button style="' + btn + '" onclick="hd2SdLookStep(-1)" title="Previous look (←)"' + (n ? '' : ' disabled') + '>◀</button>'
     + '<div style="flex:1;min-width:0;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;">' + hd2DsSwatch(l ? l.tokens : D.curTokens).replace('height:34px', 'height:18px')
-    + '<div style="display:flex;justify-content:space-between;gap:6px;margin-top:3px;"><span style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(l ? l.name : 'Current colors') + '</span><span style="font-size:10.5px;color:var(--text3);flex:none;">' + (i + 1) + ' of ' + n + '</span></div></div>'
-    + '<button style="' + btn + '" onclick="hd2SdLookStep(1)" title="Next look (→)">▶</button></div>';
+    + '<div style="display:flex;justify-content:space-between;gap:6px;margin-top:3px;"><span style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(l ? l.name : 'Current colors') + '</span><span style="font-size:10.5px;color:var(--text3);flex:none;">'
+    + (i >= 0 ? (i + 1) + ' of ' + n : (n ? n + ' tagged' : 'nothing tagged')) + (D.lookTag ? ' · ' + esc(D.lookTag) : '') + '</span></div></div>'
+    + '<button style="' + btn + '" onclick="hd2SdLookStep(1)" title="Next look (→)"' + (n ? '' : ' disabled') + '>▶</button></div>'
+    + (l ? sdTagEditHtml('looks', mine, allTags) : '<div style="font-size:11px;color:var(--text3);">Step to a look to tag it.</div>');
 }
+function sdLookList() { const D = EF.sd, L = _hd2DsLib.looks, T = (_sdTags && _sdTags.looks) || {}; return D.lookTag ? L.filter(x => (T[x.id] || []).includes(D.lookTag)) : [null, ...L]; }
 function hd2SdLookStep(dir) {
-  const D = EF.sd, L = _hd2DsLib.looks, n = L.length + 1, i = D.look ? L.findIndex(x => x.id === D.look) + 1 : 0, j = (i + dir + n) % n;
-  hd2SdLook(j ? L[j - 1].id : '');
+  const D = EF.sd, list = sdLookList(), n = list.length; if (!n) return;
+  const i = list.findIndex(x => (x ? x.id : '') === (D.look || '')), j = i < 0 ? (dir > 0 ? 0 : n - 1) : (i + dir + n) % n;
+  hd2SdLook(list[j] ? list[j].id : '');
   const st = document.querySelector('#sdLook [data-step="look"]'); if (st) st.focus();
 }
+// shared tag UI for both steppers: "Show" filter chips + the current item's tags with an add box
+function sdTagChip(t, on, click, x) { return '<button onclick="' + click + '" style="font-size:11px;padding:2px 8px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:10px;background:' + (on ? 'var(--accent)' : 'var(--surface2)') + ';color:' + (on ? '#fff' : 'var(--text2)') + ';cursor:pointer;">' + esc(t) + (x ? ' ✕' : '') + '</button>'; }
+const sdQ = t => esc(t).replace(/'/g, '&#39;');
+function sdTagFilterHtml(kind, allTags, T, cur) {
+  if (!allTags.length) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--text3);">Show: ' + sdTagChip('all', !cur, 'hd2SdTagFilter(\'' + kind + '\',\'\')')
+    + allTags.map(t => sdTagChip(t + ' (' + Object.values(T).filter(a => a.includes(t)).length + ')', cur === t, 'hd2SdTagFilter(\'' + kind + '\',\'' + sdQ(t) + '\')')).join('') + '</div>';
+}
+function sdTagEditHtml(kind, mine, allTags) {
+  return '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">' + mine.map(t => sdTagChip(t, true, 'hd2SdTag(\'' + kind + '\',\'' + sdQ(t) + '\',false)', true)).join('')
+    + '<input id="sdTagIn-' + kind + '" list="sdTagList-' + kind + '" placeholder="+ tag this ' + (kind === 'looks' ? 'look' : 'pairing') + '" style="' + HD2_IN + 'width:130px;font-size:11.5px;padding:3px 7px;" onkeydown="if(event.key===\'Enter\'&&this.value.trim()){hd2SdTag(\'' + kind + '\',this.value.trim(),true)}">'
+    + '<datalist id="sdTagList-' + kind + '">' + allTags.filter(t => !mine.includes(t)).map(t => '<option value="' + esc(t) + '">').join('') + '</datalist></div>';
+}
+function hd2SdTagFilter(kind, t) {
+  const D = EF.sd;
+  if (kind === 'looks') { D.lookTag = t || ''; const list = sdLookList(); if (t && list.length && !list.some(x => x && x.id === D.look)) return hd2SdLook(list[0].id); }
+  else { D.fontTag = t || ''; const list = sdFontList(); if (t && list.length && !list.some(x => x && x.id === D.font)) return hd2SdFont(list[0].id); }
+  hd2SdLookDraw();
+}
+async function hd2SdTag(kind, tag, add) {
+  const D = EF.sd, id = kind === 'looks' ? D.look : D.font; if (!id) return;
+  _sdTags = _sdTags || { fonts: {}, looks: {} }; const T = _sdTags[kind] || (_sdTags[kind] = {});
+  const cur = T[id] || [], t = String(tag).trim().toLowerCase(), next = add ? [...new Set([...cur, t])] : cur.filter(x => x !== t);
+  if (next.length) T[id] = next; else delete T[id]; hd2SdLookDraw(); const inp = document.getElementById('sdTagIn-' + kind); if (inp && add) inp.focus();
+  const r = await call('designTags', { op: 'set', kind, id, tags: next }).catch(e => ({ error: e.message }));
+  if (r && r.tags) _sdTags[kind] = r.tags; else if (r && r.error) { const m = document.getElementById('sdMsg'); if (m) m.textContent = '✗ Tag not saved: ' + r.error; }
+}
 let _sdTags = null;
-async function hd2SdTagsLoad() { const r = await call('designTags', { op: 'get', kind: 'fonts' }).catch(() => null); _sdTags = (r && r.tags) || {}; }
+async function hd2SdTagsLoad() { const [a, b] = await Promise.all(['fonts', 'looks'].map(kind => call('designTags', { op: 'get', kind }).catch(() => null))); _sdTags = { fonts: (a && a.tags) || {}, looks: (b && b.tags) || {} }; }
 function sdFontList() {   // what the arrows step through: [null = hub fonts, …pairings], or only the tagged pairings
-  const D = EF.sd, L = _hd2DsLib.fonts, T = _sdTags || {};
+  const D = EF.sd, L = _hd2DsLib.fonts, T = (_sdTags && _sdTags.fonts) || {};
   return D.fontTag ? L.filter(f => (T[f.id] || []).includes(D.fontTag)) : [null, ...L];
 }
 function hd2SdFontStepper() {
-  const D = EF.sd, T = _sdTags || {}, list = sdFontList(), f = D.font ? _hd2DsLib.fonts.find(x => x.id === D.font) : null;
+  const D = EF.sd, T = (_sdTags && _sdTags.fonts) || {}, list = sdFontList(), f = D.font ? _hd2DsLib.fonts.find(x => x.id === D.font) : null;
   const i = list.findIndex(x => (x ? x.id : '') === (D.font || '')), n = list.length;
   const name = f ? f.display + (f.body !== f.display ? ' / ' + f.body : '') : (D.curFonts.display || 'Hub fonts') + ' / ' + (D.curFonts.body || '');
   hd2SdFontLoad(f ? f.display : D.curFonts.display);
   const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
   const allTags = [...new Set(Object.values(T).flat())].sort(), mine = f ? (T[f.id] || []) : [];
-  const chip = (t, on, click, x) => '<button onclick="' + click + '" style="font-size:11px;padding:2px 8px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:10px;background:' + (on ? 'var(--accent)' : 'var(--surface2)') + ';color:' + (on ? '#fff' : 'var(--text2)') + ';cursor:pointer;">' + esc(t) + (x ? ' ✕' : '') + '</button>';
   return '<div style="font-size:11.5px;color:var(--text3);">Fonts ' + (f && f.suits ? '· ' + esc(f.suits.slice(0, 60)) : (f ? '' : '· the hub now')) + '</div>'
-    + (allTags.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--text3);">Show: '
-      + chip('all', !D.fontTag, 'hd2SdFontFilter(\'\')') + allTags.map(t => chip(t + ' (' + Object.values(T).filter(a => a.includes(t)).length + ')', D.fontTag === t, 'hd2SdFontFilter(\'' + esc(t).replace(/'/g, '&#39;') + '\')')).join('') + '</div>' : '')
+    + sdTagFilterHtml('fonts', allTags, T, D.fontTag)
     + '<div tabindex="0" data-step="font" onkeydown="if(event.key===\'ArrowRight\'||event.key===\'ArrowDown\'){event.preventDefault();hd2SdFontStep(1)}else if(event.key===\'ArrowLeft\'||event.key===\'ArrowUp\'){event.preventDefault();hd2SdFontStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
     + '<button style="' + btn + '" onclick="hd2SdFontStep(-1)" title="Previous pairing (←)"' + (n ? '' : ' disabled') + '>◀</button>'
     + '<div style="flex:1;min-width:0;text-align:center;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;">'
     + '<div style="font-family:\'' + esc(f ? f.display : D.curFonts.display || '') + '\',system-ui,sans-serif;font-size:17px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(name) + '</div>'
     + '<div style="font-size:10.5px;color:var(--text3);">' + (i >= 0 ? (i + 1) + ' of ' + n : (n ? 'not in "' + esc(D.fontTag) + '" · ' + n + ' tagged' : 'nothing tagged "' + esc(D.fontTag) + '"')) + (D.fontTag ? ' · ' + esc(D.fontTag) : '') + '</div></div>'
     + '<button style="' + btn + '" onclick="hd2SdFontStep(1)" title="Next pairing (→)"' + (n ? '' : ' disabled') + '>▶</button></div>'
-    + (f ? '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">' + mine.map(t => chip(t, true, 'hd2SdFontTag(\'' + esc(t).replace(/'/g, '&#39;') + '\',false)', true)).join('')
-      + '<input id="sdTagIn" list="sdTagList" placeholder="+ tag this pairing" style="' + HD2_IN + 'width:130px;font-size:11.5px;padding:3px 7px;" onkeydown="if(event.key===\'Enter\'&&this.value.trim()){hd2SdFontTag(this.value.trim(),true)}">'
-      + '<datalist id="sdTagList">' + allTags.filter(t => !mine.includes(t)).map(t => '<option value="' + esc(t) + '">').join('') + '</datalist></div>'
-      : '<div style="font-size:11px;color:var(--text3);">Step to a pairing to tag it.</div>');
+    + (f ? sdTagEditHtml('fonts', mine, allTags) : '<div style="font-size:11px;color:var(--text3);">Step to a pairing to tag it.</div>');
 }
 function hd2SdFontLoad(fam) {   // draw the stepper name in its own face (Google Fonts, once per family)
   if (!fam || !/^[A-Za-z0-9 ]{2,40}$/.test(fam)) return; window._sdFontsLoaded = window._sdFontsLoaded || {};
@@ -12638,15 +12667,6 @@ function hd2SdFontStep(dir) {
   const i = list.findIndex(x => (x ? x.id : '') === (D.font || '')), j = i < 0 ? (dir > 0 ? 0 : n - 1) : (i + dir + n) % n;
   hd2SdFont(list[j] ? list[j].id : '');
   const st = document.querySelector('#sdLook [data-step="font"]'); if (st) st.focus();
-}
-function hd2SdFontFilter(t) { EF.sd.fontTag = t || ''; const list = sdFontList(); if (t && list.length && !list.some(x => x && x.id === EF.sd.font)) hd2SdFont(list[0].id); else hd2SdLookDraw(); }
-async function hd2SdFontTag(tag, add) {
-  const D = EF.sd, id = D.font; if (!id) return; const T = _sdTags || (_sdTags = {});
-  const cur = T[id] || [], t = String(tag).trim().toLowerCase(), next = add ? [...new Set([...cur, t])] : cur.filter(x => x !== t);
-  if (next.length) T[id] = next; else delete T[id]; hd2SdLookDraw(); const inp = document.getElementById('sdTagIn'); if (inp && add) inp.focus();
-  const r = await call('designTags', { op: 'set', kind: 'fonts', id, tags: next }).catch(e => ({ error: e.message }));
-  if (r && r.tags) _sdTags = r.tags; else if (r && r.error) { const m = document.getElementById('sdMsg'); if (m) m.textContent = '✗ Tag not saved: ' + r.error; }
-  if (D.fontTag && !next.includes(D.fontTag)) hd2SdLookDraw();
 }
 function hd2SdTok() {   // push colors + fonts into the preview
   const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens) return;
