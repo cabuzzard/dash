@@ -12463,8 +12463,8 @@ async function hd2DsApply(btn) {
 // ("prop: value;" per line; a line starting with // is switched off). Middle: the real hub page; every edit restyles it live
 // (the page's own <style> blocks are switched off inside the preview and replaced by the sandbox CSS). Right: chat — CSS
 // requests come back as rule edits applied to the preview; requests that need new HTML are queued for a Claude Code session.
-// 💾 Save sandbox = the persistent design that lives in the designer (worker KV, versioned). ⬆ Save to hub = the only path to
-// the live page (worker hubSaveToHub, previous live CSS archived). Built per hub + page so other post layouts can plug in.
+// 💾 Save sandbox = the persistent design that lives in the designer (worker KV, versioned). ⬆ Save to Hub asset = the only path to
+// the live page: it saves the CSS onto the hub’s Hub asset (Page CSS), and the Hub asset writes the hub page when Published (worker hubSaveToHub / hubAssetHtmlSync). Built per hub + page so other post layouts can plug in.
 const SD_GROUPS = [[/^:root/, 'Design tokens'], [/#talkDlg/, 'Booking box'], [/\.site-head|\.brand|\.nav|\.ribbon/, 'Header'], [/\.hero|\.hub-aside|\.hub-main/, 'Hero'], [/\.btn/, 'Buttons'],
   [/\.card/, 'Cards'], [/\.report|\.signup|\.form-msg|\.cf-turnstile|\.report-link/, 'Newsletter'], [/\.dispatch|\.empty/, 'Lists'], [/\.elsewhere|\.social-row/, 'Social'],
   [/\.site-foot/, 'Footer'], [/\.sec|\.grid/, 'Sections'], [/\.reveal/, 'Motion'], [/./, 'Base']];
@@ -12539,12 +12539,12 @@ function hd2SdHtml() {
     + '<button style="' + B() + '" onclick="hd2SdLoad(true)" title="Throw away the sandbox in this window and start again from the live page CSS (the saved sandbox stays until you save over it)">⟲ From live</button>'
     + '<input id="sdNote" style="' + HD2_IN + 'width:170px;" placeholder="Note for this save…">'
     + '<button style="' + B('var(--accent)', 'var(--accent)') + '" onclick="hd2SdSave(this)">💾 Save sandbox</button>'
-    + '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Replace the live hub page CSS with this sandbox (second click confirms)">⬆ Save to hub</button>'
+    + '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Save this sandbox onto the hub’s Hub asset (Page CSS). The Hub asset writes the live hub page when it is Published. Second click confirms.">⬆ Save to Hub asset</button>'
     + '<span id="sdMsg" style="font-size:12.5px;color:var(--text2);">' + esc(D.msg || '') + '</span></div>'
     + '<div class="sd-cols">'
     + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div><div id="sdFocus"></div><div id="sdList"></div></div>'
     + '<div class="sd-mid"><div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' + [390, 768, 1440].map(w => '<button style="' + B(D.vw === w ? 'var(--accent)' : undefined, D.vw === w ? 'var(--accent)' : undefined) + '" onclick="hd2SdVw(' + w + ')">' + w + '</button>').join('')
-    + '<button id="sdInsBtn" style="' + B(D.inspect ? 'var(--accent)' : undefined, D.inspect ? 'var(--accent)' : undefined) + '" onclick="hd2SdInspect()">⊕ Inspect</button><span style="font-size:11.5px;color:var(--text3);">Preview only. Nothing here is live until ⬆ Save to hub.</span></div>'
+    + '<button id="sdInsBtn" style="' + B(D.inspect ? 'var(--accent)' : undefined, D.inspect ? 'var(--accent)' : undefined) + '" onclick="hd2SdInspect()">⊕ Inspect</button><span style="font-size:11.5px;color:var(--text3);">Preview only. It goes live through the Hub asset (⬆ Save to Hub asset, then the asset at Published).</span></div>'
     + '<div id="sdStage" class="sd-stage"><iframe id="sdFrame" title="Site designer preview" src="' + sdUrl(EF.e.slug) + '?sd=' + Date.now() + '" onload="hd2SdFrameReady()"></iframe></div></div>'
     + '<div class="sd-right"><div id="sdChat" class="sd-chat">' + hd2SdChatHtml() + '</div>'
     + '<textarea id="sdAsk" rows="3" style="' + HD2_IN + 'resize:vertical;" placeholder="Ask for a change: \'cards 20px padding, 2 columns on tablet\'…" onkeydown="if(event.key===\'Enter\'&&(event.ctrlKey||event.metaKey))hd2SdAsk()"></textarea>'
@@ -12623,14 +12623,14 @@ async function hd2SdSave(btn) {
 }
 async function hd2SdPublish(btn) {
   const m = document.getElementById('sdMsg');
-  if (!btn.dataset.arm) { btn.dataset.arm = '1'; btn.textContent = '⬆ Click again: replace the live hub CSS'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '⬆ Save to hub'; } }, 6000); return; }
-  delete btn.dataset.arm; btn.disabled = true; btn.textContent = 'Saving to hub…';
+  if (!btn.dataset.arm) { btn.dataset.arm = '1'; btn.textContent = '⬆ Click again: save to the Hub asset'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '⬆ Save to Hub asset'; } }, 6000); return; }
+  delete btn.dataset.arm; btn.disabled = true; btn.textContent = 'Saving to the Hub asset…';
   await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note: 'saved to hub' }).catch(() => null);
   const blocks = Array.from({ length: EF.sd.blocks }, (_, b) => sdCompile(EF.sd.rules, b));
   const r = await call('hubSaveToHub', { slug: EF.e.slug, page: 'home', blocks }).catch(e => ({ error: e.message }));
-  btn.disabled = false; btn.textContent = '⬆ Save to hub';
-  if (!r || r.error) { if (m) m.textContent = '✗ Not saved to hub: ' + ((r && r.error) || 'no response'); return; }
-  EF.sd.dirty = false; if (m) m.textContent = r.unchanged ? 'The live hub already matches this sandbox.' : '✓ Saved to the live hub (previous CSS archived). It redeploys in about a minute.';
+  btn.disabled = false; btn.textContent = '⬆ Save to Hub asset';
+  if (!r || r.error) { if (m) m.textContent = '✗ Not saved to the Hub asset: ' + ((r && r.error) || 'no response'); return; }
+  EF.sd.dirty = false; if (m) m.textContent = '✓ Saved to the Hub asset. ' + (r.status !== 'Published' ? 'It is ' + (r.status || 'not Published') + ', so the live hub is unchanged; it writes the hub page once the asset is Published.' : r.liveError ? 'The hub page was not written: ' + r.liveError : r.live ? 'The asset is Published, so it wrote the hub page (previous CSS archived); the hub redeploys in about a minute.' : 'The live hub already matches.');
 }
 function sdRulesText() { return EF.sd.rules.map(r => r.locked ? '#' + r.id + ' :root { …design tokens… }' : '#' + r.id + (r.on ? '' : ' OFF') + (r.media ? ' @media ' + r.media : '') + ' ' + r.sel + ' { ' + r.decls.map(d => (d.on ? '' : '/*off*/') + d.p + ':' + d.v).join('; ') + ' }').join('\n'); }
 async function hd2SdAsk() {

@@ -8804,6 +8804,37 @@ async function hubCheckGoalsBuild(env, force) {
   await env.TRADES.put("hubcheck:goals:v1", JSON.stringify(out));
   return { changed: true, at: out.at };
 }
+// ── Hub asset → hub page (🧱 Site designer, 2026-11-20) ──
+async function hubAssetOf(env, campaignId) {   // the hub's Hub asset (Asset Type "Hub"), newest first
+  const rows = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: ivDash(campaignId) } }, { property: "Asset Type", select: { equals: "Hub" } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(e => { console.error("hubAssetOf:", e.message); return []; });
+  return rows.find(r => !r.archived && !r.in_trash) || null;
+}
+function hubCssCheck(page, blocks) {
+  if (blocks.some(x => /<\/?style|<script/i.test(x))) return "CSS may not contain <style> or <script> tags";
+  if (page === "home" && !/:root\{\r?\n[\s\S]*?\r?\n\}/.test(blocks[0] || "")) return "the first block must keep the :root design-token block (build-hubs.mjs and 🎨 Design rewrite it)";
+  return "";
+}
+async function sha256Hex(t) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+async function hubWritePageCss(env, slug, page, blocks) {   // replace the page's <style> blocks, one commit; previous live CSS archived 180 days
+  const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) throw new Error("GITHUB_TOKEN not set");
+  const PAGES = { home: "web/hub/" + slug + "/index.html" }, path = PAGES[page]; if (!path) throw new Error("unknown page " + page);
+  const REPO = "cabuzzard/dash", gh = { Authorization: "Bearer " + GT, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+  const toB64 = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
+  const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+  const gr = await fetch("https://api.github.com/repos/" + REPO + "/contents/" + path + "?ref=main", { headers: gh }); if (!gr.ok) throw new Error("could not read " + path + " (" + gr.status + ")");
+  const gj = await gr.json(), html = fromB64(gj.content || ""), eol = html.includes("\r\n") ? "\r\n" : "\n";
+  const found = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+  if (found.length !== blocks.length) throw new Error("the page has " + found.length + " <style> blocks, the saved CSS has " + blocks.length + " — reopen the designer");
+  const h = await sha256Hex(JSON.stringify(blocks));
+  let i = 0; const out = html.replace(/<style>([\s\S]*?)<\/style>/g, () => "<style>" + eol + blocks[i++].replace(/\r?\n/g, eol).trim() + eol + "</style>");
+  if (out === html) { await env.TRADES.put("hubsite:written:" + slug + ":" + page, h); return { unchanged: true }; }
+  await env.TRADES.put("hubsite:live:" + slug + ":" + page + ":" + Date.now(), JSON.stringify({ at: new Date().toISOString(), blocks: found.map(m => m[1]) }), { expirationTtl: 60 * 60 * 24 * 180 });
+  const pr = await fetch("https://api.github.com/repos/" + REPO + "/contents/" + path, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "hub asset: " + slug + " " + page + " — page CSS from the Hub asset", content: toB64(out), sha: gj.sha, branch: "main" }) });
+  if (!pr.ok) { const e = await pr.json().catch(() => ({})); throw new Error(e.message || "commit failed (" + pr.status + ")"); }
+  await env.TRADES.put("hubsite:written:" + slug + ":" + page, h);
+  return { committed: path };
+}
 async function hubRepublishTick(env) {
   if (await env.TRADES.get('hub:republish:sweep-lock')) return {busy:true};
   await env.TRADES.put('hub:republish:sweep-lock','1',{expirationTtl:1800});
@@ -8813,6 +8844,7 @@ async function hubRepublishTick(env) {
     for (const hub of HUB_SITES) {
       const result=await selfAction(env,'hubRepublishSweep',{campaignId:hub.campaignId});
       results.push({hub:hub.slug,...result});
+      try { const hs = await selfAction(env,'hubAssetHtmlSync',{slug:hub.slug}); if (hs && (hs.committed || hs.error)) console.log('hubAssetHtmlSync', hub.slug, hs.committed || hs.error); } catch (e) { console.error('hubAssetHtmlSync', hub.slug, e.message); }
     }
     await env.TRADES.put('hub:republish:last-sweep',JSON.stringify({at:new Date().toISOString(),results:results.map(r=>({hub:r.hub,checked:r.checked,error:r.error,held:(r.results||[]).filter(x=>x.held).length}))}));
     return {checked:results.reduce((n,r)=>n+(r.checked||0),0),hubs:results.length,failed:results.filter(r=>r.error||r.ok===false).map(r=>r.hub)};
@@ -42991,26 +43023,41 @@ Do the smallest set of rule operations that does what they asked. Prefer editing
           const vs = (await env.TRADES.get(kV, "json")) || []; vs.unshift(sb); await env.TRADES.put(kV, JSON.stringify(vs.slice(0, 40)));
           return json({ ok: true, at, versions: Math.min(vs.length, 40) });
         }
-        // hubSaveToHub {slug, page, blocks:[css, css, …]} — one CSS string per <style> block of the page, in order
-        const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        // hubSaveToHub {slug, page, blocks:[css, css, …]} (operator 2026-11-20: "save to hub becomes save to the hub asset that
+        // writes the html of the hub"). The sandbox's compiled CSS is saved onto the hub's Hub asset (Asset Type "Hub", field
+        // "Page CSS"). The Hub asset writes the hub page only when it is Published — then right away; the 30-minute
+        // hubRepublishTick also syncs it (hubAssetHtmlSync) so a later move to Published still lands.
         const blocks = Array.isArray(body.blocks) ? body.blocks.map(String) : null;
         if (!blocks || !blocks.length) return json({ error: "blocks required" }, 400);
-        if (blocks.some(b => /<\/?style|<script/i.test(b))) return json({ error: "CSS may not contain <style> or <script> tags" }, 400);
-        if (page === "home" && !/:root\{\r?\n[\s\S]*?\r?\n\}/.test(blocks[0])) return json({ error: "the first block must keep the :root design-token block (build-hubs.mjs and 🎨 Design rewrite it)" }, 400);
-        const REPO = "cabuzzard/dash", path = PAGES[page], gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
-        const toB64 = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
-        const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
-        const gr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=main`, { headers: gh }); if (!gr.ok) return json({ error: `could not read ${path} (${gr.status})` }, 502);
-        const gj = await gr.json(), html = fromB64(gj.content || ""), eol = html.includes("\r\n") ? "\r\n" : "\n";
-        const found = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
-        if (found.length !== blocks.length) return json({ error: `the page has ${found.length} <style> blocks, the designer sent ${blocks.length} — reload the designer` }, 409);
-        await env.TRADES.put(`hubsite:live:${slug}:${page}:${Date.now()}`, JSON.stringify({ at: new Date().toISOString(), blocks: found.map(m => m[1]) }), { expirationTtl: 60 * 60 * 24 * 180 });
-        let i = 0; const out = html.replace(/<style>([\s\S]*?)<\/style>/g, () => "<style>" + eol + blocks[i++].replace(/\r?\n/g, eol).trim() + eol + "</style>");
-        if (out === html) return json({ ok: true, unchanged: true });
-        const pr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
-          body: JSON.stringify({ message: `site designer: ${slug} ${page} — save to hub`, content: toB64(out), sha: gj.sha, branch: "main" }) });
-        if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || `commit failed (${pr.status})` }, 502); }
-        return json({ ok: true, committed: path });
+        const hub = HUB_SITES.find(h => h.slug === slug), asset = await hubAssetOf(env, hub.campaignId);
+        if (!asset) return json({ error: "This hub has no Hub asset (Asset Type \"Hub\") yet — create it under the hub, then save again. The sandbox is kept." }, 400);
+        const chk = hubCssCheck(page, blocks); if (chk) return json({ error: chk }, 400);
+        await assetsTextPropEnsure(env, "Page CSS", "pagecss:prop");
+        const payload = JSON.stringify({ v: 1, page, savedAt: new Date().toISOString(), blocks });
+        if (payload.length > 48000) return json({ error: "CSS too large for the Hub asset (" + payload.length + " of 48,000 chars — Notion returns at most 25 text pieces of a field)" }, 400);
+        const hdrN = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const pr = await fetch("https://api.notion.com/v1/pages/" + asset.id, { method: "PATCH", headers: hdrN, body: JSON.stringify({ properties: { "Page CSS": { rich_text: Array.from({ length: Math.ceil(payload.length / 2000) }, (_, i) => ({ type: "text", text: { content: payload.slice(i * 2000, i * 2000 + 2000) } })) } } }) });
+        if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: "Could not save to the Hub asset: " + (e.message || pr.status) }, 502); }
+        const status = asset.properties?.["Asset Status"]?.select?.name || "";
+        if (status !== "Published") return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: false });
+        const w = await hubWritePageCss(env, slug, page, blocks).catch(e => ({ error: e.message }));
+        if (w.error) return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: false, liveError: w.error });
+        return json({ ok: true, savedToAsset: true, assetId: asset.id, status, live: !w.unchanged, ...w });
+      }
+      // hubAssetHtmlSync {slug} — the Hub asset writes the hub page: when the asset is Published and its Page CSS differs from
+      // what was last written, write it (used by hubRepublishTick; safe to run any time).
+      if (body.action === "hubAssetHtmlSync") {
+        await hubSitesMerge(env).catch(() => {});
+        const hub = HUB_SITES.find(h => h.slug === String(body.slug || "")); if (!hub) return json({ error: "unknown hub" }, 400);
+        const asset = await hubAssetOf(env, hub.campaignId); if (!asset) return json({ ok: true, skipped: "no Hub asset" });
+        if (asset.properties?.["Asset Status"]?.select?.name !== "Published") return json({ ok: true, skipped: "Hub asset not Published" });
+        const raw = hubRichText(asset.properties?.["Page CSS"]?.rich_text); if (!raw) return json({ ok: true, skipped: "no Page CSS" });
+        let d; try { d = JSON.parse(raw); } catch (e) { return json({ error: "Page CSS is not valid JSON" }, 400); }
+        const page = d.page || "home", blocks = (d.blocks || []).map(String), kW = "hubsite:written:" + hub.slug + ":" + page;
+        const h = await sha256Hex(JSON.stringify(blocks)); if ((await env.TRADES.get(kW)) === h) return json({ ok: true, skipped: "already written" });
+        const chk = hubCssCheck(page, blocks); if (chk) return json({ error: chk }, 400);
+        const w = await hubWritePageCss(env, hub.slug, page, blocks).catch(e => ({ error: e.message }));
+        return json(w.error ? { error: w.error } : { ok: true, ...w });
       }
       if (body.action === "restyleHubThumbnails") {
         await hubSitesMerge(env).catch(() => {});
