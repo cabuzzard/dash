@@ -1,0 +1,4773 @@
+{
+ "built": "2026-11-21",
+ "note": "Starting looks for the hub designer. tokens use hubs.design.json names; _accentInk = readable text on the accent. Brand fonts are often proprietary: pair them with a fonts[] entry (Google-served) before applying.",
+ "counts": {
+  "brands": 74,
+  "palettes": 64,
+  "fonts": 39
+ },
+ "looks": [
+  {
+   "id": "brand:1win",
+   "source": "awesome-design-md",
+   "name": "1win Analysis",
+   "note": "An analysis of 1win's design language — a near-black crypto casino and sportsbook built on Inter at heavy weights, where a vivid green action color and an electric blue secondary carry every CTA across dense, full-bleed game-tile rails, promo cards, and live betting panels on a flat dark-grey surface ladder.",
+   "tokens": {
+    "bg": "#141415",
+    "surface": "#2e3035",
+    "ink": "#f0f2f5",
+    "ink-head": "#f0f2f5",
+    "ink-soft": "#9aa1b1",
+    "line": "#2d2f33",
+    "sea": "#00b24b",
+    "deep": "#2e3035",
+    "deep-ink": "#f0f2f5",
+    "accent": "#00b24b",
+    "paper": "#2e3035",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Inter",
+    "body": "Inter",
+    "all": [
+     "Inter"
+    ]
+   },
+   "file": "brands/1win.md",
+   "checks": []
+  },
+  {
+   "id": "brand:airbnb",
+   "source": "awesome-design-md",
+   "name": "Airbnb",
+   "note": "A warm, generous consumer marketplace anchored on a clean white canvas and Airbnb Rausch (#ff385c), the single brand voltage that carries every primary CTA, search-button orb, and rating dot. Type runs Airbnb Cereal VF at modest weights — display sits at 22–28px in weight 500/600 rather than the heavy 700+ that fintech and enterprise systems use; the brand trusts photography and generous whitespac",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#222222",
+    "ink-head": "#222222",
+    "ink-soft": "#6a6a6a",
+    "line": "#dddddd",
+    "sea": "#ff385c",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#ff385c",
+    "paper": "#f7f7f7",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif",
+    "body": "'Airbnb Cereal VF', Circular, sans-serif",
+    "all": [
+     "'Airbnb Cereal VF', Circular, -apple-system, system-ui, Roboto, 'Helvetica Neue', sans-serif",
+     "'Airbnb Cereal VF', Circular, sans-serif"
+    ]
+   },
+   "file": "brands/airbnb.md",
+   "checks": []
+  },
+  {
+   "id": "brand:airtable",
+   "source": "awesome-design-md",
+   "name": "Airtable",
+   "note": "A sober, editorial workflow-software interface anchored on white canvas and dark-ink type, where brand voltage comes from full-bleed signature cards in coral, dark green, peach, and dark navy that punctuate long-scroll explainer pages. Primary actions use a near-black pill CTA; secondary actions sit in a white outlined button. Type runs Haas Grotesk in modest weights — never bold for its own sake.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f8fafc",
+    "ink": "#181d26",
+    "ink-head": "#181d26",
+    "ink-soft": "#41454d",
+    "line": "#dddddd",
+    "sea": "#181d26",
+    "deep": "#0d1218",
+    "deep-ink": "#ffffff",
+    "accent": "#181d26",
+    "paper": "#f8fafc",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Haas Groot Disp, Haas, sans-serif",
+    "body": "Haas, sans-serif",
+    "all": [
+     "Haas Groot Disp, Haas, sans-serif",
+     "Haas, sans-serif",
+     "Inter Display, system-ui, sans-serif"
+    ]
+   },
+   "file": "brands/airtable.md",
+   "checks": []
+  },
+  {
+   "id": "brand:aljazeera",
+   "source": "awesome-design-md",
+   "name": "Al Jazeera Analysis",
+   "note": "An analysis of Al Jazeera's design language — a hard-news editorial system built on flat white paper and dense Roboto headline stacks, signed by one saturated orange used as logo block and section-eyebrow bar, punctuated by a live-red that marks breaking coverage with timeline dots and LIVE badges, and interfaced through compact black pills; the corporate network pages extend the same identity ont",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#d8d8d8",
+    "sea": "#bc0000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#bc0000",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Roboto",
+    "body": "Roboto",
+    "all": [
+     "Roboto"
+    ]
+   },
+   "file": "brands/aljazeera.md",
+   "checks": []
+  },
+  {
+   "id": "brand:apple",
+   "source": "awesome-design-md",
+   "name": "Apple",
+   "note": "A photography-first interface that turns marketing into a museum gallery. Edge-to-edge product tiles alternate light and dark canvases, framed by SF Pro Display headlines with negative letter-spacing and a single Action Blue (#0066cc) interactive color. UI chrome recedes so the product can speak — no decorative gradients, no shadows on chrome, only the one signature drop-shadow under product image",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#fafafc",
+    "ink": "#1d1d1f",
+    "ink-head": "#1d1d1f",
+    "ink-soft": "#1d1d1f",
+    "line": "#e0e0e0",
+    "sea": "#0066cc",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0066cc",
+    "paper": "#fafafc",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "SF Pro Display, system-ui, -apple-system, sans-serif",
+    "body": "SF Pro Text, system-ui, -apple-system, sans-serif",
+    "all": [
+     "SF Pro Display, system-ui, -apple-system, sans-serif",
+     "SF Pro Text, system-ui, -apple-system, sans-serif"
+    ]
+   },
+   "file": "brands/apple.md",
+   "checks": []
+  },
+  {
+   "id": "brand:binance",
+   "source": "awesome-design-md",
+   "name": "Binance",
+   "note": "A confident financial-platform interface anchored on a deep near-black canvas, where Binance's iconic yellow (#FCD535) carries every primary CTA, brand accent, and value-claim moment. Type runs Binance's custom BinanceNova / BinancePlex stack at modest weights — the system trusts size and yellow voltage over bold weight. Marketing and product surfaces default to the dark theme; transactional surfa",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#1e2329",
+    "ink": "#181a20",
+    "ink-head": "#181a20",
+    "ink-soft": "#3a3a1f",
+    "line": "#eaecef",
+    "sea": "#3b82f6",
+    "deep": "#0b0e11",
+    "deep-ink": "#ffffff",
+    "accent": "#3b82f6",
+    "paper": "#1e2329",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "BinanceNova, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body": "BinanceNova, sans-serif",
+    "all": [
+     "BinanceNova, -apple-system, BlinkMacSystemFont, sans-serif",
+     "BinanceNova, sans-serif",
+     "BinancePlex, BinanceNova, sans-serif"
+    ]
+   },
+   "file": "brands/binance.md",
+   "checks": []
+  },
+  {
+   "id": "brand:bmw",
+   "source": "awesome-design-md",
+   "name": "BMW",
+   "note": "BMW's corporate site — distinct from BMW M's motorsport-bombastic variant, this is a measured and settled corporate-automotive interface. On a light (cream-tinted white) canvas, BMW corporate blue (#1c69d4) carries every primary CTA; dark navy hero bands frame model photography. BMW Type Next Latin sets the entire hierarchy on two weights — heavy 700 display and Light 300 body. Configuration and r",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#262626",
+    "ink-head": "#262626",
+    "ink-soft": "#6b6b6b",
+    "line": "#e6e6e6",
+    "sea": "#1c69d4",
+    "deep": "#1a1a1a",
+    "deep-ink": "#ffffff",
+    "accent": "#1c69d4",
+    "paper": "#f7f7f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'BMW Type Next Latin', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "body": "'BMW Type Next Latin', sans-serif",
+    "all": [
+     "'BMW Type Next Latin', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+     "'BMW Type Next Latin', sans-serif"
+    ]
+   },
+   "file": "brands/bmw.md",
+   "checks": []
+  },
+  {
+   "id": "brand:bmw-m",
+   "source": "awesome-design-md",
+   "name": "BMW-M",
+   "note": "A motorsport-engineering interface anchored on a near-black canvas with white BMW Type Next Latin display headlines in confident UPPERCASE. The brand carries no decorative voltage — its energy comes from full-bleed automotive photography (cars on tracks, driver-cockpit shots, carbon-fiber detail) and the iconic M tricolor stripe (light blue → dark blue → red) used sparingly as a brand signature on",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#0d0d0d",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#7e7e7e",
+    "line": "#3c3c3c",
+    "sea": "#ffffff",
+    "deep": "#0d0d0d",
+    "deep-ink": "#ffffff",
+    "accent": "#ffffff",
+    "paper": "#0d0d0d",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "BMWTypeNextLatin, sans-serif",
+    "body": "BMWTypeNextLatin Light, BMWTypeNextLatin, sans-serif",
+    "all": [
+     "BMWTypeNextLatin, sans-serif",
+     "BMWTypeNextLatin Light, BMWTypeNextLatin, sans-serif",
+     "BMWTypeNextLatin Light, sans-serif"
+    ]
+   },
+   "file": "brands/bmw-m.md",
+   "checks": []
+  },
+  {
+   "id": "brand:bugatti",
+   "source": "awesome-design-md",
+   "name": "Bugatti",
+   "note": "An austere luxury-automotive interface that uses near-pure black canvas, white uppercase letterspaced display, and full-bleed automotive photography as the only voltage. The system runs three custom Bugatti typefaces — Bugatti Display, Bugatti Text Regular, and Bugatti Monospace — and combines them at modest weights with wide tracking to feel European-engineered, hyper-minimal, and quietly expensi",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#0d0d0d",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#999999",
+    "line": "#262626",
+    "sea": "#ffffff",
+    "deep": "#0d0d0d",
+    "deep-ink": "#ffffff",
+    "accent": "#ffffff",
+    "paper": "#0d0d0d",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Bugatti Display, sans-serif",
+    "body": "Bugatti Display, serif",
+    "all": [
+     "Bugatti Display, sans-serif",
+     "Bugatti Display, serif",
+     "Bugatti Monospace, ui-monospace, monospace",
+     "Bugatti Text Regular, serif"
+    ]
+   },
+   "file": "brands/bugatti.md",
+   "checks": []
+  },
+  {
+   "id": "brand:cal",
+   "source": "awesome-design-md",
+   "name": "Cal.com",
+   "note": "A clean, calendar-software-first interface anchored on white canvas with black primary CTAs and custom Cal Sans display typography. The system reads as friendly modern SaaS — generous whitespace, soft-rounded cards (~12px), product UI fragments shown directly inside cards, and a dark navy footer that visually closes long-scroll pages. Brand voltage comes from the Cal Sans display headline (a custo",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f8f9fa",
+    "ink": "#111111",
+    "ink-head": "#111111",
+    "ink-soft": "#6b7280",
+    "line": "#e5e7eb",
+    "sea": "#111111",
+    "deep": "#101010",
+    "deep-ink": "#ffffff",
+    "accent": "#111111",
+    "paper": "#f8f9fa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Cal Sans, Inter, sans-serif",
+    "body": "Inter, sans-serif",
+    "all": [
+     "Cal Sans, Inter, sans-serif",
+     "Inter, sans-serif",
+     "JetBrains Mono, ui-monospace, monospace"
+    ]
+   },
+   "file": "brands/cal.md",
+   "checks": []
+  },
+  {
+   "id": "brand:claude",
+   "source": "awesome-design-md",
+   "name": "Claude",
+   "note": "A warm-canvas editorial interface for Anthropic's Claude product. The system anchors on a tinted cream canvas with serif display headlines, warm coral CTAs, and dark navy product surfaces (code editor mockups, model showcase cards). Brand voltage comes from the cream/coral pairing — deliberately warm and humanist where most AI brands use cool blue + slate. Type voice runs a slab-serif display (\"Co",
+   "tokens": {
+    "bg": "#faf9f5",
+    "surface": "#f5f0e8",
+    "ink": "#141413",
+    "ink-head": "#141413",
+    "ink-soft": "#6c6a64",
+    "line": "#e6dfd8",
+    "sea": "#cc785c",
+    "deep": "#141413",
+    "deep-ink": "#ffffff",
+    "accent": "#cc785c",
+    "paper": "#f5f0e8",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Copernicus, Tiempos Headline, serif",
+    "body": "StyreneB, Inter, sans-serif",
+    "all": [
+     "Copernicus, Tiempos Headline, serif",
+     "StyreneB, Inter, sans-serif",
+     "JetBrains Mono, ui-monospace, monospace"
+    ]
+   },
+   "file": "brands/claude.md",
+   "checks": []
+  },
+  {
+   "id": "brand:clay",
+   "source": "awesome-design-md",
+   "name": "Clay",
+   "note": "A vibrant claymation-meets-data interface for Clay.com (GTM data-orchestration platform). Anchors on white canvas with dark-navy primary CTAs, custom rounded display type, and saturated single-color feature cards — hot pink, deep teal, lavender, peach, ochre — that punctuate long-scroll explainer pages. Brand voltage comes from 3D-rendered claymation illustrations (mountains, characters, mascots) ",
+   "tokens": {
+    "bg": "#fffaf0",
+    "surface": "#faf5e8",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#6a6a6a",
+    "line": "#e5e5e5",
+    "sea": "#0a0a0a",
+    "deep": "#0a0a0a",
+    "deep-ink": "#ffffff",
+    "accent": "#0a0a0a",
+    "paper": "#faf5e8",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Plain Black, Inter, sans-serif",
+    "body": "Inter, sans-serif",
+    "all": [
+     "Plain Black, Inter, sans-serif",
+     "Inter, sans-serif"
+    ]
+   },
+   "file": "brands/clay.md",
+   "checks": []
+  },
+  {
+   "id": "brand:clickhouse",
+   "source": "awesome-design-md",
+   "name": "ClickHouse",
+   "note": "A high-performance database interface anchored on near-pure black canvas with electric yellow as the brand voltage. White typography in confident sans, yellow CTAs, and yellow-text stat numbers carry the brand voice across every page. Code blocks and product UI fragments embed directly in dark cards. The yellow + black pairing (and yellow used scarcely as accent) is the system's signature — brand ",
+   "tokens": {
+    "bg": "#0a0a0a",
+    "surface": "#121212",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#888888",
+    "line": "#2a2a2a",
+    "sea": "#faff69",
+    "deep": "#121212",
+    "deep-ink": "#ffffff",
+    "accent": "#faff69",
+    "paper": "#121212",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Inter, sans-serif",
+    "body": "JetBrains Mono, ui-monospace, monospace",
+    "all": [
+     "Inter, sans-serif",
+     "JetBrains Mono, ui-monospace, monospace"
+    ]
+   },
+   "file": "brands/clickhouse.md",
+   "checks": []
+  },
+  {
+   "id": "brand:cohere",
+   "source": "awesome-design-md",
+   "name": "Cohere",
+   "note": "Cohere's 2026 web system is a controlled enterprise AI interface built from stark white editorial space, deep green-black product bands, soft mineral surfaces, rounded media cards, and a distinctive type split between monospaced-feeling display headlines and precise Unica77 UI text.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f2f2f2",
+    "ink": "#212121",
+    "ink-head": "#212121",
+    "ink-soft": "#616161",
+    "line": "#d9d9dd",
+    "sea": "#17171c",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#17171c",
+    "paper": "#f2f2f2",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "CohereText",
+    "body": "Unica77 Cohere Web",
+    "all": [
+     "CohereText",
+     "Unica77 Cohere Web",
+     "CohereMono"
+    ]
+   },
+   "file": "brands/cohere.md",
+   "checks": []
+  },
+  {
+   "id": "brand:coinbase",
+   "source": "awesome-design-md",
+   "name": "Coinbase",
+   "note": "An institutional-grade crypto exchange whose marketing surfaces read like a quietly-confident financial-services brand. The base canvas is pure white; Coinbase Blue (`#0052ff`) is the single brand voltage, used scarcely on primary CTAs, signature glyphs, and inline accent moments. Type runs Coinbase's licensed CoinbaseDisplay (display) and CoinbaseSans (body) at modest weights — display sits at we",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#0a0b0d",
+    "ink-head": "#0a0b0d",
+    "ink-soft": "#5b616e",
+    "line": "#dee1e6",
+    "sea": "#0052ff",
+    "deep": "#0a0b0d",
+    "deep-ink": "#ffffff",
+    "accent": "#0052ff",
+    "paper": "#f7f7f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'Coinbase Display', -apple-system, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    "body": "'Coinbase Display', sans-serif",
+    "all": [
+     "'Coinbase Display', -apple-system, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+     "'Coinbase Display', sans-serif",
+     "'Coinbase Sans', sans-serif",
+     "'Coinbase Mono', 'Coinbase Sans', monospace"
+    ]
+   },
+   "file": "brands/coinbase.md",
+   "checks": []
+  },
+  {
+   "id": "brand:composio",
+   "source": "awesome-design-md",
+   "name": "Composio",
+   "note": "A developer-tools brand for AI-agent tool integration whose marketing surfaces lean into a dark, technical aesthetic with a single deep-electric-blue voltage (`#0007cd`). The page floor is near-black (`#0f0f0f`); cards float above on subtle gray-tinted surfaces. abcDiatype carries display and body in a single sans family with weights 400-600. The brand's strongest visual signature is a four-pane t",
+   "tokens": {
+    "bg": "#0f0f0f",
+    "surface": "#181818",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#888888",
+    "line": "#222222",
+    "sea": "#00d4ff",
+    "deep": "#181818",
+    "deep-ink": "#ffffff",
+    "accent": "#00d4ff",
+    "paper": "#181818",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "'abcDiatype', ui-sans-serif, system-ui, sans-serif",
+    "body": "'JetBrains Mono', 'Fira Code', monospace",
+    "all": [
+     "'abcDiatype', ui-sans-serif, system-ui, sans-serif",
+     "'JetBrains Mono', 'Fira Code', monospace"
+    ]
+   },
+   "file": "brands/composio.md",
+   "checks": []
+  },
+  {
+   "id": "brand:cursor",
+   "source": "awesome-design-md",
+   "name": "Cursor",
+   "note": "An AI-first code editor whose marketing site reads like a quietly-confident developer-tools brand with a warm-cream editorial canvas (`#f7f7f4`) instead of the typical dark IDE atmosphere. Near-black warm ink (`#26251e`) carries body and display alike — display sits at weight 400 with negative letter-spacing for a magazine feel rather than a bold tech voice. The single brand voltage is **Cursor Or",
+   "tokens": {
+    "bg": "#f7f7f4",
+    "surface": "#ffffff",
+    "ink": "#26251e",
+    "ink-head": "#26251e",
+    "ink-soft": "#5a5852",
+    "line": "#e6e5e0",
+    "sea": "#f54e00",
+    "deep": "#26251e",
+    "deep-ink": "#ffffff",
+    "accent": "#f54e00",
+    "paper": "#ffffff",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "'CursorGothic', system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+    "body": "'CursorGothic', sans-serif",
+    "all": [
+     "'CursorGothic', system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+     "'CursorGothic', sans-serif",
+     "'JetBrains Mono', 'Fira Code', monospace"
+    ]
+   },
+   "file": "brands/cursor.md",
+   "checks": []
+  },
+  {
+   "id": "brand:dell-1996",
+   "source": "awesome-design-md",
+   "name": "Dell 1996 Inspired",
+   "note": "An inspired interpretation of Dell.com's 1996 design language — a catalog-era enterprise web design built around a literal black page frame, vivid flat color-block \"ribbon cards\" tinted in sage, salmon, periwinkle, sky, peach and lime, chunky Helvetica-Black display titles, Times Roman body copy, and an entire visual vocabulary of pre-Photoshop hand-cut GIF stickers (NEW! bursts, award seals, beve",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#ffffff",
+    "sea": "#e91d2a",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#e91d2a",
+    "paper": "#ffffff",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Arial Black",
+    "body": "Helvetica",
+    "all": [
+     "Arial Black",
+     "Helvetica",
+     "Times New Roman"
+    ]
+   },
+   "file": "brands/dell-1996.md",
+   "checks": []
+  },
+  {
+   "id": "brand:dji",
+   "source": "awesome-design-md",
+   "name": "DJI Analysis",
+   "note": "An analysis of DJI's design language — a product-photography showroom for drones and cameras, where full-bleed studio renders sit in square, gutter-separated tiles on a white canvas, every action is a rounded pill in a single engineering blue, type is a tightly tracked Open Sans set in near-black ink at stepped opacities, small orange tier labels mark product rank, and the store layers 8px option ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#d9d9d9",
+    "ink": "#262626",
+    "ink-head": "#262626",
+    "ink-soft": "#595959",
+    "line": "#f0f0f0",
+    "sea": "#0070d5",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0070d5",
+    "paper": "#d9d9d9",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Open Sans",
+    "body": "Open Sans",
+    "all": [
+     "Open Sans"
+    ]
+   },
+   "file": "brands/dji.md",
+   "checks": []
+  },
+  {
+   "id": "brand:elevenlabs",
+   "source": "awesome-design-md",
+   "name": "ElevenLabs",
+   "note": "A voice-AI brand whose marketing surfaces read like a quietly editorial print magazine. The base canvas is off-white (`#f5f5f5`) holding warm near-black ink (`#292524`); the brand voltage is photographic, not chromatic — soft pastel atmospheric gradient orbs (mint → peach → lavender → sky) drift through the page as the only \"color\" moments. Display runs Waldenburg Light at weight 300 — the editori",
+   "tokens": {
+    "bg": "#f5f5f5",
+    "surface": "#ffffff",
+    "ink": "#0c0a09",
+    "ink-head": "#0c0a09",
+    "ink-soft": "#4e4e4e",
+    "line": "#e7e5e4",
+    "sea": "#292524",
+    "deep": "#0c0a09",
+    "deep-ink": "#ffffff",
+    "accent": "#292524",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'Waldenburg', 'Times New Roman', serif",
+    "body": "'Waldenburg', serif",
+    "all": [
+     "'Waldenburg', 'Times New Roman', serif",
+     "'Waldenburg', serif",
+     "'Inter', sans-serif"
+    ]
+   },
+   "file": "brands/elevenlabs.md",
+   "checks": []
+  },
+  {
+   "id": "brand:expo",
+   "source": "awesome-design-md",
+   "name": "Expo",
+   "note": "A React Native developer-platform whose marketing site reads like a quietly-confident infrastructure brand. The base canvas is pure white with a soft sky-blue gradient atmospheric wash behind the hero; near-black ink (`#171717`) carries body and display alike. The single brand voltage is **pure black** (`#000000`) for primary CTAs — minimal and editorial-feeling, paired with a small blue text-link",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#171717",
+    "ink-head": "#171717",
+    "ink-soft": "#60646c",
+    "line": "#f0f0f3",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'Inter', -apple-system, system-ui, sans-serif",
+    "body": "'Inter', sans-serif",
+    "all": [
+     "'Inter', -apple-system, system-ui, sans-serif",
+     "'Inter', sans-serif",
+     "'JetBrains Mono', 'Fira Code', monospace"
+    ]
+   },
+   "file": "brands/expo.md",
+   "checks": []
+  },
+  {
+   "id": "brand:ferrari",
+   "source": "awesome-design-md",
+   "name": "Ferrari",
+   "note": "A luxury-automotive brand whose marketing surfaces read as cinematic editorial. The base canvas is **near-black** (`#181818`) holding pure white display type; white-canvas bands appear only inside specific editorial contexts (preowned listings, pricing tables). The single brand voltage is **Rosso Corsa** (`#da291c`) — the iconic Ferrari racing red — used scarcely on primary CTAs, the Cavallino mar",
+   "tokens": {
+    "bg": "#181818",
+    "surface": "#303030",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#969696",
+    "line": "#303030",
+    "sea": "#da291c",
+    "deep": "#303030",
+    "deep-ink": "#ffffff",
+    "accent": "#da291c",
+    "paper": "#303030",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'FerrariSans', -apple-system, system-ui, sans-serif",
+    "body": "'FerrariSans', sans-serif",
+    "all": [
+     "'FerrariSans', -apple-system, system-ui, sans-serif",
+     "'FerrariSans', sans-serif"
+    ]
+   },
+   "file": "brands/ferrari.md",
+   "checks": []
+  },
+  {
+   "id": "brand:figma",
+   "source": "awesome-design-md",
+   "name": "Figma",
+   "note": "A confident black-and-white editorial frame interrupted by oversized, hand-cut pastel color blocks. The marketing canvas is rigorously monochrome — figmaSans variable type, pure white surfaces, pure black ink, pill-shaped CTAs — while each story section drops the page into a saturated lime, lavender, cream, mint, or pink panel that reads like a sticky note placed on a clean desk. The result is a d",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f5",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#e6e6e6",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#f7f7f5",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "figmaSans",
+    "body": "figmaMono",
+    "all": [
+     "figmaSans",
+     "figmaMono"
+    ]
+   },
+   "file": "brands/figma.md",
+   "checks": []
+  },
+  {
+   "id": "brand:framer",
+   "source": "awesome-design-md",
+   "name": "Framer",
+   "note": "A confident dark-canvas builder marketing site that treats the page like a working artboard — pure black surfaces, white display type set in GT Walsheim Medium with aggressive negative tracking, and a single confident blue (#0099ff) reserved for hyperlinks and selection states. The page rhythm is broken by oversized vibrant gradient atmosphere panels — magenta, violet, orange spotlights — that act",
+   "tokens": {
+    "bg": "#090909",
+    "surface": "#141414",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#999999",
+    "line": "#262626",
+    "sea": "#ffffff",
+    "deep": "#141414",
+    "deep-ink": "#ffffff",
+    "accent": "#ffffff",
+    "paper": "#141414",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "GT Walsheim Framer Medium",
+    "body": "GT Walsheim Medium",
+    "all": [
+     "GT Walsheim Framer Medium",
+     "GT Walsheim Medium",
+     "Inter",
+     "Inter Variable"
+    ]
+   },
+   "file": "brands/framer.md",
+   "checks": []
+  },
+  {
+   "id": "brand:hashicorp",
+   "source": "awesome-design-md",
+   "name": "HashiCorp",
+   "note": "An enterprise-infrastructure marketing canvas built around a near-black ground (#000000) and a system of per-product accent colors — Terraform purple, Vault yellow, Consul pink, Waypoint cyan, Vagrant blue — that act as identity tokens rather than decorative palette. Display type is hashicorpSans set in 600/700 with tight 1.17–1.21 line-heights; body type runs the same family at 500 weight with re",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#15181e",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#b2b6bd",
+    "line": "#3b3d45",
+    "sea": "#ffcf25",
+    "deep": "#15181e",
+    "deep-ink": "#ffffff",
+    "accent": "#ffcf25",
+    "paper": "#15181e",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "hashicorpSans",
+    "body": "hashicorpSans",
+    "all": [
+     "hashicorpSans"
+    ]
+   },
+   "file": "brands/hashicorp.md",
+   "checks": []
+  },
+  {
+   "id": "brand:hp",
+   "source": "awesome-design-md",
+   "name": "HP",
+   "note": "An inspired interpretation of HP's design language — a white-paper enterprise-consumer system anchored by HP Electric Blue (`#024ad8`) as the lone signal CTA, near-black ink (`#1a1a1a`) for headlines, geometric Forma-DJR sans throughout, and angular blue-chevron decorations that nod to the HP wordmark's slashes. Cards round at 8–16px, photos sit in soft 16px frames, and dark navy slabs anchor the ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#1a1a1a",
+    "ink-head": "#1a1a1a",
+    "ink-soft": "#1a1a1a",
+    "line": "#e8e8e8",
+    "sea": "#024ad8",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#024ad8",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Forma DJR Micro",
+    "body": "Forma DJR Micro",
+    "all": [
+     "Forma DJR Micro"
+    ]
+   },
+   "file": "brands/hp.md",
+   "checks": []
+  },
+  {
+   "id": "brand:ibm",
+   "source": "awesome-design-md",
+   "name": "IBM",
+   "note": "An enterprise-marketing canvas faithful to Carbon Design System: white surfaces, charcoal type, IBM Blue (#0f62fe) as the single confident accent, and a deliberately flat-square aesthetic where corners stay at 0–4px. Type runs IBM Plex Sans at light weight 300 for display sizes (a brand signature) and 400/600 for body and emphasis. Cards live as thin-bordered tiles with no shadow; sections separat",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f4f4f4",
+    "ink": "#161616",
+    "ink-head": "#161616",
+    "ink-soft": "#525252",
+    "line": "#e0e0e0",
+    "sea": "#0f62fe",
+    "deep": "#161616",
+    "deep-ink": "#ffffff",
+    "accent": "#0f62fe",
+    "paper": "#f4f4f4",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "IBM Plex Sans",
+    "body": "IBM Plex Sans",
+    "all": [
+     "IBM Plex Sans"
+    ]
+   },
+   "file": "brands/ibm.md",
+   "checks": []
+  },
+  {
+   "id": "brand:intercom",
+   "source": "awesome-design-md",
+   "name": "Intercom",
+   "note": "An editorial customer-service marketing canvas built around a soft cream-white ground, charcoal type set in Saans (Intercom's proprietary geometric sans), and a single confident Fin Orange (#ff5600) reserved for the Fin AI brand. Cards live as floating white tiles with thin hairline borders and minimal radii (8–16px). Display headlines run Saans at weight 500 with measured negative tracking. The s",
+   "tokens": {
+    "bg": "#f5f1ec",
+    "surface": "#ffffff",
+    "ink": "#111111",
+    "ink-head": "#111111",
+    "ink-soft": "#626260",
+    "line": "#d3cec6",
+    "sea": "#111111",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#111111",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Saans",
+    "body": "SaansMono",
+    "all": [
+     "Saans",
+     "SaansMono"
+    ]
+   },
+   "file": "brands/intercom.md",
+   "checks": []
+  },
+  {
+   "id": "brand:jobright",
+   "source": "awesome-design-md",
+   "name": "Jobright Analysis",
+   "note": "An analysis of Jobright's design language — an AI job-hunting platform built on an energetic spring-mint green against black and white, with pale-mint section bands carrying the page rhythm. Bold condensed Titillium Web display headings pair with a clean Inter UI, and the CTA system runs on high-contrast pill buttons — black pills for primary actions, a mint-green pill for the signature accent. Ro",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f2f4f5",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#e5e7eb",
+    "sea": "#86909c",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#86909c",
+    "paper": "#f2f4f5",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Titillium Web",
+    "body": "Inter",
+    "all": [
+     "Titillium Web",
+     "Inter"
+    ]
+   },
+   "file": "brands/jobright.md",
+   "checks": []
+  },
+  {
+   "id": "brand:linear.app",
+   "source": "awesome-design-md",
+   "name": "Linear",
+   "note": "A near-black product-focused marketing canvas built around #010102 (the deepest dark surface of any tool in this collection), light gray text (#f7f8f8), and the signature Linear lavender-blue (#5e6ad2) used as the single chromatic accent. The system reads as software-craft documentation: dense, technical, and quietly luxurious. Display type is set in the Linear custom sans (SF Pro Display fallback",
+   "tokens": {
+    "bg": "#010102",
+    "surface": "#0f1011",
+    "ink": "#f7f8f8",
+    "ink-head": "#f7f8f8",
+    "ink-soft": "#d0d6e0",
+    "line": "#23252a",
+    "sea": "#5e6ad2",
+    "deep": "#0f1011",
+    "deep-ink": "#f7f8f8",
+    "accent": "#5e6ad2",
+    "paper": "#0f1011",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Linear Display",
+    "body": "Linear Text",
+    "all": [
+     "Linear Display",
+     "Linear Text",
+     "Linear Mono"
+    ]
+   },
+   "file": "brands/linear.app.md",
+   "checks": []
+  },
+  {
+   "id": "brand:mercury",
+   "source": "awesome-design-md",
+   "name": "Mercury Analysis",
+   "note": "An analysis of Mercury's design language — a fintech system that moves between a deep ink-violet night world on the homepage and a pale, near-white light world on its product and pricing pages, held together by one confident indigo action pill, soft translucent secondary pills, gently rounded cards and a quiet custom sans set at unusually light weights.",
+   "tokens": {
+    "bg": "#fbfcfd",
+    "surface": "#ffffff",
+    "ink": "#28253b",
+    "ink-head": "#28253b",
+    "ink-soft": "#554e7b",
+    "line": "#ffffff",
+    "sea": "#5266eb",
+    "deep": "#171721",
+    "deep-ink": "#ffffff",
+    "accent": "#5266eb",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "arcadiaDisplay",
+    "body": "arcadia",
+    "all": [
+     "arcadiaDisplay",
+     "arcadia"
+    ]
+   },
+   "file": "brands/mercury.md",
+   "checks": []
+  },
+  {
+   "id": "brand:meta",
+   "source": "awesome-design-md",
+   "name": "Meta",
+   "note": "Meta's design system spans hardware commerce (Quest VR, Ray-Ban Meta AI glasses) and brand surfaces with a confident product-merchandising voice. The system pairs a stark white canvas with full-bleed photographic product cards, a confident Optimistic VF wordmark/headline face, dual-CTA hero patterns (black primary + outlined secondary), and a saturated cobalt blue (#0064E0) for in-product purchase",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f1f4f7",
+    "ink": "#1c1e21",
+    "ink-head": "#1c1e21",
+    "ink-soft": "#1c1e21",
+    "line": "#ced0d4",
+    "sea": "#0064e0",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0064e0",
+    "paper": "#f1f4f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Optimistic VF",
+    "body": "Optimistic VF",
+    "all": [
+     "Optimistic VF"
+    ]
+   },
+   "file": "brands/meta.md",
+   "checks": []
+  },
+  {
+   "id": "brand:minimax",
+   "source": "awesome-design-md",
+   "name": "MiniMax",
+   "note": "MiniMax presents itself as a premium AI infrastructure brand through a striking duality — bold black-pill CTAs and stark white canvas for marketing, paired with vibrant gradient product cards (orange-red, magenta-pink, purple, blue) that turn each model release into a distinctive visual identity. The system uses DM Sans across all surfaces, employs an oversized 80px hero display, anchors major act",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f8fa",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#5f5f5f",
+    "line": "#e5e7eb",
+    "sea": "#0a0a0a",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0a0a0a",
+    "paper": "#f7f8fa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "DM Sans",
+    "body": "DM Sans",
+    "all": [
+     "DM Sans"
+    ]
+   },
+   "file": "brands/minimax.md",
+   "checks": []
+  },
+  {
+   "id": "brand:mintlify",
+   "source": "awesome-design-md",
+   "name": "Mintlify",
+   "note": "Mintlify presents documentation infrastructure with a dual-mode aesthetic — atmospheric sky-gradient marketing heroes (cloud illustration backdrops, soft cream-to-blue washes) paired with dense developer-grade documentation surfaces. The system uses Inter for UI prose, Geist Mono for code, and a signature Mintlify green ({colors.brand-green}) reserved for accent CTAs and active states. Black-pill ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#5a5a5c",
+    "line": "#e5e5e5",
+    "sea": "#0a0a0a",
+    "deep": "#0a0a0a",
+    "deep-ink": "#ffffff",
+    "accent": "#0a0a0a",
+    "paper": "#f7f7f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Inter",
+    "body": "Geist Mono",
+    "all": [
+     "Inter",
+     "Geist Mono"
+    ]
+   },
+   "file": "brands/mintlify.md",
+   "checks": []
+  },
+  {
+   "id": "brand:miro",
+   "source": "awesome-design-md",
+   "name": "Miro",
+   "note": "Miro presents itself as the AI-powered visual workspace through a confident, almost playful brand voice — anchored by its signature canary yellow ({colors.brand-yellow}) wordmark over white canvas, broken open by colorful pastel feature tints (rose, teal, coral, orange, mint) that echo the actual sticky-note color palette used on the live whiteboard. Black-pill primary buttons dominate marketing, ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f8fa",
+    "ink": "#1c1c1e",
+    "ink-head": "#1c1c1e",
+    "ink-soft": "#555a6a",
+    "line": "#e0e2e8",
+    "sea": "#1c1c1e",
+    "deep": "#050038",
+    "deep-ink": "#ffffff",
+    "accent": "#1c1c1e",
+    "paper": "#f7f8fa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Roobert PRO",
+    "body": "Roobert PRO",
+    "all": [
+     "Roobert PRO"
+    ]
+   },
+   "file": "brands/miro.md",
+   "checks": []
+  },
+  {
+   "id": "brand:mistral.ai",
+   "source": "awesome-design-md",
+   "name": "Mistral-AI",
+   "note": "Mistral AI brands itself with a singular signature — atmospheric sunset gradients (mustard, orange, deep red) layered over photography of mountains, plus a horizontal \"sunset stripe\" bar that closes every page. The system pairs warm cream-yellow surfaces ({colors.cream}) with a saturated orange primary CTA ({colors.primary}) and uses an elegant near-serif voice for hero displays. Coverage spans ho",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#fafafa",
+    "ink": "#1f1f1f",
+    "ink-head": "#1f1f1f",
+    "ink-soft": "#6a6a6a",
+    "line": "#e5e5e5",
+    "sea": "#fa520f",
+    "deep": "#1c1c1e",
+    "deep-ink": "#ffffff",
+    "accent": "#fa520f",
+    "paper": "#fafafa",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "PP Editorial Old",
+    "body": "Inter",
+    "all": [
+     "PP Editorial Old",
+     "Inter",
+     "JetBrains Mono"
+    ]
+   },
+   "file": "brands/mistral.ai.md",
+   "checks": []
+  },
+  {
+   "id": "brand:mongodb",
+   "source": "awesome-design-md",
+   "name": "MongoDB",
+   "note": "MongoDB carries a strong dual-mode visual identity — dark deep-teal hero bands with bright MongoDB green ({colors.brand-green}) CTAs paired with stark white documentation surfaces. The signature green pill button is unmistakable across product, pricing, learning, and AI use-case surfaces. The system uses Euclid Circular A as its display face, anchors a 3-tier pricing comparison (Free / Flex / Dedi",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f9fbfa",
+    "ink": "#001e2b",
+    "ink-head": "#001e2b",
+    "ink-soft": "#5c6c7a",
+    "line": "#e1e5e8",
+    "sea": "#7b3ff2",
+    "deep": "#001e2b",
+    "deep-ink": "#ffffff",
+    "accent": "#7b3ff2",
+    "paper": "#f9fbfa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Euclid Circular A",
+    "body": "Source Code Pro",
+    "all": [
+     "Euclid Circular A",
+     "Source Code Pro"
+    ]
+   },
+   "file": "brands/mongodb.md",
+   "checks": []
+  },
+  {
+   "id": "brand:mydealz",
+   "source": "awesome-design-md",
+   "name": "mydealz Analysis",
+   "note": "An analysis of mydealz's design language — a high-density German deals-community system built on a confident brand green, where a stacked white-card feed carries thousands of deals and every card wears the signature hot/cold temperature control that turns pricing into a crowd vote. Fully-round 540px pill buttons, Averta CY at two weights, cool-gray page canvas, and a compact red/blue/orange status",
+   "tokens": {
+    "bg": "#f3f5f7",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#6b6d70",
+    "line": "#dfe1e4",
+    "sea": "#ce1736",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#ce1736",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Averta CY",
+    "body": "monospace",
+    "all": [
+     "Averta CY",
+     "monospace"
+    ]
+   },
+   "file": "brands/mydealz.md",
+   "checks": []
+  },
+  {
+   "id": "brand:nerdwallet",
+   "source": "awesome-design-md",
+   "name": "NerdWallet Analysis",
+   "note": "An analysis of NerdWallet's design language — a personal-finance comparison platform built almost entirely from one deep green and a ladder of mints beneath it. Editorial pages open on a green gradient band, then drop to near-white where dense comparison tables do the real work. Corners are almost square, shadows are nearly absent, and the whole system separates content with hairlines and pale min",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#64666a",
+    "line": "#ebebec",
+    "sea": "#008254",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#008254",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Gotham",
+    "body": "GothamDisplay",
+    "all": [
+     "Gotham",
+     "GothamDisplay"
+    ]
+   },
+   "file": "brands/nerdwallet.md",
+   "checks": []
+  },
+  {
+   "id": "brand:nike",
+   "source": "awesome-design-md",
+   "name": "Nike",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#111111",
+    "ink-head": "#111111",
+    "ink-soft": "#111111",
+    "line": "#cacacb",
+    "sea": "#111111",
+    "deep": "#111111",
+    "deep-ink": "#ffffff",
+    "accent": "#111111",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Nike Futura ND",
+    "body": "Helvetica Now Display Medium",
+    "all": [
+     "Nike Futura ND",
+     "Helvetica Now Display Medium",
+     "Helvetica Now Text",
+     "Helvetica Now Text Medium",
+     "Helvetica Neue"
+    ]
+   },
+   "file": "brands/nike.md",
+   "checks": []
+  },
+  {
+   "id": "brand:nintendo-2001",
+   "source": "awesome-design-md",
+   "name": "Nintendo.com (2001) Analysis",
+   "note": "An analysis of Nintendo.com's 2001 design language — a brushed-periwinkle \"console chrome\" interface where every panel is a beveled metal plate, navigation glows amber over a halftone-dotted carbon bar, and bold outlined display type sits on circuit-board hero fields. A Y2K hardware aesthetic that treats the web page like the faceplate of a game system.",
+   "tokens": {
+    "bg": "#7a8aba",
+    "surface": "#ffffff",
+    "ink": "#21242e",
+    "ink-head": "#21242e",
+    "ink-soft": "#21242e",
+    "line": "#5a5f8c",
+    "sea": "#21242e",
+    "deep": "#21242e",
+    "deep-ink": "#ffffff",
+    "accent": "#21242e",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Arial",
+    "body": "Arial Black",
+    "all": [
+     "Arial",
+     "Arial Black"
+    ]
+   },
+   "file": "brands/nintendo-2001.md",
+   "checks": []
+  },
+  {
+   "id": "brand:notion",
+   "source": "awesome-design-md",
+   "name": "Notion",
+   "note": "Notion presents itself as the all-in-one workspace through a confident, illustration-rich brand voice — anchored by a deep navy hero band ({colors.brand-navy}) decorated with brand-colored sticky-note dots and mesh wire illustrations, a signature purple pill primary CTA ({colors.primary}), and a rich palette of pastel-tinted feature cards that echo the colorful database properties of the live prod",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f6f5f4",
+    "ink": "#1a1a1a",
+    "ink-head": "#1a1a1a",
+    "ink-soft": "#5d5b54",
+    "line": "#e5e3df",
+    "sea": "#5645d4",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#5645d4",
+    "paper": "#f6f5f4",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Notion Sans",
+    "body": "Notion Sans",
+    "all": [
+     "Notion Sans"
+    ]
+   },
+   "file": "brands/notion.md",
+   "checks": []
+  },
+  {
+   "id": "brand:nvidia",
+   "source": "awesome-design-md",
+   "name": "NVIDIA",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#cccccc",
+    "sea": "#df6500",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#df6500",
+    "paper": "#f7f7f7",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "NVIDIA-EMEA",
+    "body": "NVIDIA-EMEA",
+    "all": [
+     "NVIDIA-EMEA"
+    ]
+   },
+   "file": "brands/nvidia.md",
+   "checks": []
+  },
+  {
+   "id": "brand:ollama",
+   "source": "awesome-design-md",
+   "name": "Ollama",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#fafafa",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#e5e5e5",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#fafafa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "SF Pro Rounded",
+    "body": "ui-sans-serif",
+    "all": [
+     "SF Pro Rounded",
+     "ui-sans-serif",
+     "ui-monospace"
+    ]
+   },
+   "file": "brands/ollama.md",
+   "checks": []
+  },
+  {
+   "id": "brand:opencode.ai",
+   "source": "awesome-design-md",
+   "name": "OpenCode",
+   "note": "|",
+   "tokens": {
+    "bg": "#fdfcfc",
+    "surface": "#f8f7f7",
+    "ink": "#201d1d",
+    "ink-head": "#201d1d",
+    "ink-soft": "#201d1d",
+    "line": "#f8f7f7",
+    "sea": "#201d1d",
+    "deep": "#0f0000",
+    "deep-ink": "#fdfcfc",
+    "accent": "#201d1d",
+    "paper": "#f8f7f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Berkeley Mono",
+    "body": "Berkeley Mono",
+    "all": [
+     "Berkeley Mono"
+    ]
+   },
+   "file": "brands/opencode.ai.md",
+   "checks": []
+  },
+  {
+   "id": "brand:oracle",
+   "source": "awesome-design-md",
+   "name": "Oracle Analysis",
+   "note": "An analysis of Oracle's design language — an enterprise system built on a warm neutral ladder rather than a colour palette. Six numbered greys carry almost every surface, a single dark charcoal carries every action, and the famous red is held back for the wordmark alone. Two display registers coexist, being a very light sans on the corporate index and a Georgia serif across the product pages, and ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#161513",
+    "ink-head": "#161513",
+    "ink-soft": "#161513",
+    "line": "#e4e1dd",
+    "sea": "#312d2a",
+    "deep": "#161513",
+    "deep-ink": "#ffffff",
+    "accent": "#312d2a",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Georgia",
+    "body": "Oracle Sans",
+    "all": [
+     "Georgia",
+     "Oracle Sans"
+    ]
+   },
+   "file": "brands/oracle.md",
+   "checks": []
+  },
+  {
+   "id": "brand:oura",
+   "source": "awesome-design-md",
+   "name": "Oura Analysis",
+   "note": "An analysis of Oura's design language — a warm-paper wellness system that pairs a high-contrast Editorial serif with a quiet grotesque sans, wraps every surface in a cream-and-earth palette drawn from mustard, clay and olive, and drives conversion with a single decisive action blue against otherwise calm, photography-led layouts.",
+   "tokens": {
+    "bg": "#f7f1e8",
+    "surface": "#ffffff",
+    "ink": "#1c1b1a",
+    "ink-head": "#1c1b1a",
+    "ink-soft": "#1c1b1a",
+    "line": "#e1dcd3",
+    "sea": "#2a72de",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#2a72de",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Editorial New",
+    "body": "AkkuratLL",
+    "all": [
+     "Editorial New",
+     "AkkuratLL"
+    ]
+   },
+   "file": "brands/oura.md",
+   "checks": []
+  },
+  {
+   "id": "brand:pinterest",
+   "source": "awesome-design-md",
+   "name": "Pinterest",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#fbfbf9",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#dadad3",
+    "sea": "#e60023",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#e60023",
+    "paper": "#fbfbf9",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Pin Sans",
+    "body": "Pin Sans",
+    "all": [
+     "Pin Sans"
+    ]
+   },
+   "file": "brands/pinterest.md",
+   "checks": []
+  },
+  {
+   "id": "brand:playstation",
+   "source": "awesome-design-md",
+   "name": "PlayStation",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f3f3f3",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#f3f3f3",
+    "sea": "#0070d1",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0070d1",
+    "paper": "#f3f3f3",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "PlayStation SST",
+    "body": "PlayStation SST",
+    "all": [
+     "PlayStation SST"
+    ]
+   },
+   "file": "brands/playstation.md",
+   "checks": []
+  },
+  {
+   "id": "brand:posthog",
+   "source": "awesome-design-md",
+   "name": "PostHog",
+   "note": "|",
+   "tokens": {
+    "bg": "#eeefe9",
+    "surface": "#e5e7e0",
+    "ink": "#23251d",
+    "ink-head": "#23251d",
+    "ink-soft": "#23251d",
+    "line": "#bfc1b7",
+    "sea": "#1d4ed8",
+    "deep": "#23251d",
+    "deep-ink": "#ffffff",
+    "accent": "#1d4ed8",
+    "paper": "#e5e7e0",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "IBM Plex Sans Variable",
+    "body": "ui-monospace",
+    "all": [
+     "IBM Plex Sans Variable",
+     "ui-monospace",
+     "Source Code Pro"
+    ]
+   },
+   "file": "brands/posthog.md",
+   "checks": []
+  },
+  {
+   "id": "brand:raycast",
+   "source": "awesome-design-md",
+   "name": "Raycast",
+   "note": "|",
+   "tokens": {
+    "bg": "#07080a",
+    "surface": "#0d0d0d",
+    "ink": "#f4f4f6",
+    "ink-head": "#f4f4f6",
+    "ink-soft": "#f4f4f6",
+    "line": "#242728",
+    "sea": "#ffffff",
+    "deep": "#0d0d0d",
+    "deep-ink": "#f4f4f6",
+    "accent": "#ffffff",
+    "paper": "#0d0d0d",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Inter",
+    "body": "Inter",
+    "all": [
+     "Inter"
+    ]
+   },
+   "file": "brands/raycast.md",
+   "checks": []
+  },
+  {
+   "id": "brand:renault",
+   "source": "awesome-design-md",
+   "name": "Renault",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f7f7f7",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#f2f2f2",
+    "sea": "#0000ee",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0000ee",
+    "paper": "#f7f7f7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "NouvelR",
+    "body": "NouvelR",
+    "all": [
+     "NouvelR"
+    ]
+   },
+   "file": "brands/renault.md",
+   "checks": []
+  },
+  {
+   "id": "brand:replicate",
+   "source": "awesome-design-md",
+   "name": "Replicate",
+   "note": "|",
+   "tokens": {
+    "bg": "#f9f7f3",
+    "surface": "#f3f0e8",
+    "ink": "#202020",
+    "ink-head": "#202020",
+    "ink-soft": "#202020",
+    "line": "#f3f0e8",
+    "sea": "#ea2804",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#ea2804",
+    "paper": "#f3f0e8",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "rb-freigeist-neue",
+    "body": "basier-square",
+    "all": [
+     "rb-freigeist-neue",
+     "basier-square",
+     "jetbrains-mono"
+    ]
+   },
+   "file": "brands/replicate.md",
+   "checks": []
+  },
+  {
+   "id": "brand:resend",
+   "source": "awesome-design-md",
+   "name": "Resend",
+   "note": "|",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#0a0a0c",
+    "ink": "#fcfdff",
+    "ink-head": "#fcfdff",
+    "ink-soft": "#fcfdff",
+    "line": "#0a0a0c",
+    "sea": "#fcfdff",
+    "deep": "#0a0a0c",
+    "deep-ink": "#fcfdff",
+    "accent": "#fcfdff",
+    "paper": "#0a0a0c",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Domaine Display",
+    "body": "ABC Favorit",
+    "all": [
+     "Domaine Display",
+     "ABC Favorit",
+     "Inter",
+     "Helvetica",
+     "Geist Mono"
+    ]
+   },
+   "file": "brands/resend.md",
+   "checks": []
+  },
+  {
+   "id": "brand:revolut",
+   "source": "awesome-design-md",
+   "name": "Revolut",
+   "note": "|",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f4f4f4",
+    "ink": "#191c1f",
+    "ink-head": "#191c1f",
+    "ink-soft": "#191c1f",
+    "line": "#e2e2e7",
+    "sea": "#494fdf",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#494fdf",
+    "paper": "#f4f4f4",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Aeonik Pro",
+    "body": "Inter",
+    "all": [
+     "Aeonik Pro",
+     "Inter"
+    ]
+   },
+   "file": "brands/revolut.md",
+   "checks": []
+  },
+  {
+   "id": "brand:sap",
+   "source": "awesome-design-md",
+   "name": "SAP Analysis",
+   "note": "An analysis of SAP's design language — an enterprise system that keeps almost everything on white and spends its structure on two greys and one blue. The chrome is deliberately quiet, a 60px light-grey bar over a product tab rail, so the page reads as an application frame rather than a marketing surface. Depth comes from broad flat bands rather than shadow, corners stay at 8px on controls and 12px",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#475e75",
+    "sea": "#0057d2",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#0057d2",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "72 Brand Variable",
+    "body": "72 Brand Variable",
+    "all": [
+     "72 Brand Variable"
+    ]
+   },
+   "file": "brands/sap.md",
+   "checks": []
+  },
+  {
+   "id": "brand:sentry",
+   "source": "awesome-design-md",
+   "name": "Sentri-Inspired",
+   "note": "An inspired interpretation of Sentri's design language — a developer-tools brand built on a deep purple-violet midnight canvas, electric lime accents, and a slightly subversive illustrated personality. The system pairs a custom display sans (chunky, playful, near-condensed) with the open Rubik family for UI copy and Monaco for code, then leans on dark-on-light pricing surfaces, sticker-style masco",
+   "tokens": {
+    "bg": "#1f1633",
+    "surface": "#1f1633",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#bdb8c0",
+    "line": "#362d59",
+    "sea": "#c2ef4e",
+    "deep": "#1f1633",
+    "deep-ink": "#ffffff",
+    "accent": "#c2ef4e",
+    "paper": "#1f1633",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Sentri Display, Rubik, system-ui, sans-serif",
+    "body": "Rubik, -apple-system, system-ui, Segoe UI, Helvetica, Arial, sans-serif",
+    "all": [
+     "Sentri Display, Rubik, system-ui, sans-serif",
+     "Rubik, -apple-system, system-ui, Segoe UI, Helvetica, Arial, sans-serif",
+     "Rubik, -apple-system, system-ui, sans-serif",
+     "Monaco, Menlo, Ubuntu Mono, monospace"
+    ]
+   },
+   "file": "brands/sentry.md",
+   "checks": []
+  },
+  {
+   "id": "brand:shopify",
+   "source": "awesome-design-md",
+   "name": "Shopifi-Inspired",
+   "note": "An inspired interpretation of Shopifi's design language — a cinematic commerce platform that runs two parallel design tracks. The marketing-hero and product-narrative pages live on near-black canvases with full-bleed photography of merchants, giant Neue Haas Grotesk display type at thin weights, and a single black-pill CTA stroked in white. The transactional pages (pricing, signup, dashboards) fli",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#1e2c31",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#ffffff",
+    "line": "#e4e4e7",
+    "sea": "#c1fbd4",
+    "deep": "#1e2c31",
+    "deep-ink": "#ffffff",
+    "accent": "#c1fbd4",
+    "paper": "#1e2c31",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "NeueHaasGrotesk Display, Helvetica, Arial, sans-serif",
+    "body": "Inter Variable, Inter, Helvetica, Arial, sans-serif",
+    "all": [
+     "NeueHaasGrotesk Display, Helvetica, Arial, sans-serif",
+     "Inter Variable, Inter, Helvetica, Arial, sans-serif",
+     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+    ]
+   },
+   "file": "brands/shopify.md",
+   "checks": []
+  },
+  {
+   "id": "brand:slack",
+   "source": "awesome-design-md",
+   "name": "Slacc-Inspired",
+   "note": "An inspired interpretation of Slacc's design language — a workplace messaging brand built on a deep aubergine primary, with cream-lavender hero gradients, blue inline links, and pill CTAs. The system pairs a proprietary humanist sans for display with a separate utility sans for body, and stages product UI mockups inside soft pastel-mesh hero composites that act as both decoration and feature expla",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#1d1d1d",
+    "ink-head": "#1d1d1d",
+    "ink-soft": "#1d1d1d",
+    "line": "#e6e6e6",
+    "sea": "#4a154b",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#4a154b",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Salesforce-Avant-Garde, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    "body": "Salesforce-Sans, system-ui, -apple-system, sans-serif",
+    "all": [
+     "Salesforce-Avant-Garde, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+     "Salesforce-Sans, system-ui, -apple-system, sans-serif"
+    ]
+   },
+   "file": "brands/slack.md",
+   "checks": []
+  },
+  {
+   "id": "brand:spacex",
+   "source": "awesome-design-md",
+   "name": "Spacex-Inspired",
+   "note": "An inspired interpretation of Spasex's design language — a mission-oriented aerospace brand built on pure black canvas, full-bleed photographic and video heroes of rockets and Mars landscapes, and uppercase D-DIN display type set in tight vertical leading. UI chrome is intentionally minimal a single ghost outlined pill button per band, all-caps eyebrow microtext, and a fixed top nav over photograp",
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#000000",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#ffffff",
+    "line": "#3a3a3f",
+    "sea": "#f0f0fa",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#f0f0fa",
+    "paper": "#000000",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "D-DIN-Bold, Arial Narrow, Arial, Verdana, sans-serif",
+    "body": "D-DIN, Arial, Verdana, sans-serif",
+    "all": [
+     "D-DIN-Bold, Arial Narrow, Arial, Verdana, sans-serif",
+     "D-DIN, Arial, Verdana, sans-serif"
+    ]
+   },
+   "file": "brands/spacex.md",
+   "checks": []
+  },
+  {
+   "id": "brand:stripe",
+   "source": "awesome-design-md",
+   "name": "Stripi-Inspired",
+   "note": "An inspired interpretation of Stripi's design language — a financial-infrastructure brand built on a deep navy ink, an electric indigo primary, and a recurring atmospheric gradient mesh that occupies the upper third of nearly every marketing page. The system pairs the proprietary Sohne family at thin (300) weights with negative letter-spacing for editorial-density display headlines, and uses tabul",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#0d253d",
+    "ink-head": "#0d253d",
+    "ink-soft": "#273951",
+    "line": "#e3e8ee",
+    "sea": "#533afd",
+    "deep": "#0d253d",
+    "deep-ink": "#ffffff",
+    "accent": "#533afd",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "sohne-var, 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    "body": "sohne-var, 'SF Pro Display', system-ui, -apple-system, sans-serif",
+    "all": [
+     "sohne-var, 'SF Pro Display', system-ui, -apple-system, sans-serif"
+    ]
+   },
+   "file": "brands/stripe.md",
+   "checks": []
+  },
+  {
+   "id": "brand:supabase",
+   "source": "awesome-design-md",
+   "name": "Supabaze-Inspired",
+   "note": "An inspired interpretation of Supabaze's design language — an open-source database platform built on a clean white-and-near-black system with a single signature emerald-green CTA, a custom humanist sans display tier, and dense product UI mockups composited above the hero. The brand reads as quietly technical: minimal chrome, a near-monochrome palette, and the green primary acting as the only chrom",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#171717",
+    "ink-head": "#171717",
+    "ink-soft": "#212121",
+    "line": "#dfdfdf",
+    "sea": "#ff2201",
+    "deep": "#171717",
+    "deep-ink": "#ffffff",
+    "accent": "#ff2201",
+    "paper": "#ffffff",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Circular, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+    "body": "ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+    "all": [
+     "Circular, 'Helvetica Neue', Helvetica, Arial, sans-serif",
+     "ui-monospace, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
+    ]
+   },
+   "file": "brands/supabase.md",
+   "checks": []
+  },
+  {
+   "id": "brand:superhuman",
+   "source": "awesome-design-md",
+   "name": "Superhumon-Inspired",
+   "note": "An inspired interpretation of Superhumon's design language — a fast-email productivity brand split between an editorial dark hero (deep indigo navy with violet-sky atmospheric backdrop and a portrait subject) and a quiet white content body with off-warm-grey ink. The system uses a single proprietary variable display sans, heavy weight 460–540 with tight tracking, and a deep-teal closing CTA band t",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#c9b4fa",
+    "ink": "#292827",
+    "ink-head": "#292827",
+    "ink-soft": "#292827",
+    "line": "#e8e4dd",
+    "sea": "#1b1938",
+    "deep": "#0e0c1f",
+    "deep-ink": "#ffffff",
+    "accent": "#1b1938",
+    "paper": "#c9b4fa",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "'Super Sans VF', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "body": "'Super Sans VF', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    "all": [
+     "'Super Sans VF', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    ]
+   },
+   "file": "brands/superhuman.md",
+   "checks": []
+  },
+  {
+   "id": "brand:together.ai",
+   "source": "awesome-design-md",
+   "name": "Together-AI-Inspired",
+   "note": "An inspired interpretation of Together AI's design language — an AI infrastructure platform whose surface alternates between near-black hero bands (with a three-color orange-magenta-periwinkle gradient as the single piece of brand chrome) and bright white research / pricing / docs bands, knit together by a custom display sans and an uppercase mono eyebrow face.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#313641",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#959494",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#313641",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "The Future, Inter, Helvetica Neue, Arial, sans-serif",
+    "body": "PP Neue Montreal Mono, ui-monospace, SF Mono, Menlo, monospace",
+    "all": [
+     "The Future, Inter, Helvetica Neue, Arial, sans-serif",
+     "PP Neue Montreal Mono, ui-monospace, SF Mono, Menlo, monospace"
+    ]
+   },
+   "file": "brands/together.ai.md",
+   "checks": []
+  },
+  {
+   "id": "brand:uber",
+   "source": "awesome-design-md",
+   "name": "Uber-Inspired",
+   "note": "An inspired interpretation of Uber's design language — a transportation-and-delivery super-app brand whose web surface is a black-and-white duet, framed by a custom geometric display sans, accented by a single signature pill shape (radius 999px) on every interactive element, and decorated only by editorial 4:3 illustrations of riders, drivers, and city objects.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#e2e2e2",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#4b4b4b",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#e2e2e2",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "UberMove, UberMoveText, system-ui, Helvetica Neue, Arial, sans-serif",
+    "body": "UberMoveText, system-ui, Helvetica Neue, Arial, sans-serif",
+    "all": [
+     "UberMove, UberMoveText, system-ui, Helvetica Neue, Arial, sans-serif",
+     "UberMoveText, system-ui, Helvetica Neue, Arial, sans-serif"
+    ]
+   },
+   "file": "brands/uber.md",
+   "checks": []
+  },
+  {
+   "id": "brand:vercel",
+   "source": "awesome-design-md",
+   "name": "Vercel-Inspired",
+   "note": "An inspired interpretation of Vercel's design language — a developer-platform brand whose surface is a stark black-and-ink duet on near-white canvas, broken at hero scale by a multi-color mesh gradient (cyan / blue / magenta / amber) that acts as the entire decorative system, paired with a custom geometric sans for headlines and a monospaced caption face for technical labels.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#171717",
+    "ink-head": "#171717",
+    "ink-soft": "#171717",
+    "line": "#ebebeb",
+    "sea": "#171717",
+    "deep": "#171717",
+    "deep-ink": "#ffffff",
+    "accent": "#171717",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Geist, Inter, system-ui, -apple-system, sans-serif",
+    "body": "Geist Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
+    "all": [
+     "Geist, Inter, system-ui, -apple-system, sans-serif",
+     "Geist Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace"
+    ]
+   },
+   "file": "brands/vercel.md",
+   "checks": []
+  },
+  {
+   "id": "brand:vodafone",
+   "source": "awesome-design-md",
+   "name": "Vodafone-Inspired",
+   "note": "An inspired interpretation of Vodafone's design language — a telecom super-brand whose web surface alternates between editorial photography hero bands with massive uppercase display headlines and clean white content bands, anchored by the company's signature scarlet red CTA and the proprietary Vodafone display sans set at impossibly heavy 800 weight.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#25282b",
+    "ink-head": "#25282b",
+    "ink-soft": "#25282b",
+    "line": "#ffffff",
+    "sea": "#e60000",
+    "deep": "#25282b",
+    "deep-ink": "#ffffff",
+    "accent": "#e60000",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "Vodafone, Vodafone Rg, Helvetica Neue, Arial, sans-serif",
+    "body": "Vodafone, Vodafone Rg, Helvetica Neue, Arial, sans-serif",
+    "all": [
+     "Vodafone, Vodafone Rg, Helvetica Neue, Arial, sans-serif"
+    ]
+   },
+   "file": "brands/vodafone.md",
+   "checks": []
+  },
+  {
+   "id": "brand:voltagent",
+   "source": "awesome-design-md",
+   "name": "Voltagent-Inspired",
+   "note": "An inspired interpretation of Voltagent's design language — a developer-focused AI agent engineering platform whose surface is an unrelenting near-black canvas broken only by a single electric-green brand accent, code-editor mockups inside the hero, and a precise grid of dark feature cards that read like a documentation site dressed as marketing.",
+   "tokens": {
+    "bg": "#101010",
+    "surface": "#101010",
+    "ink": "#f2f2f2",
+    "ink-head": "#f2f2f2",
+    "ink-soft": "#f2f2f2",
+    "line": "#3d3a39",
+    "sea": "#00d992",
+    "deep": "#101010",
+    "deep-ink": "#f2f2f2",
+    "accent": "#00d992",
+    "paper": "#101010",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    "body": "Inter, system-ui, -apple-system, sans-serif",
+    "all": [
+     "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+     "Inter, system-ui, -apple-system, sans-serif",
+     "SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+     "SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+    ]
+   },
+   "file": "brands/voltagent.md",
+   "checks": []
+  },
+  {
+   "id": "brand:warp",
+   "source": "awesome-design-md",
+   "name": "Warp-Inspired",
+   "note": "An inspired interpretation of Warp's design language — an agentic terminal-and-development-environment brand whose surface is a warm near-charcoal canvas (a tint warmer than pure black), broken only by clean Inter typography, the occasional Instrument Serif italic moment, and dense terminal-mockup imagery; CTAs are unusually understated, with shape geometry running tighter than most marketing site",
+   "tokens": {
+    "bg": "#2b2622",
+    "surface": "#2b2622",
+    "ink": "#f7f5f0",
+    "ink-head": "#f7f5f0",
+    "ink-soft": "#f7f5f0",
+    "line": "#3f3a36",
+    "sea": "#f7f5f0",
+    "deep": "#2b2622",
+    "deep-ink": "#f7f5f0",
+    "accent": "#f7f5f0",
+    "paper": "#2b2622",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+    "body": "Inter, system-ui, -apple-system, sans-serif",
+    "all": [
+     "Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+     "Inter, system-ui, -apple-system, sans-serif",
+     "Instrument Serif, Georgia, \"Times New Roman\", serif",
+     "DM Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    ]
+   },
+   "file": "brands/warp.md",
+   "checks": []
+  },
+  {
+   "id": "brand:webflow",
+   "source": "awesome-design-md",
+   "name": "Webflow-Inspired",
+   "note": "An inspired interpretation of Webflow's design language — a visual web development platform whose surface contrasts a deep near-black `#080808` primary against a generous white canvas, broken by a five-stop chromatic accent system (purple / pink / blue / orange / green) that maps to the brand's product categories, and anchored by the proprietary WF Visual Sans family used at restrained 500 / 600 w",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#080808",
+    "ink-head": "#080808",
+    "ink-soft": "#080808",
+    "line": "#d8d8d8",
+    "sea": "#080808",
+    "deep": "#080808",
+    "deep-ink": "#ffffff",
+    "accent": "#080808",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "WF Visual Sans Variable, Inter, system-ui, -apple-system, sans-serif",
+    "body": "WF Visual Sans Variable, Inter, system-ui, sans-serif",
+    "all": [
+     "WF Visual Sans Variable, Inter, system-ui, -apple-system, sans-serif",
+     "WF Visual Sans Variable, Inter, system-ui, sans-serif",
+     "WFVisualSans-Mono, Inconsolata, ui-monospace, SFMono-Regular, Menlo, monospace"
+    ]
+   },
+   "file": "brands/webflow.md",
+   "checks": []
+  },
+  {
+   "id": "brand:wired",
+   "source": "awesome-design-md",
+   "name": "Wired-Inspired",
+   "note": "An inspired interpretation of Wired's design language — a flagship technology-magazine brand whose surface is a strict editorial duet of stark black wordmark on white canvas, anchored by a tall narrow custom display serif for hero headlines, a humanist serif body face for long-form reading, and a clean sans face for metadata; layout reads like a printed magazine ported to the web with very little ",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#000000",
+    "line": "#e0e0e0",
+    "sea": "#000000",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#000000",
+    "paper": "#ffffff",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": {
+    "display": "WiredDisplay, \"Times New Roman\", Georgia, serif",
+    "body": "Apercu, \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+    "all": [
+     "WiredDisplay, \"Times New Roman\", Georgia, serif",
+     "Apercu, \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+     "BreveText, Georgia, \"Times New Roman\", serif"
+    ]
+   },
+   "file": "brands/wired.md",
+   "checks": []
+  },
+  {
+   "id": "brand:wise",
+   "source": "awesome-design-md",
+   "name": "Wise-Inspired",
+   "note": "An inspired interpretation of Wise's design language — a global money-transfer brand whose surface combines an unusually heavy near-black display sans (weight 900 at 64–126 px) with a vivid lime-green brand accent, sage-tinted surface neutrals, and rounded white cards on a pale green-tinted canvas; the whole system reads more like a Scandinavian fintech magazine than a bank.",
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "ink": "#0e0f0c",
+    "ink-head": "#0e0f0c",
+    "ink-soft": "#0e0f0c",
+    "line": "#ffffff",
+    "sea": "#b86700",
+    "deep": "#0e0f0c",
+    "deep-ink": "#ffffff",
+    "accent": "#b86700",
+    "paper": "#ffffff",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Wise Sans, Inter, system-ui, -apple-system, sans-serif",
+    "body": "Wise Sans, Inter, system-ui, sans-serif",
+    "all": [
+     "Wise Sans, Inter, system-ui, -apple-system, sans-serif",
+     "Wise Sans, Inter, system-ui, sans-serif",
+     "Inter, system-ui, sans-serif"
+    ]
+   },
+   "file": "brands/wise.md",
+   "checks": []
+  },
+  {
+   "id": "brand:x.ai",
+   "source": "awesome-design-md",
+   "name": "xAI-Inspired",
+   "note": "An inspired interpretation of xAI's design language — Elon Musk's frontier-AI company whose web surface is a strict near-black canvas broken only by white pill outlines, occasional warm sunset / dusk gradient accents, a custom geometric sans (Universal Sans) for display, and an uppercase tracked monospace caption face; the whole system reads as engineered-cosmic, unmarketed.",
+   "tokens": {
+    "bg": "#0a0a0a",
+    "surface": "#191919",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#ffffff",
+    "line": "#212327",
+    "sea": "#ffffff",
+    "deep": "#191919",
+    "deep-ink": "#ffffff",
+    "accent": "#ffffff",
+    "paper": "#191919",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "universalSans, Inter, system-ui, -apple-system, sans-serif",
+    "body": "universalSans, Inter, system-ui, sans-serif",
+    "all": [
+     "universalSans, Inter, system-ui, -apple-system, sans-serif",
+     "universalSans, Inter, system-ui, sans-serif",
+     "GeistMono, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
+     "GeistMono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    ]
+   },
+   "file": "brands/x.ai.md",
+   "checks": []
+  },
+  {
+   "id": "brand:zapier",
+   "source": "awesome-design-md",
+   "name": "Zapier-Inspired",
+   "note": "An inspired interpretation of Zapier's design language — a workflow-automation platform whose surface combines warm-cream neutrals (`#fffefb` canvas, `#f8f4f0` soft cream) with deep coffee ink (`#201515`) and a single saturated orange CTA accent (`#ff4f00`); typography pairs the proprietary Degular Display family at hero scale with Inter for sub-displays and body, giving the brand a confident-warm",
+   "tokens": {
+    "bg": "#fffefb",
+    "surface": "#fffefb",
+    "ink": "#201515",
+    "ink-head": "#201515",
+    "ink-soft": "#201515",
+    "line": "#fffefb",
+    "sea": "#ff4f00",
+    "deep": "#201515",
+    "deep-ink": "#fffefb",
+    "accent": "#ff4f00",
+    "paper": "#fffefb",
+    "_accentInk": "#111111"
+   },
+   "fonts": {
+    "display": "Degular Display, Inter, system-ui, -apple-system, sans-serif",
+    "body": "Degular Display, Inter, system-ui, sans-serif",
+    "all": [
+     "Degular Display, Inter, system-ui, -apple-system, sans-serif",
+     "Degular Display, Inter, system-ui, sans-serif",
+     "Inter, system-ui, sans-serif"
+    ]
+   },
+   "file": "brands/zapier.md",
+   "checks": []
+  },
+  {
+   "id": "palette:white-link-blue",
+   "source": "taste-skill",
+   "name": "Sheet and biro",
+   "note": "White holds the whole page with black type, one grey for secondary lines and a pale grey step for tiles and inputs; the footer may invert to black. Blue is the colour of text links and the one button, and nothing else is tinted.",
+   "tags": [
+    "light-neutral",
+    "mono-accent"
+   ],
+   "trades": [
+    "saas",
+    "devtool",
+    "fintech",
+    "law",
+    "clinic",
+    "retail"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f4f4f4",
+    "ink": "#111111",
+    "ink-head": "#111111",
+    "ink-soft": "#6b6b6b",
+    "line": "#f4f4f4",
+    "sea": "#1a4be0",
+    "deep": "#111111",
+    "deep-ink": "#ffffff",
+    "accent": "#1a4be0",
+    "paper": "#f4f4f4",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:cool-white-slate",
+   "source": "taste-skill",
+   "name": "Frost and slate",
+   "note": "Cool white and one paler blue-grey step hold everything, with type in dark slate instead of black. Teal appears once per screen at most, as the primary button or one small detail beside the product photograph.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "clinic",
+    "wellness",
+    "saas",
+    "fintech",
+    "law",
+    "hardware"
+   ],
+   "tokens": {
+    "bg": "#f7f9fa",
+    "surface": "#ecf0f2",
+    "ink": "#1f3038",
+    "ink-head": "#1f3038",
+    "ink-soft": "#5d6b72",
+    "line": "#ecf0f2",
+    "sea": "#0d7480",
+    "deep": "#1f3038",
+    "deep-ink": "#f7f9fa",
+    "accent": "#0d7480",
+    "paper": "#ecf0f2",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:rose-grey-green",
+   "source": "taste-skill",
+   "name": "Rose grey, green",
+   "note": "A single rosy grey covers the page from top to bottom with brown-black text and grey secondary lines; pictures keep the treatment section 0 deals, greyscale only where it deals black-and-white. Green appears only on the current-page link and on one button in the footer.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "cafe",
+    "bakery",
+    "studio",
+    "wellness",
+    "wedding",
+    "retail"
+   ],
+   "tokens": {
+    "bg": "#ebe5e3",
+    "surface": "#e1dad7",
+    "ink": "#2b2622",
+    "ink-head": "#2b2622",
+    "ink-soft": "#6a615d",
+    "line": "#e1dad7",
+    "sea": "#0f7d45",
+    "deep": "#2b2622",
+    "deep-ink": "#ebe5e3",
+    "accent": "#0f7d45",
+    "paper": "#e1dad7",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:paper-grey-brass",
+   "source": "taste-skill",
+   "name": "Newsprint and brass",
+   "note": "Warm paper grey with near-black type holds the upper page, then whole sections flip to near-black with paper-grey type; no section is tinted. Brass yellow marks one small detail per screen, such as the button or a single word.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "agency",
+    "studio",
+    "restaurant",
+    "workshop",
+    "law"
+   ],
+   "tokens": {
+    "bg": "#e8e8e3",
+    "surface": "#dcdcd6",
+    "ink": "#181715",
+    "ink-head": "#181715",
+    "ink-soft": "#63625c",
+    "line": "#dcdcd6",
+    "sea": "#bfb21a",
+    "deep": "#181715",
+    "deep-ink": "#e8e8e3",
+    "accent": "#bfb21a",
+    "paper": "#dcdcd6",
+    "_accentInk": "#181715"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:stone-blueprint",
+   "source": "taste-skill",
+   "name": "Stone and blueprint",
+   "note": "Stone paper carries the whole page with near-black and grey text. One image at a time is printed in the accent blue as its only ink, and the same blue fills the single button.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "workshop",
+    "hardware",
+    "agency",
+    "studio",
+    "devtool"
+   ],
+   "tokens": {
+    "bg": "#dfdedb",
+    "surface": "#d3d2ce",
+    "ink": "#26251e",
+    "ink-head": "#26251e",
+    "ink-soft": "#5f5d55",
+    "line": "#d3d2ce",
+    "sea": "#2456d6",
+    "deep": "#26251e",
+    "deep-ink": "#dfdedb",
+    "accent": "#2456d6",
+    "paper": "#d3d2ce",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:white-navy-tab",
+   "source": "taste-skill",
+   "name": "Navy on white",
+   "note": "Pure white pages with navy type sit between full-bleed photographs, opening on near-black and closing on a warm grey footer. Tangerine is one small tab or button, never larger than a thumbnail.",
+   "tags": [
+    "light-neutral",
+    "photographic-neutral"
+   ],
+   "trades": [
+    "hotel",
+    "retail",
+    "consumer-product",
+    "clinic"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f4f4f2",
+    "ink": "#1f2b4d",
+    "ink-head": "#1f2b4d",
+    "ink-soft": "#6a7186",
+    "line": "#f4f4f2",
+    "sea": "#f7941d",
+    "deep": "#05070a",
+    "deep-ink": "#ffffff",
+    "accent": "#f7941d",
+    "paper": "#f4f4f2",
+    "_accentInk": "#1f2b4d"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:three-stones",
+   "source": "taste-skill",
+   "name": "Three stones",
+   "note": "Three close stone tones share the interface: the lightest for the page, the middle one for panels, the darkest for a single band, all with charcoal type. Saturated colour is left to the photographs and their backdrops; the grey-green fills the button only.",
+   "tags": [
+    "light-neutral",
+    "photographic-neutral"
+   ],
+   "trades": [
+    "hotel",
+    "wellness",
+    "wedding",
+    "studio",
+    "law",
+    "clinic"
+   ],
+   "tokens": {
+    "bg": "#eeecea",
+    "surface": "#e4e1dd",
+    "ink": "#333231",
+    "ink-head": "#333231",
+    "ink-soft": "#6b6763",
+    "line": "#e4e1dd",
+    "sea": "#5c6b54",
+    "deep": "#cdc3b6",
+    "deep-ink": "#333231",
+    "accent": "#5c6b54",
+    "paper": "#e4e1dd",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:putty-black-teal",
+   "source": "taste-skill",
+   "name": "Putty and black",
+   "note": "Warm putty covers the page and pure black handles all type and the main shapes. The only tint in the interface is teal, used for the one button or a single marker placed near the photographs.",
+   "tags": [
+    "light-neutral",
+    "photographic-neutral"
+   ],
+   "trades": [
+    "cafe",
+    "restaurant",
+    "workshop",
+    "studio",
+    "hardware",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#dedad3",
+    "surface": "#d3cec6",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#5c5852",
+    "line": "#d3cec6",
+    "sea": "#256f82",
+    "deep": "#0a0a0a",
+    "deep-ink": "#dedad3",
+    "accent": "#256f82",
+    "paper": "#d3cec6",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:moss-sand",
+   "source": "taste-skill",
+   "name": "Sand and moss",
+   "note": "Sand grey holds the page with charcoal type, and one deep leaf-green band may close it. Moss green is reserved for buttons; brighter greens and blues arrive only through photographs.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "cafe",
+    "bakery",
+    "hotel",
+    "wellness",
+    "restaurant",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#ddd6c6",
+    "surface": "#d2cab8",
+    "ink": "#2a2a26",
+    "ink-head": "#2a2a26",
+    "ink-soft": "#59574e",
+    "line": "#d2cab8",
+    "sea": "#4f6238",
+    "deep": "#3f5a2a",
+    "deep-ink": "#ffffff",
+    "accent": "#4f6238",
+    "paper": "#d2cab8",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:green-mat-chocolate",
+   "source": "taste-skill",
+   "name": "Bone, green, chocolate",
+   "note": "Bone ground with chocolate-brown text takes most of the page. The green is spent on one large flat block, about a third of a screen, and on the button; all other colour comes from photographs.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "cafe",
+    "bakery",
+    "restaurant",
+    "hotel",
+    "retail"
+   ],
+   "tokens": {
+    "bg": "#e5e1d8",
+    "surface": "#dad5ca",
+    "ink": "#2a1d17",
+    "ink-head": "#2a1d17",
+    "ink-soft": "#6b5b51",
+    "line": "#dad5ca",
+    "sea": "#456f3a",
+    "deep": "#456f3a",
+    "deep-ink": "#ffffff",
+    "accent": "#456f3a",
+    "paper": "#dad5ca",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:lunar-grey-bronze",
+   "source": "taste-skill",
+   "name": "Lunar and bronze",
+   "note": "Soft black holds the page with panels one step lighter, white text and grey secondary lines, so photographs supply all the colour. Muted bronze goes on small markers and the one button only.",
+   "tags": [
+    "dark-neutral"
+   ],
+   "trades": [
+    "hardware",
+    "ai",
+    "fintech",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#111111",
+    "surface": "#1c1c1c",
+    "ink": "#f2f2f2",
+    "ink-head": "#f2f2f2",
+    "ink-soft": "#8f8f8f",
+    "line": "#1c1c1c",
+    "sea": "#a08672",
+    "deep": "#f2f2f2",
+    "deep-ink": "#111111",
+    "accent": "#a08672",
+    "paper": "#1c1c1c",
+    "_accentInk": "#111111"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:blue-black-cornflower",
+   "source": "taste-skill",
+   "name": "Night and sky blue",
+   "note": "Blue-black ground and slate panels with silver-white text fill the page; no section changes colour. A sky blue marks the buttons and the links, nothing else.",
+   "tags": [
+    "dark-neutral"
+   ],
+   "trades": [
+    "ai",
+    "devtool",
+    "saas",
+    "fintech",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#0a0d14",
+    "surface": "#131824",
+    "ink": "#e9edf3",
+    "ink-head": "#e9edf3",
+    "ink-soft": "#8891a1",
+    "line": "#131824",
+    "sea": "#5ab9fc",
+    "deep": "#e9edf3",
+    "deep-ink": "#0a0d14",
+    "accent": "#5ab9fc",
+    "paper": "#131824",
+    "_accentInk": "#0a0d14"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:green-black-bone",
+   "source": "taste-skill",
+   "name": "Green-black and bone",
+   "note": "Bone type on green-black from top to bottom, with panels and drawn details barely lighter than the ground so photographs supply the colour. Pale jade is for the booking or contact button alone.",
+   "tags": [
+    "dark-neutral",
+    "earth"
+   ],
+   "trades": [
+    "ai",
+    "devtool",
+    "hardware",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#161c1a",
+    "surface": "#1f2725",
+    "ink": "#e3e2da",
+    "ink-head": "#e3e2da",
+    "ink-soft": "#8e948d",
+    "line": "#1f2725",
+    "sea": "#9fc7b8",
+    "deep": "#e3e2da",
+    "deep-ink": "#161c1a",
+    "accent": "#9fc7b8",
+    "paper": "#1f2725",
+    "_accentInk": "#161c1a"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:black-crimson",
+   "source": "taste-skill",
+   "name": "Black and crimson",
+   "note": "Black with off-white text and mid-grey texture takes nearly the whole page, and the last sections may invert to off-white with black type. Deep crimson is scattered sparingly: a few characters in a heading, a slider fill, the one button.",
+   "tags": [
+    "dark-neutral",
+    "mono-accent"
+   ],
+   "trades": [
+    "game",
+    "hardware"
+   ],
+   "tokens": {
+    "bg": "#0a0a0a",
+    "surface": "#151515",
+    "ink": "#efefef",
+    "ink-head": "#efefef",
+    "ink-soft": "#8c8c8c",
+    "line": "#151515",
+    "sea": "#b11226",
+    "deep": "#efefef",
+    "deep-ink": "#0a0a0a",
+    "accent": "#b11226",
+    "paper": "#151515",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:forest-pale-lime",
+   "source": "taste-skill",
+   "name": "Forest and lime",
+   "note": "Forest green, black and white sections alternate, with forest green holding the most; photographs stay in moss greens and stone browns. Pale lime sits on small squares only, such as arrow buttons and the closing wordmark.",
+   "tags": [
+    "dark-neutral",
+    "earth"
+   ],
+   "trades": [
+    "game",
+    "devtool",
+    "ai"
+   ],
+   "tokens": {
+    "bg": "#0f1f10",
+    "surface": "#162a17",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#9aa39a",
+    "line": "#162a17",
+    "sea": "#c6f19d",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#c6f19d",
+    "paper": "#162a17",
+    "_accentInk": "#0f1f10"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:charcoal-room-sage",
+   "source": "taste-skill",
+   "name": "Charcoal and sage",
+   "note": "Charcoal holds the page with off-white text, and one section may flip to a pale concrete tone with dark text. Colour comes from the photographs; grey sage is used for the single button and the active state of a control.",
+   "tags": [
+    "dark-neutral",
+    "photographic-neutral"
+   ],
+   "trades": [
+    "hardware",
+    "ai",
+    "fintech"
+   ],
+   "tokens": {
+    "bg": "#1c1c1c",
+    "surface": "#262626",
+    "ink": "#f1f1ef",
+    "ink-head": "#f1f1ef",
+    "ink-soft": "#9a9b96",
+    "line": "#262626",
+    "sea": "#8fa68e",
+    "deep": "#c8c5ba",
+    "deep-ink": "#1c1c1c",
+    "accent": "#8fa68e",
+    "paper": "#262626",
+    "_accentInk": "#1c1c1c"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:warm-black-gold",
+   "source": "taste-skill",
+   "name": "Warm black, gold",
+   "note": "Warm near-black fills the page and photographs sit bright against it, with pure white small type; panels warm to a brown-black. Gold is for one text link or small button per screen, never a field.",
+   "tags": [
+    "dark-neutral",
+    "photographic-neutral"
+   ],
+   "trades": [
+    "game",
+    "hardware",
+    "fintech"
+   ],
+   "tokens": {
+    "bg": "#0c0a08",
+    "surface": "#181512",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#8f8a84",
+    "line": "#181512",
+    "sea": "#c9a45a",
+    "deep": "#ffffff",
+    "deep-ink": "#0c0a08",
+    "accent": "#c9a45a",
+    "paper": "#181512",
+    "_accentInk": "#0c0a08"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:graphite-safety-orange",
+   "source": "taste-skill",
+   "name": "Graphite and orange",
+   "note": "Graphite and cool light-grey sections alternate, graphite taking about two thirds, and photographs are chosen calm and low in colour so nothing competes (in full colour where the pictures carry the colour; greyscale only where section 0 deals black-and-white). Safety orange marks the buttons, one thick solid bar across the top of the page and the highlighted item in a list or chart.",
+   "tags": [
+    "mono-accent",
+    "dark-neutral"
+   ],
+   "trades": [
+    "hardware",
+    "devtool",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#18191b",
+    "surface": "#222427",
+    "ink": "#eff0f1",
+    "ink-head": "#eff0f1",
+    "ink-soft": "#9c9ea3",
+    "line": "#222427",
+    "sea": "#ff4a1f",
+    "deep": "#eff0f1",
+    "deep-ink": "#18191b",
+    "accent": "#ff4a1f",
+    "paper": "#222427",
+    "_accentInk": "#18191b"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:soot-pale-lime",
+   "source": "taste-skill",
+   "name": "Soot and lime",
+   "note": "A soot-black opening and close bracket white middle sections, all in black, white and grey. Pale lime is the single action colour: every button, and at most one headline set in it on the dark ground.",
+   "tags": [
+    "mono-accent",
+    "dark-neutral"
+   ],
+   "trades": [
+    "devtool",
+    "ai",
+    "saas",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#0f0f0f",
+    "surface": "#1a1a1a",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#8f8f8f",
+    "line": "#1a1a1a",
+    "sea": "#dafa9c",
+    "deep": "#ffffff",
+    "deep-ink": "#0f0f0f",
+    "accent": "#dafa9c",
+    "paper": "#1a1a1a",
+    "_accentInk": "#0f0f0f"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:plum-black-pink",
+   "source": "taste-skill",
+   "name": "Plum-black and pink",
+   "note": "Near-black and plum at the top and bottom bracket a white middle with navy-black text. Hot pink is reserved for primary buttons, bars in charts and map markers; it never fills a section.",
+   "tags": [
+    "mono-accent",
+    "dark-neutral"
+   ],
+   "trades": [
+    "game",
+    "ai"
+   ],
+   "tokens": {
+    "bg": "#0d060b",
+    "surface": "#1b0e17",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#9a8f97",
+    "line": "#1b0e17",
+    "sea": "#ff488b",
+    "deep": "#470c35",
+    "deep-ink": "#ffffff",
+    "accent": "#ff488b",
+    "paper": "#1b0e17",
+    "_accentInk": "#0d060b"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:white-signal-red",
+   "source": "taste-skill",
+   "name": "Signal red, white",
+   "note": "White ground, black text and paper grey for filled panels, with one full black band allowed. Signal red is the only colour in the interface: the button and a few solid blocks, never a word in a headline.",
+   "tags": [
+    "mono-accent"
+   ],
+   "trades": [
+    "restaurant",
+    "retail",
+    "agency",
+    "consumer-product",
+    "hardware"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f2f2f2",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#6b6b6b",
+    "line": "#f2f2f2",
+    "sea": "#d92b21",
+    "deep": "#000000",
+    "deep-ink": "#ffffff",
+    "accent": "#d92b21",
+    "paper": "#f2f2f2",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:white-mint-tiles",
+   "source": "taste-skill",
+   "name": "Greys and mint",
+   "note": "White, near-black and two greys fill a board of flat tiles. Mint floods a few whole tiles (one statement, one figure, the closing call to action) and appears nowhere else.",
+   "tags": [
+    "mono-accent"
+   ],
+   "trades": [
+    "saas",
+    "ai",
+    "fintech",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f3f3f3",
+    "ink": "#232323",
+    "ink-head": "#232323",
+    "ink-soft": "#6e6e6e",
+    "line": "#f3f3f3",
+    "sea": "#a1ffcb",
+    "deep": "#a1ffcb",
+    "deep-ink": "#232323",
+    "accent": "#a1ffcb",
+    "paper": "#f3f3f3",
+    "_accentInk": "#232323"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:cool-grey-cobalt",
+   "source": "taste-skill",
+   "name": "Cool grey, cobalt",
+   "note": "Cool pale grey holds the page with near-black type and nothing else tinted. Cobalt starts as the button and one highlighted sentence, takes one whole section as a flat field with white text, then returns as a single button block.",
+   "tags": [
+    "mono-accent"
+   ],
+   "trades": [
+    "devtool",
+    "saas",
+    "ai",
+    "fintech",
+    "hardware"
+   ],
+   "tokens": {
+    "bg": "#eef0f3",
+    "surface": "#e2e5ea",
+    "ink": "#0b0c0e",
+    "ink-head": "#0b0c0e",
+    "ink-soft": "#5d6470",
+    "line": "#e2e5ea",
+    "sea": "#1f2de6",
+    "deep": "#1f2de6",
+    "deep-ink": "#ffffff",
+    "accent": "#1f2de6",
+    "paper": "#e2e5ea",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:offwhite-bottle-yellow",
+   "source": "taste-skill",
+   "name": "Bottle ink, yellow",
+   "note": "Off-white ground with all type in a near-black bottle green instead of black. Yellow is the only saturated note: the button or one small object on most screens, and one later section that turns fully yellow.",
+   "tags": [
+    "mono-accent"
+   ],
+   "trades": [
+    "bakery",
+    "cafe",
+    "retail",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#f7f7f7",
+    "surface": "#ebebeb",
+    "ink": "#0d2a1c",
+    "ink-head": "#0d2a1c",
+    "ink-soft": "#5f6b64",
+    "line": "#ebebeb",
+    "sea": "#f6e016",
+    "deep": "#f6e016",
+    "deep-ink": "#0d2a1c",
+    "accent": "#f6e016",
+    "paper": "#ebebeb",
+    "_accentInk": "#0d2a1c"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:teal-on-paper",
+   "source": "taste-skill",
+   "name": "Teal on paper",
+   "note": "Cool white paper and a single teal used for every word, shape and button, with no black anywhere. The accent is that same teal filled solid, for the button and for one inverted band with paper-coloured type.",
+   "tags": [
+    "two-tone"
+   ],
+   "trades": [
+    "clinic",
+    "law",
+    "wellness",
+    "fintech",
+    "saas"
+   ],
+   "tokens": {
+    "bg": "#f7f9f8",
+    "surface": "#ebf0ee",
+    "ink": "#06525c",
+    "ink-head": "#06525c",
+    "ink-soft": "#2f737d",
+    "line": "#ebf0ee",
+    "sea": "#06525c",
+    "deep": "#06525c",
+    "deep-ink": "#f7f9f8",
+    "accent": "#06525c",
+    "paper": "#ebf0ee",
+    "_accentInk": "#f7f9f8"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:navy-pink",
+   "source": "taste-skill",
+   "name": "Navy and pink",
+   "note": "One navy field runs the entire page. Pink does everything else, from the name and headings to body text, and fills one solid button.",
+   "tags": [
+    "two-tone",
+    "single-field"
+   ],
+   "trades": [
+    "agency",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#1a2039",
+    "surface": "#212846",
+    "ink": "#f9a3c0",
+    "ink-head": "#f9a3c0",
+    "ink-soft": "#b9879c",
+    "line": "#212846",
+    "sea": "#f9a3c0",
+    "deep": "#f9a3c0",
+    "deep-ink": "#1a2039",
+    "accent": "#f9a3c0",
+    "paper": "#212846",
+    "_accentInk": "#1a2039"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:blush-aubergine",
+   "source": "taste-skill",
+   "name": "Blush and aubergine",
+   "note": "Blush pink and dark aubergine alternate as full fields and serve as each other's text colour, in roughly equal shares. There is no third colour: the button is a solid block of whichever of the two is not the ground.",
+   "tags": [
+    "two-tone"
+   ],
+   "trades": [
+    "wedding",
+    "studio",
+    "agency",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#edccbe",
+    "surface": "#e8c2b2",
+    "ink": "#351a2b",
+    "ink-head": "#351a2b",
+    "ink-soft": "#6c4857",
+    "line": "#e8c2b2",
+    "sea": "#351a2b",
+    "deep": "#351a2b",
+    "deep-ink": "#edccbe",
+    "accent": "#351a2b",
+    "paper": "#e8c2b2",
+    "_accentInk": "#edccbe"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:cobalt-on-sand",
+   "source": "taste-skill",
+   "name": "Cobalt on sand",
+   "note": "Sand paper and one cobalt do everything: text, drawings and solid shapes are all the same blue. The button is a cobalt block with sand-coloured type, and no black or second hue is used.",
+   "tags": [
+    "two-tone"
+   ],
+   "trades": [
+    "bakery",
+    "cafe",
+    "studio",
+    "retail",
+    "agency",
+    "workshop"
+   ],
+   "tokens": {
+    "bg": "#e6dbc7",
+    "surface": "#ddd0b9",
+    "ink": "#062b8a",
+    "ink-head": "#062b8a",
+    "ink-soft": "#3a5aa8",
+    "line": "#ddd0b9",
+    "sea": "#062b8a",
+    "deep": "#062b8a",
+    "deep-ink": "#e6dbc7",
+    "accent": "#062b8a",
+    "paper": "#ddd0b9",
+    "_accentInk": "#e6dbc7"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:oxblood-grey",
+   "source": "taste-skill",
+   "name": "Oxblood and grey",
+   "note": "Deep red text on grey paper holds most of the page, then pale grey text on a solid red field takes one long section and the footer. Photographs are chosen calm and low in colour so nothing breaks the pair (in full colour where the pictures carry the colour; greyscale only where section 0 deals black-and-white), and the button is a solid red block.",
+   "tags": [
+    "two-tone"
+   ],
+   "trades": [
+    "restaurant",
+    "law",
+    "agency",
+    "retail",
+    "studio"
+   ],
+   "tokens": {
+    "bg": "#e2e2e2",
+    "surface": "#d6d6d6",
+    "ink": "#7d0c14",
+    "ink-head": "#7d0c14",
+    "ink-soft": "#7a4a4e",
+    "line": "#d6d6d6",
+    "sea": "#7d0c14",
+    "deep": "#7d0c14",
+    "deep-ink": "#e2e2e2",
+    "accent": "#7d0c14",
+    "paper": "#d6d6d6",
+    "_accentInk": "#e2e2e2"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:olive-on-bone",
+   "source": "taste-skill",
+   "name": "Olive on bone",
+   "note": "A bone page with every word, large or small, in one olive green; the footer inverts to a solid olive field with bone text. Photography supplies all other colour, and the button is the same olive, filled.",
+   "tags": [
+    "two-tone",
+    "earth"
+   ],
+   "trades": [
+    "restaurant",
+    "hotel",
+    "wellness",
+    "bakery",
+    "studio",
+    "law"
+   ],
+   "tokens": {
+    "bg": "#ecebe7",
+    "surface": "#e1dfd9",
+    "ink": "#38450f",
+    "ink-head": "#38450f",
+    "ink-soft": "#5d683a",
+    "line": "#e1dfd9",
+    "sea": "#38450f",
+    "deep": "#38450f",
+    "deep-ink": "#ecebe7",
+    "accent": "#38450f",
+    "paper": "#e1dfd9",
+    "_accentInk": "#ecebe7"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:burgundy-bubblegum",
+   "source": "taste-skill",
+   "name": "Burgundy and bubblegum",
+   "note": "Deep burgundy is the ground for the whole page and bubblegum pink sets every word on it. The button and the active state of a control are solid pink with burgundy type; product photographs supply any other colour.",
+   "tags": [
+    "two-tone"
+   ],
+   "trades": [
+    "agency",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#3d0012",
+    "surface": "#4d0519",
+    "ink": "#ff99d3",
+    "ink-head": "#ff99d3",
+    "ink-soft": "#c77aa0",
+    "line": "#4d0519",
+    "sea": "#ff99d3",
+    "deep": "#ff99d3",
+    "deep-ink": "#3d0012",
+    "accent": "#ff99d3",
+    "paper": "#4d0519",
+    "_accentInk": "#3d0012"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:bottle-green-gold",
+   "source": "taste-skill",
+   "name": "Bottle green, gold",
+   "note": "Bottle green covers the page and warm gold sets all the type, with panels one step lighter than the ground. The button is solid gold with green text, and photographs are kept dark and warm so the pair is not disturbed.",
+   "tags": [
+    "two-tone",
+    "earth"
+   ],
+   "trades": [
+    "restaurant",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#133621",
+    "surface": "#1a4429",
+    "ink": "#f4d96c",
+    "ink-head": "#f4d96c",
+    "ink-soft": "#b3a55e",
+    "line": "#1a4429",
+    "sea": "#f4d96c",
+    "deep": "#f4d96c",
+    "deep-ink": "#133621",
+    "accent": "#f4d96c",
+    "paper": "#1a4429",
+    "_accentInk": "#133621"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:cobalt-field",
+   "source": "taste-skill",
+   "name": "Cobalt field",
+   "note": "One electric cobalt fills everything, with white and pale type; photographs keep their own colour and are shown large. A single yellow dot or button is the only other colour on the page.",
+   "tags": [
+    "single-field"
+   ],
+   "trades": [
+    "agency",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#0034eb",
+    "surface": "#002fd6",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#dfe4f2",
+    "line": "#002fd6",
+    "sea": "#e9e34a",
+    "deep": "#ffffff",
+    "deep-ink": "#0034eb",
+    "accent": "#e9e34a",
+    "paper": "#002fd6",
+    "_accentInk": "#111111"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:mustard-field",
+   "source": "taste-skill",
+   "name": "Mustard and black",
+   "note": "One warm mustard field for the whole page with black ink only. Royal blue is the single interruption, kept to a sliver along one edge or one small button.",
+   "tags": [
+    "single-field"
+   ],
+   "trades": [
+    "agency",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#e1ac10",
+    "surface": "#cd9d0f",
+    "ink": "#0b0b0b",
+    "ink-head": "#0b0b0b",
+    "ink-soft": "#4d3d0a",
+    "line": "#cd9d0f",
+    "sea": "#24338f",
+    "deep": "#0b0b0b",
+    "deep-ink": "#e1ac10",
+    "accent": "#24338f",
+    "paper": "#cd9d0f",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:carmine-field",
+   "source": "taste-skill",
+   "name": "Carmine field",
+   "note": "A deep red field bookends or fills the page, with white type and pale pink secondary lines; work shown in between sits on flat charcoal so it keeps its own colours. The button is a pale pink block with red type.",
+   "tags": [
+    "single-field"
+   ],
+   "trades": [
+    "agency",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#9c1220",
+    "surface": "#8a101c",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#f0b9bd",
+    "line": "#8a101c",
+    "sea": "#ffd9dc",
+    "deep": "#2a2a2a",
+    "deep-ink": "#ffffff",
+    "accent": "#ffd9dc",
+    "paper": "#8a101c",
+    "_accentInk": "#9c1220"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:pink-field-lime",
+   "source": "taste-skill",
+   "name": "Bubblegum and lime",
+   "note": "A flat bubblegum pink field with black type from top to bottom. Fluorescent lime is the action colour only: the menu button, one highlighter swipe behind a word and the main button.",
+   "tags": [
+    "single-field"
+   ],
+   "trades": [
+    "consumer-product",
+    "agency"
+   ],
+   "tokens": {
+    "bg": "#ff87ab",
+    "surface": "#ff739d",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#6b1f3a",
+    "line": "#ff739d",
+    "sea": "#def915",
+    "deep": "#0a0a0a",
+    "deep-ink": "#ff87ab",
+    "accent": "#def915",
+    "paper": "#ff739d",
+    "_accentInk": "#0a0a0a"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:sky-field-navy",
+   "source": "taste-skill",
+   "name": "Sky and navy",
+   "note": "Sky blue sits behind everything, white cards lie on top of it, and navy handles all text and the footer. Orange is for buttons and one highlighted word, so orange against blue is the single clash on the page.",
+   "tags": [
+    "single-field"
+   ],
+   "trades": [
+    "consumer-product",
+    "agency"
+   ],
+   "tokens": {
+    "bg": "#6bb4ee",
+    "surface": "#7dbdf0",
+    "ink": "#0e1822",
+    "ink-head": "#0e1822",
+    "ink-soft": "#1b3d5c",
+    "line": "#7dbdf0",
+    "sea": "#ff5a1f",
+    "deep": "#ffffff",
+    "deep-ink": "#0e1822",
+    "accent": "#ff5a1f",
+    "paper": "#7dbdf0",
+    "_accentInk": "#0e1822"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:orange-field-black",
+   "source": "taste-skill",
+   "name": "Orange and black",
+   "note": "Hot orange is the page: one flat field with blue-black type, flipping at a hard horizontal seam to a white section when the content needs a rest. The button is a solid block of the same blue-black with orange text, and every other colour comes from the objects shown.",
+   "tags": [
+    "single-field",
+    "two-tone"
+   ],
+   "trades": [
+    "agency",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#ff7a1f",
+    "surface": "#ff8633",
+    "ink": "#050f16",
+    "ink-head": "#050f16",
+    "ink-soft": "#5a2306",
+    "line": "#ff8633",
+    "sea": "#050f16",
+    "deep": "#ffffff",
+    "deep-ink": "#050f16",
+    "accent": "#050f16",
+    "paper": "#ff8633",
+    "_accentInk": "#ff7a1f"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:tobacco-olive",
+   "source": "taste-skill",
+   "name": "Tobacco and olive",
+   "note": "Tobacco brown fills the page with bone type, and photographs stay in browns and ochre. One olive block holds the main text or the button, and a single ochre band may break the brown once.",
+   "tags": [
+    "single-field",
+    "earth"
+   ],
+   "trades": [
+    "restaurant",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#472913",
+    "surface": "#55321a",
+    "ink": "#e4e0cf",
+    "ink-head": "#e4e0cf",
+    "ink-soft": "#b39f84",
+    "line": "#55321a",
+    "sea": "#525e1b",
+    "deep": "#c79a3e",
+    "deep-ink": "#2b170a",
+    "accent": "#525e1b",
+    "paper": "#55321a",
+    "_accentInk": "#e4e0cf"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:poster-chapters",
+   "source": "taste-skill",
+   "name": "Poster chapters",
+   "note": "Each chapter takes one flat field in turn (coral red, near-black, bone, green, yellow) with black or bone type and no tints between them. Green doubles as the accent for the one button when the ground is bone or black.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "game",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#e6e0d2",
+    "surface": "#dcd5c5",
+    "ink": "#1a1a1a",
+    "ink-head": "#1a1a1a",
+    "ink-soft": "#5f5b52",
+    "line": "#dcd5c5",
+    "sea": "#18bc42",
+    "deep": "#ed4b44",
+    "deep-ink": "#0f0f0f",
+    "accent": "#18bc42",
+    "paper": "#dcd5c5",
+    "_accentInk": "#1a1a1a"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:blue-red-black",
+   "source": "taste-skill",
+   "name": "Blue, red, black",
+   "note": "Three flat poster colours each own whole sections: electric blue, red-orange and black, with white for the areas that show the product. No tints sit between them, and blue is the button colour on white.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "devtool"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f3f3f3",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#6b6b6b",
+    "line": "#f3f3f3",
+    "sea": "#1f30e0",
+    "deep": "#1f30e0",
+    "deep-ink": "#ffffff",
+    "accent": "#1f30e0",
+    "paper": "#f3f3f3",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:charcoal-primaries",
+   "source": "taste-skill",
+   "name": "Charcoal and primaries",
+   "note": "A charcoal ground holds flat poster primaries assigned to whole panels: red, blue, teal green and yellow, each placed against a different one. Type is white, or black on yellow; teal green is the button colour on charcoal.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "game",
+    "agency"
+   ],
+   "tokens": {
+    "bg": "#191919",
+    "surface": "#242424",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#9a9a9a",
+    "line": "#242424",
+    "sea": "#0c7866",
+    "deep": "#d71e1e",
+    "deep-ink": "#ffffff",
+    "accent": "#0c7866",
+    "paper": "#242424",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:ultramarine-yellow",
+   "source": "taste-skill",
+   "name": "Ultramarine and yellow",
+   "note": "Each section is one flat field in sequence: ultramarine, black, yellow, then ultramarine again, with white type on blue and black, and black type on yellow. Green is the only small accent and never grows larger than a button.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#1423b8",
+    "surface": "#1220a6",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#e4e2d6",
+    "line": "#1220a6",
+    "sea": "#1fc27a",
+    "deep": "#1423b8",
+    "deep-ink": "#ffffff",
+    "accent": "#1fc27a",
+    "paper": "#1220a6",
+    "_accentInk": "#0a0a0a"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:candy-chapters",
+   "source": "taste-skill",
+   "name": "Candy chapters",
+   "note": "Each section owns one flat candy colour: yellow first, then white, pink, cyan and orange, with all type in black. Magenta is kept for buttons alone.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "consumer-product",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#ffd249",
+    "surface": "#f5c63c",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#5e4a0a",
+    "line": "#f5c63c",
+    "sea": "#f53fd6",
+    "deep": "#ffd249",
+    "deep-ink": "#0a0a0a",
+    "accent": "#f53fd6",
+    "paper": "#f5c63c",
+    "_accentInk": "#0a0a0a"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:orange-sky-lime",
+   "source": "taste-skill",
+   "name": "Orange, sky, lime",
+   "note": "The page ground changes as you read: orange first, then sky blue, then acid lime at the end, with one near-black band between; type stays black on all three colours. Crimson is one small button per field.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "consumer-product",
+    "agency"
+   ],
+   "tokens": {
+    "bg": "#ff8126",
+    "surface": "#ff8d3a",
+    "ink": "#111111",
+    "ink-head": "#111111",
+    "ink-soft": "#5c2a05",
+    "line": "#ff8d3a",
+    "sea": "#de194b",
+    "deep": "#ff8126",
+    "deep-ink": "#111111",
+    "accent": "#de194b",
+    "paper": "#ff8d3a",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:post-red-mustard",
+   "source": "taste-skill",
+   "name": "Post red, mustard",
+   "note": "Post red and bone alternate as full section fields, with red holding the opening and the close. Mustard, slate blue and maroon are kept for whole card frames, and slate blue also fills the one button.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "restaurant"
+   ],
+   "tokens": {
+    "bg": "#e2dccf",
+    "surface": "#d7d0c1",
+    "ink": "#2a1110",
+    "ink-head": "#2a1110",
+    "ink-soft": "#6b524c",
+    "line": "#d7d0c1",
+    "sea": "#4a6f84",
+    "deep": "#dc1928",
+    "deep-ink": "#ffffff",
+    "accent": "#4a6f84",
+    "paper": "#d7d0c1",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:mint-orange-grey",
+   "source": "taste-skill",
+   "name": "Grey, mint, orange",
+   "note": "Black on white to start, then whole sections flood with flat mid-grey, acid mint and orange in turn. Photographs inside a flooded section keep the treatment section 0 deals (black-and-white only where it deals that), and mint is also the button colour on white and black.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "saas"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f5f5f5",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#666666",
+    "line": "#f5f5f5",
+    "sea": "#a7ff9c",
+    "deep": "#c5c5c5",
+    "deep-ink": "#000000",
+    "accent": "#a7ff9c",
+    "paper": "#f5f5f5",
+    "_accentInk": "#000000"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:report-blocks",
+   "source": "taste-skill",
+   "name": "Report blocks",
+   "note": "A white base with flat blocks of orange, sage, acid yellow and black assigned to whole modules: figure tiles, quote panels and chapter bands. Text is black on every colour and off-white on black, and orange is also the button colour.",
+   "tags": [
+    "flat-loud"
+   ],
+   "trades": [
+    "agency",
+    "fintech"
+   ],
+   "tokens": {
+    "bg": "#ffffff",
+    "surface": "#f6f6f6",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#5f5f5f",
+    "line": "#f6f6f6",
+    "sea": "#fe7141",
+    "deep": "#fe7141",
+    "deep-ink": "#000000",
+    "accent": "#fe7141",
+    "paper": "#f6f6f6",
+    "_accentInk": "#000000"
+   },
+   "fonts": null,
+   "checks": [
+    "accent below 3:1 on the page (use it as a fill, not for text or links)"
+   ]
+  },
+  {
+   "id": "palette:card-pastels",
+   "source": "taste-skill",
+   "name": "Card pastels",
+   "note": "Neutral paper ground and black type, with each card or tile given its own flat pastel (sky, lime, amber or cyan), never two alike side by side. Magenta is reserved for the logo, the email address and text links.",
+   "tags": [
+    "pastel-fields"
+   ],
+   "trades": [
+    "agency",
+    "saas",
+    "consumer-product",
+    "studio"
+   ],
+   "tokens": {
+    "bg": "#f7f7f5",
+    "surface": "#ebebe8",
+    "ink": "#000000",
+    "ink-head": "#000000",
+    "ink-soft": "#666662",
+    "line": "#ebebe8",
+    "sea": "#d0106f",
+    "deep": "#97cef6",
+    "deep-ink": "#000000",
+    "accent": "#d0106f",
+    "paper": "#ebebe8",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:mint-pink-accounts",
+   "source": "taste-skill",
+   "name": "Mint and pink",
+   "note": "Near-white base with black type; mint and pink are the only two colours and each stands for one side of the product. They first appear as small circles, then as full-screen section fields, and deep green is used only for the button.",
+   "tags": [
+    "pastel-fields"
+   ],
+   "trades": [
+    "fintech",
+    "saas",
+    "bakery",
+    "retail"
+   ],
+   "tokens": {
+    "bg": "#f8f8f8",
+    "surface": "#eeeeee",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#6a6a6a",
+    "line": "#eeeeee",
+    "sea": "#1f6b3a",
+    "deep": "#c3edce",
+    "deep-ink": "#0a0a0a",
+    "accent": "#1f6b3a",
+    "paper": "#eeeeee",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:swap-pastels",
+   "source": "taste-skill",
+   "name": "Swapping pastels",
+   "note": "One flat pastel is the whole background and it swaps per project or chapter: pale sky, pink, sand, sage, peach. Type and one solid box stay near-black on all five, and dark teal is only for the button.",
+   "tags": [
+    "pastel-fields"
+   ],
+   "trades": [
+    "agency",
+    "studio",
+    "consumer-product",
+    "ai"
+   ],
+   "tokens": {
+    "bg": "#c3d7e5",
+    "surface": "#d0e0eb",
+    "ink": "#141414",
+    "ink-head": "#141414",
+    "ink-soft": "#4a5068",
+    "line": "#d0e0eb",
+    "sea": "#0f5257",
+    "deep": "#c3d7e5",
+    "deep-ink": "#141414",
+    "accent": "#0f5257",
+    "paper": "#d0e0eb",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:blush-sage-slate",
+   "source": "taste-skill",
+   "name": "Blush, sage, slate",
+   "note": "Slate blue-grey, sage and blush share the page as soft flat blocks, one per chapter or menu tile, with dark type; one deep olive block anchors the close with pale type. Olive is also the button colour, and photographs of sea and sky do the rest.",
+   "tags": [
+    "pastel-fields",
+    "earth"
+   ],
+   "trades": [
+    "studio",
+    "wedding",
+    "agency",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#a6b3bc",
+    "surface": "#b2bdc5",
+    "ink": "#1c1c1c",
+    "ink-head": "#1c1c1c",
+    "ink-soft": "#38424a",
+    "line": "#b2bdc5",
+    "sea": "#2c3620",
+    "deep": "#a6b3bc",
+    "deep-ink": "#1c1c1c",
+    "accent": "#2c3620",
+    "paper": "#b2bdc5",
+    "_accentInk": "#e3e2da"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:candy-on-black",
+   "source": "taste-skill",
+   "name": "Candy on black",
+   "note": "Black ground and dark photographs take nearly all of the surface. The only flat colour is a solid block behind each title, which takes a new candy pastel per project (mint, cyan, lemon, orange, sky); cyan is the default for the button.",
+   "tags": [
+    "pastel-fields"
+   ],
+   "trades": [
+    "game",
+    "ai"
+   ],
+   "tokens": {
+    "bg": "#000000",
+    "surface": "#0d0d0d",
+    "ink": "#ffffff",
+    "ink-head": "#ffffff",
+    "ink-soft": "#999999",
+    "line": "#0d0d0d",
+    "sea": "#93f1f7",
+    "deep": "#9ae187",
+    "deep-ink": "#000000",
+    "accent": "#93f1f7",
+    "paper": "#0d0d0d",
+    "_accentInk": "#000000"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:sky-sand",
+   "source": "taste-skill",
+   "name": "Sky and sand",
+   "note": "Sky blue and sand yellow are the constant ground, each holding whole sections, with black text throughout. Saturated colour arrives only as small solid objects, and magenta is kept for the contact card and its button.",
+   "tags": [
+    "pastel-fields"
+   ],
+   "trades": [
+    "consumer-product",
+    "agency",
+    "studio"
+   ],
+   "tokens": {
+    "bg": "#cbe4f2",
+    "surface": "#bcdcee",
+    "ink": "#0a0a0a",
+    "ink-head": "#0a0a0a",
+    "ink-soft": "#44606e",
+    "line": "#bcdcee",
+    "sea": "#b0298f",
+    "deep": "#cbe4f2",
+    "deep-ink": "#0a0a0a",
+    "accent": "#b0298f",
+    "paper": "#bcdcee",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:studio-grey",
+   "source": "taste-skill",
+   "name": "Studio grey",
+   "note": "One mid grey serves as both page and studio backdrop, so the photographed object seems to stand on the page itself; type is black and one black band comes late. Colour comes only from the product, and racing green is for the single button.",
+   "tags": [
+    "photographic-neutral"
+   ],
+   "trades": [
+    "hardware",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#a8a8aa",
+    "surface": "#b4b4b6",
+    "ink": "#0e0e0e",
+    "ink-head": "#0e0e0e",
+    "ink-soft": "#3a3a3c",
+    "line": "#b4b4b6",
+    "sea": "#1f5c49",
+    "deep": "#1b1b1c",
+    "deep-ink": "#ffffff",
+    "accent": "#1f5c49",
+    "paper": "#b4b4b6",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:walnut-tan",
+   "source": "taste-skill",
+   "name": "Walnut and tan",
+   "note": "Dark walnut holds the opening and the close with bone type, and the middle of the page may turn to flat tan around honey-lit photographs. There is no bright accent: tan is the fill for the one button on walnut.",
+   "tags": [
+    "photographic-neutral",
+    "earth"
+   ],
+   "trades": [
+    "hardware",
+    "game"
+   ],
+   "tokens": {
+    "bg": "#2b2216",
+    "surface": "#382d1e",
+    "ink": "#e4e2da",
+    "ink-head": "#e4e2da",
+    "ink-soft": "#a39a8b",
+    "line": "#382d1e",
+    "sea": "#bda38b",
+    "deep": "#bda38b",
+    "deep-ink": "#1c150d",
+    "accent": "#bda38b",
+    "paper": "#382d1e",
+    "_accentInk": "#2b2216"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:warm-paper-walnut",
+   "source": "taste-skill",
+   "name": "Warm paper and walnut",
+   "note": "Warm off-white holds the page with brown-black type and one darker paper step for the visit panel and the goods cards. Walnut brown is the one button, the focus ring and the links; photographs carry the rest of the colour.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "cafe",
+    "bakery",
+    "hotel",
+    "wedding",
+    "studio",
+    "retail"
+   ],
+   "tokens": {
+    "bg": "#f7f3ec",
+    "surface": "#ede6da",
+    "ink": "#2a2622",
+    "ink-head": "#2a2622",
+    "ink-soft": "#665e55",
+    "line": "#ede6da",
+    "sea": "#7a4a2c",
+    "deep": "#2a2622",
+    "deep-ink": "#f7f3ec",
+    "accent": "#7a4a2c",
+    "paper": "#ede6da",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:flour-terracotta",
+   "source": "taste-skill",
+   "name": "Flour and terracotta",
+   "note": "A flour-white ground with warm brown-black type and a sand step for panels. Terracotta red is the main button and the brand band, never a second fill; the photographs of ovens, tiles and bread bring the warmth.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "bakery",
+    "cafe",
+    "restaurant",
+    "retail",
+    "workshop"
+   ],
+   "tokens": {
+    "bg": "#f6f1e7",
+    "surface": "#ebe3d4",
+    "ink": "#2b241e",
+    "ink-head": "#2b241e",
+    "ink-soft": "#6a5f54",
+    "line": "#ebe3d4",
+    "sea": "#a3472b",
+    "deep": "#2b241e",
+    "deep-ink": "#f6f1e7",
+    "accent": "#a3472b",
+    "paper": "#ebe3d4",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:linen-harbour",
+   "source": "taste-skill",
+   "name": "Linen and harbour blue",
+   "note": "Linen white with blue-black type and one greyer linen step for the booking form and the room cards. A muted harbour blue is the one button and the brand band; nothing else is tinted.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "hotel",
+    "wellness",
+    "wedding",
+    "cafe",
+    "clinic"
+   ],
+   "tokens": {
+    "bg": "#f3f1ec",
+    "surface": "#e6e2d9",
+    "ink": "#1d2530",
+    "ink-head": "#1d2530",
+    "ink-soft": "#5a6270",
+    "line": "#e6e2d9",
+    "sea": "#2c5877",
+    "deep": "#1d2530",
+    "deep-ink": "#f3f1ec",
+    "accent": "#2c5877",
+    "paper": "#e6e2d9",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:limewash-ochre",
+   "source": "taste-skill",
+   "name": "Limewash and ochre",
+   "note": "A limewashed off-white with near-black brown type and a straw step for panels. Ochre is the button and the focus ring, darkened so its white label reads; the ground stays quiet under warm photographs.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "bakery",
+    "hotel",
+    "studio",
+    "workshop",
+    "restaurant"
+   ],
+   "tokens": {
+    "bg": "#f4efe5",
+    "surface": "#e7dfcf",
+    "ink": "#29251e",
+    "ink-head": "#29251e",
+    "ink-soft": "#675e51",
+    "line": "#e7dfcf",
+    "sea": "#8c6418",
+    "deep": "#29251e",
+    "deep-ink": "#f4efe5",
+    "accent": "#8c6418",
+    "paper": "#e7dfcf",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:clay-pine",
+   "source": "taste-skill",
+   "name": "Clay and pine",
+   "note": "Pale clay holds the page with green-black type and a darker clay step for panels. Pine green is the one button and may fill the brand band at the close; wood, stone and plants in the photographs match it.",
+   "tags": [
+    "light-neutral",
+    "earth"
+   ],
+   "trades": [
+    "wellness",
+    "hotel",
+    "cafe",
+    "workshop",
+    "studio"
+   ],
+   "tokens": {
+    "bg": "#efe9e0",
+    "surface": "#e2d9cb",
+    "ink": "#22261f",
+    "ink-head": "#22261f",
+    "ink-soft": "#5f6158",
+    "line": "#e2d9cb",
+    "sea": "#2e5b44",
+    "deep": "#22261f",
+    "deep-ink": "#efe9e0",
+    "accent": "#2e5b44",
+    "paper": "#e2d9cb",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:chalk-tomato",
+   "source": "taste-skill",
+   "name": "Chalk and tomato",
+   "note": "Chalk white with near-black type and one warm step for the menu panel. Tomato red is the order button and the brand band and appears nowhere else; the menu stays black type on the ground.",
+   "tags": [
+    "light-neutral",
+    "mono-accent"
+   ],
+   "trades": [
+    "restaurant",
+    "cafe",
+    "retail",
+    "bakery"
+   ],
+   "tokens": {
+    "bg": "#f8f5ef",
+    "surface": "#ede7dc",
+    "ink": "#1f1b18",
+    "ink-head": "#1f1b18",
+    "ink-soft": "#645c54",
+    "line": "#ede7dc",
+    "sea": "#b8381f",
+    "deep": "#1f1b18",
+    "deep-ink": "#f8f5ef",
+    "accent": "#b8381f",
+    "paper": "#ede7dc",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:plaster-rose",
+   "source": "taste-skill",
+   "name": "Plaster and rose",
+   "note": "Pale plaster with warm near-black type and a pinker plaster step for panels. A deep rose is the one button and the brand band; flowers and fabric in the photographs carry the softer colour.",
+   "tags": [
+    "light-neutral"
+   ],
+   "trades": [
+    "wedding",
+    "retail",
+    "bakery",
+    "wellness",
+    "studio"
+   ],
+   "tokens": {
+    "bg": "#f6f0eb",
+    "surface": "#ebe0d9",
+    "ink": "#2c2325",
+    "ink-head": "#2c2325",
+    "ink-soft": "#6a5d5e",
+    "line": "#ebe0d9",
+    "sea": "#9a3c4c",
+    "deep": "#2c2325",
+    "deep-ink": "#f6f0eb",
+    "accent": "#9a3c4c",
+    "paper": "#ebe0d9",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  },
+  {
+   "id": "palette:steel-orange",
+   "source": "taste-skill",
+   "name": "Steel and orange",
+   "note": "Light steel grey with graphite type and one darker grey step for panels and the price rows. Workshop orange is the one button and the focus ring; tools and bikes in the photographs bring their own colour.",
+   "tags": [
+    "light-neutral",
+    "mono-accent"
+   ],
+   "trades": [
+    "workshop",
+    "hardware",
+    "retail",
+    "consumer-product"
+   ],
+   "tokens": {
+    "bg": "#eeeeeb",
+    "surface": "#e1e1dd",
+    "ink": "#1c1d1f",
+    "ink-head": "#1c1d1f",
+    "ink-soft": "#5c5e62",
+    "line": "#e1e1dd",
+    "sea": "#c2501b",
+    "deep": "#1c1d1f",
+    "deep-ink": "#eeeeeb",
+    "accent": "#c2501b",
+    "paper": "#e1e1dd",
+    "_accentInk": "#ffffff"
+   },
+   "fonts": null,
+   "checks": []
+  }
+ ],
+ "fonts": [
+  {
+   "id": "type:geist",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "precise",
+    "technical",
+    "calm"
+   ],
+   "suits": "developer tools, AI, infrastructure, fintech: exact, plain and fast",
+   "display": "Geist",
+   "body": "Geist",
+   "mono": "Geist Mono"
+  },
+  {
+   "id": "type:host",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "precise"
+   ],
+   "suits": "software, studios and agencies that want a quiet, exact page",
+   "display": "Host Grotesk",
+   "body": "Host Grotesk",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:instrument",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "precise",
+    "friendly",
+    "calm"
+   ],
+   "suits": "design and productivity software, studios, modern agencies",
+   "display": "Instrument Sans",
+   "body": "Instrument Sans",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:mona",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "technical",
+    "bold",
+    "precise"
+   ],
+   "suits": "hardware, platforms, games studios: a little wide, firm and modern",
+   "display": "Mona Sans",
+   "body": "Mona Sans",
+   "mono": "Geist Mono"
+  },
+  {
+   "id": "type:hanken",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "trusted"
+   ],
+   "suits": "clinics, law, advice, agencies: friendly and trusted without a trace of tech",
+   "display": "Hanken Grotesk",
+   "body": "Hanken Grotesk",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:schibsted",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "bold",
+    "trusted"
+   ],
+   "suits": "media, agencies, services that want a sturdy editorial voice",
+   "display": "Schibsted Grotesk",
+   "body": "Schibsted Grotesk",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:onest",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "trusted"
+   ],
+   "suits": "software and services that want an even, open and readable page",
+   "display": "Onest",
+   "body": "Onest",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:funnel",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "friendly",
+    "bold"
+   ],
+   "suits": "consumer apps and products with a friendly, bright voice",
+   "display": "Funnel Display",
+   "body": "Funnel Sans",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:manrope",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "precise",
+    "friendly"
+   ],
+   "suits": "fintech, data and AI products: clean geometric forms, open numbers",
+   "display": "Manrope",
+   "body": "Manrope",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:plex",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "technical",
+    "trusted"
+   ],
+   "suits": "developer tools, security, data infrastructure: engineered and sober",
+   "display": "IBM Plex Sans",
+   "body": "IBM Plex Sans",
+   "mono": "IBM Plex Mono"
+  },
+  {
+   "id": "type:sora",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "technical",
+    "bold"
+   ],
+   "suits": "games, web3-free fintech, hardware: a wide, geometric face with a clear text partner",
+   "display": "Sora",
+   "body": "Figtree",
+   "mono": "Martian Mono"
+  },
+  {
+   "id": "type:archivo",
+   "source": "taste-skill",
+   "class": "wide",
+   "moods": [
+    "bold",
+    "technical"
+   ],
+   "suits": "hardware, vehicles, equipment and games: a broad, firm face",
+   "display": "Archivo",
+   "body": "Archivo",
+   "mono": "Martian Mono"
+  },
+  {
+   "id": "type:anybody",
+   "source": "taste-skill",
+   "class": "wide",
+   "moods": [
+    "playful",
+    "bold"
+   ],
+   "suits": "game studios and esports: a wide, energetic headline over a calm text face",
+   "display": "Anybody",
+   "body": "Onest",
+   "mono": "Martian Mono"
+  },
+  {
+   "id": "type:bricolage",
+   "source": "taste-skill",
+   "class": "grotesk-soft",
+   "moods": [
+    "friendly",
+    "playful",
+    "warm"
+   ],
+   "suits": "consumer products and brands with character, studios, kitchens that sell online",
+   "display": "Bricolage Grotesque",
+   "body": "Figtree",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:red-hat",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "trusted",
+    "friendly"
+   ],
+   "suits": "trades, finance advice, health and schools: steady and approachable",
+   "display": "Red Hat Display",
+   "body": "Red Hat Text",
+   "mono": "IBM Plex Mono"
+  },
+  {
+   "id": "type:gabarito",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "friendly",
+    "playful"
+   ],
+   "suits": "consumer apps and casual games: round and friendly",
+   "display": "Gabarito",
+   "body": "Figtree",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:chivo",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "technical",
+    "calm"
+   ],
+   "suits": "developer and data tools: grotesk with a matching mono",
+   "display": "Chivo",
+   "body": "Chivo",
+   "mono": "Chivo Mono"
+  },
+  {
+   "id": "type:outfit",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "friendly",
+    "precise"
+   ],
+   "suits": "apps and consumer brands: clean geometric forms",
+   "display": "Outfit",
+   "body": "Outfit",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:epilogue",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "precise",
+    "bold"
+   ],
+   "suits": "platforms, tools and games studios: a sharp, slightly condensed grotesk",
+   "display": "Epilogue",
+   "body": "Epilogue",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:familjen",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "technical",
+    "calm"
+   ],
+   "suits": "software with an editorial edge, creative tools",
+   "display": "Familjen Grotesk",
+   "body": "Familjen Grotesk",
+   "mono": "IBM Plex Mono"
+  },
+  {
+   "id": "type:urbanist",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "friendly",
+    "precise"
+   ],
+   "suits": "apps, fintech and consumer software: soft geometric forms",
+   "display": "Urbanist",
+   "body": "Urbanist",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:reddit",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "precise"
+   ],
+   "suits": "platforms, communities and AI tools: open and even",
+   "display": "Reddit Sans",
+   "body": "Reddit Sans",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:suse",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "technical",
+    "precise"
+   ],
+   "suits": "infrastructure, security and developer platforms: firm, slightly technical",
+   "display": "SUSE",
+   "body": "SUSE",
+   "mono": "JetBrains Mono"
+  },
+  {
+   "id": "type:albert",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "refined"
+   ],
+   "suits": "shops, studios and small services: one quiet sans in two weights",
+   "display": "Albert Sans",
+   "body": "Albert Sans",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:figtree",
+   "source": "taste-skill",
+   "class": "geometric",
+   "moods": [
+    "friendly",
+    "calm"
+   ],
+   "suits": "friendly shops, studios and services",
+   "display": "Figtree",
+   "body": "Figtree",
+   "mono": "DM Mono"
+  },
+  {
+   "id": "type:work-sans",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "trusted"
+   ],
+   "suits": "bike shops, studios, trades: sturdy and plain",
+   "display": "Work Sans",
+   "body": "Work Sans"
+  },
+  {
+   "id": "type:rethink",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "friendly"
+   ],
+   "suits": "florists, studios, small shops: soft and readable",
+   "display": "Rethink Sans",
+   "body": "Rethink Sans"
+  },
+  {
+   "id": "type:instrument-sans",
+   "source": "taste-skill",
+   "class": "neo-grotesk",
+   "moods": [
+    "calm",
+    "precise"
+   ],
+   "suits": "shops and studios that sell design and objects",
+   "display": "Instrument Sans",
+   "body": "Instrument Sans"
+  },
+  {
+   "id": "type:instrument-serif",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "refined",
+    "calm",
+    "classic"
+   ],
+   "suits": "brands, studios and firms that want a refined, editorial voice",
+   "display": "Instrument Serif",
+   "body": "Instrument Sans"
+  },
+  {
+   "id": "type:fraunces",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "warm",
+    "friendly",
+    "classic"
+   ],
+   "suits": "bakeries, roasters, food and homeware brands: a soft, warm serif",
+   "display": "Fraunces",
+   "body": "Figtree"
+  },
+  {
+   "id": "type:newsreader",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "trusted",
+    "refined",
+    "calm"
+   ],
+   "suits": "bookshops, guesthouses, advisers, schools: a calm text serif",
+   "display": "Newsreader",
+   "body": "Hanken Grotesk"
+  },
+  {
+   "id": "type:source-serif",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "trusted",
+    "classic"
+   ],
+   "suits": "law, finance, health, schools, bookshops: sober and readable",
+   "display": "Source Serif 4",
+   "body": "Libre Franklin"
+  },
+  {
+   "id": "type:garamond",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "classic",
+    "refined",
+    "calm"
+   ],
+   "suits": "wine rooms, bookshops, old guesthouses, patisseries: classical and quiet",
+   "display": "EB Garamond",
+   "body": "Jost"
+  },
+  {
+   "id": "type:literata",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "trusted",
+    "warm",
+    "calm"
+   ],
+   "suits": "bookshops, libraries, cafes with a reading corner: made for reading",
+   "display": "Literata",
+   "body": "Figtree"
+  },
+  {
+   "id": "type:lora",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "warm",
+    "classic"
+   ],
+   "suits": "roasters, bakeries and delis: warm, brushed serif forms",
+   "display": "Lora",
+   "body": "Nunito Sans"
+  },
+  {
+   "id": "type:besley",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "warm",
+    "bold",
+    "classic"
+   ],
+   "suits": "cafes, bakeries and bars: a warm, slightly slab serif",
+   "display": "Besley",
+   "body": "Albert Sans"
+  },
+  {
+   "id": "type:vollkorn",
+   "source": "taste-skill",
+   "class": "serif",
+   "moods": [
+    "warm",
+    "classic"
+   ],
+   "suits": "bakeries, delis and bookshops: dark, sturdy, bread-like serif",
+   "display": "Vollkorn",
+   "body": "Work Sans"
+  },
+  {
+   "id": "type:zilla",
+   "source": "taste-skill",
+   "class": "slab",
+   "moods": [
+    "warm",
+    "trusted",
+    "bold"
+   ],
+   "suits": "workshops, bike shops, outfitters and trades: a friendly slab",
+   "display": "Zilla Slab",
+   "body": "Rethink Sans"
+  },
+  {
+   "id": "type:nunito",
+   "source": "taste-skill",
+   "class": "soft",
+   "moods": [
+    "friendly",
+    "warm"
+   ],
+   "suits": "cafes, bakeries, kids and wellbeing: rounded and easy",
+   "display": "Nunito",
+   "body": "Nunito"
+  }
+ ]
+}
