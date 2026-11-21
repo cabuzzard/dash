@@ -12568,10 +12568,52 @@ function hd2SdLookHtml() {
   const fonts = '<option value="">' + esc([D.fonts.display, D.fonts.body].filter(Boolean).join(' / ') || 'Hub fonts') + '</option>' + L.fonts.map(f => '<option value="' + esc(f.id) + '"' + (D.font === f.id ? ' selected' : '') + '>' + esc(f.display + ' / ' + f.body) + '</option>').join('');
   const warn = hd2DsChecks(D.tokens);
   return '<details class="sd-grp" open><summary>🎨 Colors &amp; fonts <span>' + esc(D.fonts.display || '') + '</span><button onclick="event.preventDefault();hd2SdLook(\'\',true)" title="Back to the hub\'s current colors and fonts">reset</button></summary><div style="padding:6px 8px 8px;display:grid;gap:8px;">'
-    + '<label style="font-size:11.5px;color:var(--text3);">Look' + sel('hd2SdLook(this.value)', looks) + '</label>'
-    + '<label style="font-size:11.5px;color:var(--text3);">Fonts (display / body)' + sel('hd2SdFont(this.value)', fonts) + '</label>'
+    + hd2SdLookStepper()
+    + hd2SdFontStepper()
     + '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;">' + HD2_DS_KEYS.map(([k, l]) => '<label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="color" value="' + esc(D.tokens[k] || '#000000') + '" oninput="hd2SdTokSet(\'' + k + '\',this.value)" style="width:30px;height:24px;border:1px solid var(--border2);border-radius:4px;padding:0;background:none;flex:none;">' + l + '</label>').join('') + '</div>'
     + '<div id="sdTokWarn" style="font-size:11.5px;color:#f59e0b;">' + warn.map(w => '⚠ ' + esc(w)).join('<br>') + '</div></div></details>';
+}
+// Fonts stepper (operator 2026-11-21: "more of a one click or arrows type of interface"): ◀ ▶ walk the pairings (position 0 =
+// the hub's own fonts); the name is drawn in its own display face; arrow keys work while the stepper has focus.
+// Colors stepper (operator 2026-11-21: "same with colors"): ◀ ▶ walk every look in the design library (position 0 = the hub's
+// current colors), showing its color strip; arrow keys work while it has focus. The 10 pickers below still fine-tune.
+function hd2SdLookStepper() {
+  const D = EF.sd, L = _hd2DsLib.looks, i = D.look ? L.findIndex(x => x.id === D.look) + 1 : 0, n = L.length + 1, l = i ? L[i - 1] : null;
+  const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
+  return '<div style="font-size:11.5px;color:var(--text3);">Colors · ' + (l ? (l.source === 'taste-skill' ? 'palette' : 'brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') : 'the hub now') + '</div>'
+    + '<div tabindex="0" data-step="look" onkeydown="if(event.key===\x27ArrowRight\x27||event.key===\x27ArrowDown\x27){event.preventDefault();hd2SdLookStep(1)}else if(event.key===\x27ArrowLeft\x27||event.key===\x27ArrowUp\x27){event.preventDefault();hd2SdLookStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
+    + '<button style="' + btn + '" onclick="hd2SdLookStep(-1)" title="Previous look (←)">◀</button>'
+    + '<div style="flex:1;min-width:0;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;">' + hd2DsSwatch(l ? l.tokens : D.curTokens).replace('height:34px', 'height:18px')
+    + '<div style="display:flex;justify-content:space-between;gap:6px;margin-top:3px;"><span style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(l ? l.name : 'Current colors') + '</span><span style="font-size:10.5px;color:var(--text3);flex:none;">' + (i + 1) + ' of ' + n + '</span></div></div>'
+    + '<button style="' + btn + '" onclick="hd2SdLookStep(1)" title="Next look (→)">▶</button></div>';
+}
+function hd2SdLookStep(dir) {
+  const D = EF.sd, L = _hd2DsLib.looks, n = L.length + 1, i = D.look ? L.findIndex(x => x.id === D.look) + 1 : 0, j = (i + dir + n) % n;
+  hd2SdLook(j ? L[j - 1].id : '');
+  const st = document.querySelector('#sdLook [data-step="look"]'); if (st) st.focus();
+}
+function hd2SdFontStepper() {
+  const D = EF.sd, L = _hd2DsLib.fonts, i = D.font ? L.findIndex(x => x.id === D.font) + 1 : 0, n = L.length + 1, f = i ? L[i - 1] : null;
+  const name = f ? f.display + (f.body !== f.display ? ' / ' + f.body : '') : (D.curFonts.display || 'Hub fonts') + ' / ' + (D.curFonts.body || '');
+  hd2SdFontLoad(f ? f.display : D.curFonts.display);
+  const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
+  return '<div style="font-size:11.5px;color:var(--text3);">Fonts ' + (f && f.suits ? '· ' + esc(f.suits.slice(0, 60)) : (i ? '' : '· the hub now')) + '</div>'
+    + '<div tabindex="0" data-step="font" onkeydown="if(event.key===\x27ArrowRight\x27||event.key===\x27ArrowDown\x27){event.preventDefault();hd2SdFontStep(1)}else if(event.key===\x27ArrowLeft\x27||event.key===\x27ArrowUp\x27){event.preventDefault();hd2SdFontStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
+    + '<button style="' + btn + '" onclick="hd2SdFontStep(-1)" title="Previous pairing (←)">◀</button>'
+    + '<div style="flex:1;min-width:0;text-align:center;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;">'
+    + '<div style="font-family:\x27' + esc(f ? f.display : D.curFonts.display || '') + '\x27,system-ui,sans-serif;font-size:17px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(name) + '</div>'
+    + '<div style="font-size:10.5px;color:var(--text3);">' + (i + 1) + ' of ' + n + '</div></div>'
+    + '<button style="' + btn + '" onclick="hd2SdFontStep(1)" title="Next pairing (→)">▶</button></div>';
+}
+function hd2SdFontLoad(fam) {   // draw the stepper name in its own face (Google Fonts, once per family)
+  if (!fam || !/^[A-Za-z0-9 ]{2,40}$/.test(fam)) return; window._sdFontsLoaded = window._sdFontsLoaded || {};
+  if (window._sdFontsLoaded[fam]) return; window._sdFontsLoaded[fam] = 1;
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=' + fam.replace(/ /g, '+') + ':wght@600&display=swap'; document.head.appendChild(l);
+}
+function hd2SdFontStep(dir) {
+  const D = EF.sd, L = _hd2DsLib.fonts, n = L.length + 1, i = D.font ? L.findIndex(x => x.id === D.font) + 1 : 0, j = (i + dir + n) % n;
+  hd2SdFont(j ? L[j - 1].id : '');
+  const st = document.querySelector('#sdLook [data-step="font"]'); if (st) st.focus();
 }
 function hd2SdTok() {   // push colors + fonts into the preview
   const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens) return;
