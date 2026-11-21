@@ -42919,6 +42919,99 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
       // restyleHubThumbnails { campaignId, offset?, limit? }: re-draws the thumbnail of every Published post in a hub's News / Articles
       // sections in the hub's thumbnail style (the old one goes to each asset's Library). Paged: call again with "next" until it is null.
+      // ── 🧱 Site designer (operator 2026-11-20) ───────────────────────────────────────────────────────────────────────────
+      // Hub Dash 2 → hub flyout → 🧱 Site designer: every CSS rule of a hub page as a toggle + editable text, live preview.
+      // The SANDBOX is a persistent design that lives in the designer (KV, per hub + page, with version history); it never
+      // touches the live site. "Save to hub" is the only path to the live page: it replaces the page's <style> blocks with the
+      // sandbox's compiled CSS in one commit (the previous live CSS is archived first). Built as a platform for other page
+      // layouts too: `page` names the layout; only "home" (web/hub/<slug>/index.html) is wired so far.
+      // hubDesignerChat {slug, page, message, rules:"#id [@media] selector { decls }" lines, focus?} — the designer's chat.
+      // CSS requests come back as rule operations the designer previews (nothing saved). A request that needs new HTML
+      // (a wrapper div, a new class on generated markup, a new section) is NOT guessed at: it is queued in KV
+      // hubsite:requests:<slug>:<page> for a Claude Code session, and the reply says so.
+      if (body.action === "hubDesignerChat" || body.action === "hubDesignerRequests") {
+        const slug = String(body.slug || "").trim(), page = String(body.page || "home"), kR = `hubsite:requests:${slug}:${page}`;
+        if (body.action === "hubDesignerRequests") return json({ ok: true, requests: (await env.TRADES.get(kR, "json")) || [] });
+        const msg = String(body.message || "").trim(); if (!msg) return json({ error: "message required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const rules = String(body.rules || "").slice(0, 120000), focus = String(body.focus || "").slice(0, 400);
+        const tool = { name: "design_reply", description: "Reply to the operator and return CSS rule operations for the preview.",
+          input_schema: { type: "object", properties: {
+            reply: { type: "string", description: "One to three plain sentences: what you changed and why, or why it needs structural work." },
+            ops: { type: "array", items: { type: "object", properties: {
+              op: { type: "string", enum: ["set", "add", "toggle", "remove"] },
+              id: { type: "string", description: "rule id (#r12 → r12) for set / toggle / remove; for add, the rule to insert after (blank = end)" },
+              selector: { type: "string" }, media: { type: "string", description: "e.g. (max-width:640px); blank = none" },
+              decls: { type: "string", description: "declarations, one per line 'prop: value;' — for set this REPLACES the rule's declarations" },
+              on: { type: "boolean" } }, required: ["op"] } },
+            structural: { type: "boolean", description: "true when the request needs HTML changes (new elements, wrapper divs, new classes on generated markup)" },
+            structuralSpec: { type: "string", description: "when structural: the exact HTML/JS change needed, specific enough for a developer" } },
+            required: ["reply", "ops", "structural"] } };
+        const prompt = `You edit the CSS of a live small-business website (hub "${slug}", page "${page}") inside a visual designer. The operator sees a live preview of every change; nothing is saved until they save it.
+
+RULES (in cascade order; "OFF" = currently disabled; colors and fonts are CSS variables like var(--sea), keep using them):
+${rules}
+${focus ? "\nTHE OPERATOR HAS SELECTED THIS ELEMENT IN THE PREVIEW: " + focus + "\n" : ""}
+OPERATOR: ${msg}
+
+Do the smallest set of rule operations that does what they asked. Prefer editing existing rules over adding new ones. Never touch the :root rule. Use rem/px values precisely when they give numbers. Do not invent HTML elements or classes that are not in the selectors above: if the request needs new markup, set structural true, describe the exact change in structuralSpec, and return only the CSS ops that are possible now (possibly none).`;
+        const call = model => fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY.trim(), "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model, max_tokens: 4000, tools: [tool], tool_choice: { type: "tool", name: "design_reply" }, messages: [{ role: "user", content: prompt }] }) });
+        let r = await call("claude-sonnet-5-5"); if (r.status === 404 || r.status === 400) r = await call("claude-sonnet-4-6");
+        if (!r.ok) return json({ error: `Claude error ${r.status}: ${(await r.text()).slice(0, 200)}` }, 502);
+        const j = await r.json(), out = (j.content || []).find(c => c.type === "tool_use")?.input || {};
+        if (out.structural && out.structuralSpec) {
+          const q = (await env.TRADES.get(kR, "json")) || [];
+          q.unshift({ at: new Date().toISOString(), request: msg, spec: String(out.structuralSpec).slice(0, 4000), focus, status: "open" });
+          await env.TRADES.put(kR, JSON.stringify(q.slice(0, 50)));
+        }
+        return json({ ok: true, reply: out.reply || "", ops: Array.isArray(out.ops) ? out.ops : [], structural: !!out.structural, structuralSpec: out.structuralSpec || "", usage: j.usage || null });
+      }
+      if (["hubSandboxGet", "hubSandboxSave", "hubSandboxVersion", "hubSaveToHub"].includes(body.action)) {
+        await hubSitesMerge(env).catch(() => {});
+        const slug = String(body.slug || "").trim(), page = String(body.page || "home");
+        if (!HUB_SITES.some(h => h.slug === slug)) return json({ error: `unknown hub "${slug}"` }, 400);
+        const PAGES = { home: `web/hub/${slug}/index.html` };
+        if (!PAGES[page]) return json({ error: `unknown page "${page}" (wired: ${Object.keys(PAGES).join(", ")})` }, 400);
+        const kS = `hubsite:sandbox:${slug}:${page}`, kV = `hubsite:sandboxv:${slug}:${page}`;
+        if (body.action === "hubSandboxGet") {
+          const sb = await env.TRADES.get(kS, "json"), vs = (await env.TRADES.get(kV, "json")) || [];
+          return json({ ok: true, sandbox: sb, versions: vs.map((v, n) => ({ n, at: v.at, note: v.note || "", rules: (v.rules || []).length })) });
+        }
+        if (body.action === "hubSandboxVersion") {
+          const vs = (await env.TRADES.get(kV, "json")) || [], v = vs[Number(body.n)];
+          return v ? json({ ok: true, version: v }) : json({ error: "no such version" }, 404);
+        }
+        if (body.action === "hubSandboxSave") {
+          const rules = Array.isArray(body.rules) ? body.rules : null;
+          if (!rules || !rules.length) return json({ error: "rules required" }, 400);
+          const raw = JSON.stringify(rules); if (raw.length > 900000) return json({ error: "sandbox too large" }, 400);
+          const at = new Date().toISOString(), sb = { rules, at, note: String(body.note || "").slice(0, 200) };
+          await env.TRADES.put(kS, JSON.stringify(sb));
+          const vs = (await env.TRADES.get(kV, "json")) || []; vs.unshift(sb); await env.TRADES.put(kV, JSON.stringify(vs.slice(0, 40)));
+          return json({ ok: true, at, versions: Math.min(vs.length, 40) });
+        }
+        // hubSaveToHub {slug, page, blocks:[css, css, …]} — one CSS string per <style> block of the page, in order
+        const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const blocks = Array.isArray(body.blocks) ? body.blocks.map(String) : null;
+        if (!blocks || !blocks.length) return json({ error: "blocks required" }, 400);
+        if (blocks.some(b => /<\/?style|<script/i.test(b))) return json({ error: "CSS may not contain <style> or <script> tags" }, 400);
+        if (page === "home" && !/:root\{\r?\n[\s\S]*?\r?\n\}/.test(blocks[0])) return json({ error: "the first block must keep the :root design-token block (build-hubs.mjs and 🎨 Design rewrite it)" }, 400);
+        const REPO = "cabuzzard/dash", path = PAGES[page], gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const toB64 = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
+        const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+        const gr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=main`, { headers: gh }); if (!gr.ok) return json({ error: `could not read ${path} (${gr.status})` }, 502);
+        const gj = await gr.json(), html = fromB64(gj.content || ""), eol = html.includes("\r\n") ? "\r\n" : "\n";
+        const found = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)];
+        if (found.length !== blocks.length) return json({ error: `the page has ${found.length} <style> blocks, the designer sent ${blocks.length} — reload the designer` }, 409);
+        await env.TRADES.put(`hubsite:live:${slug}:${page}:${Date.now()}`, JSON.stringify({ at: new Date().toISOString(), blocks: found.map(m => m[1]) }), { expirationTtl: 60 * 60 * 24 * 180 });
+        let i = 0; const out = html.replace(/<style>([\s\S]*?)<\/style>/g, () => "<style>" + eol + blocks[i++].replace(/\r?\n/g, eol).trim() + eol + "</style>");
+        if (out === html) return json({ ok: true, unchanged: true });
+        const pr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+          body: JSON.stringify({ message: `site designer: ${slug} ${page} — save to hub`, content: toB64(out), sha: gj.sha, branch: "main" }) });
+        if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || `commit failed (${pr.status})` }, 502); }
+        return json({ ok: true, committed: path });
+      }
       if (body.action === "restyleHubThumbnails") {
         await hubSitesMerge(env).catch(() => {});
         const hub = HUB_SITES.find(h => hubAssetId(h.campaignId) === hubAssetId(body.campaignId || ""));

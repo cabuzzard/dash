@@ -612,6 +612,32 @@
   .am-spec-cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 720px) { .am-spec-cmp { grid-template-columns: 1fr; } }
   .amf-preview { max-width: 760px; margin: 0 auto; font-size: 14.5px; color: var(--text); }
+  .amf.sd-wide { width: 100vw; }
+  .sd-wrap { display: flex; flex-direction: column; gap: 10px; height: calc(100vh - 150px); min-height: 520px; }
+  .sd-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .sd-pill { font-size: 11.5px; padding: 3px 9px; border: 1px solid var(--border2); border-radius: 10px; color: var(--text2); }
+  .sd-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 30%) minmax(0, 1fr) minmax(240px, 22%); gap: 12px; }
+  .sd-left, .sd-right { min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .sd-left #sdList { overflow: auto; flex: 1; }
+  .sd-mid { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .sd-stage { flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--border2); border-radius: 8px; background: #fff; position: relative; }
+  .sd-stage iframe { border: 0; transform-origin: 0 0; display: block; }
+  .sd-grp { border: 1px solid var(--border2); border-radius: 8px; margin-bottom: 6px; }
+  .sd-grp summary { cursor: pointer; padding: 6px 8px; font-size: 12.5px; font-weight: 700; display: flex; gap: 6px; align-items: center; }
+  .sd-grp summary span { font-weight: 400; color: var(--text3); flex: 1; }
+  .sd-grp summary button { font-size: 11px; padding: 1px 7px; border: 1px solid var(--border2); border-radius: 5px; background: var(--surface2); color: var(--text2); cursor: pointer; }
+  .sd-rule { padding: 6px 8px; border-top: 1px solid var(--border2); }
+  .sd-rule.off { opacity: .55; }
+  .sd-sel { display: flex; gap: 6px; align-items: center; }
+  .sd-seli { flex: 1; min-width: 0; font: 12px ui-monospace, Consolas, monospace; padding: 3px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text); }
+  .sd-seli:focus { border-color: var(--border2); background: var(--surface2); }
+  .sd-m { font-size: 10.5px; color: var(--text3); white-space: nowrap; }
+  .sd-dec { width: 100%; box-sizing: border-box; margin-top: 4px; font: 12px/1.45 ui-monospace, Consolas, monospace; padding: 5px 7px; border: 1px solid var(--border2); border-radius: 5px; background: var(--surface2); color: var(--text); resize: vertical; }
+  .sd-focus { font-size: 12px; padding: 6px 8px; margin-bottom: 8px; border: 1px solid #e11d48; border-radius: 6px; overflow-wrap: anywhere; }
+  .sd-chat { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .sd-msg { font-size: 12.5px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border2); overflow-wrap: anywhere; }
+  .sd-msg.me { align-self: flex-end; background: var(--surface2); max-width: 90%; }
+  @media (max-width: 1100px) { .sd-cols { grid-template-columns: 1fr; } .sd-wrap { height: auto; } .sd-stage { height: 70vh; } }
   @media (max-width: 720px) { .amf { width: 100vw; border-left: none; } .amf-hd { padding: 12px; } .amf-bd { padding: 12px 16px; } }
   .hd-stale { opacity:.2 !important; transition:opacity .15s; } .hd-stale:hover { opacity:1 !important; }
 </style>
@@ -11700,6 +11726,7 @@ function hd2EfDraw() {
   const hd = `<div class="amf-hd"><span style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border:1px solid var(--border2);border-radius:10px;padding:2px 8px;">${HD2_LV[e.k]}</span>${hd2Chip()}
       <div style="min-width:0;flex:1;font-size:16px;font-weight:700;overflow-wrap:anywhere;">${esc(nm)}${D && D.database ? `<div style="font-size:11px;font-weight:400;color:var(--text3);">${esc(D.database)}</div>` : ''}</div>
       ${e.back != null && _hd2Ents[e.back] ? `<button style="${B()}" onclick="hd2KidBack()" title="Back to ${esc(_hd2Ents[e.back].name || '')}">← ${HD2_LV[_hd2Ents[e.back].k]}</button>` : ''}${writer}${links}<button style="${B()}" onclick="hd2EfClose()" title="Close (Esc)">✕</button></div>`;
+  P.classList.toggle('sd-wide', EF.tab === 'site');
   const tabs = `<div class="amf-tabs">${hd2EfTabs().map(([k, l]) => `<button class="${EF.tab === k ? 'on' : ''}" onclick="hd2EfTab('${k}')">${l}</button>`).join('')}</div>`;
   let bd;
   if (EF.busy || EF.err || !D) bd = `<div style="font-size:13px;color:${EF.err ? '#f87171' : 'var(--text3)'};">${esc(EF.err ? '✗ ' + EF.err : EF.busy)}</div>`;
@@ -11709,6 +11736,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'images') bd = hd2ImagesHtml();
   else if (EF.tab === 'library') bd = hd2LibraryHtml();
   else if (EF.tab === 'design') bd = hd2DsHtml();
+  else if (EF.tab === 'site') bd = hd2SdHtml();
   else if (EF.tab === 'kids') bd = hd2KidsHtml();
   else if (EF.tab === 'sched') bd = hd2SchedHtml();
   else if (D.kind === 'notion') {
@@ -11782,11 +11810,11 @@ function hd2EfTabs() {
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
   if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
-  if (k === 'hub') t.push(['design', '🎨 Design']);
+  if (k === 'hub') t.push(['design', '🎨 Design'], ['site', '🧱 Site designer']);
   if (k === 'asset') t.push(['library', '🗂 Library' + (EF.data && EF.data.library && EF.data.library.length ? ' (' + EF.data.library.length + ')' : '')]);
   return t;
 }
-function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
+function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'site' && !EF.sd) return hd2SdLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
 const HD2_IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
 const HD2_B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
 
@@ -12430,6 +12458,206 @@ async function hd2DsApply(btn) {
   D.msg = '✓ Applied. The hub redeploys in about a minute. Post thumbnails use these colors: Content Hubs 2 → 🖼 Restyle thumbnails redraws them.';
   hd2EfDraw();
 }
+// ── 🧱 Site designer (operator 2026-11-20) ───────────────────────────────────────────────────────────────────────────────────
+// Hub flyout → 🧱 Site designer. Left: every CSS rule of the hub page, each with a toggle and an editable declarations box
+// ("prop: value;" per line; a line starting with // is switched off). Middle: the real hub page; every edit restyles it live
+// (the page's own <style> blocks are switched off inside the preview and replaced by the sandbox CSS). Right: chat — CSS
+// requests come back as rule edits applied to the preview; requests that need new HTML are queued for a Claude Code session.
+// 💾 Save sandbox = the persistent design that lives in the designer (worker KV, versioned). ⬆ Save to hub = the only path to
+// the live page (worker hubSaveToHub, previous live CSS archived). Built per hub + page so other post layouts can plug in.
+const SD_GROUPS = [[/^:root/, 'Design tokens'], [/#talkDlg/, 'Booking box'], [/\.site-head|\.brand|\.nav|\.ribbon/, 'Header'], [/\.hero|\.hub-aside|\.hub-main/, 'Hero'], [/\.btn/, 'Buttons'],
+  [/\.card/, 'Cards'], [/\.report|\.signup|\.form-msg|\.cf-turnstile|\.report-link/, 'Newsletter'], [/\.dispatch|\.empty/, 'Lists'], [/\.elsewhere|\.social-row/, 'Social'],
+  [/\.site-foot/, 'Footer'], [/\.sec|\.grid/, 'Sections'], [/\.reveal/, 'Motion'], [/./, 'Base']];
+const sdGroup = r => (SD_GROUPS.find(([re]) => re.test(r.sel)) || [, 'Base'])[1];
+let _sdN = 0;
+function sdSplit(text, sep) {   // split on sep at paren depth 0, outside quotes
+  const out = []; let cur = '', d = 0, q = '';
+  for (const ch of text) {
+    if (q) { cur += ch; if (ch === q) q = ''; continue; }
+    if (ch === '"' || ch === "'") { q = ch; cur += ch; continue; }
+    if (ch === '(') d++; else if (ch === ')') d--;
+    if (ch === sep && d === 0) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur); return out;
+}
+function sdDecls(body) { return sdSplit(body, ';').map(x => x.trim()).filter(Boolean).map(x => { const i = x.indexOf(':'); return { p: x.slice(0, i).trim(), v: x.slice(i + 1).trim(), on: true }; }).filter(d => d.p); }
+function sdParse(css, b) {   // one <style> block → rules (comments dropped, the :root block kept verbatim and locked)
+  const rules = []; let i = 0;
+  const src = css, nc = css.replace(/\/\*[\s\S]*?\*\//g, m => ' '.repeat(m.length));   // same offsets, comments blanked
+  const close = from => { let d = 0; for (let k = from; k < nc.length; k++) { if (nc[k] === '{') d++; else if (nc[k] === '}') { d--; if (d === 0) return k; } } return nc.length - 1; };
+  const walk = (from, to, media) => {
+    let k = from;
+    while (k < to) {
+      const o = nc.indexOf('{', k); if (o < 0 || o >= to) break;
+      const pre = nc.slice(k, o).trim(), c = close(o);
+      if (/^@media/i.test(pre)) walk(o + 1, c, pre.replace(/^@media\s*/i, '').trim());
+      else if (/^:root$/.test(pre) && !media) rules.push({ id: 'r' + (++_sdN), b, media: '', sel: ':root', locked: true, raw: src.slice(src.lastIndexOf(':root', o), c + 1), decls: [], on: true });
+      else if (pre) rules.push({ id: 'r' + (++_sdN), b, media: media || '', sel: pre.replace(/\s+/g, ' '), decls: sdDecls(nc.slice(o + 1, c)), on: true });
+      k = c + 1;
+    }
+  };
+  walk(0, nc.length, ''); return rules;
+}
+function sdCompile(rules, b, allOn) {
+  return rules.filter(r => r.b === b).map(r => {
+    if (r.locked) return r.raw;
+    if (!r.on && !allOn) return '';
+    const d = r.decls.filter(x => x.on).map(x => x.p + ':' + x.v).join(';'); if (!d) return '';
+    return r.media ? '@media ' + r.media + '{' + r.sel + '{' + d + '}}' : r.sel + '{' + d + '}';
+  }).filter(Boolean).join('\n');
+}
+const sdDeclText = r => r.decls.map(x => (x.on ? '' : '// ') + x.p + ': ' + x.v + ';').join('\n');
+function sdDeclRead(text) { return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const off = l.startsWith('//'), x = l.replace(/^\/\/\s*/, '').replace(/;\s*$/, ''), i = x.indexOf(':'); return i > 0 ? { p: x.slice(0, i).trim(), v: x.slice(i + 1).trim(), on: !off } : null; }).filter(Boolean); }
+const sdUrl = slug => 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
+
+async function hd2SdLoad(fromLive) {
+  const slug = EF.e.slug;
+  EF.sd = Object.assign(EF.sd || {}, { page: 'home', busy: 'Loading the page CSS…', err: '', q: '', vw: 1440, inspect: false, focus: null, open: {}, chat: (EF.sd && EF.sd.chat) || [], msg: '' }); hd2EfDraw();
+  try {
+    const html = await fetch(sdUrl(slug) + 'index.html?v=' + Date.now()).then(r => { if (!r.ok) throw new Error('page ' + r.status); return r.text(); });
+    const blocks = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map(m => m[1]); _sdN = 0;
+    const live = blocks.flatMap((css, b) => sdParse(css, b));
+    const sb = fromLive ? null : await call('hubSandboxGet', { slug, page: 'home' }).catch(() => null);
+    const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
+    if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
+    Object.assign(EF.sd, { busy: '', blocks: blocks.length, live, rules: useSb ? sb.sandbox.rules : JSON.parse(JSON.stringify(live)), source: useSb ? 'sandbox' : 'live',
+      savedAt: useSb ? sb.sandbox.at : '', versions: (sb && sb.versions) || [], dirty: false });
+  } catch (e) { EF.sd.busy = ''; EF.sd.err = e.message; }
+  if (EF && EF.tab === 'site') { hd2EfDraw(); }
+}
+function hd2SdHtml() {
+  const D = EF.sd; if (!D) return '';
+  if (D.busy) return '<div style="font-size:13px;color:var(--text3);">' + esc(D.busy) + '</div>';
+  if (D.err) return '<div style="font-size:13px;color:#f87171;">✗ ' + esc(D.err) + ' <button style="' + HD2_B() + '" onclick="hd2SdLoad()">↻ Retry</button></div>';
+  const B = HD2_B, vs = D.versions || [];
+  return '<div class="sd-wrap">'
+    + '<div class="sd-bar">'
+    + '<span class="sd-pill" id="sdSrc">' + (D.source === 'sandbox' ? 'Sandbox · saved ' + esc(new Date(D.savedAt).toLocaleString()) : 'Live CSS (no sandbox yet)') + '</span>'
+    + '<button style="' + B() + '" onclick="hd2SdAll(false)">○ Unstyled</button><button style="' + B() + '" onclick="hd2SdAll(true)">● All on</button>'
+    + '<span style="flex:1"></span>'
+    + '<select style="' + HD2_IN + 'width:auto;" onchange="if(this.value!==\'\')hd2SdVersion(this.value)"><option value="">Versions (' + vs.length + ')</option>' + vs.map(v => '<option value="' + v.n + '">' + esc(new Date(v.at).toLocaleString() + (v.note ? ' — ' + v.note : '')) + '</option>').join('') + '</select>'
+    + '<button style="' + B() + '" onclick="hd2SdLoad(true)" title="Throw away the sandbox in this window and start again from the live page CSS (the saved sandbox stays until you save over it)">⟲ From live</button>'
+    + '<input id="sdNote" style="' + HD2_IN + 'width:170px;" placeholder="Note for this save…">'
+    + '<button style="' + B('var(--accent)', 'var(--accent)') + '" onclick="hd2SdSave(this)">💾 Save sandbox</button>'
+    + '<button style="' + B('#f59e0b', '#f59e0b') + '" onclick="hd2SdPublish(this)" title="Replace the live hub page CSS with this sandbox (second click confirms)">⬆ Save to hub</button>'
+    + '<span id="sdMsg" style="font-size:12.5px;color:var(--text2);">' + esc(D.msg || '') + '</span></div>'
+    + '<div class="sd-cols">'
+    + '<div class="sd-left"><div style="display:flex;gap:6px;margin-bottom:8px;"><input id="sdQ" style="' + HD2_IN + '" placeholder="Filter selectors or properties…" value="' + esc(D.q) + '" oninput="EF.sd.q=this.value;hd2SdList()"></div><div id="sdFocus"></div><div id="sdList"></div></div>'
+    + '<div class="sd-mid"><div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' + [390, 768, 1440].map(w => '<button style="' + B(D.vw === w ? 'var(--accent)' : undefined, D.vw === w ? 'var(--accent)' : undefined) + '" onclick="hd2SdVw(' + w + ')">' + w + '</button>').join('')
+    + '<button id="sdInsBtn" style="' + B(D.inspect ? 'var(--accent)' : undefined, D.inspect ? 'var(--accent)' : undefined) + '" onclick="hd2SdInspect()">⊕ Inspect</button><span style="font-size:11.5px;color:var(--text3);">Preview only. Nothing here is live until ⬆ Save to hub.</span></div>'
+    + '<div id="sdStage" class="sd-stage"><iframe id="sdFrame" title="Site designer preview" src="' + sdUrl(EF.e.slug) + '?sd=' + Date.now() + '" onload="hd2SdFrameReady()"></iframe></div></div>'
+    + '<div class="sd-right"><div id="sdChat" class="sd-chat">' + hd2SdChatHtml() + '</div>'
+    + '<textarea id="sdAsk" rows="3" style="' + HD2_IN + 'resize:vertical;" placeholder="Ask for a change: \'cards 20px padding, 2 columns on tablet\'…" onkeydown="if(event.key===\'Enter\'&&(event.ctrlKey||event.metaKey))hd2SdAsk()"></textarea>'
+    + '<button style="' + B('var(--accent)', 'var(--accent)') + 'margin-top:6px;" onclick="hd2SdAsk()">Send (Ctrl+Enter)</button></div>'
+    + '</div></div>';
+}
+function hd2SdChatHtml() {
+  const c = (EF.sd && EF.sd.chat) || [];
+  if (!c.length) return '<div style="font-size:12.5px;color:var(--text3);">Chat with Claude about the design. CSS changes are applied to the preview for you to keep or undo. Anything that needs new HTML (a wrapper div, a new section) is written up and queued for a Claude Code session.</div>';
+  return c.map(m => '<div class="sd-msg ' + m.who + '">' + esc(m.text).replace(/\n/g, '<br>') + (m.undo ? '<div style="margin-top:6px;"><button style="' + HD2_B() + '" onclick="hd2SdUndo(' + m.undo + ')">↶ Undo this change</button></div>' : '') + '</div>').join('');
+}
+function hd2SdFrameReady() {
+  const f = document.getElementById('sdFrame'); if (!f) return; let d; try { d = f.contentDocument; } catch (e) { return; } if (!d) return;
+  d.querySelectorAll('style:not([data-sd])').forEach(s => { s.media = 'not all'; s.dataset.sdOff = '1'; });
+  if (!d.getElementById('sdCss')) { const s = d.createElement('style'); s.id = 'sdCss'; s.dataset.sd = '1'; d.head.appendChild(s); const h = d.createElement('style'); h.id = 'sdHi'; h.dataset.sd = '1'; d.head.appendChild(h); }
+  if (!d._sdClick) { d._sdClick = true; d.addEventListener('click', e => { if (!EF || !EF.sd || !EF.sd.inspect) return; e.preventDefault(); e.stopPropagation(); hd2SdPick(e.target); }, true); }
+  hd2SdApply(); hd2SdList(); hd2SdVw(EF.sd.vw, true);
+}
+let _sdApplyT = 0;
+function hd2SdApply(now) {
+  clearTimeout(_sdApplyT); const run = () => { const f = document.getElementById('sdFrame'); const d = f && f.contentDocument; const s = d && d.getElementById('sdCss'); if (!s || !EF || !EF.sd) return;
+    s.textContent = Array.from({ length: EF.sd.blocks }, (_, b) => sdCompile(EF.sd.rules, b)).join('\n'); };
+  now ? run() : (_sdApplyT = setTimeout(run, 90));
+}
+function hd2SdVw(w, quiet) {
+  const D = EF.sd; D.vw = w; const st = document.getElementById('sdStage'), f = document.getElementById('sdFrame'); if (!st || !f) return;
+  const k = Math.min(1, (st.clientWidth - 2) / w); f.style.width = w + 'px'; f.style.height = Math.round((st.clientHeight - 2) / k) + 'px'; f.style.transform = 'scale(' + k + ')';
+  if (!quiet) document.querySelectorAll('#efPanel .sd-mid > div:first-child button').forEach(b => { const on = b.textContent === String(w); if (/^\d+$/.test(b.textContent)) { b.style.borderColor = on ? 'var(--accent)' : 'var(--border2)'; b.style.color = on ? 'var(--accent)' : 'var(--text)'; } });
+}
+function hd2SdInspect() { const D = EF.sd; D.inspect = !D.inspect; const b = document.getElementById('sdInsBtn'); if (b) { b.style.borderColor = D.inspect ? 'var(--accent)' : 'var(--border2)'; b.style.color = D.inspect ? 'var(--accent)' : 'var(--text)'; } if (!D.inspect) hd2SdHi(''); }
+const sdBase = sel => sel.replace(/::?(before|after|placeholder|backdrop|marker|selection)\b/g, '').replace(/:(hover|focus|focus-visible|focus-within|active|visited)\b/g, '').trim() || '*';
+function sdMatches(el, sel) { return sdSplit(sel, ',').some(p => { try { return el.matches(sdBase(p.trim())); } catch (e) { return false; } }); }
+function hd2SdPick(el) {
+  const D = EF.sd, path = []; for (let n = el; n && n.nodeType === 1 && path.length < 4; n = n.parentElement) path.push(n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + (n.classList.length ? '.' + [...n.classList].join('.') : ''));
+  D.focus = { label: path.reverse().join(' › '), ids: D.rules.filter(r => !r.locked && sdMatches(el, r.sel)).map(r => r.id) };
+  try { el.ownerDocument.getElementById('sdHi').textContent = ''; el.style.outline = '2px solid #e11d48'; setTimeout(() => { el.style.outline = ''; }, 1200); } catch (e) {}
+  hd2SdList();
+}
+function hd2SdHi(sel) { const f = document.getElementById('sdFrame'), s = f && f.contentDocument && f.contentDocument.getElementById('sdHi'); if (!s) return; s.textContent = sel ? sdSplit(sel, ',').map(p => sdBase(p.trim())).join(',') + '{outline:2px dashed #e11d48 !important;outline-offset:2px !important}' : ''; }
+function hd2SdList() {
+  const D = EF.sd, L = document.getElementById('sdList'), F = document.getElementById('sdFocus'); if (!L || !D) return;
+  F.innerHTML = D.focus ? '<div class="sd-focus">Selected: <b>' + esc(D.focus.label) + '</b> · ' + D.focus.ids.length + ' rules <button style="' + HD2_B() + 'padding:2px 8px;" onclick="EF.sd.focus=null;hd2SdList()">✕ show all</button></div>' : '';
+  const q = (D.q || '').toLowerCase(), want = D.focus ? new Set(D.focus.ids) : null;
+  const rows = D.rules.filter(r => (!want || want.has(r.id)) && (!q || (r.sel + ' ' + r.media + ' ' + sdDeclText(r)).toLowerCase().includes(q)));
+  const groups = {}; rows.forEach(r => (groups[sdGroup(r)] = groups[sdGroup(r)] || []).push(r));
+  const order = SD_GROUPS.map(g => g[1]).filter((g, i, a) => a.indexOf(g) === i);
+  L.innerHTML = order.filter(g => groups[g]).map(g => {
+    const rs = groups[g], open = want || q || D.open[g];
+    return '<details class="sd-grp"' + (open ? ' open' : '') + ' ontoggle="EF.sd.open[\'' + g + '\']=this.open"><summary>' + esc(g) + ' <span>' + rs.filter(r => r.on).length + '/' + rs.length + ' on</span>'
+      + '<button onclick="event.preventDefault();hd2SdGroup(\'' + g + '\',true)">on</button><button onclick="event.preventDefault();hd2SdGroup(\'' + g + '\',false)">off</button></summary>'
+      + rs.map(r => r.locked ? '<div class="sd-rule"><div class="sd-sel">:root <span class="sd-m">colors + fonts · edit in 🎨 Design</span></div></div>'
+        : '<div class="sd-rule' + (r.on ? '' : ' off') + '" onmouseenter="hd2SdHi(' + "EF.sd.rules.find(x=>x.id==='" + r.id + "').sel" + ')" onmouseleave="hd2SdHi(\'\')">'
+        + '<div class="sd-sel"><input type="checkbox"' + (r.on ? ' checked' : '') + ' onchange="hd2SdRuleOn(\'' + r.id + '\',this.checked)" title="Rule on/off">'
+        + '<input class="sd-seli" value="' + esc(r.sel) + '" onchange="hd2SdSel(\'' + r.id + '\',this.value)" spellcheck="false">' + (r.media ? '<span class="sd-m">@' + esc(r.media) + '</span>' : '') + '</div>'
+        + '<textarea class="sd-dec" spellcheck="false" rows="' + Math.min(10, Math.max(1, r.decls.length)) + '" oninput="hd2SdDec(\'' + r.id + '\',this.value)">' + esc(sdDeclText(r)) + '</textarea></div>').join('') + '</details>';
+  }).join('') || '<div style="font-size:12.5px;color:var(--text3);">No rules match.</div>';
+}
+function hd2SdTouch() { EF.sd.dirty = true; const s = document.getElementById('sdSrc'); if (s && !/unsaved/.test(s.textContent)) s.textContent += ' · unsaved changes'; hd2SdApply(); }
+function hd2SdRuleOn(id, on) { const r = EF.sd.rules.find(x => x.id === id); if (r) { r.on = on; hd2SdTouch(); hd2SdList(); } }
+function hd2SdSel(id, v) { const r = EF.sd.rules.find(x => x.id === id); if (r && v.trim()) { r.sel = v.trim(); hd2SdTouch(); } }
+function hd2SdDec(id, text) { const r = EF.sd.rules.find(x => x.id === id); if (r) { r.decls = sdDeclRead(text); hd2SdTouch(); } }
+function hd2SdGroup(g, on) { EF.sd.rules.forEach(r => { if (!r.locked && sdGroup(r) === g) r.on = on; }); hd2SdTouch(); hd2SdList(); }
+function hd2SdAll(on) { EF.sd.rules.forEach(r => { if (!r.locked) r.on = on; }); hd2SdTouch(); hd2SdList(); }
+async function hd2SdVersion(n) {
+  const r = await call('hubSandboxVersion', { slug: EF.e.slug, page: 'home', n: +n }).catch(e => ({ error: e.message }));
+  const m = document.getElementById('sdMsg'); if (!r || r.error) { if (m) m.textContent = '✗ ' + ((r && r.error) || 'no response'); return; }
+  EF.sd.rules = r.version.rules; EF.sd.dirty = true; if (m) m.textContent = 'Loaded the version from ' + new Date(r.version.at).toLocaleString() + ' (not saved yet).'; hd2SdApply(true); hd2SdList();
+}
+async function hd2SdSave(btn) {
+  const m = document.getElementById('sdMsg'), note = (document.getElementById('sdNote') || {}).value || '';
+  btn.disabled = true; const r = await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note }).catch(e => ({ error: e.message })); btn.disabled = false;
+  if (!r || r.error) { if (m) m.textContent = '✗ Not saved: ' + ((r && r.error) || 'no response'); return; }
+  Object.assign(EF.sd, { dirty: false, source: 'sandbox', savedAt: r.at }); const s = document.getElementById('sdSrc'); if (s) s.textContent = 'Sandbox · saved ' + new Date(r.at).toLocaleString();
+  const v = await call('hubSandboxGet', { slug: EF.e.slug, page: 'home' }).catch(() => null); if (v && v.versions) EF.sd.versions = v.versions;
+  if (m) m.textContent = '✓ Sandbox saved (' + r.versions + ' versions kept). The live hub is unchanged.';
+}
+async function hd2SdPublish(btn) {
+  const m = document.getElementById('sdMsg');
+  if (!btn.dataset.arm) { btn.dataset.arm = '1'; btn.textContent = '⬆ Click again: replace the live hub CSS'; setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '⬆ Save to hub'; } }, 6000); return; }
+  delete btn.dataset.arm; btn.disabled = true; btn.textContent = 'Saving to hub…';
+  await call('hubSandboxSave', { slug: EF.e.slug, page: 'home', rules: EF.sd.rules, note: 'saved to hub' }).catch(() => null);
+  const blocks = Array.from({ length: EF.sd.blocks }, (_, b) => sdCompile(EF.sd.rules, b));
+  const r = await call('hubSaveToHub', { slug: EF.e.slug, page: 'home', blocks }).catch(e => ({ error: e.message }));
+  btn.disabled = false; btn.textContent = '⬆ Save to hub';
+  if (!r || r.error) { if (m) m.textContent = '✗ Not saved to hub: ' + ((r && r.error) || 'no response'); return; }
+  EF.sd.dirty = false; if (m) m.textContent = r.unchanged ? 'The live hub already matches this sandbox.' : '✓ Saved to the live hub (previous CSS archived). It redeploys in about a minute.';
+}
+function sdRulesText() { return EF.sd.rules.map(r => r.locked ? '#' + r.id + ' :root { …design tokens… }' : '#' + r.id + (r.on ? '' : ' OFF') + (r.media ? ' @media ' + r.media : '') + ' ' + r.sel + ' { ' + r.decls.map(d => (d.on ? '' : '/*off*/') + d.p + ':' + d.v).join('; ') + ' }').join('\n'); }
+async function hd2SdAsk() {
+  const t = document.getElementById('sdAsk'), msg = t && t.value.trim(); if (!msg) return; const D = EF.sd;
+  D.chat.push({ who: 'me', text: msg }, { who: 'ai', text: '…' }); t.value = ''; hd2SdChatDraw();
+  const r = await call('hubDesignerChat', { slug: EF.e.slug, page: 'home', message: msg, rules: sdRulesText(), focus: D.focus ? D.focus.label : '' }).catch(e => ({ error: e.message }));
+  if (!EF || !EF.sd) return; D.chat.pop();
+  if (!r || r.error) { D.chat.push({ who: 'ai', text: '✗ ' + ((r && r.error) || 'no response') }); return hd2SdChatDraw(); }
+  const before = JSON.stringify(D.rules), applied = hd2SdOps(r.ops || []);
+  let text = r.reply || ''; if (applied) text += '\n(' + applied + ' change' + (applied === 1 ? '' : 's') + ' applied to the preview; not saved.)';
+  if (r.structural) text += '\n\nNeeds new HTML, queued for a Claude Code session:\n' + (r.structuralSpec || '');
+  D._undo = D._undo || []; D._undo.push(before);
+  D.chat.push({ who: 'ai', text, undo: applied ? D._undo.length : 0 }); hd2SdChatDraw(); if (applied) { hd2SdTouch(); hd2SdList(); }
+}
+function hd2SdOps(ops) {
+  const R = EF.sd.rules; let n = 0;
+  for (const o of ops) {
+    const id = String(o.id || '').replace(/^#/, ''), r = R.find(x => x.id === id);
+    if (o.op === 'set' && r && !r.locked && o.decls != null) { r.decls = sdDeclRead(String(o.decls)); if (o.selector) r.sel = o.selector; if (o.media != null) r.media = o.media; r.on = true; n++; }
+    else if (o.op === 'toggle' && r && !r.locked) { r.on = o.on !== false; n++; }
+    else if (o.op === 'remove' && r && !r.locked) { R.splice(R.indexOf(r), 1); n++; }
+    else if (o.op === 'add' && o.selector) { const nr = { id: 'r' + (++_sdN), b: r ? r.b : 0, media: o.media || '', sel: o.selector, decls: sdDeclRead(String(o.decls || '')), on: true, added: true }; r ? R.splice(R.indexOf(r) + 1, 0, nr) : R.push(nr); n++; }
+  }
+  return n;
+}
+function hd2SdUndo(k) { const D = EF.sd, snap = D._undo && D._undo[k - 1]; if (!snap) return; D.rules = JSON.parse(snap); D.chat.push({ who: 'ai', text: '↶ Undone.' }); hd2SdChatDraw(); hd2SdTouch(); hd2SdList(); }
+function hd2SdChatDraw() { const c = document.getElementById('sdChat'); if (c) { c.innerHTML = hd2SdChatHtml(); c.scrollTop = c.scrollHeight; } }
 const hd2ImgLike = u => FlyoutMap.imgLike(u);   // rules: worker/flyout-map.mjs
 const HD2_CG_SLOT = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' };
 function hd2ImagesHtml() {
