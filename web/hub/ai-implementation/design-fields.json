@@ -2,307 +2,10 @@
   "page": "homepage",
   "fields": [
     {
-      "group": "Design Tokens",
+      "group": "CTA · Hero",
+      "asset": "CTA",
+      "note": "CTA asset, Hero kind (child of the Audit Offer, the default CTA destination). Fills the top of the page and the header button.",
       "fields": [
-        {
-          "id": "color_green",
-          "label": "Primary green",
-          "type": "color",
-          "default": "#0f7a3a",
-          "bind": {
-            "var": "--green"
-          }
-        },
-        {
-          "id": "color_green_bright",
-          "label": "Bright green",
-          "type": "color",
-          "default": "#16a34a",
-          "bind": {
-            "var": "--green-bright"
-          }
-        },
-        {
-          "id": "color_green_dark",
-          "label": "Dark green",
-          "type": "color",
-          "default": "#0b5c2c",
-          "bind": {
-            "var": "--green-dark"
-          }
-        },
-        {
-          "id": "color_green_darker",
-          "label": "Darker green",
-          "type": "color",
-          "default": "#084422",
-          "bind": {
-            "var": "--green-darker"
-          }
-        },
-        {
-          "id": "color_green_soft",
-          "label": "Soft green",
-          "type": "color",
-          "default": "#e8f5ee",
-          "bind": {
-            "var": "--green-soft"
-          }
-        },
-        {
-          "id": "color_green_mid",
-          "label": "Mid green",
-          "type": "color",
-          "default": "#c8e6d0",
-          "bind": {
-            "var": "--green-mid"
-          }
-        },
-        {
-          "id": "color_ink",
-          "label": "Text color",
-          "type": "color",
-          "default": "#0f1f2e",
-          "bind": {
-            "var": "--ink"
-          }
-        },
-        {
-          "id": "color_muted",
-          "label": "Muted text",
-          "type": "color",
-          "default": "#4a5a68",
-          "bind": {
-            "var": "--muted"
-          }
-        },
-        {
-          "id": "color_line",
-          "label": "Border color",
-          "type": "color",
-          "default": "#e6ece9",
-          "bind": {
-            "var": "--line"
-          }
-        },
-        {
-          "id": "color_bg",
-          "label": "Page background",
-          "type": "color",
-          "default": "#f6faf8",
-          "bind": {
-            "var": "--bg"
-          }
-        },
-        {
-          "id": "font_family",
-          "label": "Font family",
-          "type": "text",
-          "default": "Inter, system-ui, -apple-system, sans-serif",
-          "bind": {
-            "var": "--font"
-          }
-        },
-        {
-          "id": "base_font_size",
-          "label": "Base font size",
-          "type": "text",
-          "default": "17px",
-          "bind": {
-            "var": "--text-base"
-          }
-        },
-        {
-          "id": "radius_sm",
-          "label": "Small radius",
-          "type": "text",
-          "default": "10px",
-          "bind": {
-            "var": "--radius-sm"
-          }
-        },
-        {
-          "id": "radius_md",
-          "label": "Medium radius",
-          "type": "text",
-          "default": "16px",
-          "bind": {
-            "var": "--radius-md"
-          }
-        },
-        {
-          "id": "radius_lg",
-          "label": "Large radius",
-          "type": "text",
-          "default": "20px",
-          "bind": {
-            "var": "--radius-lg"
-          }
-        }
-      ]
-    },
-    {
-      "group": "More page variables",
-      "fields": [
-        {
-          "id": "var_white",
-          "label": "--white",
-          "type": "color",
-          "default": "#ffffff",
-          "bind": {
-            "var": "--white"
-          }
-        },
-        {
-          "id": "var_space_xs",
-          "label": "--space-xs",
-          "type": "text",
-          "default": "8px",
-          "bind": {
-            "var": "--space-xs"
-          }
-        },
-        {
-          "id": "var_space_sm",
-          "label": "--space-sm",
-          "type": "text",
-          "default": "12px",
-          "bind": {
-            "var": "--space-sm"
-          }
-        },
-        {
-          "id": "var_space_md",
-          "label": "--space-md",
-          "type": "text",
-          "default": "16px",
-          "bind": {
-            "var": "--space-md"
-          }
-        },
-        {
-          "id": "var_space_lg",
-          "label": "--space-lg",
-          "type": "text",
-          "default": "24px",
-          "bind": {
-            "var": "--space-lg"
-          }
-        },
-        {
-          "id": "var_space_xl",
-          "label": "--space-xl",
-          "type": "text",
-          "default": "32px",
-          "bind": {
-            "var": "--space-xl"
-          }
-        },
-        {
-          "id": "var_space_2xl",
-          "label": "--space-2xl",
-          "type": "text",
-          "default": "48px",
-          "bind": {
-            "var": "--space-2xl"
-          }
-        },
-        {
-          "id": "var_space_3xl",
-          "label": "--space-3xl",
-          "type": "text",
-          "default": "80px",
-          "bind": {
-            "var": "--space-3xl"
-          }
-        },
-        {
-          "id": "var_space_4xl",
-          "label": "--space-4xl",
-          "type": "text",
-          "default": "100px",
-          "bind": {
-            "var": "--space-4xl"
-          }
-        },
-        {
-          "id": "var_shadow_sm",
-          "label": "--shadow-sm",
-          "type": "text",
-          "default": "0 4px 20px rgba(15, 31, 46, 0.04)",
-          "bind": {
-            "var": "--shadow-sm"
-          }
-        },
-        {
-          "id": "var_shadow_md",
-          "label": "--shadow-md",
-          "type": "text",
-          "default": "0 16px 40px rgba(15, 31, 46, 0.1)",
-          "bind": {
-            "var": "--shadow-md"
-          }
-        },
-        {
-          "id": "var_shadow_hero",
-          "label": "--shadow-hero",
-          "type": "text",
-          "default": "0 20px 50px -12px rgba(15, 122, 58, 0.25), 0 0 0 1px rgba(15, 122, 58, 0.08)",
-          "bind": {
-            "var": "--shadow-hero"
-          }
-        },
-        {
-          "id": "var_shadow_btn",
-          "label": "--shadow-btn",
-          "type": "text",
-          "default": "0 4px 14px rgba(15, 122, 58, 0.35)",
-          "bind": {
-            "var": "--shadow-btn"
-          }
-        },
-        {
-          "id": "var_leading",
-          "label": "--leading",
-          "type": "text",
-          "default": "1.65",
-          "bind": {
-            "var": "--leading"
-          }
-        }
-      ]
-    },
-    {
-      "group": "Header",
-      "fields": [
-        {
-          "id": "logo_text",
-          "label": "Logo text",
-          "type": "text",
-          "default": "AISystem Implementation",
-          "bind": {
-            "sel": ".logo",
-            "readonly": "The logo has a styled middle word (AI·System·Implementation) in the markup — change it in the HTML."
-          }
-        },
-        {
-          "id": "nav_services",
-          "label": "Nav: Services",
-          "type": "text",
-          "default": "Services",
-          "bind": {
-            "sel": "header nav a[href=\"#services\"]"
-          }
-        },
-        {
-          "id": "nav_process",
-          "label": "Nav: How It Works",
-          "type": "text",
-          "default": "How It Works",
-          "bind": {
-            "sel": "header nav a[href=\"#process\"]"
-          }
-        },
         {
           "id": "nav_cta",
           "label": "Nav CTA button",
@@ -310,13 +13,9 @@
           "default": "Book Free Strategy Call",
           "bind": {
             "sel": "header nav a.nav-cta"
-          }
-        }
-      ]
-    },
-    {
-      "group": "Hero",
-      "fields": [
+          },
+          "section": "Header"
+        },
         {
           "id": "hero_eyebrow",
           "label": "Hero eyebrow",
@@ -324,7 +23,8 @@
           "default": "For small business owners",
           "bind": {
             "sel": ".hero .eyebrow"
-          }
+          },
+          "section": "Hero"
         },
         {
           "id": "hero_headline",
@@ -333,7 +33,8 @@
           "default": "Get AI working in your business — without hiring a team",
           "bind": {
             "sel": ".hero h1"
-          }
+          },
+          "section": "Hero"
         },
         {
           "id": "hero_sub",
@@ -342,7 +43,8 @@
           "default": "We implement, integrate, and hand over working AI automation so your team can use it from day one. No more tools that sit unused.",
           "bind": {
             "sel": ".hero p.lead"
-          }
+          },
+          "section": "Hero"
         },
         {
           "id": "hero_cta_primary",
@@ -351,7 +53,8 @@
           "default": "Book your free strategy call",
           "bind": {
             "sel": ".hero-actions a:first-child"
-          }
+          },
+          "section": "Hero"
         },
         {
           "id": "hero_cta_secondary",
@@ -360,7 +63,8 @@
           "default": "See the services",
           "bind": {
             "sel": ".hero-actions a.btn-ghost"
-          }
+          },
+          "section": "Hero"
         },
         {
           "id": "hero_image",
@@ -370,40 +74,16 @@
           "bind": {
             "sel": ".hero-visual img",
             "attr": "src"
-          }
+          },
+          "section": "Hero"
         }
       ]
     },
     {
-      "group": "Services",
+      "group": "Offer · card 1",
+      "asset": "Offer",
+      "note": "One Offer asset fills one service card: kicker, title, blurb, link to its Offer Blog Post / Sales Page.",
       "fields": [
-        {
-          "id": "services_eyebrow",
-          "label": "Services eyebrow",
-          "type": "text",
-          "default": "What we do",
-          "bind": {
-            "sel": ".services .section-head .eyebrow"
-          }
-        },
-        {
-          "id": "services_title",
-          "label": "Services title",
-          "type": "text",
-          "default": "Practical AI systems for small businesses",
-          "bind": {
-            "sel": ".services .section-head h2"
-          }
-        },
-        {
-          "id": "services_subtitle",
-          "label": "Services subtitle",
-          "type": "text",
-          "default": "Choose the level of support that matches where you are right now.",
-          "bind": {
-            "sel": ".services .section-head p"
-          }
-        },
         {
           "id": "service1_kicker",
           "label": "Service 1 kicker",
@@ -411,7 +91,8 @@
           "default": "Done-for-you",
           "bind": {
             "sel": ".services .card:nth-child(1) .kicker"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service1_title",
@@ -420,7 +101,8 @@
           "default": "AI Automation Services",
           "bind": {
             "sel": ".services .card:nth-child(1) h3"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service1_body",
@@ -429,7 +111,8 @@
           "default": "For owners whose manual workflows are eating their time. We build, integrate, and hand over working automation your team can run.",
           "bind": {
             "sel": ".services .card:nth-child(1) p"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service1_link",
@@ -439,8 +122,16 @@
           "bind": {
             "sel": ".services .card:nth-child(1) a.more",
             "attr": "href"
-          }
-        },
+          },
+          "section": "Services"
+        }
+      ]
+    },
+    {
+      "group": "Offer · card 2",
+      "asset": "Offer",
+      "note": "Second Offer asset.",
+      "fields": [
         {
           "id": "service2_kicker",
           "label": "Service 2 kicker",
@@ -448,7 +139,8 @@
           "default": "Ongoing partner",
           "bind": {
             "sel": ".services .card:nth-child(2) .kicker"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service2_title",
@@ -457,7 +149,8 @@
           "default": "Fractional AI Operations",
           "bind": {
             "sel": ".services .card:nth-child(2) h3"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service2_body",
@@ -466,7 +159,8 @@
           "default": "For teams that already have tools but no system. One fractional partner takes over AI workflows and content so it runs without you as the bottleneck.",
           "bind": {
             "sel": ".services .card:nth-child(2) p"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service2_link",
@@ -476,8 +170,16 @@
           "bind": {
             "sel": ".services .card:nth-child(2) a.more",
             "attr": "href"
-          }
-        },
+          },
+          "section": "Services"
+        }
+      ]
+    },
+    {
+      "group": "Offer · card 3",
+      "asset": "Offer",
+      "note": "Third Offer asset.",
+      "fields": [
         {
           "id": "service3_kicker",
           "label": "Service 3 kicker",
@@ -485,7 +187,8 @@
           "default": "Clarity first",
           "bind": {
             "sel": ".services .card:nth-child(3) .kicker"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service3_title",
@@ -494,7 +197,8 @@
           "default": "AI Workflow Audit & Roadmap",
           "bind": {
             "sel": ".services .card:nth-child(3) h3"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service3_body",
@@ -503,7 +207,8 @@
           "default": "One focused assessment that maps your bottlenecks and delivers a ranked, actionable roadmap — no retainer required.",
           "bind": {
             "sel": ".services .card:nth-child(3) p"
-          }
+          },
+          "section": "Services"
         },
         {
           "id": "service3_link",
@@ -513,98 +218,15 @@
           "bind": {
             "sel": ".services .card:nth-child(3) a.more",
             "attr": "href"
-          }
+          },
+          "section": "Services"
         }
       ]
     },
     {
-      "group": "Process",
-      "fields": [
-        {
-          "id": "process_eyebrow",
-          "label": "Process eyebrow",
-          "type": "text",
-          "default": "Simple process",
-          "bind": {
-            "sel": ".process .section-head .eyebrow"
-          }
-        },
-        {
-          "id": "process_title",
-          "label": "Process title",
-          "type": "text",
-          "default": "From audit to working system",
-          "bind": {
-            "sel": ".process .section-head h2"
-          }
-        },
-        {
-          "id": "process_subtitle",
-          "label": "Process subtitle",
-          "type": "text",
-          "default": "Most clients see a live workflow within a few weeks.",
-          "bind": {
-            "sel": ".process .section-head p"
-          }
-        },
-        {
-          "id": "step1_title",
-          "label": "Step 1 title",
-          "type": "text",
-          "default": "Strategy Call",
-          "bind": {
-            "sel": ".steps .step:nth-child(1) h3"
-          }
-        },
-        {
-          "id": "step1_body",
-          "label": "Step 1 body",
-          "type": "text",
-          "default": "We map your current tools and the highest-friction workflows.",
-          "bind": {
-            "sel": ".steps .step:nth-child(1) p"
-          }
-        },
-        {
-          "id": "step2_title",
-          "label": "Step 2 title",
-          "type": "text",
-          "default": "Build & Integrate",
-          "bind": {
-            "sel": ".steps .step:nth-child(2) h3"
-          }
-        },
-        {
-          "id": "step2_body",
-          "label": "Step 2 body",
-          "type": "text",
-          "default": "We implement the automations and connect them to what you already use.",
-          "bind": {
-            "sel": ".steps .step:nth-child(2) p"
-          }
-        },
-        {
-          "id": "step3_title",
-          "label": "Step 3 title",
-          "type": "text",
-          "default": "Hand Over",
-          "bind": {
-            "sel": ".steps .step:nth-child(3) h3"
-          }
-        },
-        {
-          "id": "step3_body",
-          "label": "Step 3 body",
-          "type": "text",
-          "default": "Your team gets training and a system they can operate from day one.",
-          "bind": {
-            "sel": ".steps .step:nth-child(3) p"
-          }
-        }
-      ]
-    },
-    {
-      "group": "CTA / Contact",
+      "group": "CTA · Contact band",
+      "asset": "CTA",
+      "note": "CTA asset for the closing band above the footer: headline, paragraph, image.",
       "fields": [
         {
           "id": "cta_headline",
@@ -613,7 +235,8 @@
           "default": "Ready to stop managing tools and start running a system?",
           "bind": {
             "sel": ".cta h2"
-          }
+          },
+          "section": "CTA / Contact"
         },
         {
           "id": "cta_body",
@@ -622,7 +245,194 @@
           "default": "Book a free strategy call. We’ll look at where AI can actually save time in your business and outline a clear next step.",
           "bind": {
             "sel": ".cta .wrap > p:first-of-type"
-          }
+          },
+          "section": "CTA / Contact"
+        },
+        {
+          "id": "cta_image",
+          "label": "Bottom CTA image (business owners with phones)",
+          "type": "image",
+          "default": "",
+          "bind": {
+            "sel": ".cta-image img",
+            "attr": "src"
+          },
+          "section": "CTA / Contact"
+        }
+      ]
+    },
+    {
+      "group": "Hub asset",
+      "asset": "Hub",
+      "note": "The hub's own Hub asset (Asset Type \"Hub\", method \"hub\"): section heads, the 3 process steps, nav labels.",
+      "fields": [
+        {
+          "id": "nav_services",
+          "label": "Nav: Services",
+          "type": "text",
+          "default": "Services",
+          "bind": {
+            "sel": "header nav a[href=\"#services\"]"
+          },
+          "section": "Header"
+        },
+        {
+          "id": "nav_process",
+          "label": "Nav: How It Works",
+          "type": "text",
+          "default": "How It Works",
+          "bind": {
+            "sel": "header nav a[href=\"#process\"]"
+          },
+          "section": "Header"
+        },
+        {
+          "id": "services_eyebrow",
+          "label": "Services eyebrow",
+          "type": "text",
+          "default": "What we do",
+          "bind": {
+            "sel": ".services .section-head .eyebrow"
+          },
+          "section": "Services"
+        },
+        {
+          "id": "services_title",
+          "label": "Services title",
+          "type": "text",
+          "default": "Practical AI systems for small businesses",
+          "bind": {
+            "sel": ".services .section-head h2"
+          },
+          "section": "Services"
+        },
+        {
+          "id": "services_subtitle",
+          "label": "Services subtitle",
+          "type": "text",
+          "default": "Choose the level of support that matches where you are right now.",
+          "bind": {
+            "sel": ".services .section-head p"
+          },
+          "section": "Services"
+        },
+        {
+          "id": "process_eyebrow",
+          "label": "Process eyebrow",
+          "type": "text",
+          "default": "Simple process",
+          "bind": {
+            "sel": ".process .section-head .eyebrow"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "process_title",
+          "label": "Process title",
+          "type": "text",
+          "default": "From audit to working system",
+          "bind": {
+            "sel": ".process .section-head h2"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "process_subtitle",
+          "label": "Process subtitle",
+          "type": "text",
+          "default": "Most clients see a live workflow within a few weeks.",
+          "bind": {
+            "sel": ".process .section-head p"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step1_title",
+          "label": "Step 1 title",
+          "type": "text",
+          "default": "Strategy Call",
+          "bind": {
+            "sel": ".steps .step:nth-child(1) h3"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step1_body",
+          "label": "Step 1 body",
+          "type": "text",
+          "default": "We map your current tools and the highest-friction workflows.",
+          "bind": {
+            "sel": ".steps .step:nth-child(1) p"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step2_title",
+          "label": "Step 2 title",
+          "type": "text",
+          "default": "Build & Integrate",
+          "bind": {
+            "sel": ".steps .step:nth-child(2) h3"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step2_body",
+          "label": "Step 2 body",
+          "type": "text",
+          "default": "We implement the automations and connect them to what you already use.",
+          "bind": {
+            "sel": ".steps .step:nth-child(2) p"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step3_title",
+          "label": "Step 3 title",
+          "type": "text",
+          "default": "Hand Over",
+          "bind": {
+            "sel": ".steps .step:nth-child(3) h3"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "step3_body",
+          "label": "Step 3 body",
+          "type": "text",
+          "default": "Your team gets training and a system they can operate from day one.",
+          "bind": {
+            "sel": ".steps .step:nth-child(3) p"
+          },
+          "section": "Process"
+        },
+        {
+          "id": "footer_blog_label",
+          "label": "Footer blog label",
+          "type": "text",
+          "default": "Field Notes",
+          "bind": {
+            "sel": "footer a[href=\"/blog/\"]"
+          },
+          "section": "Footer"
+        }
+      ]
+    },
+    {
+      "group": "Site settings",
+      "asset": "",
+      "note": "No asset: fixed brand and contact details, edited here only.",
+      "fields": [
+        {
+          "id": "logo_text",
+          "label": "Logo text",
+          "type": "text",
+          "default": "AISystem Implementation",
+          "bind": {
+            "sel": ".logo",
+            "readonly": "The logo has a styled middle word (AI·System·Implementation) in the markup — change it in the HTML."
+          },
+          "section": "Header"
         },
         {
           "id": "cta_button",
@@ -631,7 +441,8 @@
           "default": "Text (925) 940-0014",
           "bind": {
             "sel": ".cta a.btn"
-          }
+          },
+          "section": "CTA / Contact"
         },
         {
           "id": "cta_sms",
@@ -641,7 +452,8 @@
           "bind": {
             "sel": ".cta a.btn",
             "attr": "href"
-          }
+          },
+          "section": "CTA / Contact"
         },
         {
           "id": "cta_email",
@@ -652,23 +464,9 @@
             "sel": ".cta a[href^=\"mailto:\"]",
             "attr": "href",
             "fmt": "mailto:{v}"
-          }
+          },
+          "section": "CTA / Contact"
         },
-        {
-          "id": "cta_image",
-          "label": "Bottom CTA image (business owners with phones)",
-          "type": "image",
-          "default": "",
-          "bind": {
-            "sel": ".cta-image img",
-            "attr": "src"
-          }
-        }
-      ]
-    },
-    {
-      "group": "Footer",
-      "fields": [
         {
           "id": "footer_copyright",
           "label": "Copyright line",
@@ -676,16 +474,312 @@
           "default": "© AI System Implementation",
           "bind": {
             "sel": "footer .footer-inner > div:first-child"
-          }
+          },
+          "section": "Footer"
+        }
+      ]
+    },
+    {
+      "group": "Design Tokens",
+      "asset": "",
+      "note": "No asset: page design. The color combo switcher fills these.",
+      "fields": [
+        {
+          "id": "color_green",
+          "label": "Primary green",
+          "type": "color",
+          "default": "#0f7a3a",
+          "bind": {
+            "var": "--green"
+          },
+          "section": "Design Tokens"
         },
         {
-          "id": "footer_blog_label",
-          "label": "Footer blog label",
-          "type": "text",
-          "default": "Field Notes",
+          "id": "color_green_bright",
+          "label": "Bright green",
+          "type": "color",
+          "default": "#16a34a",
           "bind": {
-            "sel": "footer a[href=\"/blog/\"]"
-          }
+            "var": "--green-bright"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_green_dark",
+          "label": "Dark green",
+          "type": "color",
+          "default": "#0b5c2c",
+          "bind": {
+            "var": "--green-dark"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_green_darker",
+          "label": "Darker green",
+          "type": "color",
+          "default": "#084422",
+          "bind": {
+            "var": "--green-darker"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_green_soft",
+          "label": "Soft green",
+          "type": "color",
+          "default": "#e8f5ee",
+          "bind": {
+            "var": "--green-soft"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_green_mid",
+          "label": "Mid green",
+          "type": "color",
+          "default": "#c8e6d0",
+          "bind": {
+            "var": "--green-mid"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_ink",
+          "label": "Text color",
+          "type": "color",
+          "default": "#0f1f2e",
+          "bind": {
+            "var": "--ink"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_muted",
+          "label": "Muted text",
+          "type": "color",
+          "default": "#4a5a68",
+          "bind": {
+            "var": "--muted"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_line",
+          "label": "Border color",
+          "type": "color",
+          "default": "#e6ece9",
+          "bind": {
+            "var": "--line"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "color_bg",
+          "label": "Page background",
+          "type": "color",
+          "default": "#f6faf8",
+          "bind": {
+            "var": "--bg"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "font_family",
+          "label": "Font family",
+          "type": "text",
+          "default": "Inter, system-ui, -apple-system, sans-serif",
+          "bind": {
+            "var": "--font"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "base_font_size",
+          "label": "Base font size",
+          "type": "text",
+          "default": "17px",
+          "bind": {
+            "var": "--text-base"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "radius_sm",
+          "label": "Small radius",
+          "type": "text",
+          "default": "10px",
+          "bind": {
+            "var": "--radius-sm"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "radius_md",
+          "label": "Medium radius",
+          "type": "text",
+          "default": "16px",
+          "bind": {
+            "var": "--radius-md"
+          },
+          "section": "Design Tokens"
+        },
+        {
+          "id": "radius_lg",
+          "label": "Large radius",
+          "type": "text",
+          "default": "20px",
+          "bind": {
+            "var": "--radius-lg"
+          },
+          "section": "Design Tokens"
+        }
+      ]
+    },
+    {
+      "group": "More page variables",
+      "asset": "",
+      "note": "No asset: the rest of the page's :root variables.",
+      "fields": [
+        {
+          "id": "var_white",
+          "label": "--white",
+          "type": "color",
+          "default": "#ffffff",
+          "bind": {
+            "var": "--white"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_xs",
+          "label": "--space-xs",
+          "type": "text",
+          "default": "8px",
+          "bind": {
+            "var": "--space-xs"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_sm",
+          "label": "--space-sm",
+          "type": "text",
+          "default": "12px",
+          "bind": {
+            "var": "--space-sm"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_md",
+          "label": "--space-md",
+          "type": "text",
+          "default": "16px",
+          "bind": {
+            "var": "--space-md"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_lg",
+          "label": "--space-lg",
+          "type": "text",
+          "default": "24px",
+          "bind": {
+            "var": "--space-lg"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_xl",
+          "label": "--space-xl",
+          "type": "text",
+          "default": "32px",
+          "bind": {
+            "var": "--space-xl"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_2xl",
+          "label": "--space-2xl",
+          "type": "text",
+          "default": "48px",
+          "bind": {
+            "var": "--space-2xl"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_3xl",
+          "label": "--space-3xl",
+          "type": "text",
+          "default": "80px",
+          "bind": {
+            "var": "--space-3xl"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_space_4xl",
+          "label": "--space-4xl",
+          "type": "text",
+          "default": "100px",
+          "bind": {
+            "var": "--space-4xl"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_shadow_sm",
+          "label": "--shadow-sm",
+          "type": "text",
+          "default": "0 4px 20px rgba(15, 31, 46, 0.04)",
+          "bind": {
+            "var": "--shadow-sm"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_shadow_md",
+          "label": "--shadow-md",
+          "type": "text",
+          "default": "0 16px 40px rgba(15, 31, 46, 0.1)",
+          "bind": {
+            "var": "--shadow-md"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_shadow_hero",
+          "label": "--shadow-hero",
+          "type": "text",
+          "default": "0 20px 50px -12px rgba(15, 122, 58, 0.25), 0 0 0 1px rgba(15, 122, 58, 0.08)",
+          "bind": {
+            "var": "--shadow-hero"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_shadow_btn",
+          "label": "--shadow-btn",
+          "type": "text",
+          "default": "0 4px 14px rgba(15, 122, 58, 0.35)",
+          "bind": {
+            "var": "--shadow-btn"
+          },
+          "section": "More page variables"
+        },
+        {
+          "id": "var_leading",
+          "label": "--leading",
+          "type": "text",
+          "default": "1.65",
+          "bind": {
+            "var": "--leading"
+          },
+          "section": "More page variables"
         }
       ]
     }
@@ -702,5 +796,6 @@
     "ink": "color_ink",
     "muted": "color_muted",
     "bg": "color_bg"
-  }
+  },
+  "grouping": "2026-11-21: groups = the Asset Flow asset type that writes each field (CTA, Offer, Hub) + no-asset groups; \"section\" = where the field sits on the page. Ids and bindings unchanged."
 }
