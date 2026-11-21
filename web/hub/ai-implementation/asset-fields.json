@@ -1,0 +1,682 @@
+{
+  "page": "web/hub/ai-implementation/index.html",
+  "updated": "2026-11-21",
+  "note": "Asset → field breakdown for the hand-authored AI hub page. Each asset field fills the page slots listed (design-fields.json ids + selector). Writers fill text only; markup is never written. Limits come from the Current Methods writing contracts.",
+  "assets": [
+    {
+      "group": "CTA · Hero",
+      "assetType": "CTA",
+      "currentMethodsRow": "rcta01",
+      "kind": "Hero",
+      "parent": "Offer (Audit = default CTA destination)",
+      "slots": [
+        {
+          "slot": "nav_cta",
+          "label": "Nav CTA button",
+          "section": "Header",
+          "selector": "header nav a.nav-cta",
+          "attr": null,
+          "var": null,
+          "assetField": "CTA Label",
+          "max": 30,
+          "current": "Book Free Strategy Call"
+        },
+        {
+          "slot": "hero_eyebrow",
+          "label": "Hero eyebrow",
+          "section": "Hero",
+          "selector": ".hero .eyebrow",
+          "attr": null,
+          "var": null,
+          "assetField": "Eyebrow",
+          "max": 30,
+          "current": "For small business owners"
+        },
+        {
+          "slot": "hero_headline",
+          "label": "Hero headline",
+          "section": "Hero",
+          "selector": ".hero h1",
+          "attr": null,
+          "var": null,
+          "assetField": "Platform Title",
+          "max": 60,
+          "current": "Get AI working in your business — without hiring a team"
+        },
+        {
+          "slot": "hero_sub",
+          "label": "Hero subheadline",
+          "section": "Hero",
+          "selector": ".hero p.lead",
+          "attr": null,
+          "var": null,
+          "assetField": "Body",
+          "max": 160,
+          "current": "We implement, integrate, and hand over working AI automation so your team can use it from day one. No more tools that sit unused."
+        },
+        {
+          "slot": "hero_cta_primary",
+          "label": "Hero primary CTA",
+          "section": "Hero",
+          "selector": ".hero-actions a:first-child",
+          "attr": null,
+          "var": null,
+          "assetField": "CTA Label",
+          "max": 30,
+          "current": "Book your free strategy call"
+        },
+        {
+          "slot": "hero_image",
+          "label": "Hero image URL or base64",
+          "section": "Hero",
+          "selector": ".hero-visual img",
+          "attr": "src",
+          "var": null,
+          "assetField": "image (asset image, not the writer)",
+          "current": ""
+        }
+      ]
+    },
+    {
+      "group": "Offer · card 1",
+      "assetType": "Offer",
+      "currentMethodsRow": "rsalesofferblog01",
+      "which": "unassigned — routing picks which Published Offer fills this card",
+      "slots": [
+        {
+          "slot": "service1_kicker",
+          "label": "Service 1 kicker",
+          "section": "Services",
+          "selector": ".services .card:nth-child(1) .kicker",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Kicker",
+          "max": 18,
+          "current": "Done-for-you"
+        },
+        {
+          "slot": "service1_title",
+          "label": "Service 1 title",
+          "section": "Services",
+          "selector": ".services .card:nth-child(1) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Title",
+          "max": 32,
+          "current": "AI Automation Services"
+        },
+        {
+          "slot": "service1_body",
+          "label": "Service 1 description",
+          "section": "Services",
+          "selector": ".services .card:nth-child(1) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Body",
+          "max": 160,
+          "current": "For owners whose manual workflows are eating their time. We build, integrate, and hand over working automation your team can run."
+        },
+        {
+          "slot": "service1_link",
+          "label": "Service 1 link",
+          "section": "Services",
+          "selector": ".services .card:nth-child(1) a.more",
+          "attr": "href",
+          "var": null,
+          "assetField": "published page URL (not the writer)",
+          "current": "/blog/ai-operations-partner/"
+        }
+      ]
+    },
+    {
+      "group": "Offer · card 2",
+      "assetType": "Offer",
+      "currentMethodsRow": "rsalesofferblog01",
+      "which": "unassigned — routing picks which Published Offer fills this card",
+      "slots": [
+        {
+          "slot": "service2_kicker",
+          "label": "Service 2 kicker",
+          "section": "Services",
+          "selector": ".services .card:nth-child(2) .kicker",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Kicker",
+          "max": 18,
+          "current": "Ongoing partner"
+        },
+        {
+          "slot": "service2_title",
+          "label": "Service 2 title",
+          "section": "Services",
+          "selector": ".services .card:nth-child(2) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Title",
+          "max": 32,
+          "current": "Fractional AI Operations"
+        },
+        {
+          "slot": "service2_body",
+          "label": "Service 2 description",
+          "section": "Services",
+          "selector": ".services .card:nth-child(2) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Body",
+          "max": 160,
+          "current": "For teams that already have tools but no system. One fractional partner takes over AI workflows and content so it runs without you as the bottleneck."
+        },
+        {
+          "slot": "service2_link",
+          "label": "Service 2 link",
+          "section": "Services",
+          "selector": ".services .card:nth-child(2) a.more",
+          "attr": "href",
+          "var": null,
+          "assetField": "published page URL (not the writer)",
+          "current": "/blog/ai-content-partner/"
+        }
+      ]
+    },
+    {
+      "group": "Offer · card 3",
+      "assetType": "Offer",
+      "currentMethodsRow": "rsalesofferblog01",
+      "which": "unassigned — routing picks which Published Offer fills this card",
+      "slots": [
+        {
+          "slot": "service3_kicker",
+          "label": "Service 3 kicker",
+          "section": "Services",
+          "selector": ".services .card:nth-child(3) .kicker",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Kicker",
+          "max": 18,
+          "current": "Clarity first"
+        },
+        {
+          "slot": "service3_title",
+          "label": "Service 3 title",
+          "section": "Services",
+          "selector": ".services .card:nth-child(3) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Card Title",
+          "max": 32,
+          "current": "AI Workflow Audit & Roadmap"
+        },
+        {
+          "slot": "service3_body",
+          "label": "Service 3 description",
+          "section": "Services",
+          "selector": ".services .card:nth-child(3) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Body",
+          "max": 160,
+          "current": "One focused assessment that maps your bottlenecks and delivers a ranked, actionable roadmap — no retainer required."
+        },
+        {
+          "slot": "service3_link",
+          "label": "Service 3 link",
+          "section": "Services",
+          "selector": ".services .card:nth-child(3) a.more",
+          "attr": "href",
+          "var": null,
+          "assetField": "published page URL (not the writer)",
+          "current": "/blog/done-for-you-lead-gen/"
+        }
+      ]
+    },
+    {
+      "group": "CTA · Contact band",
+      "assetType": "CTA",
+      "currentMethodsRow": "rcta01",
+      "kind": "(unset — closing contact band)",
+      "parent": "Offer (Audit = default CTA destination)",
+      "slots": [
+        {
+          "slot": "cta_headline",
+          "label": "Bottom CTA headline",
+          "section": "CTA / Contact",
+          "selector": ".cta h2",
+          "attr": null,
+          "var": null,
+          "assetField": "Platform Title",
+          "max": 60,
+          "current": "Ready to stop managing tools and start running a system?"
+        },
+        {
+          "slot": "cta_body",
+          "label": "Bottom CTA body",
+          "section": "CTA / Contact",
+          "selector": ".cta .wrap > p:first-of-type",
+          "attr": null,
+          "var": null,
+          "assetField": "Body",
+          "max": 160,
+          "current": "Book a free strategy call. We’ll look at where AI can actually save time in your business and outline a clear next step."
+        },
+        {
+          "slot": "cta_image",
+          "label": "Bottom CTA image (business owners with phones)",
+          "section": "CTA / Contact",
+          "selector": ".cta-image img",
+          "attr": "src",
+          "var": null,
+          "assetField": "image (asset image, not the writer)",
+          "current": ""
+        }
+      ]
+    },
+    {
+      "group": "Hub asset",
+      "assetType": "Hub",
+      "currentMethodsRow": "rhub01",
+      "slots": [
+        {
+          "slot": "nav_services",
+          "label": "Nav: Services",
+          "section": "Header",
+          "selector": "header nav a[href=\"#services\"]",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Services Nav",
+          "max": 14,
+          "current": "Services"
+        },
+        {
+          "slot": "nav_process",
+          "label": "Nav: How It Works",
+          "section": "Header",
+          "selector": "header nav a[href=\"#process\"]",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Process Nav",
+          "max": 16,
+          "current": "How It Works"
+        },
+        {
+          "slot": "hero_cta_secondary",
+          "label": "Hero secondary CTA",
+          "section": "Hero",
+          "selector": ".hero-actions a.btn-ghost",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Services Jump Button",
+          "max": 20,
+          "current": "See the services"
+        },
+        {
+          "slot": "services_eyebrow",
+          "label": "Services eyebrow",
+          "section": "Services",
+          "selector": ".services .section-head .eyebrow",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Services Eyebrow",
+          "max": 18,
+          "current": "What we do"
+        },
+        {
+          "slot": "services_title",
+          "label": "Services title",
+          "section": "Services",
+          "selector": ".services .section-head h2",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Services Heading",
+          "max": 50,
+          "current": "Practical AI systems for small businesses"
+        },
+        {
+          "slot": "services_subtitle",
+          "label": "Services subtitle",
+          "section": "Services",
+          "selector": ".services .section-head p",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Services Intro",
+          "max": 80,
+          "current": "Choose the level of support that matches where you are right now."
+        },
+        {
+          "slot": "process_eyebrow",
+          "label": "Process eyebrow",
+          "section": "Process",
+          "selector": ".process .section-head .eyebrow",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Process Eyebrow",
+          "max": 18,
+          "current": "Simple process"
+        },
+        {
+          "slot": "process_title",
+          "label": "Process title",
+          "section": "Process",
+          "selector": ".process .section-head h2",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Process Heading",
+          "max": 36,
+          "current": "From audit to working system"
+        },
+        {
+          "slot": "process_subtitle",
+          "label": "Process subtitle",
+          "section": "Process",
+          "selector": ".process .section-head p",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Process Intro",
+          "max": 64,
+          "current": "Most clients see a live workflow within a few weeks."
+        },
+        {
+          "slot": "step1_title",
+          "label": "Step 1 title",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(1) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 1 Title",
+          "max": 20,
+          "current": "Strategy Call"
+        },
+        {
+          "slot": "step1_body",
+          "label": "Step 1 body",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(1) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 1 Body",
+          "max": 80,
+          "current": "We map your current tools and the highest-friction workflows."
+        },
+        {
+          "slot": "step2_title",
+          "label": "Step 2 title",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(2) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 2 Title",
+          "max": 20,
+          "current": "Build & Integrate"
+        },
+        {
+          "slot": "step2_body",
+          "label": "Step 2 body",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(2) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 2 Body",
+          "max": 80,
+          "current": "We implement the automations and connect them to what you already use."
+        },
+        {
+          "slot": "step3_title",
+          "label": "Step 3 title",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(3) h3",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 3 Title",
+          "max": 20,
+          "current": "Hand Over"
+        },
+        {
+          "slot": "step3_body",
+          "label": "Step 3 body",
+          "section": "Process",
+          "selector": ".steps .step:nth-child(3) p",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Step 3 Body",
+          "max": 80,
+          "current": "Your team gets training and a system they can operate from day one."
+        },
+        {
+          "slot": "footer_blog_label",
+          "label": "Footer blog label",
+          "section": "Footer",
+          "selector": "footer a[href=\"/blog/\"]",
+          "attr": null,
+          "var": null,
+          "assetField": "Hub Page Copy › Blog Nav",
+          "max": 16,
+          "current": "Field Notes"
+        }
+      ]
+    }
+  ],
+  "noAsset": [
+    {
+      "group": "Site settings",
+      "why": "No asset: fixed brand and contact details, edited here only.",
+      "slots": [
+        {
+          "slot": "logo_text",
+          "label": "Logo text",
+          "selector": ".logo",
+          "current": "AISystem Implementation"
+        },
+        {
+          "slot": "cta_button",
+          "label": "Bottom CTA button text",
+          "selector": ".cta a.btn",
+          "current": "Text (925) 940-0014"
+        },
+        {
+          "slot": "cta_sms",
+          "label": "SMS link",
+          "selector": ".cta a.btn",
+          "current": "sms:+19259400014"
+        },
+        {
+          "slot": "cta_email",
+          "label": "Email address",
+          "selector": ".cta a[href^=\"mailto:\"]",
+          "current": "hello@aisystemimplementation.com"
+        },
+        {
+          "slot": "footer_copyright",
+          "label": "Copyright line",
+          "selector": "footer .footer-inner > div:first-child",
+          "current": "© AI System Implementation"
+        }
+      ]
+    },
+    {
+      "group": "Design Tokens",
+      "why": "No asset: page design. The color combo switcher fills these.",
+      "slots": [
+        {
+          "slot": "color_green",
+          "label": "Primary green",
+          "var": "--green",
+          "current": "#0f7a3a"
+        },
+        {
+          "slot": "color_green_bright",
+          "label": "Bright green",
+          "var": "--green-bright",
+          "current": "#16a34a"
+        },
+        {
+          "slot": "color_green_dark",
+          "label": "Dark green",
+          "var": "--green-dark",
+          "current": "#0b5c2c"
+        },
+        {
+          "slot": "color_green_darker",
+          "label": "Darker green",
+          "var": "--green-darker",
+          "current": "#084422"
+        },
+        {
+          "slot": "color_green_soft",
+          "label": "Soft green",
+          "var": "--green-soft",
+          "current": "#e8f5ee"
+        },
+        {
+          "slot": "color_green_mid",
+          "label": "Mid green",
+          "var": "--green-mid",
+          "current": "#c8e6d0"
+        },
+        {
+          "slot": "color_ink",
+          "label": "Text color",
+          "var": "--ink",
+          "current": "#0f1f2e"
+        },
+        {
+          "slot": "color_muted",
+          "label": "Muted text",
+          "var": "--muted",
+          "current": "#4a5a68"
+        },
+        {
+          "slot": "color_line",
+          "label": "Border color",
+          "var": "--line",
+          "current": "#e6ece9"
+        },
+        {
+          "slot": "color_bg",
+          "label": "Page background",
+          "var": "--bg",
+          "current": "#f6faf8"
+        },
+        {
+          "slot": "font_family",
+          "label": "Font family",
+          "var": "--font",
+          "current": "Inter, system-ui, -apple-system, sans-serif"
+        },
+        {
+          "slot": "base_font_size",
+          "label": "Base font size",
+          "var": "--text-base",
+          "current": "17px"
+        },
+        {
+          "slot": "radius_sm",
+          "label": "Small radius",
+          "var": "--radius-sm",
+          "current": "10px"
+        },
+        {
+          "slot": "radius_md",
+          "label": "Medium radius",
+          "var": "--radius-md",
+          "current": "16px"
+        },
+        {
+          "slot": "radius_lg",
+          "label": "Large radius",
+          "var": "--radius-lg",
+          "current": "20px"
+        }
+      ]
+    },
+    {
+      "group": "More page variables",
+      "why": "No asset: the rest of the page's :root variables.",
+      "slots": [
+        {
+          "slot": "var_white",
+          "label": "--white",
+          "var": "--white",
+          "current": "#ffffff"
+        },
+        {
+          "slot": "var_space_xs",
+          "label": "--space-xs",
+          "var": "--space-xs",
+          "current": "8px"
+        },
+        {
+          "slot": "var_space_sm",
+          "label": "--space-sm",
+          "var": "--space-sm",
+          "current": "12px"
+        },
+        {
+          "slot": "var_space_md",
+          "label": "--space-md",
+          "var": "--space-md",
+          "current": "16px"
+        },
+        {
+          "slot": "var_space_lg",
+          "label": "--space-lg",
+          "var": "--space-lg",
+          "current": "24px"
+        },
+        {
+          "slot": "var_space_xl",
+          "label": "--space-xl",
+          "var": "--space-xl",
+          "current": "32px"
+        },
+        {
+          "slot": "var_space_2xl",
+          "label": "--space-2xl",
+          "var": "--space-2xl",
+          "current": "48px"
+        },
+        {
+          "slot": "var_space_3xl",
+          "label": "--space-3xl",
+          "var": "--space-3xl",
+          "current": "80px"
+        },
+        {
+          "slot": "var_space_4xl",
+          "label": "--space-4xl",
+          "var": "--space-4xl",
+          "current": "100px"
+        },
+        {
+          "slot": "var_shadow_sm",
+          "label": "--shadow-sm",
+          "var": "--shadow-sm",
+          "current": "0 4px 20px rgba(15, 31, 46, 0.04)"
+        },
+        {
+          "slot": "var_shadow_md",
+          "label": "--shadow-md",
+          "var": "--shadow-md",
+          "current": "0 16px 40px rgba(15, 31, 46, 0.1)"
+        },
+        {
+          "slot": "var_shadow_hero",
+          "label": "--shadow-hero",
+          "var": "--shadow-hero",
+          "current": "0 20px 50px -12px rgba(15, 122, 58, 0.25), 0 0 0 1px rgba(15, 122, 58, 0.08)"
+        },
+        {
+          "slot": "var_shadow_btn",
+          "label": "--shadow-btn",
+          "var": "--shadow-btn",
+          "current": "0 4px 14px rgba(15, 122, 58, 0.35)"
+        },
+        {
+          "slot": "var_leading",
+          "label": "--leading",
+          "var": "--leading",
+          "current": "1.65"
+        }
+      ]
+    }
+  ]
+}

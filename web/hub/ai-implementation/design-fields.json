@@ -14,7 +14,8 @@
           "bind": {
             "sel": "header nav a.nav-cta"
           },
-          "section": "Header"
+          "section": "Header",
+          "src": "CTA Label"
         },
         {
           "id": "hero_eyebrow",
@@ -24,7 +25,8 @@
           "bind": {
             "sel": ".hero .eyebrow"
           },
-          "section": "Hero"
+          "section": "Hero",
+          "src": "Eyebrow"
         },
         {
           "id": "hero_headline",
@@ -34,7 +36,8 @@
           "bind": {
             "sel": ".hero h1"
           },
-          "section": "Hero"
+          "section": "Hero",
+          "src": "Platform Title"
         },
         {
           "id": "hero_sub",
@@ -44,7 +47,8 @@
           "bind": {
             "sel": ".hero p.lead"
           },
-          "section": "Hero"
+          "section": "Hero",
+          "src": "Body"
         },
         {
           "id": "hero_cta_primary",
@@ -54,17 +58,8 @@
           "bind": {
             "sel": ".hero-actions a:first-child"
           },
-          "section": "Hero"
-        },
-        {
-          "id": "hero_cta_secondary",
-          "label": "Hero secondary CTA",
-          "type": "text",
-          "default": "See the services",
-          "bind": {
-            "sel": ".hero-actions a.btn-ghost"
-          },
-          "section": "Hero"
+          "section": "Hero",
+          "src": "CTA Label"
         },
         {
           "id": "hero_image",
@@ -75,7 +70,8 @@
             "sel": ".hero-visual img",
             "attr": "src"
           },
-          "section": "Hero"
+          "section": "Hero",
+          "src": "image (asset image, not the writer)"
         }
       ]
     },
@@ -92,7 +88,8 @@
           "bind": {
             "sel": ".services .card:nth-child(1) .kicker"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Kicker"
         },
         {
           "id": "service1_title",
@@ -102,7 +99,8 @@
           "bind": {
             "sel": ".services .card:nth-child(1) h3"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Title"
         },
         {
           "id": "service1_body",
@@ -112,7 +110,8 @@
           "bind": {
             "sel": ".services .card:nth-child(1) p"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Body"
         },
         {
           "id": "service1_link",
@@ -123,7 +122,8 @@
             "sel": ".services .card:nth-child(1) a.more",
             "attr": "href"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "published page URL (not the writer)"
         }
       ]
     },
@@ -140,7 +140,8 @@
           "bind": {
             "sel": ".services .card:nth-child(2) .kicker"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Kicker"
         },
         {
           "id": "service2_title",
@@ -150,7 +151,8 @@
           "bind": {
             "sel": ".services .card:nth-child(2) h3"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Title"
         },
         {
           "id": "service2_body",
@@ -160,7 +162,8 @@
           "bind": {
             "sel": ".services .card:nth-child(2) p"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Body"
         },
         {
           "id": "service2_link",
@@ -171,7 +174,8 @@
             "sel": ".services .card:nth-child(2) a.more",
             "attr": "href"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "published page URL (not the writer)"
         }
       ]
     },
@@ -188,7 +192,8 @@
           "bind": {
             "sel": ".services .card:nth-child(3) .kicker"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Kicker"
         },
         {
           "id": "service3_title",
@@ -198,7 +203,8 @@
           "bind": {
             "sel": ".services .card:nth-child(3) h3"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Card Title"
         },
         {
           "id": "service3_body",
@@ -208,7 +214,8 @@
           "bind": {
             "sel": ".services .card:nth-child(3) p"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Body"
         },
         {
           "id": "service3_link",
@@ -219,7 +226,8 @@
             "sel": ".services .card:nth-child(3) a.more",
             "attr": "href"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "published page URL (not the writer)"
         }
       ]
     },
@@ -236,7 +244,8 @@
           "bind": {
             "sel": ".cta h2"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "Platform Title"
         },
         {
           "id": "cta_body",
@@ -246,7 +255,8 @@
           "bind": {
             "sel": ".cta .wrap > p:first-of-type"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "Body"
         },
         {
           "id": "cta_image",
@@ -257,7 +267,8 @@
             "sel": ".cta-image img",
             "attr": "src"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "image (asset image, not the writer)"
         }
       ]
     },
@@ -274,7 +285,8 @@
           "bind": {
             "sel": "header nav a[href=\"#services\"]"
           },
-          "section": "Header"
+          "section": "Header",
+          "src": "Hub Page Copy › Services Nav"
         },
         {
           "id": "nav_process",
@@ -284,7 +296,19 @@
           "bind": {
             "sel": "header nav a[href=\"#process\"]"
           },
-          "section": "Header"
+          "section": "Header",
+          "src": "Hub Page Copy › Process Nav"
+        },
+        {
+          "id": "hero_cta_secondary",
+          "label": "Hero secondary CTA",
+          "type": "text",
+          "default": "See the services",
+          "bind": {
+            "sel": ".hero-actions a.btn-ghost"
+          },
+          "section": "Hero",
+          "src": "Hub Page Copy › Services Jump Button"
         },
         {
           "id": "services_eyebrow",
@@ -294,7 +318,8 @@
           "bind": {
             "sel": ".services .section-head .eyebrow"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Hub Page Copy › Services Eyebrow"
         },
         {
           "id": "services_title",
@@ -304,7 +329,8 @@
           "bind": {
             "sel": ".services .section-head h2"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Hub Page Copy › Services Heading"
         },
         {
           "id": "services_subtitle",
@@ -314,7 +340,8 @@
           "bind": {
             "sel": ".services .section-head p"
           },
-          "section": "Services"
+          "section": "Services",
+          "src": "Hub Page Copy › Services Intro"
         },
         {
           "id": "process_eyebrow",
@@ -324,7 +351,8 @@
           "bind": {
             "sel": ".process .section-head .eyebrow"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Process Eyebrow"
         },
         {
           "id": "process_title",
@@ -334,7 +362,8 @@
           "bind": {
             "sel": ".process .section-head h2"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Process Heading"
         },
         {
           "id": "process_subtitle",
@@ -344,7 +373,8 @@
           "bind": {
             "sel": ".process .section-head p"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Process Intro"
         },
         {
           "id": "step1_title",
@@ -354,7 +384,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(1) h3"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 1 Title"
         },
         {
           "id": "step1_body",
@@ -364,7 +395,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(1) p"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 1 Body"
         },
         {
           "id": "step2_title",
@@ -374,7 +406,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(2) h3"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 2 Title"
         },
         {
           "id": "step2_body",
@@ -384,7 +417,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(2) p"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 2 Body"
         },
         {
           "id": "step3_title",
@@ -394,7 +428,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(3) h3"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 3 Title"
         },
         {
           "id": "step3_body",
@@ -404,7 +439,8 @@
           "bind": {
             "sel": ".steps .step:nth-child(3) p"
           },
-          "section": "Process"
+          "section": "Process",
+          "src": "Hub Page Copy › Step 3 Body"
         },
         {
           "id": "footer_blog_label",
@@ -414,7 +450,8 @@
           "bind": {
             "sel": "footer a[href=\"/blog/\"]"
           },
-          "section": "Footer"
+          "section": "Footer",
+          "src": "Hub Page Copy › Blog Nav"
         }
       ]
     },
