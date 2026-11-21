@@ -42988,6 +42988,19 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
       // CSS requests come back as rule operations the designer previews (nothing saved). A request that needs new HTML
       // (a wrapper div, a new class on generated markup, a new section) is NOT guessed at: it is queued in KV
       // hubsite:requests:<slug>:<page> for a Claude Code session, and the reply says so.
+      // designTags {op:"get"|"set", kind:"fonts"|"looks", id?, tags?} — operator tags on design-library items (Site designer
+      // steppers, 2026-11-21: "tag font groups … then filter the scroller for tagged"). KV design:tags:<kind> = { id: [tags] }.
+      if (body.action === "designTags") {
+        const kind = String(body.kind || ""); if (!/^(fonts|looks)$/.test(kind)) return json({ error: "kind must be fonts or looks" }, 400);
+        const k = "design:tags:" + kind, all = (await env.TRADES.get(k, "json")) || {};
+        if (body.op === "set") {
+          const id = String(body.id || "").slice(0, 120); if (!id) return json({ error: "id required" }, 400);
+          const tags = [...new Set((Array.isArray(body.tags) ? body.tags : []).map(t => String(t).trim().toLowerCase().replace(/[^a-z0-9 &+-]/g, "").slice(0, 30)).filter(Boolean))].slice(0, 20);
+          if (tags.length) all[id] = tags; else delete all[id];
+          await env.TRADES.put(k, JSON.stringify(all));
+        }
+        return json({ ok: true, tags: all });
+      }
       if (body.action === "hubDesignerChat" || body.action === "hubDesignerRequests") {
         const slug = String(body.slug || "").trim(), page = String(body.page || "home"), kR = `hubsite:requests:${slug}:${page}`;
         if (body.action === "hubDesignerRequests") return json({ ok: true, requests: (await env.TRADES.get(kR, "json")) || [] });

@@ -12526,8 +12526,9 @@ async function hd2SdLoad(fromLive) {
     const sb = fromLive ? null : await call('hubSandboxGet', { slug, page: 'home' }).catch(() => null);
     const base = 'https://cabuzzard.github.io/dash/web/hub/', v = '?v=' + Date.now();
     const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
+    if (!_sdTags) await hd2SdTagsLoad();
     _hd2DsLib = lib; const hj = (spec.hubs || {})[slug] || {}, curT = { ...(hj.tokens || {}) }, curF = { ...(hj.fonts || {}) };
-    Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '' });
+    Object.assign(EF.sd, { curTokens: curT, curFonts: curF, tokens: { ...curT, ...((!fromLive && sb && sb.sandbox && sb.sandbox.tokens) || {}) }, fonts: { ...curF, ...((!fromLive && sb && sb.sandbox && sb.sandbox.fonts) || {}) }, look: '', font: '', fontTag: (EF.sd && EF.sd.fontTag) || '' });
     const useSb = sb && sb.sandbox && Array.isArray(sb.sandbox.rules) && sb.sandbox.rules.length && Math.max(...sb.sandbox.rules.map(r => r.b)) === blocks.length - 1;
     if (useSb) _sdN = Math.max(...sb.sandbox.rules.map(r => +String(r.id).slice(1) || 0));
     Object.assign(EF.sd, { busy: '', blocks: blocks.length, live, rules: useSb ? sb.sandbox.rules : JSON.parse(JSON.stringify(live)), source: useSb ? 'sandbox' : 'live',
@@ -12580,7 +12581,8 @@ function hd2SdLookHtml() {
     + '<div id="sdTokWarn" style="font-size:11.5px;color:#f59e0b;">' + warn.map(w => '⚠ ' + esc(w)).join('<br>') + '</div></div></details>';
 }
 // Fonts stepper (operator 2026-11-21: "more of a one click or arrows type of interface"): ◀ ▶ walk the pairings (position 0 =
-// the hub's own fonts); the name is drawn in its own display face; arrow keys work while the stepper has focus.
+// the hub's own fonts); the name is drawn in its own display face; arrow keys work while the stepper has focus. Tags ('tag font
+// groups … then filter the scroller for tagged'): worker designTags, KV design:tags:fonts; 'Show' limits the arrows to one tag.
 // Colors stepper (operator 2026-11-21: "same with colors"): ◀ ▶ walk every look in the design library (position 0 = the hub's
 // current colors), showing its color strip; arrow keys work while it has focus. The 10 pickers below still fine-tune.
 function hd2SdLookStepper() {
@@ -12598,18 +12600,33 @@ function hd2SdLookStep(dir) {
   hd2SdLook(j ? L[j - 1].id : '');
   const st = document.querySelector('#sdLook [data-step="look"]'); if (st) st.focus();
 }
+let _sdTags = null;
+async function hd2SdTagsLoad() { const r = await call('designTags', { op: 'get', kind: 'fonts' }).catch(() => null); _sdTags = (r && r.tags) || {}; }
+function sdFontList() {   // what the arrows step through: [null = hub fonts, …pairings], or only the tagged pairings
+  const D = EF.sd, L = _hd2DsLib.fonts, T = _sdTags || {};
+  return D.fontTag ? L.filter(f => (T[f.id] || []).includes(D.fontTag)) : [null, ...L];
+}
 function hd2SdFontStepper() {
-  const D = EF.sd, L = _hd2DsLib.fonts, i = D.font ? L.findIndex(x => x.id === D.font) + 1 : 0, n = L.length + 1, f = i ? L[i - 1] : null;
+  const D = EF.sd, T = _sdTags || {}, list = sdFontList(), f = D.font ? _hd2DsLib.fonts.find(x => x.id === D.font) : null;
+  const i = list.findIndex(x => (x ? x.id : '') === (D.font || '')), n = list.length;
   const name = f ? f.display + (f.body !== f.display ? ' / ' + f.body : '') : (D.curFonts.display || 'Hub fonts') + ' / ' + (D.curFonts.body || '');
   hd2SdFontLoad(f ? f.display : D.curFonts.display);
   const btn = 'font-size:15px;width:34px;height:34px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;flex:none;';
-  return '<div style="font-size:11.5px;color:var(--text3);">Fonts ' + (f && f.suits ? '· ' + esc(f.suits.slice(0, 60)) : (i ? '' : '· the hub now')) + '</div>'
-    + '<div tabindex="0" data-step="font" onkeydown="if(event.key===\x27ArrowRight\x27||event.key===\x27ArrowDown\x27){event.preventDefault();hd2SdFontStep(1)}else if(event.key===\x27ArrowLeft\x27||event.key===\x27ArrowUp\x27){event.preventDefault();hd2SdFontStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
-    + '<button style="' + btn + '" onclick="hd2SdFontStep(-1)" title="Previous pairing (←)">◀</button>'
+  const allTags = [...new Set(Object.values(T).flat())].sort(), mine = f ? (T[f.id] || []) : [];
+  const chip = (t, on, click, x) => '<button onclick="' + click + '" style="font-size:11px;padding:2px 8px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:10px;background:' + (on ? 'var(--accent)' : 'var(--surface2)') + ';color:' + (on ? '#fff' : 'var(--text2)') + ';cursor:pointer;">' + esc(t) + (x ? ' ✕' : '') + '</button>';
+  return '<div style="font-size:11.5px;color:var(--text3);">Fonts ' + (f && f.suits ? '· ' + esc(f.suits.slice(0, 60)) : (f ? '' : '· the hub now')) + '</div>'
+    + (allTags.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--text3);">Show: '
+      + chip('all', !D.fontTag, 'hd2SdFontFilter(\'\')') + allTags.map(t => chip(t + ' (' + Object.values(T).filter(a => a.includes(t)).length + ')', D.fontTag === t, 'hd2SdFontFilter(\'' + esc(t).replace(/'/g, '&#39;') + '\')')).join('') + '</div>' : '')
+    + '<div tabindex="0" data-step="font" onkeydown="if(event.key===\'ArrowRight\'||event.key===\'ArrowDown\'){event.preventDefault();hd2SdFontStep(1)}else if(event.key===\'ArrowLeft\'||event.key===\'ArrowUp\'){event.preventDefault();hd2SdFontStep(-1)}" style="display:flex;align-items:center;gap:6px;outline:none;">'
+    + '<button style="' + btn + '" onclick="hd2SdFontStep(-1)" title="Previous pairing (←)"' + (n ? '' : ' disabled') + '>◀</button>'
     + '<div style="flex:1;min-width:0;text-align:center;border:1px solid var(--border2);border-radius:6px;padding:4px 6px;">'
-    + '<div style="font-family:\x27' + esc(f ? f.display : D.curFonts.display || '') + '\x27,system-ui,sans-serif;font-size:17px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(name) + '</div>'
-    + '<div style="font-size:10.5px;color:var(--text3);">' + (i + 1) + ' of ' + n + '</div></div>'
-    + '<button style="' + btn + '" onclick="hd2SdFontStep(1)" title="Next pairing (→)">▶</button></div>';
+    + '<div style="font-family:\'' + esc(f ? f.display : D.curFonts.display || '') + '\',system-ui,sans-serif;font-size:17px;font-weight:600;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(name) + '</div>'
+    + '<div style="font-size:10.5px;color:var(--text3);">' + (i >= 0 ? (i + 1) + ' of ' + n : (n ? 'not in "' + esc(D.fontTag) + '" · ' + n + ' tagged' : 'nothing tagged "' + esc(D.fontTag) + '"')) + (D.fontTag ? ' · ' + esc(D.fontTag) : '') + '</div></div>'
+    + '<button style="' + btn + '" onclick="hd2SdFontStep(1)" title="Next pairing (→)"' + (n ? '' : ' disabled') + '>▶</button></div>'
+    + (f ? '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">' + mine.map(t => chip(t, true, 'hd2SdFontTag(\'' + esc(t).replace(/'/g, '&#39;') + '\',false)', true)).join('')
+      + '<input id="sdTagIn" list="sdTagList" placeholder="+ tag this pairing" style="' + HD2_IN + 'width:130px;font-size:11.5px;padding:3px 7px;" onkeydown="if(event.key===\'Enter\'&&this.value.trim()){hd2SdFontTag(this.value.trim(),true)}">'
+      + '<datalist id="sdTagList">' + allTags.filter(t => !mine.includes(t)).map(t => '<option value="' + esc(t) + '">').join('') + '</datalist></div>'
+      : '<div style="font-size:11px;color:var(--text3);">Step to a pairing to tag it.</div>');
 }
 function hd2SdFontLoad(fam) {   // draw the stepper name in its own face (Google Fonts, once per family)
   if (!fam || !/^[A-Za-z0-9 ]{2,40}$/.test(fam)) return; window._sdFontsLoaded = window._sdFontsLoaded || {};
@@ -12617,9 +12634,19 @@ function hd2SdFontLoad(fam) {   // draw the stepper name in its own face (Google
   const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=' + fam.replace(/ /g, '+') + ':wght@600&display=swap'; document.head.appendChild(l);
 }
 function hd2SdFontStep(dir) {
-  const D = EF.sd, L = _hd2DsLib.fonts, n = L.length + 1, i = D.font ? L.findIndex(x => x.id === D.font) + 1 : 0, j = (i + dir + n) % n;
-  hd2SdFont(j ? L[j - 1].id : '');
+  const D = EF.sd, list = sdFontList(), n = list.length; if (!n) return;
+  const i = list.findIndex(x => (x ? x.id : '') === (D.font || '')), j = i < 0 ? (dir > 0 ? 0 : n - 1) : (i + dir + n) % n;
+  hd2SdFont(list[j] ? list[j].id : '');
   const st = document.querySelector('#sdLook [data-step="font"]'); if (st) st.focus();
+}
+function hd2SdFontFilter(t) { EF.sd.fontTag = t || ''; const list = sdFontList(); if (t && list.length && !list.some(x => x && x.id === EF.sd.font)) hd2SdFont(list[0].id); else hd2SdLookDraw(); }
+async function hd2SdFontTag(tag, add) {
+  const D = EF.sd, id = D.font; if (!id) return; const T = _sdTags || (_sdTags = {});
+  const cur = T[id] || [], t = String(tag).trim().toLowerCase(), next = add ? [...new Set([...cur, t])] : cur.filter(x => x !== t);
+  if (next.length) T[id] = next; else delete T[id]; hd2SdLookDraw(); const inp = document.getElementById('sdTagIn'); if (inp && add) inp.focus();
+  const r = await call('designTags', { op: 'set', kind: 'fonts', id, tags: next }).catch(e => ({ error: e.message }));
+  if (r && r.tags) _sdTags = r.tags; else if (r && r.error) { const m = document.getElementById('sdMsg'); if (m) m.textContent = '✗ Tag not saved: ' + r.error; }
+  if (D.fontTag && !next.includes(D.fontTag)) hd2SdLookDraw();
 }
 function hd2SdTok() {   // push colors + fonts into the preview
   const D = EF && EF.sd, f = document.getElementById('sdFrame'), d = f && f.contentDocument; if (!D || !d || !D.tokens) return;
