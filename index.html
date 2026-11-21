@@ -11708,6 +11708,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'post') bd = hd2PostHtml();
   else if (EF.tab === 'images') bd = hd2ImagesHtml();
   else if (EF.tab === 'library') bd = hd2LibraryHtml();
+  else if (EF.tab === 'design') bd = hd2DsHtml();
   else if (EF.tab === 'kids') bd = hd2KidsHtml();
   else if (EF.tab === 'sched') bd = hd2SchedHtml();
   else if (D.kind === 'notion') {
@@ -11781,10 +11782,11 @@ function hd2EfTabs() {
   if (k === 'product' || k === 'title') t.push(['research', '🔬 Research']);
   if (k === 'cluster' || k === 'topic') t.push(['keywords', '🔑 Keywords']);
   if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
+  if (k === 'hub') t.push(['design', '🎨 Design']);
   if (k === 'asset') t.push(['library', '🗂 Library' + (EF.data && EF.data.library && EF.data.library.length ? ' (' + EF.data.library.length + ')' : '')]);
   return t;
 }
-function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
+function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
 const HD2_IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
 const HD2_B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
 
@@ -12320,6 +12322,113 @@ async function hd2LibUse(n) {
   if (!EF) return; if (!r || r.error) { EF.msg = '✗ Not restored: ' + ((r && r.error) || 'no response'); return hd2EfDraw(); }
   const d = await call('entityGet', { pageId: EF.e.id }).catch(() => null); if (EF && d && !d.error) Object.assign(EF.data, { props: d.props, library: d.library || [] });
   if (EF) { EF.msg = '✓ ' + slot + ' restored'; hd2EfDraw(); }
+}
+// ── 🎨 Design (operator 2026-11-20: "a new hub designer in the new hub dash 2"; docs/hub-design-process.md) ─────────────────
+// The hub's look = its colors + fonts in hubs.design.json. Pick a starting look from the design library (web/hub/design-library:
+// 74 brand systems + 64 palettes, already mapped to hub tokens, each with readability checks), pick a font pairing, nudge any
+// of the 10 colors, and watch the REAL hub page restyle in the preview (the hub's #preview= hook, nothing saved). ✓ Apply goes
+// through the existing publishHubDesign (Research record + hubs.design.json + the hub page, one commit each). Layout never changes.
+const HD2_DS_KEYS = [['bg', 'Page'], ['surface', 'Cards'], ['ink', 'Text'], ['ink-head', 'Headings'], ['ink-soft', 'Soft text'], ['line', 'Lines'], ['sea', 'Primary'], ['accent', 'Button'], ['deep', 'Dark band'], ['deep-ink', 'Dark band text']];
+let _hd2DsLib = null;
+async function hd2DsLoad() {
+  EF.ds = { busy: 'Loading the design library…', q: '', src: 'all', tone: 'all', sel: null, font: '', tokens: null, fonts: null, msg: '' }; hd2EfDraw();
+  try {
+    const base = 'https://cabuzzard.github.io/dash/web/hub/', v = '?v=' + Date.now();
+    const [lib, spec] = await Promise.all([_hd2DsLib || fetch(base + 'design-library/index.json' + v).then(r => r.json()), fetch(base + 'hubs.design.json' + v).then(r => r.json())]);
+    _hd2DsLib = lib; const h = (spec.hubs || {})[EF.e.slug];
+    if (!h) throw new Error('no "' + EF.e.slug + '" in hubs.design.json');
+    Object.assign(EF.ds, { busy: '', bespoke: !!h.bespoke, cur: { tokens: { ...h.tokens }, fonts: { ...(h.fonts || {}) } }, tokens: { ...h.tokens }, fonts: { ...(h.fonts || {}) } });
+  } catch (e) { EF.ds.busy = ''; EF.ds.err = e.message; }
+  if (EF && EF.tab === 'design') hd2EfDraw();
+}
+const hd2DsLum = h => { const n = parseInt(String(h).slice(1), 16); if (isNaN(n)) return 1; const c = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const hd2DsCr = (a, b) => { const x = hd2DsLum(a), y = hd2DsLum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+function hd2DsChecks(t) {
+  const w = [];
+  if (hd2DsCr(t.ink, t.bg) < 4.5) w.push('Text is hard to read on the page (' + hd2DsCr(t.ink, t.bg).toFixed(1) + ':1, needs 4.5)');
+  if (hd2DsCr(t['ink-soft'], t.bg) < 4.5) w.push('Soft text is hard to read (' + hd2DsCr(t['ink-soft'], t.bg).toFixed(1) + ':1, needs 4.5)');
+  if (hd2DsCr(t.sea, t.bg) < 3) w.push('Primary color barely shows on the page (' + hd2DsCr(t.sea, t.bg).toFixed(1) + ':1, needs 3)');
+  if (hd2DsCr('#ffffff', t.accent) < 4.5) w.push('White button text is hard to read on the button color (' + hd2DsCr('#ffffff', t.accent).toFixed(1) + ':1)');
+  if (hd2DsCr(t['deep-ink'], t.deep) < 4.5) w.push('Dark band text is hard to read (' + hd2DsCr(t['deep-ink'], t.deep).toFixed(1) + ':1)');
+  return w;
+}
+function hd2DsHash() {
+  const D = EF.ds, j = JSON.stringify({ tokens: D.tokens, fonts: D.fonts });
+  return '#preview=' + encodeURIComponent(btoa(unescape(encodeURIComponent(j))));
+}
+function hd2DsSwatch(t) { return '<div style="display:flex;height:34px;border-radius:6px;overflow:hidden;border:1px solid var(--border2);">' + ['bg', 'surface', 'ink', 'sea', 'deep'].map(k => '<span style="flex:1;background:' + esc(t[k] || '#000') + ';"></span>').join('') + '</div>'; }
+function hd2DsHtml() {
+  const D = EF.ds; if (!D) return '';
+  if (D.busy) return '<div style="font-size:13px;color:var(--text3);">' + esc(D.busy) + '</div>';
+  if (D.err) return '<div style="font-size:13px;color:#f87171;">✗ ' + esc(D.err) + '</div>';
+  if (D.bespoke) return '<div style="font-size:13px;color:var(--text2);">This hub is hand-designed (bespoke in hubs.design.json), so the designer can\'t change it. Edit its file directly.</div>';
+  const L = _hd2DsLib, q = D.q.toLowerCase();
+  const looks = L.looks.filter(l => (D.src === 'all' || l.source === D.src) && (D.tone === 'all' || (D.tone === 'dark') === (hd2DsLum(l.tokens.bg) < .2)) && (!q || (l.name + ' ' + (l.note || '') + ' ' + (l.tags || []).join(' ') + ' ' + (l.trades || []).join(' ')).toLowerCase().includes(q)));
+  const sel = (v, opts, on) => '<select style="' + HD2_IN + 'width:auto;" onchange="' + on + '">' + opts.map(([k, l]) => '<option value="' + k + '"' + (k === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select>';
+  const card = l => '<button onclick="hd2DsPick(\'' + esc(l.id) + '\')" data-ds="' + esc(l.id) + '" title="' + esc(l.note || '') + '" style="text-align:left;padding:8px;border:2px solid ' + (D.sel === l.id ? 'var(--accent)' : 'var(--border2)') + ';border-radius:8px;background:var(--surface2);color:var(--text);cursor:pointer;min-width:0;">'
+    + hd2DsSwatch(l.tokens) + '<div style="font-size:12.5px;font-weight:700;margin-top:6px;overflow-wrap:anywhere;">' + esc(l.name) + '</div>'
+    + '<div style="font-size:11px;color:var(--text3);">' + (l.source === 'taste-skill' ? 'Palette' : 'Brand system') + (l.checks && l.checks.length ? ' · <span style="color:#f59e0b;">⚠ ' + l.checks.length + '</span>' : '') + '</div></button>';
+  const fontOpts = [['', 'Keep the hub\'s fonts (' + esc([D.cur.fonts.display, D.cur.fonts.body].filter(Boolean).join(' / ')) + ')'], ...L.fonts.map(f => [f.id, esc(f.display + ' / ' + f.body + (f.suits ? ' — ' + f.suits.slice(0, 50) : ''))])];
+  const warn = hd2DsChecks(D.tokens);
+  const changed = JSON.stringify(D.tokens) !== JSON.stringify(D.cur.tokens) || JSON.stringify(D.fonts) !== JSON.stringify(D.cur.fonts);
+  return '<div style="display:grid;grid-template-columns:minmax(0,1fr);gap:14px;">'
+    + '<div style="font-size:12.5px;color:var(--text3);">Pick a starting look, then a font pairing, then nudge any color. The preview is your real hub page; nothing is saved until ✓ Apply. Layout stays the same; only colors and fonts change.</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'
+    + '<input id="dsQ" style="' + HD2_IN + 'width:220px;" placeholder="Search looks (e.g. green, saas, warm)…" value="' + esc(D.q) + '" oninput="EF.ds.q=this.value;clearTimeout(window._dsT);window._dsT=setTimeout(()=>{hd2EfDraw();const i=document.getElementById(\'dsQ\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)">'
+    + sel(D.src, [['all', 'All sources'], ['awesome-design-md', 'Brand systems (' + L.counts.brands + ')'], ['taste-skill', 'Palettes (' + L.counts.palettes + ')']], 'EF.ds.src=this.value;hd2EfDraw()')
+    + sel(D.tone, [['all', 'Light + dark'], ['light', 'Light pages'], ['dark', 'Dark pages']], 'EF.ds.tone=this.value;hd2EfDraw()')
+    + '<span style="font-size:12px;color:var(--text3);">' + looks.length + ' looks</span></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:330px;overflow:auto;padding:2px;">'
+    + '<button onclick="hd2DsPick(\'\')" style="text-align:left;padding:8px;border:2px solid ' + (!D.sel ? 'var(--accent)' : 'var(--border2)') + ';border-radius:8px;background:var(--surface2);color:var(--text);cursor:pointer;">' + hd2DsSwatch(D.cur.tokens) + '<div style="font-size:12.5px;font-weight:700;margin-top:6px;">Current look</div><div style="font-size:11px;color:var(--text3);">what the hub has now</div></button>'
+    + looks.slice(0, 160).map(card).join('') + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;"><span style="font-size:12.5px;font-weight:700;">Fonts</span>' + sel(D.font, fontOpts, 'hd2DsFont(this.value)') + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">' + HD2_DS_KEYS.map(([k, l]) => '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;"><input type="color" value="' + esc(D.tokens[k] || '#000000') + '" oninput="hd2DsSet(\'' + k + '\',this.value)" style="width:34px;height:28px;border:1px solid var(--border2);border-radius:4px;padding:0;background:none;">' + l + '</label>').join('') + '</div>'
+    + '<div id="dsWarn" style="font-size:12.5px;color:#f59e0b;">' + warn.map(w => '⚠ ' + esc(w)).join('<br>') + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'
+    + '<button style="' + HD2_B('var(--accent)', 'var(--accent)') + '" onclick="hd2DsApply(this)"' + (changed ? '' : ' disabled') + '>✓ Apply to the live hub</button>'
+    + '<button style="' + HD2_B() + '" onclick="hd2DsPick(\'\')">↺ Back to current</button>'
+    + '<a style="' + HD2_B() + 'text-decoration:none;" target="_blank" rel="noopener" id="dsOpen" href="https://cabuzzard.github.io/dash/web/hub/' + esc(EF.e.slug) + '/' + hd2DsHash() + '">Open preview ↗</a>'
+    + '<span style="font-size:12.5px;color:var(--text2);" id="dsMsg">' + esc(D.msg || '') + '</span></div>'
+    + '<iframe id="dsFrame" title="Hub preview" src="https://cabuzzard.github.io/dash/web/hub/' + esc(EF.e.slug) + '/' + hd2DsHash() + '" style="width:100%;height:640px;border:1px solid var(--border2);border-radius:8px;background:#fff;"></iframe>'
+    + '</div>';
+}
+function hd2DsPreview() {   // restyle the preview in place (no redraw, no reload) + refresh the checks
+  const D = EF && EF.ds; if (!D) return; const h = hd2DsHash();
+  const f = document.getElementById('dsFrame'); if (f) { try { f.contentWindow.location.hash = h; } catch (e) { f.src = f.src.split('#')[0] + h; } }
+  const o = document.getElementById('dsOpen'); if (o) o.href = o.href.split('#')[0] + h;
+  const w = document.getElementById('dsWarn'); if (w) w.innerHTML = hd2DsChecks(D.tokens).map(x => '⚠ ' + esc(x)).join('<br>');
+}
+function hd2DsPick(id) {
+  const D = EF.ds; D.sel = id || null; D.msg = '';
+  const l = id && _hd2DsLib.looks.find(x => x.id === id);
+  const t = l ? l.tokens : D.cur.tokens; D.tokens = { ...D.cur.tokens };
+  for (const [k] of HD2_DS_KEYS) if (t[k]) D.tokens[k] = t[k];
+  D.tokens.paper = D.tokens.surface;
+  if (!id) { D.font = ''; D.fonts = { ...D.cur.fonts }; }
+  const sc = document.querySelector('#efPanel [data-ds]') && document.querySelector('#efPanel [data-ds]').parentElement, top = sc ? sc.scrollTop : 0;
+  hd2EfDraw(); const sc2 = document.querySelector('#efPanel [data-ds]') && document.querySelector('#efPanel [data-ds]').parentElement; if (sc2) sc2.scrollTop = top;
+}
+function hd2DsFont(id) {
+  const D = EF.ds; D.font = id; const f = id && _hd2DsLib.fonts.find(x => x.id === id);
+  D.fonts = f ? { display: f.display, body: f.body, mono: f.mono || D.cur.fonts.mono } : { ...D.cur.fonts };
+  hd2DsPreview(); const b = document.querySelector('#efPanel button[onclick^="hd2DsApply"]'); if (b) b.disabled = false;
+}
+function hd2DsSet(k, v) {
+  const D = EF.ds; D.tokens[k] = v; if (k === 'surface') D.tokens.paper = v; if (k === 'ink' && D.cur.tokens['ink-head'] === D.cur.tokens.ink) D.tokens['ink-head'] = v;
+  hd2DsPreview(); const b = document.querySelector('#efPanel button[onclick^="hd2DsApply"]'); if (b) b.disabled = false;
+}
+async function hd2DsApply(btn) {
+  const D = EF.ds, look = D.sel && _hd2DsLib.looks.find(x => x.id === D.sel);
+  btn.disabled = true; btn.textContent = 'Applying…';
+  const palette = {}; for (const [k] of HD2_DS_KEYS) palette[k] = D.tokens[k];
+  const fontsChanged = JSON.stringify(D.fonts) !== JSON.stringify(D.cur.fonts);
+  const r = await call('publishHubDesign', { slug: EF.e.slug, campaignId: EF.e.cid, palette, ...(fontsChanged ? { fonts: D.fonts, fontsNote: 'Hub designer: ' + [D.fonts.display, D.fonts.body].join(' / ') } : {}),
+    rationale: 'Hub designer (Hub Dash 2): ' + (look ? 'started from ' + look.name + (look.source === 'taste-skill' ? ' (taste-skill palette)' : ' (awesome-design-md brand system)') : 'adjusted the current look') + '.' }).catch(e => ({ error: e.message }));
+  if (!EF || !EF.ds) return;
+  if (!r || r.error) { D.msg = '✗ Not applied: ' + ((r && r.error) || 'no response'); btn.disabled = false; btn.textContent = '✓ Apply to the live hub'; return hd2EfDraw(); }
+  D.cur = { tokens: { ...D.tokens }, fonts: { ...D.fonts } }; D.sel = null; D.font = '';
+  D.msg = '✓ Applied. The hub redeploys in about a minute. Post thumbnails use these colors: Content Hubs 2 → 🖼 Restyle thumbnails redraws them.';
+  hd2EfDraw();
 }
 const hd2ImgLike = u => FlyoutMap.imgLike(u);   // rules: worker/flyout-map.mjs
 const HD2_CG_SLOT = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' };

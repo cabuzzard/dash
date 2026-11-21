@@ -892,5 +892,27 @@ async function renderHubOffers() {
   });
 })();
 </script>
+<script>
+/* hub designer preview (2026-11-20): #preview=<base64 JSON {tokens,fonts}> restyles this page in place for Hub Dash 2 → 🎨 Design.
+   Only hex colors and plain font names are accepted; a normal visit has no #preview and nothing runs. */
+(function(){
+  function ap(){
+    var m=/#preview=([^&]+)/.exec(location.hash); if(!m) return;
+    try{
+      var d=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))), r=document.documentElement.style, t=d.tokens||{}, f=d.fonts||{};
+      Object.keys(t).forEach(function(k){ if(/^[a-z-]{2,12}$/.test(k) && /^#[0-9a-f]{3,8}$/i.test(t[k])) r.setProperty('--'+k,t[k]); });
+      var ok=function(x){ return typeof x==='string' && /^[A-Za-z0-9 ]{2,40}$/.test(x); }, fam=[f.display,f.body,f.mono].filter(ok);
+      if(fam.length){
+        var l=document.getElementById('dsPrevFonts'); if(!l){ l=document.createElement('link'); l.id='dsPrevFonts'; l.rel='stylesheet'; document.head.appendChild(l); }
+        l.href='https://fonts.googleapis.com/css2?'+fam.map(function(x){ return 'family='+x.replace(/ /g,'+')+':wght@400;500;600;700'; }).join('&')+'&display=swap';
+        if(ok(f.display)) r.setProperty('--font-display','"'+f.display+'", system-ui, sans-serif');
+        if(ok(f.body)) r.setProperty('--font-body','"'+f.body+'", system-ui, sans-serif');
+        if(ok(f.mono)) r.setProperty('--font-mono','"'+f.mono+'", ui-monospace, monospace');
+      }
+    }catch(e){}
+  }
+  ap(); addEventListener('hashchange',ap);
+})();
+</script>
 </body>
 </html>
