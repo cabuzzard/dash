@@ -275,7 +275,7 @@
     {
       "group": "Hub asset",
       "asset": "Hub",
-      "note": "The hub's own Hub asset (Asset Type \"Hub\", method \"hub\"): section heads, the 3 process steps, nav labels.",
+      "note": "The hub's own Hub asset (Asset Type \"Hub\", method \"hub\"): all of the page's own copy — nav and footer labels, section heads, the 3 process steps, link labels, copyright — plus the contact details (Hub Contact, filled from the hub's contact facts, never invented). Logo is markup (read-only).",
       "fields": [
         {
           "id": "nav_services",
@@ -452,14 +452,7 @@
           },
           "section": "Footer",
           "src": "Hub Page Copy › Blog Nav"
-        }
-      ]
-    },
-    {
-      "group": "Site settings",
-      "asset": "",
-      "note": "No asset: fixed brand and contact details, edited here only.",
-      "fields": [
+        },
         {
           "id": "logo_text",
           "label": "Logo text",
@@ -469,7 +462,8 @@
             "sel": ".logo",
             "readonly": "The logo has a styled middle word (AI·System·Implementation) in the markup — change it in the HTML."
           },
-          "section": "Header"
+          "section": "Header",
+          "src": "logo (markup, readonly)"
         },
         {
           "id": "cta_button",
@@ -479,7 +473,8 @@
           "bind": {
             "sel": ".cta a.btn"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "Hub Contact › Phone Button"
         },
         {
           "id": "cta_sms",
@@ -490,7 +485,8 @@
             "sel": ".cta a.btn",
             "attr": "href"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "Hub Contact › SMS"
         },
         {
           "id": "cta_email",
@@ -502,7 +498,8 @@
             "attr": "href",
             "fmt": "mailto:{v}"
           },
-          "section": "CTA / Contact"
+          "section": "CTA / Contact",
+          "src": "Hub Contact › Email"
         },
         {
           "id": "footer_copyright",
@@ -512,7 +509,85 @@
           "bind": {
             "sel": "footer .footer-inner > div:first-child"
           },
-          "section": "Footer"
+          "section": "Footer",
+          "src": "Hub Page Copy › Copyright"
+        },
+        {
+          "id": "nav_book",
+          "label": "Nav \"Book a Call\" link",
+          "type": "text",
+          "default": "Book a Call",
+          "bind": {
+            "sel": "header nav a:nth-child(3)"
+          },
+          "section": "Header",
+          "src": "Hub Page Copy › Book Call Nav"
+        },
+        {
+          "id": "service1_more",
+          "label": "Card 1 link label",
+          "type": "text",
+          "default": "Learn more →",
+          "bind": {
+            "sel": ".services .card:nth-child(1) a.more"
+          },
+          "section": "Services",
+          "src": "Hub Page Copy › Card Link Label"
+        },
+        {
+          "id": "service2_more",
+          "label": "Card 2 link label",
+          "type": "text",
+          "default": "Learn more →",
+          "bind": {
+            "sel": ".services .card:nth-child(2) a.more"
+          },
+          "section": "Services",
+          "src": "Hub Page Copy › Card Link Label"
+        },
+        {
+          "id": "service3_more",
+          "label": "Card 3 link label",
+          "type": "text",
+          "default": "Learn more →",
+          "bind": {
+            "sel": ".services .card:nth-child(3) a.more"
+          },
+          "section": "Services",
+          "src": "Hub Page Copy › Card Link Label"
+        },
+        {
+          "id": "cta_email_label",
+          "label": "Email link label",
+          "type": "text",
+          "default": "Or email us",
+          "bind": {
+            "sel": ".cta a[href^=\"mailto:\"]"
+          },
+          "section": "CTA / Contact",
+          "src": "Hub Page Copy › Email Link Label"
+        },
+        {
+          "id": "footer_services_label",
+          "label": "Footer \"Services\" link",
+          "type": "text",
+          "default": "Services",
+          "bind": {
+            "sel": "footer a[href=\"#services\"]"
+          },
+          "section": "Footer",
+          "src": "Hub Page Copy › Footer Services"
+        },
+        {
+          "id": "footer_book_label",
+          "label": "Footer \"Book a Call\" link",
+          "type": "text",
+          "default": "Book a Call",
+          "bind": {
+            "sel": "footer a[href=\"#talk\"]"
+          },
+          "section": "Footer",
+          "src": "Hub Page Copy › Footer Book Call"
         }
       ]
     },
