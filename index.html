@@ -14504,7 +14504,7 @@ function kwHubDraft() {
 function kwHubOp(op) { KW.hubOps.push(op); KW._hubDraft = null; KW.selected.clear(); kwLoadResults(KW.offset); }
 function kwHubSet(r) {
   KW.hub = { cid: r.cid, name: r.name, runId: r.runId, model: r.model, products: r.products || [], titles: r.titles || [], undo: r.undo, warn: r.warn || '' };
-  KW.hubOps = []; KW._hubDraft = null;
+  KW.hubOps = []; KW._hubDraft = null; kwHubPlanFetch(r.cid);
   if (!KW.sorts.some(x => KW_HUB_COLS.includes(x.col))) KW.sorts = [{ col: 'cluster', dir: 'asc' }, { col: 'topic', dir: 'asc' }, { col: 'vol', dir: 'desc' }];
   delete KW.snaps[r.runId]; delete KW.snaps['live:' + r.runId];
   KW.group = null; KW.view = [r.runId]; KW.selected.clear();
@@ -14512,6 +14512,21 @@ function kwHubSet(r) {
 }
 // 📋 Paste → Main: a pasted list is priced (exact Google numbers, 30-day cache) and loaded into the hub ticked + filtered to
 // itself; untick the weak ones, then ★ + Main (add) or ★ = Main (replace) → 💾 Apply writes Research Keywords (↶ undo).
+// 📥 Staged plan (2026-11-21): a keyword restructure prepared outside the tab (repo file kw-plans/<cid>.json) loads INTO the draft
+// as ordinary ops — preview, then 💾 Apply / ↶ Undo as usual. Nothing is written until Apply. Plan: { title, note, main:[kw],
+// oldMainTopic:{name,cluster} (current Main keywords become that topic), clusterMoves:{old:new}, newTopics:[{name,cluster,keywords}] }.
+async function kwHubPlanFetch(cid) {
+  try { const r = await fetch('kw-plans/' + cid + '.json?v=' + Date.now()); const p = r.ok ? await r.json() : null; if (KW.hub && KW.hub.cid === cid) { KW.hub.plan = p; kwLoadResults(KW.offset); } } catch (e) {}
+}
+function kwHubPlanLoad() {
+  const P = KW.hub && KW.hub.plan; if (!P) return; const m = kwHubDraft().model, MAIN = KwHubOps.MAIN; let i = 0;
+  const ops = [];
+  if (P.oldMainTopic && m.main.length) ops.push({ op: 'newTopics', mode: 'one', keywords: [...m.main], ids: [kwHubNewId(i++)], name: P.oldMainTopic.name, cluster: P.oldMainTopic.cluster || '', move: true });
+  for (const [from, to] of Object.entries(P.clusterMoves || {})) { const ids = m.topics.filter(t => t.cluster === from).map(t => t.id); if (ids.length) ops.push({ op: 'setCluster', ids, cluster: to }); }
+  for (const t of P.newTopics || []) ops.push({ op: 'newTopics', mode: 'one', keywords: t.keywords, ids: [kwHubNewId(i++)], name: t.name, cluster: t.cluster || '', move: true });
+  if ((P.main || []).length) ops.push({ op: 'assign', keywords: P.main, to: MAIN, move: true });
+  KW.hubOps.push(...ops); KW._hubDraft = null; KW.selected.clear(); KW.hub.planLoaded = true; kwLoadResults(KW.offset);
+}
 function kwHubPasteOpen() {
   if (!KW.hub) return;
   hcModal(`<h3 style="margin:0 0 4px;">📋 Paste → Main — ${esc(KW.hub.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:8px;">One keyword per line (commas / tabs work too). They're priced with exact Google numbers and shown ticked — untick the weak ones, then ★ + Main or ★ = Main, then 💾 Apply.</div>
@@ -14943,6 +14958,7 @@ function kwHubRender() {
         <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubPropose3()" title="Propose Main → 3 clusters → up to 3 topics (volume decides) → Unclassified, read from the hub's records + Google numbers — loads as a draft">🧭 Propose 3×3</button>
         <button class="kw-btn" onclick="kwHubCleanOpen()" title="File the hub's products + titles into its saved topics: real products keep a topic, the rest become titles under bridge products — reviewed first">🧹 Clean up records</button>
         <button class="kw-btn" onclick="kwHubAutoCluster()" title="Use Main Keywords plus every topic's keywords to replace the current grouping with a few broad clusters">✨ Broad-cluster topics</button>
+        ${H.plan && !H.planLoaded ? `<button class="kw-btn" style="border-color:#34d399;color:#34d399;" onclick="kwHubPlanLoad()" title="${esc((H.plan.title || '') + ' — ' + (H.plan.note || ''))}">📥 Load staged plan</button>` : ''}
         <button class="kw-btn" style="border-color:#f5c542;color:#f5c542;" onclick="kwHubPasteOpen()" title="Paste a keyword list → exact Google numbers → tick the good ones → ★ + Main / ★ = Main → 💾 Apply">📋 Paste → Main</button>
         <button class="kw-btn" onclick="kwHubLoadUI('${H.cid}', ${esc(JSON.stringify(H.name))})" title="Re-read the hub (picks up changes made elsewhere)">↻ Reload hub</button>
         <button class="kw-btn" onclick="kwHubClose()">✕ Close hub</button>
