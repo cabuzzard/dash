@@ -61676,13 +61676,15 @@ async function kwHubApply(env, campaignId, ops, name) {
   const staged = [];
   for (const c of st.staged) { if (!c || !c.id) continue; const t = now.get(String(c.id)); if (t) staged.push({ ...c, name: t.name, keywords: join(t) }); }
   for (const id of fx.created) { const t = now.get(id); staged.push({ id, name: t.name, keywords: join(t), rationale: "Created in the Keywords tab (hub reorganize).", searchIntent: "", source: "keywords-tab" }); }
-  await tryW("proposed topics", () => env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(staged)));
   // committed topics (Notion) — keyword list + name only; emptied ones archived
   for (const t of before.topics.filter(x => x.committed)) {
     if (fx.removed.includes(t.id)) await tryW(`archive "${t.name}"`, () => kwStructureTopicPatch(env, t.id, { Status: { select: { name: "Archived" } } }));
     else if (fx.changed.includes(t.id)) { const n = now.get(t.id);
       await tryW(`update "${n.name}"`, async () => kwStructureTopicPatch(env, t.id, { Name: { title: [{ type: "text", text: { content: n.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(join(n)) } })); }
   }
+  // proposed topics are written AFTER the committed-topic patches (2026-11-21): kwStructureTopicPatch re-projects the hub structure
+  // doc into seoclusters:staged, which wiped the topics this apply had just created when the write came first.
+  await tryW("proposed topics", () => env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(staged)));
   // clusters → topics (KV seotopicclusters), keeping the key format each topic already had
   const known = new Set(before.topics.map(t => t.id.replace(/-/g, "")));
   const assign = {};
