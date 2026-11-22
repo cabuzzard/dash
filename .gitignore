@@ -10,3 +10,11 @@ remotion/out/
 .env
 .env.*
 *.key
+
+# Session leftovers / caches — never commit (2026-11-21)
+_scratch/
+.claude/plans/
+.wrangler/
+worker/.wrangler/
+__pycache__/
+*.pyc
