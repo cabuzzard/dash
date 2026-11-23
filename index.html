@@ -13123,11 +13123,11 @@ function hd2Render() {
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : ''}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run', tag: 'Tag' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : ''}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run', tag: 'Cohort' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) || pubW(a) ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
-    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}"${dueAttr([a])} data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}${(a.tags || []).map(t => `<span class="hd2tag">${esc(t)}</span>`).join('')}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, dueB([a]), agg([a]), dueD(a) || pubW(a))}</div>`; };
+    return `<div class="hd2r" data-lv="7" data-i="${ix++}" data-a="${esc(aid)}" data-h="${esc(hubNm)}" data-due="${k}"${dueAttr([a])} data-type="${esc(t.toLowerCase())}" data-in="${esc(vi)}" data-sb="${esc(vs)}" style="${K}"><span class="hd2mk"></span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(hdName(a), { k: 'asset', id: a.assetId, name: hdName(a) })}${hdSt(a) ? `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${esc(hdSt(a))}</span>` : ''}${(a.cohorts || []).map(t => `<span class="hd2tag">${esc(t)}</span>`).join('')}</span><span class="hd2lv"></span><span class="hd2sp"></span>${cols(t, dueB([a]), agg([a]), dueD(a) || pubW(a))}</div>`; };
   const typeOf = a => String(a.rawAssetType || a.assetType || '').trim() || '(no type)';
   // Run level (operator 2026-11-19: "add another level … asset type and we can have run inside of asset type"): inside an asset type, assets
   // with a Run (asset field "Run"; "none" = no run) sit under one heading per run, runs in natural order (R2 before R10); assets without a run
@@ -13137,12 +13137,12 @@ function hd2Render() {
     const m = new Map(); L.forEach(a => { const r = runOf(a); if (r) { if (!m.has(r)) m.set(r, []); m.get(r).push(a); } });
     return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
       .map(([r, RL]) => node(r, RL, 'run', RL.map(leaf).join(''), RL, t === '(no type)' ? '' : t)).join('') + (L.some(a => !runOf(a)) ? node('(no run)', [], 'run', L.filter(a => !runOf(a)).map(leaf).join(''), L.filter(a => !runOf(a)), t === '(no type)' ? '' : t) : ''); };
-  // Tag level (operator 2026-11-23: "another grouping layer to asset types … multi select … I will add as I go"): inside an asset type the
-  // assets sit under one heading per tag — an asset with several tags sits under its FIRST tag only (its row shows all of them); untagged
-  // assets go under (no tag), last. The layer appears once any asset anywhere has a tag. Runs stay inside it.
-  const hasTags = (_hd2Rows || []).some(a => (a.tags || []).length), tagOf = a => String((a.tags || [])[0] || '').trim();
-  const byTag = (t, L) => { if (!hasTags) return byRun(t, L); const m = new Map(); L.forEach(a => { const g = tagOf(a) || '(no tag)'; if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
-    return [...m.entries()].sort((x, y) => (x[0] === '(no tag)') - (y[0] === '(no tag)') || x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
+  // Cohort level (operator 2026-11-23: "another grouping layer to asset types … multi select … I will add as I go"; named "cohort"): inside an asset type the
+  // assets sit under one heading per cohort — an asset with several sits under its FIRST cohort only (its row shows all of them); the rest
+  // go under (no cohort), last. The layer appears once any asset anywhere has a cohort. Runs stay inside it.
+  const hasTags = (_hd2Rows || []).some(a => (a.cohorts || []).length), tagOf = a => String((a.cohorts || [])[0] || '').trim();
+  const byTag = (t, L) => { if (!hasTags) return byRun(t, L); const m = new Map(); L.forEach(a => { const g = tagOf(a) || '(no cohort)'; if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
+    return [...m.entries()].sort((x, y) => (x[0] === '(no cohort)') - (y[0] === '(no cohort)') || x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
       .map(([g, TL]) => node(g, TL, 'tag', byRun(t, TL), TL, t === '(no type)' ? '' : t)).join(''); };
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
@@ -13350,7 +13350,7 @@ let _hd2BM = { mode: '', busy: false, msg: '', arm: false }, _hd2Trees = [];
 function hd2SelModeT() { _hd2SelM = !_hd2SelM; if (!_hd2SelM) _hd2BM.mode = ''; hd2IniDraw(); }
 function hd2BulkMode(m) { const B = _hd2BM; B.mode = B.mode === m ? '' : m; B.arm = false; B.msg = '';
   if (m === 'ini' && !_hd2IniNames) hd2IniNamesLoad();
-  if (m === 'tags' && !_hd2TagList) { _hd2TagList = []; call('assetTags', { op: 'list' }).then(r => { if (r && !r.error) { _hd2TagList = r.tags || []; hd2BulkDraw(); } }).catch(() => {}); }
+  if (m === 'tags' && !_hd2TagList) { _hd2TagList = []; call('assetCohorts', { op: 'list' }).then(r => { if (r && !r.error) { _hd2TagList = r.cohorts || []; hd2BulkDraw(); } }).catch(() => {}); }
   if (m === 'move' && !B.hub) { const first = [..._hd2Sel][0], r = first && document.querySelector(`#hd2Tree div.hd2r[data-a="${first}"]`), T = r && _hd2Trees.find(x => x.name === r.dataset.h);
     B.hub = (T || _hd2Trees[0] || {}).c || ''; B.cl = B.tp = B.pr = B.ti = ''; }
   hd2BulkDraw(); }
@@ -13387,16 +13387,16 @@ function hd2BulkDraw() {
   if (B.mode === 'st') p = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><select id="hd2BkSt" style="${S}">${['Idea', 'Planning', 'Development', 'Review', 'Publish', 'Published'].map(s => `<option>${s}</option>`).join('')}</select>${go(`Set status on ${n}`, "hd2BulkStatus((document.getElementById('hd2BkSt')||{}).value||'')")}
     <span style="font-size:11.5px;color:var(--text3);">Status only — Published here doesn't stamp a publish date or build a site.</span></div>`;
   if (B.mode === 'tags') { const opts = hd2TagOpts();
-    p = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><input id="hd2BkTag" list="hd2BkTagDl" placeholder="Tags — pick or type new, comma-separated" style="${S}min-width:280px;"><datalist id="hd2BkTagDl">${opts.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
+    p = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><input id="hd2BkTag" list="hd2BkTagDl" placeholder="Cohorts — pick or type new, comma-separated" style="${S}min-width:280px;"><datalist id="hd2BkTagDl">${opts.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
       ${go(`Add to ${n}`, 'hd2BulkTags(false)')}${go('Remove from ' + n, 'hd2BulkTags(true)', 'var(--text2)')}</div>
       ${opts.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">${opts.map(t => `<a href="#" onclick="event.preventDefault();hd2TagPick(this.dataset.t)" data-t="${esc(t)}" class="hd2tag" style="margin-left:0;text-decoration:none;cursor:pointer;">${esc(t)}</a>`).join('')}</div>` : ''}
-      <div style="font-size:11.5px;color:var(--text3);margin-top:4px;">Click a tag to put it in the box. An asset is grouped under its first tag; its other tags show on its row.</div>`; }
+      <div style="font-size:11.5px;color:var(--text3);margin-top:4px;">Click a cohort to put it in the box. An asset is grouped under its first cohort; its other cohorts show on its row.</div>`; }
   if (B.mode === 'del') p = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${go(B.arm ? `Delete ${n} asset${n === 1 ? '' : 's'}? Click again` : `🗑 Delete ${n} asset${n === 1 ? '' : 's'}`, 'hd2BulkDel()', '#f87171')}<span style="font-size:11.5px;color:var(--text3);">Each asset is archived in Notion (as the asset Delete everywhere else).</span></div>`;
   const msgC = /^✗/.test(B.msg) ? '#f87171' : /^✓/.test(B.msg) ? '#4ade80' : 'var(--text3)';
   el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="font-size:13px;"><b>${n}</b> asset${n === 1 ? '' : 's'} selected</span>
       <a href="#" onclick="event.preventDefault();hd2SelAll()" style="font-size:12px;color:var(--accent);">All shown</a>${n ? `<a href="#" onclick="event.preventDefault();hd2SelClear()" style="font-size:12px;color:var(--text3);">Clear</a>` : ''}
-      <span style="flex:1"></span>${tab('move', '↪ Move')}${tab('ini', '🎯 Initiative')}${tab('due', '📅 Due date')}${tab('st', 'Status')}${tab('tags', '🏷 Tags')}${tab('del', '🗑 Delete')}
+      <span style="flex:1"></span>${tab('move', '↪ Move')}${tab('ini', '🎯 Initiative')}${tab('due', '📅 Due date')}${tab('st', 'Status')}${tab('tags', '👥 Cohort')}${tab('del', '🗑 Delete')}
       <button onclick="hd2SelModeT()" title="Stop selecting" style="${HD2_B()}padding:3px 9px;font-size:12px;">✕</button></div>
     ${p ? `<div style="margin-top:8px;">${p}</div>` : ''}${B.msg ? `<div style="font-size:12px;margin-top:6px;color:${msgC};">${esc(B.msg)}</div>` : ''}`;
 }
@@ -13431,26 +13431,26 @@ function hd2BulkStatus(s) {
   if (!s) return; const items = hd2SelAssets().filter(a => hdSt(a) !== s);
   return hd2BulkRun('Status → ' + s, items, a => call('updateAssetStatus', { assetId: hdNid(a.assetId), status: s, statusOnly: true }), a => { a.status = s; a.assetStatus = s; });
 }
-// 🏷 Tags (operator 2026-11-23): existing tags = the Asset Tags options (worker assetTags list) + any on the loaded rows
+// 👥 Cohort (operator 2026-11-23): existing cohorts = the Assets "Cohort" options (worker assetCohorts list) + any on the loaded rows
 let _hd2TagList = null;
-function hd2TagOpts() { const S = new Set(_hd2TagList || []); (_hd2Rows || []).forEach(a => (a.tags || []).forEach(t => S.add(t))); return [...S].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })); }
+function hd2TagOpts() { const S = new Set(_hd2TagList || []); (_hd2Rows || []).forEach(a => (a.cohorts || []).forEach(t => S.add(t))); return [...S].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })); }
 function hd2TagPick(t) { const i = document.getElementById('hd2BkTag'); if (!i) return; const L = i.value.split(',').map(x => x.trim()).filter(Boolean); if (!L.some(x => x.toLowerCase() === t.toLowerCase())) L.push(t); i.value = L.join(', '); i.focus(); }
 async function hd2BulkTags(remove) {
   const B = _hd2BM; if (B.busy) return;
   const tags = String((document.getElementById('hd2BkTag') || {}).value || '').split(',').map(x => x.trim()).filter(Boolean);
-  if (!tags.length) { B.msg = '✗ Type or pick at least one tag'; return hd2BulkDraw(); }
+  if (!tags.length) { B.msg = '✗ Type or pick at least one cohort'; return hd2BulkDraw(); }
   const items = hd2SelAssets(); if (!items.length) return;
   B.busy = true; let done = 0; const fails = [];
   for (let i = 0; i < items.length; i += 25) {
-    const chunk = items.slice(i, i + 25); B.msg = (remove ? 'Removing' : 'Adding') + ' tags… ' + i + ' / ' + items.length; hd2BulkDraw();
-    const r = await call('assetTags', { op: remove ? 'remove' : 'add', assetIds: chunk.map(a => hdNid(a.assetId)), tags }).catch(e => ({ error: e.message }));
+    const chunk = items.slice(i, i + 25); B.msg = (remove ? 'Removing' : 'Adding') + ' cohorts… ' + i + ' / ' + items.length; hd2BulkDraw();
+    const r = await call('assetCohorts', { op: remove ? 'remove' : 'add', assetIds: chunk.map(a => hdNid(a.assetId)), cohorts: tags }).catch(e => ({ error: e.message }));
     if (!r || (r.error && !(r.done || []).length)) { fails.push((r && r.error) || 'no response'); break; }
-    (r.done || []).forEach(x => { const a = _hd2A.get(hdNid(x.id)); if (a) { a.tags = x.tags; done++; } });
+    (r.done || []).forEach(x => { const a = _hd2A.get(hdNid(x.id)); if (a) { a.cohorts = x.cohorts; done++; } });
     (r.failed || []).forEach(x => { const a = _hd2A.get(hdNid(x.id)); fails.push((a ? hdName(a) : x.id) + ': ' + x.error); });
   }
   if (!remove) tags.forEach(t => { _hd2TagList = _hd2TagList || []; if (!_hd2TagList.some(x => x.toLowerCase() === t.toLowerCase())) _hd2TagList.push(t); });
   B.busy = false;
-  B.msg = (fails.length ? '✗' : '✓') + ' Tags ' + (remove ? 'removed from ' : 'added to ') + done + ' of ' + items.length + (fails.length ? ' — ' + fails.slice(0, 3).join(' · ') : '');
+  B.msg = (fails.length ? '✗' : '✓') + ' Cohort ' + (remove ? 'removed from ' : 'added to ') + done + ' of ' + items.length + (fails.length ? ' — ' + fails.slice(0, 3).join(' · ') : '');
   if (done) hd2RerenderNamed();
   hd2BulkDraw(); showToast(B.msg.slice(0, 220), fails.length ? 'error' : 'success');
 }
@@ -13479,7 +13479,7 @@ async function hd2Reload() {
 // every list). ✓ Apply keeps only the asset rows whose heading at each ticked level is one of the ticked names (levels AND, names within a level
 // OR), hides headings left empty, and opens the way down to what is left. ✕ Reset (toolbar or popup) clears it and closes what it opened.
 // Session only; works together with the other filters (Initiatives only, Due only, 🎯, count filters).
-const HD2_FLV = [[1, 'Hub'], [2, 'Cluster'], [3, 'Topic'], [4, 'Product'], [5, 'Title'], [6, 'Asset type'], [8, 'Tag']];
+const HD2_FLV = [[1, 'Hub'], [2, 'Cluster'], [3, 'Topic'], [4, 'Product'], [5, 'Title'], [6, 'Asset type'], [8, 'Cohort']];
 let _hd2F = {}, _hd2FD = null, _hd2FQ = '';   // _hd2F = applied {lv: Set(names)}; _hd2FD = the popup's draft
 const hd2FOn = F => Object.values(F || {}).some(S => S && S.size);
 const hd2NameOf = s => { const a = s.querySelector('.hd2nm'); return a ? a.textContent.trim() : ''; };
@@ -13611,7 +13611,7 @@ async function hd2IniApply(remove, given) {   // given = a name from the bulk ba
 // a select list. not a single select" + "with an all option"). A checkbox per heading level: ticked = every heading of that level is open,
 // unticked = closed. A change applies at once. All ticks / unticks every level. Level = the summary's data-lv: 1 Hub · 2 Cluster · 3 Topic ·
 // 4 Product · 5 Title · 6 Asset type · 7 Run (open = its assets show). Rows hidden by a filter follow too. The ticks are remembered per browser.
-const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types'], [8, 'Tags'], [7, 'Runs']];
+const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types'], [8, 'Cohorts'], [7, 'Runs']];
 let _hd2LvOn = new Set([1]); try { const s = JSON.parse(localStorage.getItem('hd2LvOn') || 'null'); if (Array.isArray(s)) _hd2LvOn = new Set(s.map(Number)); } catch (e) {}
 // operator 2026-11-23: the popup is a checklist + two clear buttons. ▾ Expand opens every heading of the ticked levels and the headings
 // above them (so they show); ▸ Collapse closes every heading of the ticked levels (and everything inside them). Unticked levels are left as
