@@ -21164,6 +21164,41 @@ export default {
     // asset) with the database's options, and save the fields the operator changed. Reads are plain; saves go through the module
     // fetch, so the Keywords-hierarchy guard, the Review → Development rule and the Asset Type mapping all apply as for any other write.
     // Only changed fields are sent. Rich text is saved as plain text (formatting / links inside a text field are not kept).
+    // planDoc {op: "get" | "save", assetId, plan?, list?} — the Plan asset type (operator 2026-11-23: "an asset type called plan … contains a
+    // written marketing plan, and … a deploy list which picks a list of the existing asset types and arranges them for deployment to development
+    // on a click … editable through the flyout"; "it belongs to a title … its just another asset type"). Two Assets text fields: "Marketing Plan"
+    // (the written plan) and "Deploy List" (JSON [{id, type, name, assetId?, at?}], in deploy order). get also returns the plan's title / product /
+    // campaign so the flyout can create the listed assets on the same title, as children of the plan (createAsset, Status Development).
+    if (body.action === "planDoc") {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        await assetsTextPropEnsure(env, "Marketing Plan", "plan:prop:text"); await assetsTextPropEnsure(env, "Deploy List", "plan:prop:list");
+        const pid = hubAssetId(String(body.assetId || "")); if (!/^[0-9a-f]{32}$/i.test(pid)) return json({ error: "assetId required" }, 400);
+        const H = ivHdr(), rt = a => (a || []).map(t => t.plain_text || "").join(""), chunk = v => { const s = String(v || ""), o = []; for (let i = 0; i < s.length && o.length < 100; i += 2000) o.push({ type: "text", text: { content: s.slice(i, i + 2000) } }); return o; };
+        const clean = L => (Array.isArray(L) ? L : []).slice(0, 200).map(x => ({ id: String(x.id || Math.random().toString(36).slice(2, 10)).slice(0, 20), type: String(x.type || "").trim().slice(0, 100), name: String(x.name || "").trim().slice(0, 200),
+          ...(x.assetId ? { assetId: hubAssetId(String(x.assetId)) } : {}), ...(x.at ? { at: String(x.at).slice(0, 30) } : {}) })).filter(x => x.type);
+        if (body.op === "save") {
+          const props = {};
+          if (body.plan != null) { const p = String(body.plan); if (p.length > 190000) return json({ error: "The plan is at most 190,000 characters" }, 400); props["Marketing Plan"] = { rich_text: chunk(p) }; }
+          if (body.list != null) { const j = JSON.stringify(clean(body.list)); if (j.length > 190000) return json({ error: "The deploy list is too long" }, 400); props["Deploy List"] = { rich_text: chunk(j) }; }
+          if (!Object.keys(props).length) return json({ error: "nothing to save" }, 400);
+          const r = await fetch("https://api.notion.com/v1/pages/" + pid, { method: "PATCH", headers: H, body: JSON.stringify({ properties: props }) }); const d = await r.json().catch(() => ({}));
+          if (!r.ok) return json({ error: d.message || ("Notion " + r.status) }, r.status);
+          return json({ ok: true, list: body.list != null ? clean(body.list) : undefined });
+        }
+        const r = await fetch("https://api.notion.com/v1/pages/" + pid, { headers: H }), pg = await r.json();
+        if (!r.ok) return json({ error: pg.message || ("Notion " + r.status) }, r.status);
+        const p = pg.properties || {}, rel = k => hubAssetId(String(((p[k] || {}).relation || [])[0]?.id || ""));
+        let list = []; try { list = clean(JSON.parse(rt(p["Deploy List"]?.rich_text) || "[]")); } catch (e) { list = []; }
+        // deployed rows: the asset's current name / type / status (archived ones say so)
+        for (const x of list.filter(x => x.assetId)) { try { const ar = await fetch("https://api.notion.com/v1/pages/" + x.assetId, { headers: H }), ap = await ar.json();
+          if (!ar.ok || ap.archived || ap.in_trash) { x.gone = true; continue; } const q = ap.properties || {};
+          x.live = { name: rt(q["Asset Title"]?.title), type: q["Asset Type"]?.select?.name || "", status: q["Asset Status"]?.select?.name || "" }; } catch (e) {} }
+        return json({ ok: true, name: rt(p["Asset Title"]?.title), assetType: p["Asset Type"]?.select?.name || "", plan: rt(p["Marketing Plan"]?.rich_text), list,
+          titleId: rel("Content Strategy"), productId: rel("Product"), campId: rel("Campaign") });
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "entityGet" || body.action === "entitySave") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       await assetsTextPropEnsure(env, "Page HTML", "pagehtml:prop").catch(() => {});   // Page HTML = a page-published asset's body (see sanitizePageHtml)
