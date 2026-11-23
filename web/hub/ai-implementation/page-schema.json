@@ -1,801 +1,801 @@
 {
-  "page": "aisystemimplementation.com/ (web/hub/ai-implementation/index.html)",
-  "updated": "2026-11-21",
-  "rules": [
-    "Markup is the operator's and is never written; assets fill text, attributes and images in these slots.",
-    "slot = design-fields.json id (Site designer 🧩 Fields); source.field = the asset's writing-contract field (Current Methods).",
-    "Everything but the logo markup, the step numbers and the design variables is served by an asset."
-  ],
-  "assets": {
-    "CTA": {
-      "row": "CTA",
-      "kinds": [
-        "Hero",
-        "Inline Slim",
-        "Flyout",
-        "Email"
-      ],
-      "fields": [
-        "Eyebrow ≤30",
-        "Platform Title ≤60",
-        "Body ≤160",
-        "CTA Label ≤30",
-        "image"
-      ]
-    },
-    "Offer": {
-      "row": "Sales - Offer Blog Post (writes Asset Type Offer)",
-      "fields": [
-        "Card Kicker ≤18",
-        "Card Title ≤32",
-        "Body ≤160",
-        "published page URL"
-      ]
-    },
-    "Hub": {
-      "row": "Hub (mapped blank until a clean test write)",
-      "fields": [
-        "Hub Page Copy: 22 lines",
-        "Hub Contact: 3 lines (phone button, sms, email; never invented)"
-      ]
-    }
+ "page": "aisystemimplementation.com/ (web/hub/ai-implementation/index.html)",
+ "updated": "2026-11-22",
+ "rules": [
+  "Markup is the operator's and is never written; assets fill text, attributes and images in these slots.",
+  "slot = design-fields.json id (Site designer 🧩 Fields); source.field = the asset's writing-contract field (Current Methods).",
+  "Everything but the logo markup, the step numbers and the design variables is served by an asset."
+ ],
+ "assets": {
+  "CTA": {
+   "row": "CTA",
+   "kinds": [
+    "Hero",
+    "Inline Slim",
+    "Flyout",
+    "Email"
+   ],
+   "fields": [
+    "Eyebrow ≤30",
+    "Platform Title ≤60",
+    "Body ≤160",
+    "CTA Label ≤30",
+    "image"
+   ]
   },
-  "sections": [
+  "Offer": {
+   "row": "Sales - Offer Blog Post (writes Asset Type Offer)",
+   "fields": [
+    "Card Kicker ≤18",
+    "Card Title ≤32",
+    "Body ≤160",
+    "published page URL"
+   ]
+  },
+  "Hub": {
+   "row": "Hub (mapped blank until a clean test write)",
+   "fields": [
+    "Hub Page Copy: 22 lines",
+    "Hub Contact: 3 lines (phone button, sms, email; never invented)"
+   ]
+  }
+ },
+ "sections": [
+  {
+   "section": "Header",
+   "selector": "header",
+   "objects": [
     {
-      "section": "Header",
-      "selector": "header",
-      "objects": [
-        {
-          "object": "Logo text",
-          "slot": "logo_text",
-          "selector": ".logo",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "logo (markup, readonly)",
-            "group": "Hub asset"
-          },
-          "current": "AISystem Implementation"
-        },
-        {
-          "object": "Nav: Services",
-          "slot": "nav_services",
-          "selector": "header nav a[href=\"#services\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Services Nav",
-            "group": "Hub asset"
-          },
-          "current": "Services"
-        },
-        {
-          "object": "Nav: How It Works",
-          "slot": "nav_process",
-          "selector": "header nav a[href=\"#process\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Process Nav",
-            "group": "Hub asset"
-          },
-          "current": "How It Works"
-        },
-        {
-          "object": "Nav \"Book a Call\" link",
-          "slot": "nav_book",
-          "selector": "header nav a:nth-child(3)",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Book Call Nav",
-            "group": "Hub asset"
-          },
-          "current": "Book a Call"
-        },
-        {
-          "object": "Nav CTA button",
-          "slot": "nav_cta",
-          "selector": "header nav a.nav-cta",
-          "type": "text",
-          "source": {
-            "asset": "CTA",
-            "field": "CTA Label",
-            "group": "CTA · Hero"
-          },
-          "current": "Book Free Strategy Call"
-        }
-      ]
+     "object": "Logo text",
+     "slot": "logo_text",
+     "selector": ".logo",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "logo (markup, readonly)",
+      "group": "Hub asset"
+     },
+     "current": "AISystem Implementation"
     },
     {
-      "section": "Hero",
-      "selector": ".hero",
-      "objects": [
-        {
-          "object": "Hero eyebrow",
-          "slot": "hero_eyebrow",
-          "selector": ".hero .eyebrow",
-          "type": "text",
-          "source": {
-            "asset": "CTA",
-            "field": "Eyebrow",
-            "group": "CTA · Hero"
-          },
-          "current": "For small business owners"
-        },
-        {
-          "object": "Hero headline",
-          "slot": "hero_headline",
-          "selector": ".hero h1",
-          "type": "text",
-          "source": {
-            "asset": "CTA",
-            "field": "Platform Title",
-            "group": "CTA · Hero"
-          },
-          "current": "Get AI working in your business — without hiring a team"
-        },
-        {
-          "object": "Hero subheadline",
-          "slot": "hero_sub",
-          "selector": ".hero p.lead",
-          "type": "textarea",
-          "source": {
-            "asset": "CTA",
-            "field": "Body",
-            "group": "CTA · Hero"
-          },
-          "current": "We implement, integrate, and hand over working AI automation so your team can use it from day one. No more tools that sit unused."
-        },
-        {
-          "object": "Hero primary CTA",
-          "slot": "hero_cta_primary",
-          "selector": ".hero-actions a:first-child",
-          "type": "text",
-          "source": {
-            "asset": "CTA",
-            "field": "CTA Label",
-            "group": "CTA · Hero"
-          },
-          "current": "Book your free strategy call"
-        },
-        {
-          "object": "Hero secondary CTA",
-          "slot": "hero_cta_secondary",
-          "selector": ".hero-actions a.btn-ghost",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Services Jump Button",
-            "group": "Hub asset"
-          },
-          "current": "See the services"
-        },
-        {
-          "object": "Hero image URL or base64",
-          "slot": "hero_image",
-          "selector": ".hero-visual img",
-          "attr": "src",
-          "type": "image",
-          "source": {
-            "asset": "CTA",
-            "field": "image (asset image, not the writer)",
-            "group": "CTA · Hero"
-          },
-          "current": ""
-        }
-      ]
+     "object": "Nav: Services",
+     "slot": "nav_services",
+     "selector": "header nav a[href=\"#services\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Services Nav",
+      "group": "Hub asset"
+     },
+     "current": "Services"
     },
     {
-      "section": "Services",
-      "selector": ".services",
-      "objects": [
-        {
-          "object": "Services eyebrow",
-          "slot": "services_eyebrow",
-          "selector": ".services .section-head .eyebrow",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Services Eyebrow",
-            "group": "Hub asset"
-          },
-          "current": "What we do"
-        },
-        {
-          "object": "Services title",
-          "slot": "services_title",
-          "selector": ".services .section-head h2",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Services Heading",
-            "group": "Hub asset"
-          },
-          "current": "Practical AI systems for small businesses"
-        },
-        {
-          "object": "Services subtitle",
-          "slot": "services_subtitle",
-          "selector": ".services .section-head p",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Services Intro",
-            "group": "Hub asset"
-          },
-          "current": "Choose the level of support that matches where you are right now."
-        }
-      ],
-      "collection": {
-        "name": "Service cards",
-        "selector": ".services .grid-3 > .card",
-        "count": 3,
-        "dynamic": true,
-        "itemAsset": "Offer",
-        "query": "Published Offers of this hub (card order not decided)",
-        "items": [
-          {
-            "index": 1,
-            "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
-            "objects": [
-              {
-                "object": "Service 1 kicker",
-                "slot": "service1_kicker",
-                "selector": ".services .card:nth-child(1) .kicker",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Kicker",
-                  "group": "Offer · card 1"
-                },
-                "current": "Done-for-you"
-              },
-              {
-                "object": "Service 1 title",
-                "slot": "service1_title",
-                "selector": ".services .card:nth-child(1) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Title",
-                  "group": "Offer · card 1"
-                },
-                "current": "AI Automation Services"
-              },
-              {
-                "object": "Service 1 description",
-                "slot": "service1_body",
-                "selector": ".services .card:nth-child(1) p",
-                "type": "textarea",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Body",
-                  "group": "Offer · card 1"
-                },
-                "current": "For owners whose manual workflows are eating their time. We build, integrate, and hand over working automation your team can run."
-              },
-              {
-                "object": "Service 1 link",
-                "slot": "service1_link",
-                "selector": ".services .card:nth-child(1) a.more",
-                "attr": "href",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "published page URL (not the writer)",
-                  "group": "Offer · card 1"
-                },
-                "current": "/blog/ai-operations-partner/"
-              },
-              {
-                "object": "Card 1 link label",
-                "slot": "service1_more",
-                "selector": ".services .card:nth-child(1) a.more",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Card Link Label",
-                  "group": "Hub asset"
-                },
-                "current": "Learn more →"
-              }
-            ]
-          },
-          {
-            "index": 2,
-            "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
-            "objects": [
-              {
-                "object": "Service 2 kicker",
-                "slot": "service2_kicker",
-                "selector": ".services .card:nth-child(2) .kicker",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Kicker",
-                  "group": "Offer · card 2"
-                },
-                "current": "Ongoing partner"
-              },
-              {
-                "object": "Service 2 title",
-                "slot": "service2_title",
-                "selector": ".services .card:nth-child(2) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Title",
-                  "group": "Offer · card 2"
-                },
-                "current": "Fractional AI Operations"
-              },
-              {
-                "object": "Service 2 description",
-                "slot": "service2_body",
-                "selector": ".services .card:nth-child(2) p",
-                "type": "textarea",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Body",
-                  "group": "Offer · card 2"
-                },
-                "current": "For teams that already have tools but no system. One fractional partner takes over AI workflows and content so it runs without you as the bottleneck."
-              },
-              {
-                "object": "Service 2 link",
-                "slot": "service2_link",
-                "selector": ".services .card:nth-child(2) a.more",
-                "attr": "href",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "published page URL (not the writer)",
-                  "group": "Offer · card 2"
-                },
-                "current": "/blog/ai-content-partner/"
-              },
-              {
-                "object": "Card 2 link label",
-                "slot": "service2_more",
-                "selector": ".services .card:nth-child(2) a.more",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Card Link Label",
-                  "group": "Hub asset"
-                },
-                "current": "Learn more →"
-              }
-            ]
-          },
-          {
-            "index": 3,
-            "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
-            "objects": [
-              {
-                "object": "Service 3 kicker",
-                "slot": "service3_kicker",
-                "selector": ".services .card:nth-child(3) .kicker",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Kicker",
-                  "group": "Offer · card 3"
-                },
-                "current": "Clarity first"
-              },
-              {
-                "object": "Service 3 title",
-                "slot": "service3_title",
-                "selector": ".services .card:nth-child(3) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Card Title",
-                  "group": "Offer · card 3"
-                },
-                "current": "AI Workflow Audit & Roadmap"
-              },
-              {
-                "object": "Service 3 description",
-                "slot": "service3_body",
-                "selector": ".services .card:nth-child(3) p",
-                "type": "textarea",
-                "source": {
-                  "asset": "Offer",
-                  "field": "Body",
-                  "group": "Offer · card 3"
-                },
-                "current": "One focused assessment that maps your bottlenecks and delivers a ranked, actionable roadmap — no retainer required."
-              },
-              {
-                "object": "Service 3 link",
-                "slot": "service3_link",
-                "selector": ".services .card:nth-child(3) a.more",
-                "attr": "href",
-                "type": "text",
-                "source": {
-                  "asset": "Offer",
-                  "field": "published page URL (not the writer)",
-                  "group": "Offer · card 3"
-                },
-                "current": "/blog/done-for-you-lead-gen/"
-              },
-              {
-                "object": "Card 3 link label",
-                "slot": "service3_more",
-                "selector": ".services .card:nth-child(3) a.more",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Card Link Label",
-                  "group": "Hub asset"
-                },
-                "current": "Learn more →"
-              }
-            ]
-          }
-        ]
-      }
+     "object": "Nav: How It Works",
+     "slot": "nav_process",
+     "selector": "header nav a[href=\"#process\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Process Nav",
+      "group": "Hub asset"
+     },
+     "current": "How It Works"
     },
     {
-      "section": "Process",
-      "selector": ".process",
-      "objects": [
-        {
-          "object": "Process eyebrow",
-          "slot": "process_eyebrow",
-          "selector": ".process .section-head .eyebrow",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Process Eyebrow",
-            "group": "Hub asset"
-          },
-          "current": "Simple process"
-        },
-        {
-          "object": "Process title",
-          "slot": "process_title",
-          "selector": ".process .section-head h2",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Process Heading",
-            "group": "Hub asset"
-          },
-          "current": "From audit to working system"
-        },
-        {
-          "object": "Process subtitle",
-          "slot": "process_subtitle",
-          "selector": ".process .section-head p",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Process Intro",
-            "group": "Hub asset"
-          },
-          "current": "Most clients see a live workflow within a few weeks."
-        }
-      ],
-      "collection": {
-        "name": "Process steps",
-        "selector": ".steps > .step",
-        "count": 3,
-        "dynamic": false,
-        "itemAsset": "Hub",
-        "items": [
-          {
-            "index": 1,
-            "serves": "Hub",
-            "objects": [
-              {
-                "object": "Step number",
-                "selector": ".steps .step:nth-child(1) .step-num",
-                "source": {
-                  "asset": null,
-                  "from": "markup (fixed)"
-                },
-                "current": "1"
-              },
-              {
-                "object": "Step 1 title",
-                "slot": "step1_title",
-                "selector": ".steps .step:nth-child(1) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 1 Title",
-                  "group": "Hub asset"
-                },
-                "current": "Strategy Call"
-              },
-              {
-                "object": "Step 1 body",
-                "slot": "step1_body",
-                "selector": ".steps .step:nth-child(1) p",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 1 Body",
-                  "group": "Hub asset"
-                },
-                "current": "We map your current tools and the highest-friction workflows."
-              }
-            ]
-          },
-          {
-            "index": 2,
-            "serves": "Hub",
-            "objects": [
-              {
-                "object": "Step number",
-                "selector": ".steps .step:nth-child(2) .step-num",
-                "source": {
-                  "asset": null,
-                  "from": "markup (fixed)"
-                },
-                "current": "2"
-              },
-              {
-                "object": "Step 2 title",
-                "slot": "step2_title",
-                "selector": ".steps .step:nth-child(2) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 2 Title",
-                  "group": "Hub asset"
-                },
-                "current": "Build & Integrate"
-              },
-              {
-                "object": "Step 2 body",
-                "slot": "step2_body",
-                "selector": ".steps .step:nth-child(2) p",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 2 Body",
-                  "group": "Hub asset"
-                },
-                "current": "We implement the automations and connect them to what you already use."
-              }
-            ]
-          },
-          {
-            "index": 3,
-            "serves": "Hub",
-            "objects": [
-              {
-                "object": "Step number",
-                "selector": ".steps .step:nth-child(3) .step-num",
-                "source": {
-                  "asset": null,
-                  "from": "markup (fixed)"
-                },
-                "current": "3"
-              },
-              {
-                "object": "Step 3 title",
-                "slot": "step3_title",
-                "selector": ".steps .step:nth-child(3) h3",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 3 Title",
-                  "group": "Hub asset"
-                },
-                "current": "Hand Over"
-              },
-              {
-                "object": "Step 3 body",
-                "slot": "step3_body",
-                "selector": ".steps .step:nth-child(3) p",
-                "type": "text",
-                "source": {
-                  "asset": "Hub",
-                  "field": "Hub Page Copy › Step 3 Body",
-                  "group": "Hub asset"
-                },
-                "current": "Your team gets training and a system they can operate from day one."
-              }
-            ]
-          }
-        ]
-      }
+     "object": "Nav \"Book a Call\" link",
+     "slot": "nav_book",
+     "selector": "header nav a:nth-child(3)",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Book Call Nav",
+      "group": "Hub asset"
+     },
+     "current": "Book a Call"
     },
     {
-      "section": "Contact band",
-      "selector": ".cta#talk",
-      "objects": [
-        {
-          "object": "Bottom CTA image (business owners with phones)",
-          "slot": "cta_image",
-          "selector": ".cta-image img",
-          "attr": "src",
-          "type": "image",
-          "source": {
-            "asset": "CTA",
-            "field": "image (asset image, not the writer)",
-            "group": "CTA · Contact band"
-          },
-          "current": ""
-        },
-        {
-          "object": "Bottom CTA headline",
-          "slot": "cta_headline",
-          "selector": ".cta h2",
-          "type": "text",
-          "source": {
-            "asset": "CTA",
-            "field": "Platform Title",
-            "group": "CTA · Contact band"
-          },
-          "current": "Ready to stop managing tools and start running a system?"
-        },
-        {
-          "object": "Bottom CTA body",
-          "slot": "cta_body",
-          "selector": ".cta .wrap > p:first-of-type",
-          "type": "textarea",
-          "source": {
-            "asset": "CTA",
-            "field": "Body",
-            "group": "CTA · Contact band"
-          },
-          "current": "Book a free strategy call. We’ll look at where AI can actually save time in your business and outline a clear next step."
-        },
-        {
-          "object": "Bottom CTA button text",
-          "slot": "cta_button",
-          "selector": ".cta a.btn",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Contact › Phone Button",
-            "group": "Hub asset"
-          },
-          "current": "Text (925) 940-0014"
-        },
-        {
-          "object": "SMS link",
-          "slot": "cta_sms",
-          "selector": ".cta a.btn",
-          "attr": "href",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Contact › SMS",
-            "group": "Hub asset"
-          },
-          "current": "sms:+19259400014"
-        },
-        {
-          "object": "Email link label",
-          "slot": "cta_email_label",
-          "selector": ".cta a[href^=\"mailto:\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Email Link Label",
-            "group": "Hub asset"
-          },
-          "current": "Or email us"
-        },
-        {
-          "object": "Email address",
-          "slot": "cta_email",
-          "selector": ".cta a[href^=\"mailto:\"]",
-          "attr": "href",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Contact › Email",
-            "group": "Hub asset"
-          },
-          "current": "hello@aisystemimplementation.com"
-        }
-      ]
-    },
-    {
-      "section": "Footer",
-      "selector": "footer",
-      "objects": [
-        {
-          "object": "Copyright line",
-          "slot": "footer_copyright",
-          "selector": "footer .footer-inner > div:first-child",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Copyright",
-            "group": "Hub asset"
-          },
-          "current": "© AI System Implementation"
-        },
-        {
-          "object": "Footer \"Services\" link",
-          "slot": "footer_services_label",
-          "selector": "footer a[href=\"#services\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Footer Services",
-            "group": "Hub asset"
-          },
-          "current": "Services"
-        },
-        {
-          "object": "Footer blog label",
-          "slot": "footer_blog_label",
-          "selector": "footer a[href=\"/blog/\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Blog Nav",
-            "group": "Hub asset"
-          },
-          "current": "Field Notes"
-        },
-        {
-          "object": "Footer \"Book a Call\" link",
-          "slot": "footer_book_label",
-          "selector": "footer a[href=\"#talk\"]",
-          "type": "text",
-          "source": {
-            "asset": "Hub",
-            "field": "Hub Page Copy › Footer Book Call",
-            "group": "Hub asset"
-          },
-          "current": "Book a Call"
-        }
-      ]
+     "object": "Nav CTA button",
+     "slot": "nav_cta",
+     "selector": "header nav a.nav-cta",
+     "type": "text",
+     "source": {
+      "asset": "CTA",
+      "field": "CTA Label",
+      "group": "CTA · Hero"
+     },
+     "current": "Book a scoping call"
     }
-  ],
-  "design": {
-    "serves": "no asset — Site designer 🎨 Design tab + color combos",
-    "variables": [
-      "--green",
-      "--green-bright",
-      "--green-dark",
-      "--green-darker",
-      "--green-soft",
-      "--green-mid",
-      "--ink",
-      "--muted",
-      "--line",
-      "--bg",
-      "--font",
-      "--text-base",
-      "--radius-sm",
-      "--radius-md",
-      "--radius-lg",
-      "--white",
-      "--space-xs",
-      "--space-sm",
-      "--space-md",
-      "--space-lg",
-      "--space-xl",
-      "--space-2xl",
-      "--space-3xl",
-      "--space-4xl",
-      "--shadow-sm",
-      "--shadow-md",
-      "--shadow-hero",
-      "--shadow-btn",
-      "--leading"
+   ]
+  },
+  {
+   "section": "Hero",
+   "selector": ".hero",
+   "objects": [
+    {
+     "object": "Hero eyebrow",
+     "slot": "hero_eyebrow",
+     "selector": ".hero .eyebrow",
+     "type": "text",
+     "source": {
+      "asset": "CTA",
+      "field": "Eyebrow",
+      "group": "CTA · Hero"
+     },
+     "current": "For mid-sized companies"
+    },
+    {
+     "object": "Hero headline",
+     "slot": "hero_headline",
+     "selector": ".hero h1",
+     "type": "text",
+     "source": {
+      "asset": "CTA",
+      "field": "Platform Title",
+      "group": "CTA · Hero"
+     },
+     "current": "Operational AI systems without building an internal team"
+    },
+    {
+     "object": "Hero subheadline",
+     "slot": "hero_sub",
+     "selector": ".hero p.lead",
+     "type": "textarea",
+     "source": {
+      "asset": "CTA",
+      "field": "Body",
+      "group": "CTA · Hero"
+     },
+     "current": "We find where manual work costs you most, then build AI automation into the systems you already run and train your team to operate it."
+    },
+    {
+     "object": "Hero primary CTA",
+     "slot": "hero_cta_primary",
+     "selector": ".hero-actions a:first-child",
+     "type": "text",
+     "source": {
+      "asset": "CTA",
+      "field": "CTA Label",
+      "group": "CTA · Hero"
+     },
+     "current": "Book a scoping call"
+    },
+    {
+     "object": "Hero secondary CTA",
+     "slot": "hero_cta_secondary",
+     "selector": ".hero-actions a.btn-ghost",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Services Jump Button",
+      "group": "Hub asset"
+     },
+     "current": "See the services"
+    },
+    {
+     "object": "Hero image URL or base64",
+     "slot": "hero_image",
+     "selector": ".hero-visual img",
+     "attr": "src",
+     "type": "image",
+     "source": {
+      "asset": "CTA",
+      "field": "image (asset image, not the writer)",
+      "group": "CTA · Hero"
+     },
+     "current": ""
+    }
+   ]
+  },
+  {
+   "section": "Services",
+   "selector": ".services",
+   "objects": [
+    {
+     "object": "Services eyebrow",
+     "slot": "services_eyebrow",
+     "selector": ".services .section-head .eyebrow",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Services Eyebrow",
+      "group": "Hub asset"
+     },
+     "current": "What we do"
+    },
+    {
+     "object": "Services title",
+     "slot": "services_title",
+     "selector": ".services .section-head h2",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Services Heading",
+      "group": "Hub asset"
+     },
+     "current": "Practical AI systems for mid-sized companies"
+    },
+    {
+     "object": "Services subtitle",
+     "slot": "services_subtitle",
+     "selector": ".services .section-head p",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Services Intro",
+      "group": "Hub asset"
+     },
+     "current": "Start with an audit, hand us the build, or keep us on to run it."
+    }
+   ],
+   "collection": {
+    "name": "Service cards",
+    "selector": ".services .grid-3 > .card",
+    "count": 3,
+    "dynamic": true,
+    "itemAsset": "Offer",
+    "query": "Published Offers of this hub (card order not decided)",
+    "items": [
+     {
+      "index": 1,
+      "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
+      "objects": [
+       {
+        "object": "Service 1 kicker",
+        "slot": "service1_kicker",
+        "selector": ".services .card:nth-child(1) .kicker",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Kicker",
+         "group": "Offer · card 1"
+        },
+        "current": "Done-for-you"
+       },
+       {
+        "object": "Service 1 title",
+        "slot": "service1_title",
+        "selector": ".services .card:nth-child(1) h3",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Title",
+         "group": "Offer · card 1"
+        },
+        "current": "AI Automation Services"
+       },
+       {
+        "object": "Service 1 description",
+        "slot": "service1_body",
+        "selector": ".services .card:nth-child(1) p",
+        "type": "textarea",
+        "source": {
+         "asset": "Offer",
+         "field": "Body",
+         "group": "Offer · card 1"
+        },
+        "current": "For operations leaders whose teams lose hours to manual handoffs. We build and integrate the automation across your systems, then train your team to run it."
+       },
+       {
+        "object": "Service 1 link",
+        "slot": "service1_link",
+        "selector": ".services .card:nth-child(1) a.more",
+        "attr": "href",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "published page URL (not the writer)",
+         "group": "Offer · card 1"
+        },
+        "current": "/blog/ai-operations-partner/"
+       },
+       {
+        "object": "Card 1 link label",
+        "slot": "service1_more",
+        "selector": ".services .card:nth-child(1) a.more",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Card Link Label",
+         "group": "Hub asset"
+        },
+        "current": "Learn more →"
+       }
+      ]
+     },
+     {
+      "index": 2,
+      "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
+      "objects": [
+       {
+        "object": "Service 2 kicker",
+        "slot": "service2_kicker",
+        "selector": ".services .card:nth-child(2) .kicker",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Kicker",
+         "group": "Offer · card 2"
+        },
+        "current": "Ongoing partner"
+       },
+       {
+        "object": "Service 2 title",
+        "slot": "service2_title",
+        "selector": ".services .card:nth-child(2) h3",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Title",
+         "group": "Offer · card 2"
+        },
+        "current": "Fractional AI Operations"
+       },
+       {
+        "object": "Service 2 description",
+        "slot": "service2_body",
+        "selector": ".services .card:nth-child(2) p",
+        "type": "textarea",
+        "source": {
+         "asset": "Offer",
+         "field": "Body",
+         "group": "Offer · card 2"
+        },
+        "current": "For companies with tools but no system. A fractional AI lead owns your workflows and keeps them running and improving across teams."
+       },
+       {
+        "object": "Service 2 link",
+        "slot": "service2_link",
+        "selector": ".services .card:nth-child(2) a.more",
+        "attr": "href",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "published page URL (not the writer)",
+         "group": "Offer · card 2"
+        },
+        "current": "/blog/ai-content-partner/"
+       },
+       {
+        "object": "Card 2 link label",
+        "slot": "service2_more",
+        "selector": ".services .card:nth-child(2) a.more",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Card Link Label",
+         "group": "Hub asset"
+        },
+        "current": "Learn more →"
+       }
+      ]
+     },
+     {
+      "index": 3,
+      "serves": "Offer (one Published Offer, which one: unassigned) + Hub (link label)",
+      "objects": [
+       {
+        "object": "Service 3 kicker",
+        "slot": "service3_kicker",
+        "selector": ".services .card:nth-child(3) .kicker",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Kicker",
+         "group": "Offer · card 3"
+        },
+        "current": "Clarity first"
+       },
+       {
+        "object": "Service 3 title",
+        "slot": "service3_title",
+        "selector": ".services .card:nth-child(3) h3",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "Card Title",
+         "group": "Offer · card 3"
+        },
+        "current": "AI Workflow Audit & Roadmap"
+       },
+       {
+        "object": "Service 3 description",
+        "slot": "service3_body",
+        "selector": ".services .card:nth-child(3) p",
+        "type": "textarea",
+        "source": {
+         "asset": "Offer",
+         "field": "Body",
+         "group": "Offer · card 3"
+        },
+        "current": "A fixed-scope assessment of where manual work costs you most, with a ranked roadmap your leadership team can act on."
+       },
+       {
+        "object": "Service 3 link",
+        "slot": "service3_link",
+        "selector": ".services .card:nth-child(3) a.more",
+        "attr": "href",
+        "type": "text",
+        "source": {
+         "asset": "Offer",
+         "field": "published page URL (not the writer)",
+         "group": "Offer · card 3"
+        },
+        "current": "/blog/done-for-you-lead-gen/"
+       },
+       {
+        "object": "Card 3 link label",
+        "slot": "service3_more",
+        "selector": ".services .card:nth-child(3) a.more",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Card Link Label",
+         "group": "Hub asset"
+        },
+        "current": "Learn more →"
+       }
+      ]
+     }
     ]
+   }
   },
-  "notYet": [
-    "Hero and contact-band image alt text (would be a CTA field)"
-  ],
-  "offPage": [
+  {
+   "section": "Process",
+   "selector": ".process",
+   "objects": [
     {
-      "href": "/blog/",
-      "what": "Field Notes — the hub's Published posts"
+     "object": "Process eyebrow",
+     "slot": "process_eyebrow",
+     "selector": ".process .section-head .eyebrow",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Process Eyebrow",
+      "group": "Hub asset"
+     },
+     "current": "Simple process"
+    },
+    {
+     "object": "Process title",
+     "slot": "process_title",
+     "selector": ".process .section-head h2",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Process Heading",
+      "group": "Hub asset"
+     },
+     "current": "From audit to running system"
+    },
+    {
+     "object": "Process subtitle",
+     "slot": "process_subtitle",
+     "selector": ".process .section-head p",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Process Intro",
+      "group": "Hub asset"
+     },
+     "current": "Fixed scope at every step. No open-ended consulting."
     }
+   ],
+   "collection": {
+    "name": "Process steps",
+    "selector": ".steps > .step",
+    "count": 3,
+    "dynamic": false,
+    "itemAsset": "Hub",
+    "items": [
+     {
+      "index": 1,
+      "serves": "Hub",
+      "objects": [
+       {
+        "object": "Step number",
+        "selector": ".steps .step:nth-child(1) .step-num",
+        "source": {
+         "asset": null,
+         "from": "markup (fixed)"
+        },
+        "current": "1"
+       },
+       {
+        "object": "Step 1 title",
+        "slot": "step1_title",
+        "selector": ".steps .step:nth-child(1) h3",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 1 Title",
+         "group": "Hub asset"
+        },
+        "current": "Audit"
+       },
+       {
+        "object": "Step 1 body",
+        "slot": "step1_body",
+        "selector": ".steps .step:nth-child(1) p",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 1 Body",
+         "group": "Hub asset"
+        },
+        "current": "We map the bottlenecks and what manual work costs you, then rank the fixes."
+       }
+      ]
+     },
+     {
+      "index": 2,
+      "serves": "Hub",
+      "objects": [
+       {
+        "object": "Step number",
+        "selector": ".steps .step:nth-child(2) .step-num",
+        "source": {
+         "asset": null,
+         "from": "markup (fixed)"
+        },
+        "current": "2"
+       },
+       {
+        "object": "Step 2 title",
+        "slot": "step2_title",
+        "selector": ".steps .step:nth-child(2) h3",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 2 Title",
+         "group": "Hub asset"
+        },
+        "current": "Build & Integrate"
+       },
+       {
+        "object": "Step 2 body",
+        "slot": "step2_body",
+        "selector": ".steps .step:nth-child(2) p",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 2 Body",
+         "group": "Hub asset"
+        },
+        "current": "We build the priority workflows inside the systems you already run."
+       }
+      ]
+     },
+     {
+      "index": 3,
+      "serves": "Hub",
+      "objects": [
+       {
+        "object": "Step number",
+        "selector": ".steps .step:nth-child(3) .step-num",
+        "source": {
+         "asset": null,
+         "from": "markup (fixed)"
+        },
+        "current": "3"
+       },
+       {
+        "object": "Step 3 title",
+        "slot": "step3_title",
+        "selector": ".steps .step:nth-child(3) h3",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 3 Title",
+         "group": "Hub asset"
+        },
+        "current": "Handover"
+       },
+       {
+        "object": "Step 3 body",
+        "slot": "step3_body",
+        "selector": ".steps .step:nth-child(3) p",
+        "type": "text",
+        "source": {
+         "asset": "Hub",
+         "field": "Hub Page Copy › Step 3 Body",
+         "group": "Hub asset"
+        },
+        "current": "Your teams are trained and the system runs without depending on us."
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "section": "Contact band",
+   "selector": ".cta#talk",
+   "objects": [
+    {
+     "object": "Bottom CTA image (business owners with phones)",
+     "slot": "cta_image",
+     "selector": ".cta-image img",
+     "attr": "src",
+     "type": "image",
+     "source": {
+      "asset": "CTA",
+      "field": "image (asset image, not the writer)",
+      "group": "CTA · Contact band"
+     },
+     "current": ""
+    },
+    {
+     "object": "Bottom CTA headline",
+     "slot": "cta_headline",
+     "selector": ".cta h2",
+     "type": "text",
+     "source": {
+      "asset": "CTA",
+      "field": "Platform Title",
+      "group": "CTA · Contact band"
+     },
+     "current": "Ready to take the manual drag out of operations?"
+    },
+    {
+     "object": "Bottom CTA body",
+     "slot": "cta_body",
+     "selector": ".cta .wrap > p:first-of-type",
+     "type": "textarea",
+     "source": {
+      "asset": "CTA",
+      "field": "Body",
+      "group": "CTA · Contact band"
+     },
+     "current": "Book a scoping call. We’ll look at where AI can remove the most manual work across your teams and outline a clear first step."
+    },
+    {
+     "object": "Bottom CTA button text",
+     "slot": "cta_button",
+     "selector": ".cta a.btn",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Contact › Phone Button",
+      "group": "Hub asset"
+     },
+     "current": "Text (925) 940-0014"
+    },
+    {
+     "object": "SMS link",
+     "slot": "cta_sms",
+     "selector": ".cta a.btn",
+     "attr": "href",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Contact › SMS",
+      "group": "Hub asset"
+     },
+     "current": "sms:+19259400014"
+    },
+    {
+     "object": "Email link label",
+     "slot": "cta_email_label",
+     "selector": ".cta a[href^=\"mailto:\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Email Link Label",
+      "group": "Hub asset"
+     },
+     "current": "Or email us"
+    },
+    {
+     "object": "Email address",
+     "slot": "cta_email",
+     "selector": ".cta a[href^=\"mailto:\"]",
+     "attr": "href",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Contact › Email",
+      "group": "Hub asset"
+     },
+     "current": "hello@aisystemimplementation.com"
+    }
+   ]
+  },
+  {
+   "section": "Footer",
+   "selector": "footer",
+   "objects": [
+    {
+     "object": "Copyright line",
+     "slot": "footer_copyright",
+     "selector": "footer .footer-inner > div:first-child",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Copyright",
+      "group": "Hub asset"
+     },
+     "current": "© AI System Implementation"
+    },
+    {
+     "object": "Footer \"Services\" link",
+     "slot": "footer_services_label",
+     "selector": "footer a[href=\"#services\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Footer Services",
+      "group": "Hub asset"
+     },
+     "current": "Services"
+    },
+    {
+     "object": "Footer blog label",
+     "slot": "footer_blog_label",
+     "selector": "footer a[href=\"/blog/\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Blog Nav",
+      "group": "Hub asset"
+     },
+     "current": "Field Notes"
+    },
+    {
+     "object": "Footer \"Book a Call\" link",
+     "slot": "footer_book_label",
+     "selector": "footer a[href=\"#talk\"]",
+     "type": "text",
+     "source": {
+      "asset": "Hub",
+      "field": "Hub Page Copy › Footer Book Call",
+      "group": "Hub asset"
+     },
+     "current": "Book a Call"
+    }
+   ]
+  }
+ ],
+ "design": {
+  "serves": "no asset — Site designer 🎨 Design tab + color combos",
+  "variables": [
+   "--green",
+   "--green-bright",
+   "--green-dark",
+   "--green-darker",
+   "--green-soft",
+   "--green-mid",
+   "--ink",
+   "--muted",
+   "--line",
+   "--bg",
+   "--font",
+   "--text-base",
+   "--radius-sm",
+   "--radius-md",
+   "--radius-lg",
+   "--white",
+   "--space-xs",
+   "--space-sm",
+   "--space-md",
+   "--space-lg",
+   "--space-xl",
+   "--space-2xl",
+   "--space-3xl",
+   "--space-4xl",
+   "--shadow-sm",
+   "--shadow-md",
+   "--shadow-hero",
+   "--shadow-btn",
+   "--leading"
   ]
+ },
+ "notYet": [
+  "Hero and contact-band image alt text (would be a CTA field)"
+ ],
+ "offPage": [
+  {
+   "href": "/blog/",
+   "what": "Field Notes — the hub's Published posts"
+  }
+ ]
 }

@@ -1,0 +1,36 @@
+{
+ "live": "2026-11-22",
+ "stack": "Whale",
+ "from": "Grok draft (grok-output.json) revised by Claude",
+ "slots": {
+  "hero_eyebrow": "For mid-sized companies",
+  "hero_headline": "Operational AI systems without building an internal team",
+  "hero_sub": "We find where manual work costs you most, then build AI automation into the systems you already run and train your team to operate it.",
+  "nav_cta": "Book a scoping call",
+  "hero_cta_primary": "Book a scoping call",
+  "services_title": "Practical AI systems for mid-sized companies",
+  "services_subtitle": "Start with an audit, hand us the build, or keep us on to run it.",
+  "service1_body": "For operations leaders whose teams lose hours to manual handoffs. We build and integrate the automation across your systems, then train your team to run it.",
+  "service2_body": "For companies with tools but no system. A fractional AI lead owns your workflows and keeps them running and improving across teams.",
+  "service3_body": "A fixed-scope assessment of where manual work costs you most, with a ranked roadmap your leadership team can act on.",
+  "process_title": "From audit to running system",
+  "process_subtitle": "Fixed scope at every step. No open-ended consulting.",
+  "step1_title": "Audit",
+  "step1_body": "We map the bottlenecks and what manual work costs you, then rank the fixes.",
+  "step2_body": "We build the priority workflows inside the systems you already run.",
+  "step3_title": "Handover",
+  "step3_body": "Your teams are trained and the system runs without depending on us.",
+  "cta_headline": "Ready to take the manual drag out of operations?",
+  "cta_body": "Book a scoping call. We’ll look at where AI can remove the most manual work across your teams and outline a clear first step."
+ },
+ "head": [
+  [
+   "AI Tool Implementation for Small Businesses | AI System Implementation",
+   "AI Implementation for Mid-Sized Companies | AI System Implementation"
+  ],
+  [
+   "Done-for-you AI automation and systems implementation for small businesses. Get working AI workflows without hiring a full team.",
+   "Operational AI systems for mid-sized companies. We audit, build and integrate AI automation into the systems you already run, and train your team to run it."
+  ]
+ ]
+}

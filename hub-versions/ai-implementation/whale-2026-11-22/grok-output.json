@@ -1,0 +1,58 @@
+{
+  "_note": "Grok draft for the whale relaunch, 2026-11-22, kept as received. External input: its keyword_structure and seed keywords are NOT applied (unvalidated, mostly ~0 search volume); the live copy is the revised version in copy.json.",
+  "hub": "AI Implementation",
+  "audience": {
+    "label": "mid income whales",
+    "description": "Mid-sized companies ($10M–$200M, 50–500 employees) with significant operational inefficiency and budget to fix it. Operator-led, reachable decision makers, no desire to build a full internal AI team."
+  },
+  "keyword_structure": {
+    "main": ["ai consulting", "ai implementation", "enterprise ai consulting", "ai systems integration", "operational ai"],
+    "whale_cluster": {
+      "label": "Whale cluster",
+      "topics": ["business process automation", "ai integration", "fractional cto", "fractional ai operations", "ai workflow audit", "ai readiness assessment", "managed ai workflows", "ai implementation partner", "operational ai roadmap"]
+    },
+    "small_business_cluster": {
+      "label": "Small business cluster",
+      "topics": ["ai tools for small business", "ai automation for small business", "ai without hiring"]
+    }
+  },
+  "seed_keywords_by_intent": {
+    "high_intent": ["fractional AI operations", "AI implementation partner", "managed AI workflows for mid-market", "outsourced AI operations", "AI systems integrator"],
+    "commercial_investigation": ["AI implementation for mid-market companies", "fractional AI vs full-time AI hire", "AI ops partner for growing companies", "AI workflow automation services"],
+    "problem_aware": ["AI tools not being used by team", "AI implementation bottleneck", "manual processes slowing growth", "AI projects stalled"],
+    "solution_aware": ["AI readiness assessment", "AI workflow audit", "operational AI roadmap", "how to implement AI without hiring a team"]
+  },
+  "assets": {
+    "cta_hero": {
+      "eyebrow": "For scaling operators",
+      "platform_title": "Operational AI systems without building an internal team",
+      "body": "We implement and hand over working AI automation that integrates with the systems you already run. Clear scope, trained team, no stalled tools.",
+      "cta_label": "Book an audit scoping call"
+    },
+    "offers": [
+      {"card_kicker": "Done-for-you", "card_title": "AI Automation Services", "body": "For operators whose manual workflows are creating drag. We build, integrate, and hand over automation your team can run without you as the bottleneck.", "target_keywords": ["ai implementation", "business process automation", "ai integration"]},
+      {"card_kicker": "Ongoing partner", "card_title": "Fractional AI Operations", "body": "For companies that have tools but no system. One fractional partner owns the AI workflows so they keep running and improving.", "target_keywords": ["fractional ai operations", "managed ai workflows", "fractional cto"]},
+      {"card_kicker": "Clarity first", "card_title": "AI Workflow Audit", "body": "A focused assessment that maps bottlenecks and delivers a ranked roadmap. Fixed scope, no retainer required to start.", "target_keywords": ["ai workflow audit", "ai readiness assessment", "operational ai roadmap"]}
+    ],
+    "cta_band": {
+      "platform_title": "Ready to remove the operational drag?",
+      "body": "Book a short scoping call. We’ll look at where AI can actually reduce manual work in your business and outline a clear next step."
+    },
+    "hub_page_copy": {
+      "services_nav": "Services", "process_nav": "How It Works", "book_call_nav": "Book a Call", "services_jump_button": "See the services",
+      "services_eyebrow": "What we do", "services_heading": "Practical AI systems for scaling companies",
+      "services_intro": "Choose the level of support that matches where you are right now.", "card_link_label": "Learn more →",
+      "process_eyebrow": "Simple process", "process_heading": "From audit to running system", "process_intro": "Clear steps. No open-ended consulting.",
+      "step1_title": "Audit", "step1_body": "We map the bottlenecks and deliver a ranked roadmap.",
+      "step2_title": "Build", "step2_body": "We implement and integrate the priority workflows.",
+      "step3_title": "Handover", "step3_body": "Your team is trained and the system runs without us.",
+      "email_link_label": "Or email us", "footer_services": "Services", "blog_nav": "Field Notes", "footer_book_call": "Book a Call",
+      "copyright": "© AI System Implementation"
+    }
+  },
+  "notes": {
+    "hub_contact": "Leave untouched — copy from real contact records only",
+    "images": "Not written by this pass",
+    "length_limits": "All values above respect the field max lengths defined in the page contract"
+  }
+}
