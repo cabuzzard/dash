@@ -21205,7 +21205,7 @@ export default {
           const status = p && !p.error ? (p.properties?.["Asset Status"]?.select?.name || "") : "", name = p && !p.error ? (hubRichText(p.properties?.["Asset Title"]?.title || p.properties?.["Asset Title"]?.rich_text) || "") : "";
           const auto = !/\(/.test(field) && !!aid;
           let next = ""; if (auto && p && !p.error) { const m = /^(.+?)\s*›\s*(.+)$/.exec(field); next = m ? lineOf(txt(p, m[1].trim()), m[2].trim()) : txt(p, field); }
-          const now = String(cur[o.slot] == null ? "" : cur[o.slot]).replace(/\s+/g, " ").trim();
+          const now = String(cur[o.slot] == null ? "" : cur[o.slot]).replace(/\s+/g, " ").trim().replace(o.attr === "href" ? /^mailto:/i : /^$/, "");   // the email link is stored as mailto:{v} — compare the bare address
           const ready = auto && /^(publish|published)$/i.test(status) && !!next.trim();
           return { slot: o.slot, object: o.object || o.slot, group: o.source.group, field, assetId: aid, assetName: name, status, current: now, next: next.trim(), auto, ready, changed: ready && next.trim() !== now };
         });
