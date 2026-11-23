@@ -13223,7 +13223,8 @@ function hd2Render() {
   const K = 'margin-left:18px;', n = (a, w) => `<span style="color:var(--text3);font-size:11px;margin-left:6px;">${a.length} ${w}${a.length === 1 ? '' : 's'}</span>`;
   // Only Development assets count as due (operator 2026-11-19: "only count due dates on dev assets"). Publish / Published / Review / Planning
   // assets keep their dates (they show on the flyout 📅 Schedule) but never reach the tree's counts, dots, Due-only filter or row dates.
-  const dueD = a => a && a.deadline && /^development$/i.test(hdSt(a).trim()) ? a.deadline : '';
+  // operator 2026-11-23: 'just one count of anything with due date for now … remove #/# just full count' — every dated asset counts, any status
+  const dueD = a => a && a.deadline ? a.deadline : '';
   // Due buckets (operator 2026-11-19: "past (red), this week (orange), following week and beyond (yellow) (sunday 11:59 PM cutoff) and total
   // — just use m/d numbers as headings based on sunday nights"). Weeks run Mon → Sun 11:59 PM: Past = due by last Sunday night, This week =
   // due by this Sunday night, After = later. Every dated asset counts (status doesn't matter), as the old Due count did. An asset row shows
@@ -13231,7 +13232,7 @@ function hd2Render() {
   const W = hd2Weeks(), bk = d => { d = String(d || '').slice(0, 10); return !d ? '' : d <= W.last ? 'p' : d <= W.sun ? 'w' : 'f'; };
   // pubW: a Publish asset (not yet Published) dated up to this Sunday 11:59 PM — overdue or this week. It joins Past / This / Total as a second,
   // yellow number (dev/pub); Next stays Development only, and the dots stay Development only.
-  const pubW = a => a && a.deadline && /^publish$/i.test(hdSt(a).trim()) && /^[pw]$/.test(bk(a.deadline)) ? a.deadline : '';
+  const pubW = a => '';   // the separate Publish number (dev/pub) is off — dueD counts every dated asset (2026-11-23)
   const due = assets => assets.filter(a => dueD(a) || pubW(a)).length;
   const dueB = assets => { const o = { p: 0, w: 0, f: 0, t: 0, pp: 0, pw: 0, pf: 0, pt: 0 };
     assets.forEach(a => { const b = bk(dueD(a)); if (b) { o[b]++; o.t++; } else if (pubW(a)) { o['p' + bk(a.deadline)]++; o.pt++; } }); return o; };
