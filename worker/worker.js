@@ -21412,7 +21412,15 @@ export default {
         // notes = lowercase name → {name, note, at} (operator 2026-11-19: "a small notes link on each initiative row in the flyout … an editable
         // notes field that belongs to the initiative"). Any initiative name can carry one, listed or only in use on assets. Every write keeps the rest.
         const notes = cur.notes || {};
-        if (op === "list") return json({ ok: true, names, added, notes });
+        // order = lowercase names in the operator's own order (2026-11-23: "let me drag them vertically to be grouped near each other"). The
+        // 🎯 flyout lists ordered names first in this order, the rest after by its usual rule. op "order" replaces it.
+        const order = Array.isArray(cur.order) ? cur.order : [];
+        if (op === "list") return json({ ok: true, names, added, notes, order });
+        if (op === "order") {
+          const seen = new Set(), next = (Array.isArray(body.order) ? body.order : []).map(v => String(v || "").trim().toLowerCase()).filter(v => v && v.length <= 200 && !seen.has(v) && seen.add(v)).slice(0, 1000);
+          await env.TRADES.put(K, JSON.stringify({ ...cur, order: next, at: Date.now() })); await log({ op, n: next.length });
+          return json({ ok: true, order: next });
+        }
         if (op === "note") {
           if (!name) return json({ error: "name required" }, 400); const bad = initiativeNameBad(name); if (bad) return json({ error: bad }, 400);
           const note = String(body.note ?? ""); if (note.length > 20000) return json({ error: "A note is at most 20000 characters" }, 400);
@@ -21461,9 +21469,10 @@ export default {
           let pmN = 0; const pm = await env.TRADES.get("hd:productmap:v1", "json").catch(() => null);
           if (pm && pm.hubs) { for (const h of Object.values(pm.hubs)) for (const e of Object.values(h || {})) { if (!e) continue; const i2 = swap(e.initiative), s2 = swap(e.sub); if (i2 !== (e.initiative || "") || s2 !== (e.sub || "")) { e.initiative = i2; e.sub = s2; pmN++; } }
             if (pmN) { pm.at = new Date().toISOString(); await env.TRADES.put("hd:productmap:v1", JSON.stringify(pm)); } }
-          await env.TRADES.put(K, JSON.stringify({ ...cur, names: names2, added: added2, notes: notes2, at: Date.now() }));
+          const order2 = order.map(k => k === name.toLowerCase() ? to.toLowerCase() : k);
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names: names2, added: added2, notes: notes2, order: order2, at: Date.now() }));
           await log({ op, name, to, assets: done.length, failed: failed.length, productMap: pmN });
-          return json({ ok: !failed.length, names: names2, added: added2, notes: notes2, assets: done.length, assetIds: done, failed, productMap: pmN });
+          return json({ ok: !failed.length, names: names2, added: added2, notes: notes2, order: order2, assets: done.length, assetIds: done, failed, productMap: pmN });
         }
         return json({ error: "op must be list | add | remove | note | rename" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
