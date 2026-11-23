@@ -1,6 +1,6 @@
 {
  "page": "aisystemimplementation.com/ (web/hub/ai-implementation/index.html)",
- "updated": "2026-11-22",
+ "updated": "2026-11-23",
  "rules": [
   "Markup is the operator's and is never written; assets fill text, attributes and images in these slots.",
   "slot = design-fields.json id (Site designer 🧩 Fields); source.field = the asset's writing-contract field (Current Methods).",
@@ -797,5 +797,17 @@
    "href": "/blog/",
    "what": "Field Notes — the hub's Published posts"
   }
- ]
+ ],
+ "deploy": {
+  "cohort": "Hub",
+  "note": "operator 2026-11-23: the page is built from the Hub cohort of the Hub — Whale title; each source group is pinned to one asset. ⬆ Deploy (Hub Dash 2 flyout → ⬆ Page on the Hub asset) writes only assets at Publish/Published, text only, after a snapshot in hub-versions/.",
+  "groups": {
+   "Hub asset": "4211f7d3a4bb81cf858ac2f37b3cd5b8",
+   "CTA · Hero": "4211f7d3a4bb817b8c43e76a8fb0a8c9",
+   "CTA · Contact band": "4211f7d3a4bb81448b3aedcdd88c5023",
+   "Offer · card 1": "4211f7d3a4bb81bab204e4301e64c824",
+   "Offer · card 2": "4211f7d3a4bb81d49f1afd8c655fb99c",
+   "Offer · card 3": "4211f7d3a4bb812e95c3d14bd46e517b"
+  }
+ }
 }

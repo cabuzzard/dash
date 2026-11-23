@@ -21169,6 +21169,49 @@ export default {
     // on a click … editable through the flyout"; "it belongs to a title … its just another asset type"). Two Assets text fields: "Marketing Plan"
     // (the written plan) and "Deploy List" (JSON [{id, type, name, assetId?, at?}], in deploy order). get also returns the plan's title / product /
     // campaign so the flyout can create the listed assets on the same title, as children of the plan (createAsset, Status Development).
+    // ── hubPageDeploy {slug, op: "preview"|"snapshot"} (operator 2026-11-23: "build that page from an asset cluster … and deploy it to the main
+    // hub"; Information Flow Contract, Definitions › Hub page). The page's slot map is web/hub/<slug>/page-schema.json: every object names its
+    // slot (design-fields.json id), its source group and the writing-contract field; page-schema.deploy.groups pins each group to one asset of
+    // the hub's Hub cohort. preview = per slot the live text vs the asset's text (only assets at Publish / Published are ready; "Hub Page Copy ›
+    // X" / "Hub Contact › X" read line "X: text" of that field; fields marked "(…)" — images, links, logo markup — are not written by the writer
+    // and are left alone). snapshot = a copy of the live page in hub-versions/<slug>/deploy-<time>/ before ⬆ Deploy writes the text through
+    // hubFieldsApply (text only, never markup).
+    if (body.action === "hubPageDeploy") {
+      const slug = String(body.slug || "").trim();
+      if (!HUB_HTML_FROZEN.has(slug)) return json({ error: "Deploy writes only to hand-authored hub pages" }, 400);
+      const GT = (env.GITHUB_TOKEN || "").trim(); if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+      const gh = { Authorization: "Bearer " + GT, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" }, api = "https://api.github.com/repos/cabuzzard/dash/contents/";
+      const getF = async p => { const r = await fetch(api + p + "?ref=main", { headers: gh }); if (!r.ok) throw new Error(p + " " + r.status); const j = await r.json(); return { sha: j.sha, b64: j.content.replace(/\n/g, ""), text: new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, "")), c => c.charCodeAt(0))) }; };
+      try {
+        const pg = await getF("web/hub/" + slug + "/index.html");
+        if (body.op === "snapshot") {
+          const at = new Date().toISOString().replace(/[:.]/g, "-"), path = "hub-versions/" + slug + "/deploy-" + at + "/index.html";
+          const pr = await fetch(api + path, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message: "hub " + slug + ": snapshot before page deploy", content: pg.b64, branch: "main" }) });
+          if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: "snapshot failed: " + (e.message || pr.status) }, 502); }
+          return json({ ok: true, snapshot: path });
+        }
+        const schema = JSON.parse((await getF("web/hub/" + slug + "/page-schema.json")).text), G = (schema.deploy && schema.deploy.groups) || {};
+        const objs = [], walk = o => { if (Array.isArray(o)) return o.forEach(walk); if (!o || typeof o !== "object") return; if (o.slot && o.source && o.source.group) objs.push(o); Object.values(o).forEach(walk); };
+        walk(schema.sections || []);
+        const pages = {}; for (const id of new Set(Object.values(G).map(hubAssetId))) pages[id] = await ivPage(id).catch(e => ({ error: e.message }));
+        const txt = (p, name) => { const v = p && p.properties && p.properties[name]; return v ? (hubRichText(v.rich_text || v.title) || v.select?.name || v.url || "") : ""; };
+        const lineOf = (body0, label) => { const re = new RegExp("^\\s*" + label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*:\\s*(.*)$", "im"); const m = re.exec(body0 || ""); return m ? m[1].trim() : ""; };
+        const cur = {}, hitN = {}; let rw = new HTMLRewriter();
+        for (const o of objs) { if (cur[o.slot] !== undefined || !o.selector) continue; cur[o.slot] = null; const k = o.slot, attr = o.attr;
+          rw = rw.on(o.selector, { element(el) { hitN[k] = (hitN[k] || 0) + 1; if (hitN[k] > 1) return; cur[k] = attr ? (el.getAttribute(attr) || "") : ""; }, text(t) { if (!attr && hitN[k] === 1) cur[k] += t.text; } }); }
+        await rw.transform(new Response(pg.text, { headers: { "content-type": "text/html; charset=utf-8" } })).text();
+        const rows = objs.map(o => {
+          const aid = G[o.source.group] ? hubAssetId(G[o.source.group]) : "", p = aid ? pages[aid] : null, field = String(o.source.field || "");
+          const status = p && !p.error ? (p.properties?.["Asset Status"]?.select?.name || "") : "", name = p && !p.error ? (hubRichText(p.properties?.["Asset Title"]?.title || p.properties?.["Asset Title"]?.rich_text) || "") : "";
+          const auto = !/\(/.test(field) && !!aid;
+          let next = ""; if (auto && p && !p.error) { const m = /^(.+?)\s*›\s*(.+)$/.exec(field); next = m ? lineOf(txt(p, m[1].trim()), m[2].trim()) : txt(p, field); }
+          const now = String(cur[o.slot] == null ? "" : cur[o.slot]).replace(/\s+/g, " ").trim();
+          const ready = auto && /^(publish|published)$/i.test(status) && !!next.trim();
+          return { slot: o.slot, object: o.object || o.slot, group: o.source.group, field, assetId: aid, assetName: name, status, current: now, next: next.trim(), auto, ready, changed: ready && next.trim() !== now };
+        });
+        return json({ ok: true, slug, cohort: (schema.deploy && schema.deploy.cohort) || "", rows, groups: G });
+      } catch (e) { return json({ error: e.message }, 502); }
+    }
     if (body.action === "planDoc") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
