@@ -11746,6 +11746,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'kids') bd = hd2KidsHtml();
   else if (EF.tab === 'sched') bd = hd2SchedHtml();
   else if (EF.tab === 'plan') bd = hd2PlanHtml();
+  else if (EF.tab === 'page') bd = hd2PageHtml();
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable && !hd2IsNotes(x.p)), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
@@ -11819,13 +11820,60 @@ function hd2EfTabs() {
   if (['hub', 'product', 'title', 'asset'].includes(k)) t.push(['post', '📰 Post'], ['images', '🖼 Images']);
   if (k === 'hub') t.push(['design', '🎨 Design'], ['site', '🧱 Site designer']);
   if (k === 'asset' && hd2IsPlan()) t.push(['plan', '📋 Plan']);
+  if (k === 'asset' && hd2IsHubAsset()) t.push(['page', '⬆ Page']);
   if (k === 'asset') t.push(['library', '🗂 Library' + (EF.data && EF.data.library && EF.data.library.length ? ' (' + EF.data.library.length + ')' : '')]);
   return t;
 }
-function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'plan' && !EF.plan) return hd2PlanLoad(); if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'site' && !EF.sd) return hd2SdLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
+function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'plan' && !EF.plan) return hd2PlanLoad(); if (t === 'page' && !EF.pg) return hd2PageLoad(); if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'site' && !EF.sd) return hd2SdLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
 const HD2_IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
 const HD2_B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
 
+// ── ⬆ Page (operator 2026-11-23: "build that page from an asset cluster in that topic and deploy it to the main hub"; cluster = the Hub cohort).
+// On a Hub asset of a hand-authored hub page: worker hubPageDeploy preview lists every page slot with its live text and the text its source asset
+// holds (page-schema.json pins each source group to an asset). ⬆ Deploy = snapshot the live page into hub-versions/ → hubFieldsApply with the
+// changed slots whose asset is at Publish / Published. Text only; markup, images and links stay as they are.
+function hd2IsHubAsset() { if (!EF || EF.e.k !== 'asset') return false; const D = EF.data, p = D && D.props && D.props.find(x => x.name === 'Asset Type');
+  const v = p ? p.value : ((_hd2A.get(hdNid(EF.e.id)) || {}).rawAssetType || ''); return /^hub$/i.test(String(v || '').trim()); }
+function hd2PageSlug() { const a = _hd2A.get(hdNid(EF.e.id)) || {}, cid = hdNid(a.campId || a.campaignId || ''); const h = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []).find(x => hdNid(x.campaignId || '') === cid); return h ? h.slug : ''; }
+async function hd2PageLoad() {
+  const E = EF; E.pg = { busy: 'Reading the page and its assets…', rows: [], msg: '' }; hd2EfDraw();
+  const slug = hd2PageSlug(); if (!slug) { E.pg = { rows: [], msg: '✗ No hub page found for this asset\'s campaign' }; return EF === E && hd2EfDraw(); }
+  const r = await call('hubPageDeploy', { slug, op: 'preview' }).catch(x => ({ error: x.message }));
+  E.pg = r && !r.error ? { slug, rows: r.rows || [], cohort: r.cohort || '', msg: '' } : { slug, rows: [], msg: '✗ ' + ((r && r.error) || 'no response') };
+  if (EF === E) hd2EfDraw();
+}
+function hd2PageHtml() {
+  const P = EF.pg || {}; if (P.busy) return `<div style="color:var(--text3);font-size:13px;">${esc(P.busy)}</div>`;
+  const R = P.rows || [], go = R.filter(r => r.changed), wait = R.filter(r => r.auto && !r.ready), same = R.filter(r => r.ready && !r.changed);
+  const col = s => /^published$/i.test(s) ? '#4ade80' : /^publish$/i.test(s) ? '#60a5fa' : 'var(--text3)';
+  const groups = [...new Set(R.map(r => r.group))];
+  const row = r => `<div style="display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:12.5px;align-items:start;">
+      <div style="color:var(--text2);">${esc(r.object)}<div style="font-size:10.5px;color:var(--text3);">${esc(r.field)}</div></div>
+      <div style="color:var(--text3);">${esc(r.current || '—')}</div>
+      <div style="${r.changed ? 'color:var(--text);font-weight:600;' : 'color:var(--text3);'}">${!r.auto ? '<i>not written by the writer — stays</i>' : r.ready ? esc(r.next) + (r.changed ? '' : ' <span style="font-size:10.5px;">(same)</span>') : '<i>waiting — ' + esc(r.status || 'no asset') + '</i>'}</div></div>`;
+  return `<div style="font-size:12.5px;color:var(--text2);line-height:1.5;">The live page <b>${esc(P.slug || '')}</b> built from the <b>${esc(P.cohort || 'Hub')}</b> cohort. Only assets at Publish / Published deploy; text only — markup, images and links stay.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;">
+      <button onclick="hd2PageDeploy()" ${go.length && !P.busy ? '' : 'disabled'} style="${HD2_B('var(--accent)')}">⬆ Deploy ${go.length} change${go.length === 1 ? '' : 's'}</button>
+      <button onclick="EF.pg=null;hd2PageLoad()" style="${HD2_B()}">↻ Refresh</button>
+      <span style="font-size:12px;color:var(--text3);">${same.length} same · ${wait.length} waiting on their asset</span>
+      <span style="font-size:12px;color:${/^✗/.test(P.msg || '') ? '#f87171' : '#4ade80'};">${esc(P.msg || '')}</span></div>
+    <div style="display:grid;grid-template-columns:150px minmax(0,1fr) minmax(0,1fr);gap:8px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);"><span>Slot</span><span>Live now</span><span>From the asset</span></div>
+    ${groups.map(g => { const L = R.filter(r => r.group === g), f = L[0] || {};
+      return `<div style="margin-top:12px;font-size:12px;font-weight:700;">${esc(g)} <span style="font-weight:400;color:var(--text3);">· ${esc(f.assetName || 'no asset')}</span> <span style="font-size:11px;color:${col(f.status)};">${esc(f.status || '')}</span></div>` + L.map(row).join(''); }).join('')}`;
+}
+async function hd2PageDeploy() {
+  const E = EF, P = E && E.pg; if (!P || P.busy) return; const go = (P.rows || []).filter(r => r.changed); if (!go.length) return;
+  P.busy = 'Saving a snapshot of the live page…'; hd2EfDraw();
+  const s = await call('hubPageDeploy', { slug: P.slug, op: 'snapshot' }).catch(x => ({ error: x.message }));
+  if (!s || s.error) { P.busy = ''; P.msg = '✗ Snapshot failed — nothing deployed: ' + ((s && s.error) || 'no response'); return EF === E && hd2EfDraw(); }
+  P.busy = 'Writing ' + go.length + ' slot' + (go.length === 1 ? '' : 's') + ' to the page…'; hd2EfDraw();
+  const fields = Object.fromEntries(go.map(r => [r.slot, r.next]));
+  const a = await call('hubFieldsApply', { slug: P.slug, fields }).catch(x => ({ error: x.message }));
+  P.busy = '';
+  if (!a || a.error) P.msg = '✗ Deploy failed: ' + ((a && a.error) || 'no response') + ' (snapshot ' + s.snapshot + ')';
+  else { P.msg = '✓ Deployed ' + (a.applied || []).length + ' slot' + ((a.applied || []).length === 1 ? '' : 's') + ((a.skipped || []).length ? ' · skipped ' + a.skipped.join(', ') : '') + ' · snapshot ' + s.snapshot + ' — live in a minute or two'; showToast('Hub page deployed', 'success'); }
+  if (EF === E) hd2EfDraw();
+}
 // ── 📋 Plan (operator 2026-11-23: "an asset type called plan. it contains a written marketing plan, and … a deploy list which picks a list of
 // the existing asset types and arranges them for deployment to development on a click … editable through the flyout"; "it belongs to a title
 // … its just another asset type"). Asset Type = Plan. The tab edits the plan text and the deploy list (worker planDoc); 🚀 Deploy creates each
