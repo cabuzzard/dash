@@ -24327,6 +24327,37 @@ Return: {
       // still queued) — Notion has no dedicated publish-date property, and
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
+      // assetTags {op: "list" | "add" | "remove", assetIds?: [], tags?: []} — Hub Dash 2's tag layer (operator 2026-11-23: "another grouping layer
+      // to asset types … a multi select … a bulk add new or existing list of tags. I will add as I go"). Tags are the Assets DB multi-select
+      // "Asset Tags" (created on first use). list = every tag that exists; add / remove change only the named tags on each asset, keeping its
+      // other tags (a read-modify-write per page). New tag names become new options. The table groups an asset by its FIRST tag.
+      if (body.action === "assetTags") {
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const H = { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const dbr = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { headers: H }), db = await dbr.json();
+        if (!dbr.ok) return json({ error: db.message || "Notion " + dbr.status }, 502);
+        let prop = db.properties && db.properties["Asset Tags"];
+        if (!prop) { const cr = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Asset Tags": { multi_select: { options: [] } } } }) });
+          if (!cr.ok) { const e = await cr.json().catch(() => ({})); return json({ error: "Couldn't add the Asset Tags field: " + (e.message || cr.status) }, 502); } prop = { multi_select: { options: [] } }; }
+        const options = ((prop.multi_select || {}).options || []).map(o => o.name);
+        if (body.op === "list" || !body.op) return json({ ok: true, tags: options });
+        const tags = [...new Set((Array.isArray(body.tags) ? body.tags : []).map(t => String(t).replace(/,/g, " ").trim().slice(0, 100)).filter(Boolean))];
+        const ids = [...new Set((Array.isArray(body.assetIds) ? body.assetIds : []).map(x => hubAssetId(String(x))).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 100);
+        if (!tags.length || !ids.length) return json({ error: "assetIds and tags required" }, 400);
+        const add = body.op === "add", done = [], failed = [], low = t => t.toLowerCase();
+        for (const id of ids) {
+          try {
+            const pr = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: H }), pg = await pr.json(); if (!pr.ok) throw new Error(pg.message || pr.status);
+            const cur = ((pg.properties && pg.properties["Asset Tags"] && pg.properties["Asset Tags"].multi_select) || []).map(o => o.name);
+            const next = add ? [...cur, ...tags.filter(t => !cur.some(c => low(c) === low(t)))] : cur.filter(c => !tags.some(t => low(t) === low(c)));
+            if (next.length === cur.length && next.every((x, i) => x === cur[i])) { done.push({ id, tags: cur, same: true }); continue; }
+            const ur = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Asset Tags": { multi_select: next.map(name => ({ name })) } } }) });
+            if (!ur.ok) { const e = await ur.json().catch(() => ({})); throw new Error(e.message || ur.status); }
+            done.push({ id, tags: next });
+          } catch (e) { failed.push({ id, error: String(e.message || e) }); if (/rate/i.test(String(e.message || ""))) break; }
+        }
+        return json({ ok: done.length > 0, done, failed });
+      }
       if (body.action === "getDevAssetsTable") {
         // Load timing (operator 2026-11-09: "the load of the table seems slow") — every stage is timed, returned as `timing` and kept in
         // KV devtbl:timing (last 20 loads) so the slow part is measured before anything is cut. Nothing here changes what is returned.
@@ -24443,6 +24474,7 @@ Return: {
             interviewRequired: !!p["Interview Required"]?.checkbox,
             parentAssetId: (p["Parent Asset"]?.relation || [])[0]?.id ? dropDash(p["Parent Asset"].relation[0].id) : null,
             run: hubRichText(p.Run?.rich_text), deadline: p.Deadline?.date?.start || "", runStatus: p["Run Status"]?.select?.name || "",
+            tags: (p["Asset Tags"]?.multi_select || []).map(o => o.name),   // Hub Dash 2 tag layer (operator 2026-11-23)
             deploymentStatus: p["Deployment Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             createdTime: a.created_time || null,
@@ -24489,7 +24521,7 @@ Return: {
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
           dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "",
+          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "", tags: a.tags || [],
           deploymentStatus: a.deploymentStatus || "",
           ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
@@ -24537,7 +24569,7 @@ Return: {
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", initiative: t.sub ? t.sub.split(" · ")[0].trim() : (a.initiative || ""), subInitiative: t.sub ? (t.sub.includes(" · ") ? t.sub : "") : (a.subInitiative || ""), stack: a.stack || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", writtenWithoutInterview: !!a.writtenWithoutInterview, ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
-              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "",
+              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null, run: a.run || "", deadline: a.deadline || "", runStatus: a.runStatus || "", tags: a.tags || [],
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
               dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, createdAt: a.createdTime || null, dateEdited: a.lastEditedTime || null, inputApp: a.inputApp || "",
