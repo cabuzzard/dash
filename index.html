@@ -13269,11 +13269,24 @@ function hd2Render() {
   // the row's name opens its record in the flyout (type groups aren't records: plain text); the rest of the row opens / closes it
   const nm = (label, ent) => { if (!ent) return '<span class="hd2nm">' + esc(label) + '</span>'; const i = _hd2Ents.push(ent) - 1;
     return '<a href="#" class="hd2nm hd2lnk" data-e="' + i + '" onclick="event.preventDefault();event.stopPropagation();hd2EntOpen(' + i + ')" title="Open this record — all its fields">' + esc(label) + '</a>'; };
-  let hubNm = ''; _hd2A = new Map(); _hd2Trees = [];
+  let hubNm = '', curCid = ''; _hd2A = new Map(); _hd2Trees = []; _hd2AddCtx = [];
   let ix = 0;   // data-i = original order (sort off); data-due / data-type = what the column sorts use
+  // ＋ Add assets from the count (operator 2026-11-23): the context the modal needs — the titles under this heading, a preset type / run
+  const addCnt = (label, kids, w, assets, type, pids, ent) => {
+    const uniq = L => [...new Map(L.filter(t => t.id && t.id !== '__none').map(t => [t.id, t])).values()];
+    const fromAssets = () => uniq(assets.map(a => ({ id: hdNid(a.titleId || ''), name: a.title || '(title)', pid: hdNid(a.productId || '') })));
+    let titles = [], level = '', ptype = '';
+    if (w === 'asset' && pids) { titles = ent && ent.k === 'title' ? [{ id: hdNid(ent.id), name: label, pid: hdNid(pids[0] || '') }] : []; level = 'title'; }
+    else if (w === 'asset' || w === 'run') { titles = fromAssets(); level = w === 'run' ? 'run' : 'asset type'; ptype = w === 'run' ? (type || '') : (label === '(no type)' ? '' : label); }
+    else { const T = titlesIn(w, kids || []) || []; titles = uniq(T.map(Ti => ({ id: Ti.key, name: Ti.name, pid: w === 'title' && pids ? hdNid(pids[0] || '') : '' }))); level = ({ title: 'product', product: 'topic', topic: 'cluster', cluster: 'hub' })[w] || w; }
+    if (!titles.length || !curCid) return assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : '';
+    const I = new Set(assets.map(a => String(a.initiative || '').trim()).filter(Boolean));
+    const i = _hd2AddCtx.push({ cid: curCid, titles, type: ptype, label, level, ini: I.size === 1 ? [...I][0] : '' }) - 1;
+    return '<a href="#" class="hd2tc hd2add" onclick="event.preventDefault();event.stopPropagation();hd2AddOpen(' + i + ')" title="' + (assets.length ? assets.length + ' asset' + (assets.length === 1 ? '' : 's') + ' — click to add more here' : 'Add assets here') + '">' + (assets.length || '＋') + '</a>';
+  };
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : ''}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${addCnt(label, kids, w, assets, type, pids, ent)}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) || pubW(a) ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
@@ -13308,6 +13321,7 @@ function hd2Render() {
     + '#hd2Body details.hd2cur>details>summary.hd2r,#hd2Body details.hd2cur>div.hd2r{font-weight:400}'
     + '#hd2Body .hd2lnk{color:inherit;text-decoration:none}#hd2Body .hd2lnk:hover{text-decoration:underline;text-underline-offset:3px;color:var(--accent)}'
     + '#hd2Body .hd2tg{padding:4px 12px;border:none;background:transparent;color:var(--text3);cursor:pointer}#hd2Body .hd2tg.on{background:var(--surface2);color:var(--text);font-weight:600}'
+    + '#hd2Body a.hd2add{cursor:pointer;text-decoration:none;color:inherit}#hd2Body a.hd2add:hover{color:var(--accent);text-decoration:underline}'
     + '#hd2Body .hd2cnt{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}#hd2Body .hd2cnt:hover,#hd2Body .hd2cnt.hd2on{color:var(--accent)}#hd2Body .hd2cnt.hd2on{font-weight:700}'
     + '#hd2Body .hd2in,#hd2Body .hd2sb{flex:0 0 140px;margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px;font-weight:400}#hd2Body .hd2sb{flex-basis:170px}'
     + '#hd2Body .hd2dl{flex:0 0 50px;text-align:right;font-variant-numeric:tabular-nums}#hd2Body details[open]>summary>.hd2dl{visibility:hidden}'
@@ -13334,7 +13348,7 @@ function hd2Render() {
     + '<div id="hd2Tree" style="margin-left:-18px;font-size:13px;color:var(--text);">' + hdHubs().map(h => {
     const c = hdNid(h.campaignId), rows = _hd2Rows.filter(x => ((x.hubCids || []).map(hdNid).includes(c) || (!x.hubCids && hdNid(x.campId) === c)) );
 
-    const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {}; hubNm = h.name || h.slug || ''; _hd2Trees.push({ c: hdNid(h.campaignId), name: hubNm, slug: h.slug, tree: tree.map(C => ({ name: C.name, topics: C.topics.map(T => ({ name: T.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.map(Ti => ({ key: Ti.key, name: Ti.name })) })) })) })) });
+    const tree = hdTree(h, rows, _hd2Rows); pmc = PM[c] || {}; hubNm = h.name || h.slug || ''; curCid = hdNid(h.campaignId || ''); _hd2Trees.push({ c: hdNid(h.campaignId), name: hubNm, slug: h.slug, tree: tree.map(C => ({ name: C.name, topics: C.topics.map(T => ({ name: T.name, products: T.products.filter(P => P.key !== '__none').map(P => ({ name: P.name, titles: P.titles.map(Ti => ({ key: Ti.key, name: Ti.name })) })) })) })) });
     const hb = { slug: h.slug, cid: h.campaignId, hub: h.campaign || h.name || h.slug }, okC = n => !['(no cluster)', 'No topic assigned', '★ Main'].includes(n), okT = k => k && k !== '__none' && k !== '__main' && !/^ip:/.test(k);
     const aC = C => C.topics.flatMap(hdAssetsOf), pT = T => T.products.map(P => P.key).filter(k => k !== '__none'), pC = C => C.topics.flatMap(pT);
     return node((h.seq ? h.seq + ' · ' : '') + h.name, tree, 'cluster', tree.map(C =>
@@ -13618,6 +13632,84 @@ function hd2RerenderNamed() {
   const open = t ? new Set([...t.querySelectorAll('details[open]')].map(d => key(d, t))) : new Set(), y = window.scrollY;
   hd2Render(); const t2 = document.getElementById('hd2Tree'); if (t2) t2.querySelectorAll('details').forEach(d => { if (open.has(key(d, t2))) d.open = true; });
   hd2Cur(); hd2SelPaint(); try { window.scrollTo(0, y); } catch (e) {}
+}
+// ── ＋ Add assets from a heading's count (operator 2026-11-23: "the asset count on headings on main tree should open an add asset modal to
+// add assets to the heading from which clicked. with initiative, status, due date, title editable"). The heading decides the context:
+// a title heading = that title; product / topic / cluster / hub = a pick of the titles under it; an asset-type (or run) heading = its
+// titles with the type filled in. One row per new asset: asset title, type, status, due date, initiative. Saving runs the same actions as
+// ⤵ + New: createAsset (always lands Development) → Asset Status set when another status is picked (entitySave) → initiative (a new name
+// joins the list first; cplanAssetBulkEdit) → due date (setAssetDeadline). A blank initiative keeps the one the product map gives. The
+// table reloads when it's done.
+let _hd2AddCtx = [], _hd2AddM = null;
+function hd2AddOpen(i) {
+  const c = _hd2AddCtx[i]; if (!c) return; if (!_hd2IniNames) hd2KidInis();
+  _hd2AddM = { c, titleId: (c.titles[0] || {}).id || '', rows: [hd2AddRow(c)], busy: '', msg: '' }; hd2AddDraw();
+}
+function hd2AddRow(c) { return { name: '', type: c.type || '', st: 'Development', due: '', ini: c.ini || '' }; }
+function hd2AddClose() { if (_hd2AddM && _hd2AddM.busy) return; _hd2AddM = null; const m = document.getElementById('hd2AddM'); if (m) m.remove(); }
+function hd2AddDraw() {
+  const M = _hd2AddM; let el = document.getElementById('hd2AddM'); if (!M) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'hd2AddM'; el.onclick = e => { if (e.target === el) hd2AddClose(); }; document.body.appendChild(el); }
+  const c = M.c, types = [...new Set((_hd2Rows || []).filter(x => x.kind === 'asset').map(x => String(x.rawAssetType || x.assetType || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const inis = [...new Set([...(_hd2IniNames || []), ...(_hd2Rows || []).map(a => String(a.initiative || '').trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const IN = 'font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);min-width:0;font-family:inherit;box-sizing:border-box;width:100%;';
+  const dis = M.busy ? 'disabled' : '', lb = s => `<div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">${s}</div>`;
+  const rows = M.rows.map((r, i) => `<div class="ha-r">
+      <input ${dis} value="${esc(r.name)}" oninput="_hd2AddM.rows[${i}].name=this.value" placeholder="asset title" style="${IN}">
+      <input ${dis} list="haTypes" value="${esc(r.type)}" oninput="_hd2AddM.rows[${i}].type=this.value" placeholder="asset type" style="${IN}">
+      <select ${dis} onchange="_hd2AddM.rows[${i}].st=this.value" style="${IN}">${['Planning', 'Development', 'Review', 'Publish', 'Published'].map(s => `<option ${s === r.st ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      <input ${dis} type="date" value="${esc(r.due)}" onchange="_hd2AddM.rows[${i}].due=this.value" title="Due date (blank = none)" style="${IN}">
+      <input ${dis} list="haInis" value="${esc(r.ini)}" oninput="_hd2AddM.rows[${i}].ini=this.value" placeholder="initiative — blank = the product's" style="${IN}">
+      <button ${dis} onclick="_hd2AddM.rows.splice(${i},1);if(!_hd2AddM.rows.length)_hd2AddM.rows.push(hd2AddRow(_hd2AddM.c));hd2AddDraw()" title="Remove this row" style="border:none;background:transparent;color:var(--text3);cursor:pointer;">✕</button></div>`).join('');
+  el.innerHTML = `<style>#hd2AddM{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+      #hd2AddM .ha-box{background:var(--surface);border:1px solid var(--border2);border-radius:10px;width:min(980px,100%);padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+      #hd2AddM .ha-r,#hd2AddM .ha-h{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.3fr) 118px 140px minmax(0,1.4fr) 24px;gap:6px;align-items:center;margin-top:6px}
+      @media(max-width:700px){#hd2AddM .ha-r,#hd2AddM .ha-h{grid-template-columns:1fr 1fr}#hd2AddM .ha-h{display:none}#hd2AddM .ha-r{padding-bottom:8px;border-bottom:1px solid var(--border)}}</style>
+    <div class="ha-box">
+      <div style="display:flex;align-items:center;gap:8px;"><div style="font-size:16px;font-weight:700;">＋ Add assets</div>
+        <span style="font-size:12px;color:var(--text3);">to ${esc(c.level)} · ${esc(c.label)}</span><span style="flex:1"></span>
+        <button onclick="hd2AddClose()" ${dis} style="${HD2_B()}padding:3px 10px;">✕</button></div>
+      <div style="margin-top:12px;">${lb('Title')}
+        <select ${dis} onchange="_hd2AddM.titleId=this.value" style="${IN}margin-top:4px;">${c.titles.map(t => `<option value="${esc(t.id)}" ${t.id === M.titleId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></div>
+      <div class="ha-h" style="margin-top:14px;">${lb('Asset title')}${lb('Type')}${lb('Status')}${lb('Due date')}${lb('Initiative')}<span></span></div>
+      <datalist id="haTypes">${types.map(t => `<option value="${esc(t)}">`).join('')}</datalist><datalist id="haInis">${inis.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
+      ${rows}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+        <button ${dis} onclick="const L=_hd2AddM.rows,p=L[L.length-1]||{};L.push(Object.assign(hd2AddRow(_hd2AddM.c),{type:p.type||_hd2AddM.c.type||'',st:p.st||'Development',ini:p.ini||_hd2AddM.c.ini||''}));hd2AddDraw()" style="${HD2_B()}">＋ Another</button>
+        <span style="flex:1"></span>
+        <span style="font-size:12px;color:${/^✗/.test(M.msg) ? '#f87171' : /^✓/.test(M.msg) ? '#4ade80' : 'var(--text3)'};">${esc(M.busy || M.msg)}</span>
+        <button class="modal-btn" ${dis} onclick="hd2AddSave()">Add ${M.rows.length} asset${M.rows.length === 1 ? '' : 's'}</button></div></div>`;
+}
+async function hd2AddSave() {
+  const M = _hd2AddM; if (!M || M.busy) return;
+  if (!M.titleId) { M.msg = '✗ Pick a title'; return hd2AddDraw(); }
+  const L = M.rows.map(r => ({ ...r, name: String(r.name || '').trim(), type: String(r.type || '').trim(), ini: String(r.ini || '').trim() }));
+  const bad = L.findIndex(r => !r.name || !r.type); if (bad >= 0) { M.msg = '✗ Row ' + (bad + 1) + ' needs an asset title and a type'; return hd2AddDraw(); }
+  const ib = L.map(r => r.ini && initiativeBad(r.ini)).find(Boolean); if (ib) { M.msg = '✗ ' + ib; return hd2AddDraw(); }
+  const t = M.c.titles.find(x => x.id === M.titleId) || {}, warn = []; let done = 0;
+  for (const [i, r] of L.entries()) {
+    M.busy = 'Adding ' + (i + 1) + ' / ' + L.length + '…'; hd2AddDraw();
+    try {
+      const res = await call('createAsset', { titleId: M.titleId, campId: M.c.cid, ...(t.pid ? { productId: t.pid } : {}), assetTitle: r.name, assetType: r.type, assetStatus: r.st });
+      if (!res || res.error || !res.id) throw new Error((res && res.error) || 'no response');
+      const id = hdNid(res.id); done++;
+      if (r.st !== 'Development') { const s = await call('entitySave', { pageId: id, changes: { 'Asset Status': r.st } }).catch(e => ({ error: e.message }));
+        if (!s || s.error || !(s.saved || []).length) warn.push(r.name + ': status not set (' + ((s && s.error) || 'refused') + ')'); }
+      if (r.ini) { let e2 = '';
+        if (!(_hd2IniNames || []).some(x => x.toLowerCase() === r.ini.toLowerCase())) { const a = await call('initiativeNames', { op: 'add', name: r.ini }).catch(e => ({ error: e.message }));
+          if (a && !a.error) { _hd2IniNames = a.names || [...(_hd2IniNames || []), r.ini]; if (a.added) _hd2IniAdded = a.added; } else e2 = (a && a.error) || 'no response'; }
+        const b = e2 ? { error: e2 } : await call('cplanAssetBulkEdit', { field: 'initiative', items: [{ assetId: id, value: r.ini }] }).catch(e => ({ error: e.message }));
+        if (!b || b.error || b.stopped || !(b.done || []).length) warn.push(r.name + ': initiative not set (' + ((b && (b.error || (b.stopped && b.stopped.error))) || 'no response') + ')'); }
+      if (r.due) { const d = await call('setAssetDeadline', { assetId: id, date: r.due }).catch(e => ({ error: e.message }));
+        if (!d || d.error) warn.push(r.name + ': due date not set (' + ((d && d.error) || 'no response') + ')'); }
+      { const k = M.rows.findIndex(x => String(x.name || '').trim() === r.name && String(x.type || '').trim() === r.type); if (k >= 0) M.rows.splice(k, 1); }
+    } catch (e) { warn.push(r.name + ': not created — ' + (e.message || e)); break; }
+  }
+  if (!M.rows.length) M.rows.push(hd2AddRow(M.c));
+  M.busy = ''; M.msg = (warn.length ? '✗ ' : '✓ ') + done + ' of ' + L.length + ' added' + (warn.length ? ' — ' + warn.join(' · ') : '') + (done ? ' — updating the table…' : '');
+  hd2AddDraw(); showToast(M.msg.slice(0, 220), warn.length ? 'error' : 'success');
+  if (done) { try { await hd2Reload(); } catch (e) {} if (_hd2AddM === M && /updating the table…$/.test(M.msg)) { M.msg = M.msg.replace(/ — updating the table…$/, ' — the table is updated'); hd2AddDraw(); }
+    if (!warn.length && _hd2AddM === M) setTimeout(() => { if (_hd2AddM === M && !M.busy) hd2AddClose(); }, 1200); }
 }
 function hd2BulkDel() {
   const B = _hd2BM; if (!B.arm) { B.arm = true; return hd2BulkDraw(); }
