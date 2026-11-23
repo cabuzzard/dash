@@ -1,0 +1,253 @@
+{
+ "saved": "2026-11-22",
+ "stack": "Small business",
+ "page": "aisystemimplementation.com/ (web/hub/ai-implementation/index.html)",
+ "note": "Copy of the live page before the mid-income-whale relaunch. index.html here is the full page as it was.",
+ "slots": {
+  "logo_text": {
+   "section": "Header",
+   "source": "Hub › logo (markup, readonly)",
+   "text": "AISystem Implementation"
+  },
+  "nav_services": {
+   "section": "Header",
+   "source": "Hub › Hub Page Copy › Services Nav",
+   "text": "Services"
+  },
+  "nav_process": {
+   "section": "Header",
+   "source": "Hub › Hub Page Copy › Process Nav",
+   "text": "How It Works"
+  },
+  "nav_book": {
+   "section": "Header",
+   "source": "Hub › Hub Page Copy › Book Call Nav",
+   "text": "Book a Call"
+  },
+  "nav_cta": {
+   "section": "Header",
+   "source": "CTA › CTA Label",
+   "text": "Book Free Strategy Call"
+  },
+  "hero_eyebrow": {
+   "section": "Hero",
+   "source": "CTA › Eyebrow",
+   "text": "For small business owners"
+  },
+  "hero_headline": {
+   "section": "Hero",
+   "source": "CTA › Platform Title",
+   "text": "Get AI working in your business — without hiring a team"
+  },
+  "hero_sub": {
+   "section": "Hero",
+   "source": "CTA › Body",
+   "text": "We implement, integrate, and hand over working AI automation so your team can use it from day one. No more tools that sit unused."
+  },
+  "hero_cta_primary": {
+   "section": "Hero",
+   "source": "CTA › CTA Label",
+   "text": "Book your free strategy call"
+  },
+  "hero_cta_secondary": {
+   "section": "Hero",
+   "source": "Hub › Hub Page Copy › Services Jump Button",
+   "text": "See the services"
+  },
+  "hero_image": {
+   "section": "Hero",
+   "source": "CTA › image (asset image, not the writer)",
+   "text": ""
+  },
+  "services_eyebrow": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Services Eyebrow",
+   "text": "What we do"
+  },
+  "services_title": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Services Heading",
+   "text": "Practical AI systems for small businesses"
+  },
+  "services_subtitle": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Services Intro",
+   "text": "Choose the level of support that matches where you are right now."
+  },
+  "service1_kicker": {
+   "section": "Services",
+   "source": "Offer › Card Kicker",
+   "text": "Done-for-you"
+  },
+  "service1_title": {
+   "section": "Services",
+   "source": "Offer › Card Title",
+   "text": "AI Automation Services"
+  },
+  "service1_body": {
+   "section": "Services",
+   "source": "Offer › Body",
+   "text": "For owners whose manual workflows are eating their time. We build, integrate, and hand over working automation your team can run."
+  },
+  "service1_link": {
+   "section": "Services",
+   "source": "Offer › published page URL (not the writer)",
+   "text": "/blog/ai-operations-partner/"
+  },
+  "service1_more": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Card Link Label",
+   "text": "Learn more →"
+  },
+  "service2_kicker": {
+   "section": "Services",
+   "source": "Offer › Card Kicker",
+   "text": "Ongoing partner"
+  },
+  "service2_title": {
+   "section": "Services",
+   "source": "Offer › Card Title",
+   "text": "Fractional AI Operations"
+  },
+  "service2_body": {
+   "section": "Services",
+   "source": "Offer › Body",
+   "text": "For teams that already have tools but no system. One fractional partner takes over AI workflows and content so it runs without you as the bottleneck."
+  },
+  "service2_link": {
+   "section": "Services",
+   "source": "Offer › published page URL (not the writer)",
+   "text": "/blog/ai-content-partner/"
+  },
+  "service2_more": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Card Link Label",
+   "text": "Learn more →"
+  },
+  "service3_kicker": {
+   "section": "Services",
+   "source": "Offer › Card Kicker",
+   "text": "Clarity first"
+  },
+  "service3_title": {
+   "section": "Services",
+   "source": "Offer › Card Title",
+   "text": "AI Workflow Audit & Roadmap"
+  },
+  "service3_body": {
+   "section": "Services",
+   "source": "Offer › Body",
+   "text": "One focused assessment that maps your bottlenecks and delivers a ranked, actionable roadmap — no retainer required."
+  },
+  "service3_link": {
+   "section": "Services",
+   "source": "Offer › published page URL (not the writer)",
+   "text": "/blog/done-for-you-lead-gen/"
+  },
+  "service3_more": {
+   "section": "Services",
+   "source": "Hub › Hub Page Copy › Card Link Label",
+   "text": "Learn more →"
+  },
+  "process_eyebrow": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Process Eyebrow",
+   "text": "Simple process"
+  },
+  "process_title": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Process Heading",
+   "text": "From audit to working system"
+  },
+  "process_subtitle": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Process Intro",
+   "text": "Most clients see a live workflow within a few weeks."
+  },
+  "step1_title": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 1 Title",
+   "text": "Strategy Call"
+  },
+  "step1_body": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 1 Body",
+   "text": "We map your current tools and the highest-friction workflows."
+  },
+  "step2_title": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 2 Title",
+   "text": "Build & Integrate"
+  },
+  "step2_body": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 2 Body",
+   "text": "We implement the automations and connect them to what you already use."
+  },
+  "step3_title": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 3 Title",
+   "text": "Hand Over"
+  },
+  "step3_body": {
+   "section": "Process",
+   "source": "Hub › Hub Page Copy › Step 3 Body",
+   "text": "Your team gets training and a system they can operate from day one."
+  },
+  "cta_image": {
+   "section": "Contact band",
+   "source": "CTA › image (asset image, not the writer)",
+   "text": ""
+  },
+  "cta_headline": {
+   "section": "Contact band",
+   "source": "CTA › Platform Title",
+   "text": "Ready to stop managing tools and start running a system?"
+  },
+  "cta_body": {
+   "section": "Contact band",
+   "source": "CTA › Body",
+   "text": "Book a free strategy call. We’ll look at where AI can actually save time in your business and outline a clear next step."
+  },
+  "cta_button": {
+   "section": "Contact band",
+   "source": "Hub › Hub Contact › Phone Button",
+   "text": "Text (925) 940-0014"
+  },
+  "cta_sms": {
+   "section": "Contact band",
+   "source": "Hub › Hub Contact › SMS",
+   "text": "sms:+19259400014"
+  },
+  "cta_email_label": {
+   "section": "Contact band",
+   "source": "Hub › Hub Page Copy › Email Link Label",
+   "text": "Or email us"
+  },
+  "cta_email": {
+   "section": "Contact band",
+   "source": "Hub › Hub Contact › Email",
+   "text": "hello@aisystemimplementation.com"
+  },
+  "footer_copyright": {
+   "section": "Footer",
+   "source": "Hub › Hub Page Copy › Copyright",
+   "text": "© AI System Implementation"
+  },
+  "footer_services_label": {
+   "section": "Footer",
+   "source": "Hub › Hub Page Copy › Footer Services",
+   "text": "Services"
+  },
+  "footer_blog_label": {
+   "section": "Footer",
+   "source": "Hub › Hub Page Copy › Blog Nav",
+   "text": "Field Notes"
+  },
+  "footer_book_label": {
+   "section": "Footer",
+   "source": "Hub › Hub Page Copy › Footer Book Call",
+   "text": "Book a Call"
+  }
+ }
+}
