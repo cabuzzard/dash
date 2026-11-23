@@ -13240,11 +13240,21 @@ function hd2Render() {
 // 📝 notes per initiative (operator 2026-11-19): initiativeNames notes (lowercase name → {name, note, at}); one editor open at a time, under its row.
 let _hd2IniNotes = {}, _hd2IniEd = null;   // _hd2IniEd = {k, name, text, busy, err}
 function hd2IniNoteOpen(i) { const x = _hd2IniL[i]; if (!x) return; const k = x.name.toLowerCase();
-  _hd2IniEd = _hd2IniEd && _hd2IniEd.k === k ? null : { k, name: x.name, text: (_hd2IniNotes[k] || {}).note || '' }; hd2IniDraw();
+  _hd2IniEd = _hd2IniEd && _hd2IniEd.k === k ? null : { k, name: x.name, newName: x.name, text: (_hd2IniNotes[k] || {}).note || '' }; hd2IniDraw();
   const t = document.getElementById('hd2IniNt'); if (t) t.focus(); }
 async function hd2IniNoteSave() {
   const E = _hd2IniEd; if (!E || E.busy) return; const t = document.getElementById('hd2IniNt'); if (t) E.text = t.value;
+  const nmIn = document.getElementById('hd2IniNm'); if (nmIn) E.newName = nmIn.value.trim();
+  if (!E.newName) { E.err = 'The name can’t be empty'; return hd2IniDraw(); }
   E.busy = true; E.err = ''; hd2IniDraw();
+  if (E.newName !== E.name) {   // rename first (operator 2026-11-23): assets, sub-initiatives, product map and the names list all follow
+    const rn = await call('initiativeNames', { op: 'rename', name: E.name, to: E.newName }).catch(e => ({ error: e.message }));
+    if (!rn || (rn.error && !rn.names)) { E.busy = false; E.err = (rn && rn.error) || 'no response'; return hd2IniDraw(); }
+    hd2IniRenamedLocal(E.name, E.newName); _hd2IniNames = rn.names || _hd2IniNames; _hd2IniAdded = rn.added || _hd2IniAdded; _hd2IniNotes = rn.notes || _hd2IniNotes;
+    if ((rn.failed || []).length) showToast('✗ Renamed, but ' + rn.failed.length + ' asset(s) kept the old name: ' + rn.failed.slice(0, 2).join(' · '), 'error');
+    else showToast('✓ Renamed “' + E.name + '” → “' + E.newName + '” — ' + (rn.assets || 0) + ' asset' + (rn.assets === 1 ? '' : 's') + (rn.productMap ? ', ' + rn.productMap + ' product-map entr' + (rn.productMap === 1 ? 'y' : 'ies') : ''), 'success');
+    E.name = E.newName; E.k = E.newName.toLowerCase();
+  }
   const r = await call('initiativeNames', { op: 'note', name: E.name, note: E.text }).catch(e => ({ error: e.message }));
   E.busy = false;
   if (!r || r.error) { E.err = (r && r.error) || 'no response'; return hd2IniDraw(); }
@@ -13304,14 +13314,26 @@ function hd2IniDraw() {
       || `<div style="font-size:12.5px;color:var(--text3);padding:8px 10px;">No new initiatives yet — select assets and type a name above to start one.${nOld && !_hd2IniOld ? ' (' + nOld + ' old ones hidden — tick Show old.)' : ''}</div>`}</div>`;
 }
 // open the table to one initiative (or back to everything): headings it opened close again when it changes
+// after a rename: the loaded rows, the product map copy and the 🎯 pick follow the new name, then the tree redraws (keeping open headings)
+function hd2IniRenamedLocal(from, to) {
+  const lo = from.toLowerCase(), re = new RegExp('^' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s·\\s)', 'i');
+  const sw = v => String(v || '').trim().toLowerCase() === lo ? to : String(v || '').replace(re, to + '$1');
+  (_hd2Rows || []).forEach(a => { a.initiative = sw(a.initiative); a.subInitiative = sw(a.subInitiative); });
+  Object.values((_hd2PM && _hd2PM.hubs) || {}).forEach(h => Object.values(h || {}).forEach(e => { if (e) { e.initiative = sw(e.initiative); e.sub = sw(e.sub); } }));
+  if (_hd2Ini.toLowerCase() === lo) _hd2Ini = to;
+  if (typeof hd2RerenderNamed === 'function') hd2RerenderNamed(); else hd2Rerender();
+}
 function hd2IniNoteHtml(x) {
   const E = _hd2IniEd; if (!E || E.k !== x.name.toLowerCase()) return ''; const at = (_hd2IniNotes[E.k] || {}).at;
   return `<div style="padding:8px 10px 12px;border-bottom:1px solid var(--border);background:var(--surface2);">
+    <label style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:3px;">Name</label>
+    <input id="hd2IniNm" value="${esc(E.newName != null ? E.newName : x.name)}" oninput="_hd2IniEd.newName=this.value" maxlength="200" style="width:100%;box-sizing:border-box;font-size:13.5px;font-weight:600;padding:6px 8px;margin-bottom:8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);">
+    <label style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:3px;">Notes</label>
     <textarea id="hd2IniNt" rows="7" placeholder="Notes for “${esc(x.name)}”" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.45;padding:8px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical;font-family:inherit;">${esc(E.text)}</textarea>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
       <button onclick="hd2IniNoteSave()" ${E.busy ? 'disabled' : ''} style="${HD2_B('var(--accent)', 'var(--accent)')}padding:4px 12px;">${E.busy ? 'Saving…' : '💾 Save'}</button>
       <button onclick="_hd2IniEd=null;hd2IniDraw()" style="${HD2_B()}padding:4px 12px;">Cancel</button>
-      <span style="font-size:11px;color:${E.err ? '#f87171' : 'var(--text3)'};">${E.err ? '✗ ' + esc(E.err) : at ? 'Last saved ' + esc(String(at).slice(0, 16).replace('T', ' ')) + ' UTC' : ''}</span></div></div>`;
+      <span style="font-size:11px;color:${E.err ? '#f87171' : 'var(--text3)'};">${E.err ? '✗ ' + esc(E.err) : (E.newName || '').trim() && E.newName.trim() !== x.name ? 'Saving renames it on every asset, sub-initiative and the product map' : at ? 'Last saved ' + esc(String(at).slice(0, 16).replace('T', ' ')) + ' UTC' : ''}</span></div></div>`;
 }
 function hd2IniPick(i) {
   _hd2IniDel = ''; const x = _hd2IniL[i]; _hd2Ini = !x || _hd2Ini.toLowerCase() === x.name.toLowerCase() ? '' : x.name;

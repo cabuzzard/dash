@@ -21435,7 +21435,37 @@ export default {
           await env.TRADES.put(K, JSON.stringify({ ...cur, names: next, added: add2, notes: notes2, at: Date.now() }));
           await log({ op, name }); return json({ ok: true, names: next, added: add2, notes: notes2 });
         }
-        return json({ error: "op must be list | add | remove | note" }, 400);
+        // rename {name, to} (operator 2026-11-23: "add initiative name edit on the initiative edit modal"): the name changes everywhere it is
+        // stored — the names list (keeping its added date and notes), every asset whose Initiative is the old name, every Sub Initiative that
+        // starts "<old> · ", and the product map (hd:productmap:v1). Refused when the new name is already another initiative (no silent merge).
+        if (op === "rename") {
+          const to = String(body.to ?? "").trim(); if (!name || !to) return json({ error: "name and to required" }, 400);
+          const bad = initiativeNameBad(to); if (bad) return json({ error: bad }, 400);
+          if (to === name) return json({ ok: true, names, added, notes, assets: 0, unchanged: true });
+          if (!same(to, name) && (names.some(n => same(n, to)) || notes[to.toLowerCase()])) return json({ error: "“" + to + "” is already an initiative — pick another name" }, 409);
+          const swap = v => same(String(v || "").trim(), name) ? to : String(v || "").replace(new RegExp("^" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\s·\\s)", "i"), to + "$1");
+          const names2 = names.map(n => same(n, name) ? to : n).sort((a, b) => a.localeCompare(b));
+          const added2 = Object.fromEntries(Object.entries(added).map(([n, t]) => [same(n, name) ? to : n, t]));
+          const notes2 = {}; for (const [k, v] of Object.entries(notes)) { if (same(k, name)) notes2[to.toLowerCase()] = { ...v, name: to }; else notes2[k] = v; }
+          // assets: Initiative = old name, or Sub Initiative starting "old · "
+          const hits = (await notionQuery(ASSETS_DB, { filter: { or: [{ property: "Initiative", rich_text: { equals: name } }, { property: "Sub Initiative", rich_text: { starts_with: name + " · " } }] } })).filter(x => !x.archived && !x.in_trash);
+          const rtv = p => (p?.rich_text || []).map(t => t.plain_text).join(""), done = [], failed = [];
+          for (const pg of hits) {
+            const pr = pg.properties || {}, ini = rtv(pr.Initiative), sub = rtv(pr["Sub Initiative"]), patch = {};
+            if (same(ini.trim(), name)) patch.Initiative = { rich_text: [{ type: "text", text: { content: to } }] };
+            const sub2 = swap(sub); if (sub2 !== sub) patch["Sub Initiative"] = { rich_text: sub2 ? [{ type: "text", text: { content: sub2 } }] : [] };
+            if (!Object.keys(patch).length) continue;
+            try { await kwNotionPatch(env, hubAssetId(pg.id), patch); done.push(hubAssetId(pg.id)); } catch (e) { failed.push(hubAssetId(pg.id) + ": " + e.message); if (/rate/i.test(e.message)) break; }
+          }
+          // product map
+          let pmN = 0; const pm = await env.TRADES.get("hd:productmap:v1", "json").catch(() => null);
+          if (pm && pm.hubs) { for (const h of Object.values(pm.hubs)) for (const e of Object.values(h || {})) { if (!e) continue; const i2 = swap(e.initiative), s2 = swap(e.sub); if (i2 !== (e.initiative || "") || s2 !== (e.sub || "")) { e.initiative = i2; e.sub = s2; pmN++; } }
+            if (pmN) { pm.at = new Date().toISOString(); await env.TRADES.put("hd:productmap:v1", JSON.stringify(pm)); } }
+          await env.TRADES.put(K, JSON.stringify({ ...cur, names: names2, added: added2, notes: notes2, at: Date.now() }));
+          await log({ op, name, to, assets: done.length, failed: failed.length, productMap: pmN });
+          return json({ ok: !failed.length, names: names2, added: added2, notes: notes2, assets: done.length, assetIds: done, failed, productMap: pmN });
+        }
+        return json({ error: "op must be list | add | remove | note | rename" }, 400);
       } catch (e) { return json({ error: e.message }, 500); }
     }
     // getInitiatives {scope?: "new" (default) | "all", name?, titles?: true} (operator 2026-11-19: "external editors to be able to access the 'new'
