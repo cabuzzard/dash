@@ -12249,9 +12249,12 @@ async function hd2KidBulkGo(btn) {
       if ((res.saved || []).includes(p.name)) { ok.push(r); if (/^status$/i.test(p.name)) r.st = String(val || ''); } else bad.push(r.name + ': refused'); }
     catch (x) { bad.push(r.name + ': ' + (x.message || x)); }
   }
-  K.mode = ok.length && !bad.length ? '' : K.mode; K.reload = ok.length > 0;
-  K.msg = (ok.length ? '✓ ' + p.name + ' set on ' + hd2Pl(ok.length, K.kind) : '') + (bad.length ? (ok.length ? ' · ' : '') + '✗ Not saved: ' + bad.join(' · ') : '');
+  K.mode = ok.length && !bad.length ? '' : K.mode; K.reload = false;
+  K.msg = (ok.length ? '✓ ' + p.name + ' set on ' + hd2Pl(ok.length, K.kind) : '') + (bad.length ? (ok.length ? ' · ' : '') + '✗ Not saved: ' + bad.join(' · ') : '') + (ok.length ? ' — updating the table…' : '');
   hd2EfDraw();
+  // the main table reloads on its own (operator 2026-11-23: "I added cohort to 14 assets but dont see it as a heading in the tree") — the
+  // tree, its Cohort / Run headings, columns and filters only show a field written here once the rows are read again
+  if (ok.length) hd2ReloadFromFlyout().then(() => { if (EF && EF.kids === K && /updating the table…$/.test(K.msg)) { K.msg = K.msg.replace(/ — updating the table…$/, ' — the table is updated'); hd2EfDraw(); } });
 }
 // ── 📅 Schedule (operator 2026-11-19): where a record's children carry a due date, they are laid out on a month calendar by it.
 // Due date only (operator: 'lets stick with due date') = the asset Deadline, the same field the table's Due column counts. Assets only, at every
