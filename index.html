@@ -13278,16 +13278,17 @@ function hd2Render() {
     const fromAssets = () => uniq(assets.map(a => ({ id: hdNid(a.titleId || ''), name: a.title || '(title)', pid: hdNid(a.productId || '') })));
     let titles = [], level = '', ptype = '';
     if (w === 'asset' && pids) { titles = ent && ent.k === 'title' ? [{ id: hdNid(ent.id), name: label, pid: hdNid(pids[0] || '') }] : []; level = 'title'; }
+    else if (w === 'tag') { titles = fromAssets(); level = 'cohort'; }
     else if (w === 'asset' || w === 'run') { titles = fromAssets(); level = w === 'run' ? 'run' : 'asset type'; ptype = w === 'run' ? (type || '') : (label === '(no type)' ? '' : label); }
     else { const T = titlesIn(w, kids || []) || []; titles = uniq(T.map(Ti => ({ id: Ti.key, name: Ti.name, pid: w === 'title' && pids ? hdNid(pids[0] || '') : '' }))); level = ({ title: 'product', product: 'topic', topic: 'cluster', cluster: 'hub' })[w] || w; }
     if (!titles.length || !curCid) return assets.length ? '<span class="hd2tc" title="Assets under this heading">' + assets.length + '</span>' : '';
     const I = new Set(assets.map(a => String(a.initiative || '').trim()).filter(Boolean));
-    const i = _hd2AddCtx.push({ cid: curCid, titles, type: ptype, label, level, ini: I.size === 1 ? [...I][0] : '' }) - 1;
+    const i = _hd2AddCtx.push({ cid: curCid, titles, type: ptype, label, level, cohort: w === 'tag' ? label : '', ini: I.size === 1 ? [...I][0] : '' }) - 1;
     return '<a href="#" class="hd2tc hd2add" onclick="event.preventDefault();event.stopPropagation();hd2AddOpen(' + i + ')" title="' + (assets.length ? assets.length + ' asset' + (assets.length === 1 ? '' : 's') + ' — click to add more here' : 'Add assets here') + '">' + (assets.length || '＋') + '</a>';
   };
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${addCnt(label, kids, w, assets, type, pids, ent)}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${addCnt(label, kids, w, assets, type, pids, ent)}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run', tag: 'Cohort' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) || pubW(a) ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
@@ -13309,9 +13310,15 @@ function hd2Render() {
     const m = new Map(); L.forEach(a => { const g = tagOf(a) || '(no cohort)'; if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no cohort)') - (y[0] === '(no cohort)') || x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
       .map(([g, TL]) => node(g, TL, 'tag', byRun(t, TL), TL, t === '(no type)' ? '' : t)).join(''); };
-  const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
+  const byType = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no type)') - (y[0] === '(no type)') || x[0].localeCompare(y[0]))
-      .map(([t, L]) => node(t, L, 'asset', byTag(t, L), L, t === '(no type)' ? '' : t)).join(''); };
+      .map(([t, L]) => node(t, L, 'asset', byRun(t, L), L, t === '(no type)' ? '' : t)).join(''); };
+  // operator 2026-11-23: "if cohort exists group them under their title under their cohort; list under title if not exists" — a title's
+  // assets with a cohort sit under one heading per cohort (first cohort), types inside; the rest stay listed under the title by type.
+  const groups = assets => { if (!hasTags || !assets.some(a => tagOf(a))) return byType(assets);
+    const m = new Map(); assets.filter(a => tagOf(a)).forEach(a => { const g = tagOf(a); if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
+    return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
+      .map(([g, TL]) => node(g, TL, 'tag', byType(TL), TL, '')).join('') + byType(assets.filter(a => !tagOf(a))); };
   const H = 'cursor:pointer;user-select:none;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
   el.innerHTML = '<style>#hd2Body .hd2r{display:flex;align-items:center;gap:0;padding:5px 4px;border-radius:4px;cursor:pointer;list-style:none}'
     + '#hd2Body .hd2tag,#hd2Bulk .hd2tag{margin-left:6px;font-size:10.5px;padding:1px 6px;border:1px solid var(--border2);border-radius:9px;color:var(--text2);font-weight:400}'
@@ -13743,6 +13750,8 @@ async function hd2AddSave() {
           if (a && !a.error) { _hd2IniNames = a.names || [...(_hd2IniNames || []), r.ini]; if (a.added) _hd2IniAdded = a.added; } else e2 = (a && a.error) || 'no response'; }
         const b = e2 ? { error: e2 } : await call('cplanAssetBulkEdit', { field: 'initiative', items: [{ assetId: id, value: r.ini }] }).catch(e => ({ error: e.message }));
         if (!b || b.error || b.stopped || !(b.done || []).length) warn.push(r.name + ': initiative not set (' + ((b && (b.error || (b.stopped && b.stopped.error))) || 'no response') + ')'); }
+      if (M.c.cohort) { const c = await call('assetCohorts', { op: 'add', assetIds: [id], cohorts: [M.c.cohort] }).catch(e => ({ error: e.message }));
+        if (!c || c.error) warn.push(r.name + ': cohort not set (' + ((c && c.error) || 'no response') + ')'); }
       if (r.due) { const d = await call('setAssetDeadline', { assetId: id, date: r.due }).catch(e => ({ error: e.message }));
         if (!d || d.error) warn.push(r.name + ': due date not set (' + ((d && d.error) || 'no response') + ')'); }
       { const k = M.rows.findIndex(x => String(x.name || '').trim() === (r.auto ? '' : r.name) && String(x.type || '').trim() === r.type); if (k >= 0) M.rows.splice(k, 1); }
