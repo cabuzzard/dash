@@ -11848,24 +11848,28 @@ function hd2PlanHtml() {
   const lb = s => `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:0 0 6px;">${s}</div>`;
   const todo = P.list.filter(x => !x.assetId), types = hd2PlanTypes(false), dis = P.busy ? 'disabled' : '';
   const stC = s => typeof HD2_ST_C === 'function' ? HD2_ST_C(s) : 'var(--text3)';
+  // deploy tree (operator 2026-11-23: "create a deploy tree as well"): a row's parent is another row (its id) — deployed as that row's child
+  const byId = new Map(P.list.map(x => [x.id, x])), depth = x => { let d = 0, y = x, seen = new Set(); while (y && y.parent && byId.has(y.parent) && !seen.has(y.parent) && d < 6) { seen.add(y.parent); y = byId.get(y.parent); d++; } return d; };
+  const lbl = x => (x.name || x.type) + (x.name ? ' (' + x.type + ')' : '');
+  const parSel = (x, i) => `<select class="pl-p" onchange="EF.plan.list[${i}].parent=this.value;EF.plan.dirty=true;hd2EfDraw()" title="What this deploys under"><option value="">↳ the plan</option>${P.list.filter(y => y !== x && !/^run$/i.test(y.type)).map(y => `<option value="${esc(y.id)}" ${x.parent === y.id ? 'selected' : ''}>↳ ${esc(lbl(y).slice(0, 60))}</option>`).join('')}</select>`;
   const rows = P.list.map((x, i) => `<div class="pl-r${x.assetId ? ' dep' : ''}">
       <span class="pl-mv"><button ${dis} onclick="hd2PlanMove(${i},-1)" ${i ? '' : 'style="visibility:hidden"'} title="Move up">▲</button><button ${dis} onclick="hd2PlanMove(${i},1)" ${i < P.list.length - 1 ? '' : 'style="visibility:hidden"'} title="Move down">▼</button></span>
-      <span class="pl-n">${i + 1}</span>
-      ${x.assetId ? `<span class="pl-t">${esc((x.live && x.live.type) || x.type)}</span><span class="pl-nm"><a href="#" onclick="event.preventDefault();hd2PlanOpen('${x.assetId}')" title="Open this asset">${esc((x.live && x.live.name) || x.name || x.type)}</a></span>
+      <span class="pl-n">${i + 1}</span><span class="pl-ind" style="display:none"></span>
+      ${x.assetId ? `<span class="pl-t" style="padding-left:${depth(x) * 16}px;">${depth(x) ? '└ ' : ''}${esc((x.live && x.live.type) || x.type)}</span><span class="pl-nm"><a href="#" onclick="event.preventDefault();hd2PlanOpen('${x.assetId}')" title="Open this asset">${esc((x.live && x.live.name) || x.name || x.type)}</a></span>
         <span class="pl-st" style="color:${x.gone ? '#f87171' : stC((x.live && x.live.status) || 'Development')};">${x.gone ? 'deleted' : esc((x.live && x.live.status) || 'Development')}</span>`
-      : `<input class="pl-t" list="plTypes" value="${esc(x.type)}" oninput="EF.plan.list[${i}].type=this.value;EF.plan.dirty=true;hd2PlanDirty()" placeholder="asset type">
+      : `<span class="pl-tw" style="padding-left:${depth(x) * 16}px;display:flex;gap:4px;min-width:0;">${depth(x) ? '<span style="color:var(--text3);">└</span>' : ''}<input class="pl-t" list="plTypes" value="${esc(x.type)}" oninput="EF.plan.list[${i}].type=this.value;EF.plan.dirty=true;hd2PlanDirty()" placeholder="asset type" style="flex:1;"></span>
         <input class="pl-nm" value="${esc(x.name)}" oninput="EF.plan.list[${i}].name=this.value;EF.plan.dirty=true;hd2PlanDirty()" placeholder="asset title — blank = the type">
-        <span class="pl-st"><button ${dis} onclick="hd2PlanDeploy([${i}])" title="Create just this one in Development">▶ Deploy</button></span>`}
+        <span class="pl-st"><button ${dis} onclick="hd2PlanDeploy([${i}])" title="Create just this one in Development">▶ Deploy</button></span>${parSel(x, i)}`}
       <button class="pl-x" ${dis} onclick="hd2PlanDel(${i})" title="${x.assetId ? 'Take it off the list (the asset stays)' : 'Remove'}">✕</button></div>`).join('');
   return `<style>#efPanel .pl-r{display:grid;grid-template-columns:38px 22px 190px minmax(0,1fr) 110px 26px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
       #efPanel .pl-r input{font-size:13px;padding:5px 7px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);min-width:0;font-family:inherit}
       #efPanel .pl-mv button,#efPanel .pl-x,#efPanel .pl-st button{border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:11px;padding:1px 3px}#efPanel .pl-st button{border:1px solid var(--border2);border-radius:5px;padding:3px 8px;color:var(--text)}
-      #efPanel .pl-n{font-size:11.5px;color:var(--text3);text-align:right}#efPanel .pl-st{font-size:12px}#efPanel .pl-r.dep .pl-t{font-size:12.5px;color:var(--text2)}#efPanel .pl-r.dep .pl-nm a{color:var(--text);font-weight:600}
+      #efPanel .pl-n{font-size:11.5px;color:var(--text3);text-align:right}#efPanel .pl-p{grid-column:3/-2;font-size:11.5px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text3);margin-top:-4px}#efPanel .pl-ind{display:none}#efPanel .pl-st{font-size:12px}#efPanel .pl-r.dep .pl-t{font-size:12.5px;color:var(--text2)}#efPanel .pl-r.dep .pl-nm a{color:var(--text);font-weight:600}
       @media(max-width:640px){#efPanel .pl-r{grid-template-columns:38px 22px minmax(0,1fr) 26px}#efPanel .pl-r>.pl-nm,#efPanel .pl-r>.pl-st{grid-column:3/4}}</style>
     ${lb('Marketing plan')}
     <textarea id="plText" rows="14" oninput="EF.plan.text=this.value;EF.plan.dirty=true;hd2PlanDirty()" placeholder="The written marketing plan — audience, offer, goal, channels, cadence, timeline…" style="${HD2_IN}line-height:1.5;resize:vertical;">${esc(P.text)}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin:18px 0 6px;">${lb('Deploy list (' + P.list.length + ' · ' + todo.length + ' to deploy)').replace('margin:0 0 6px', 'margin:0')}<span style="flex:1"></span></div>
-    <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">In deploy order. 🚀 Deploy creates each row that isn't deployed yet on this plan's title, as a child of the plan, in Development.</div>
+    <div style="font-size:11.5px;color:var(--text3);margin-bottom:6px;">In deploy order — a tree: each row deploys under the plan or under another row (↳). 🚀 Deploy creates each row that isn't deployed yet on this plan's title, in Development, parents first.</div>
     <datalist id="plTypes">${types.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
     ${rows || '<div style="font-size:12.5px;color:var(--text3);padding:6px 0;">Nothing on the list yet — add asset types below.</div>'}
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;">
@@ -11880,7 +11884,7 @@ function hd2PlanHtml() {
 }
 function hd2PlanDirty() { const b = document.getElementById('plSave'); if (b) b.disabled = !!EF.plan.busy; }
 function hd2PlanMove(i, d) { const L = EF.plan.list, j = i + d; if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; EF.plan.dirty = true; hd2EfDraw(); }
-function hd2PlanDel(i) { EF.plan.list.splice(i, 1); EF.plan.dirty = true; hd2EfDraw(); }
+function hd2PlanDel(i) { const L = EF.plan.list, x = L[i]; L.forEach(y => { if (y.parent === x.id) y.parent = x.parent || ''; }); L.splice(i, 1); EF.plan.dirty = true; hd2EfDraw(); }
 function hd2PlanAdd() {
   const t = String((document.getElementById('plAddT') || {}).value || '').trim(), n = String((document.getElementById('plAddN') || {}).value || '').trim(), c = Math.max(1, Math.min(30, +((document.getElementById('plAddC') || {}).value) || 1));
   if (!t) { EF.plan.msg = '✗ Pick or type an asset type'; return hd2EfDraw(); }
@@ -11897,13 +11901,16 @@ async function hd2PlanSave(quiet) {
 async function hd2PlanDeploy(only) {
   const E = EF, P = E.plan; if (!P || P.busy) return;
   if (!P.titleId) { P.msg = '✗ This plan has no title — put it on a title first'; return hd2EfDraw(); }
-  const idx = (only || P.list.map((x, i) => i)).filter(i => P.list[i] && !P.list[i].assetId && String(P.list[i].type || '').trim());
+  const dep = i => { let d = 0, y = P.list[i]; const seen = new Set(); while (y && y.parent && !seen.has(y.parent)) { seen.add(y.parent); y = P.list.find(z => z.id === y.parent); d++; } return d; };
+  const idx = (only || P.list.map((x, i) => i)).filter(i => P.list[i] && !P.list[i].assetId && String(P.list[i].type || '').trim()).sort((a, b) => dep(a) - dep(b) || a - b);
   if (!idx.length) { P.msg = '✗ Nothing to deploy'; return hd2EfDraw(); }
   if (P.dirty && !(await hd2PlanSave(true))) return;
   let done = 0, stop = '';
   for (const i of idx) {
-    const x = P.list[i]; P.busy = 'Deploying ' + (done + 1) + ' / ' + idx.length + ' — ' + x.type + '…'; if (EF === E) hd2EfDraw();
-    const r = await call('createAsset', { titleId: P.titleId, campId: P.campId, ...(P.productId ? { productId: P.productId } : {}), parentAssetId: hdNid(E.e.id),
+    const x = P.list[i], par = x.parent ? P.list.find(y => y.id === x.parent) : null;
+    if (par && !par.assetId) { stop = (x.name || x.type) + ': its parent “' + (par.name || par.type) + '” isn’t deployed yet — deploy it first (or put it above this row)'; break; }
+    P.busy = 'Deploying ' + (done + 1) + ' / ' + idx.length + ' — ' + x.type + '…'; if (EF === E) hd2EfDraw();
+    const r = await call('createAsset', { titleId: P.titleId, campId: P.campId, ...(P.productId ? { productId: P.productId } : {}), parentAssetId: par ? par.assetId : hdNid(E.e.id),
       assetTitle: String(x.name || '').trim() || x.type, assetType: x.type.trim(), assetStatus: 'Development' }).catch(e => ({ error: e.message }));
     if (!r || r.error || !r.id) { stop = x.type + ': ' + ((r && r.error) || 'no response'); break; }
     x.assetId = hdNid(r.id); x.at = new Date().toISOString(); x.live = { name: String(x.name || '').trim() || x.type, type: x.type, status: 'Development' }; done++;

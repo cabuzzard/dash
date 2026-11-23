@@ -21177,7 +21177,7 @@ export default {
         const pid = hubAssetId(String(body.assetId || "")); if (!/^[0-9a-f]{32}$/i.test(pid)) return json({ error: "assetId required" }, 400);
         const H = ivHdr(), rt = a => (a || []).map(t => t.plain_text || "").join(""), chunk = v => { const s = String(v || ""), o = []; for (let i = 0; i < s.length && o.length < 100; i += 2000) o.push({ type: "text", text: { content: s.slice(i, i + 2000) } }); return o; };
         const clean = L => (Array.isArray(L) ? L : []).slice(0, 200).map(x => ({ id: String(x.id || Math.random().toString(36).slice(2, 10)).slice(0, 20), type: String(x.type || "").trim().slice(0, 100), name: String(x.name || "").trim().slice(0, 200),
-          ...(x.assetId ? { assetId: hubAssetId(String(x.assetId)) } : {}), ...(x.at ? { at: String(x.at).slice(0, 30) } : {}) })).filter(x => x.type);
+          ...(x.parent ? { parent: String(x.parent).slice(0, 20) } : {}), ...(x.assetId ? { assetId: hubAssetId(String(x.assetId)) } : {}), ...(x.at ? { at: String(x.at).slice(0, 30) } : {}) })).filter(x => x.type);   // parent = another row's id (the deploy tree, 2026-11-23)
         if (body.op === "save") {
           const props = {};
           if (body.plan != null) { const p = String(body.plan); if (p.length > 190000) return json({ error: "The plan is at most 190,000 characters" }, 400); props["Marketing Plan"] = { rich_text: chunk(p) }; }
