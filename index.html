@@ -13656,7 +13656,7 @@ function hd2AddDraw() {
   const IN = 'font-size:13px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);min-width:0;font-family:inherit;box-sizing:border-box;width:100%;';
   const dis = M.busy ? 'disabled' : '', lb = s => `<div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">${s}</div>`;
   const rows = M.rows.map((r, i) => `<div class="ha-r">
-      <input ${dis} value="${esc(r.name)}" oninput="_hd2AddM.rows[${i}].name=this.value" placeholder="asset title" style="${IN}">
+      <input ${dis} value="${esc(r.name)}" oninput="_hd2AddM.rows[${i}].name=this.value" placeholder="blank = title - asset type" title="Blank = the title name - the asset type" style="${IN}">
       <input ${dis} list="haTypes" value="${esc(r.type)}" oninput="_hd2AddM.rows[${i}].type=this.value" placeholder="asset type" style="${IN}">
       <select ${dis} onchange="_hd2AddM.rows[${i}].st=this.value" style="${IN}">${['Planning', 'Development', 'Review', 'Publish', 'Published'].map(s => `<option ${s === r.st ? 'selected' : ''}>${s}</option>`).join('')}</select>
       <input ${dis} type="date" value="${esc(r.due)}" onchange="_hd2AddM.rows[${i}].due=this.value" title="Due date (blank = none)" style="${IN}">
@@ -13684,8 +13684,12 @@ function hd2AddDraw() {
 async function hd2AddSave() {
   const M = _hd2AddM; if (!M || M.busy) return;
   if (!M.titleId) { M.msg = '✗ Pick a title'; return hd2AddDraw(); }
-  const L = M.rows.map(r => ({ ...r, name: String(r.name || '').trim(), type: String(r.type || '').trim(), ini: String(r.ini || '').trim() }));
-  const bad = L.findIndex(r => !r.name || !r.type); if (bad >= 0) { M.msg = '✗ Row ' + (bad + 1) + ' needs an asset title and a type'; return hd2AddDraw(); }
+  // a blank asset title = '<title> - <asset type>' (operator 2026-11-23: 'if no title make the title (title-asset type) default'); repeats in one batch get 2, 3…
+  const tName = (M.c.titles.find(x => x.id === M.titleId) || {}).name || '', seen = {};
+  const L = M.rows.map(r => { const type = String(r.type || '').trim(); let name = String(r.name || '').trim(); const auto = !name;
+    if (auto && type) { const base = tName + ' - ' + type; seen[base] = (seen[base] || 0) + 1; name = seen[base] > 1 ? base + ' ' + seen[base] : base; }
+    return { ...r, name, type, auto, ini: String(r.ini || '').trim() }; });
+  const bad = L.findIndex(r => !r.type); if (bad >= 0) { M.msg = '✗ Row ' + (bad + 1) + ' needs an asset type'; return hd2AddDraw(); }
   const ib = L.map(r => r.ini && initiativeBad(r.ini)).find(Boolean); if (ib) { M.msg = '✗ ' + ib; return hd2AddDraw(); }
   const t = M.c.titles.find(x => x.id === M.titleId) || {}, warn = []; let done = 0;
   for (const [i, r] of L.entries()) {
@@ -13703,7 +13707,7 @@ async function hd2AddSave() {
         if (!b || b.error || b.stopped || !(b.done || []).length) warn.push(r.name + ': initiative not set (' + ((b && (b.error || (b.stopped && b.stopped.error))) || 'no response') + ')'); }
       if (r.due) { const d = await call('setAssetDeadline', { assetId: id, date: r.due }).catch(e => ({ error: e.message }));
         if (!d || d.error) warn.push(r.name + ': due date not set (' + ((d && d.error) || 'no response') + ')'); }
-      { const k = M.rows.findIndex(x => String(x.name || '').trim() === r.name && String(x.type || '').trim() === r.type); if (k >= 0) M.rows.splice(k, 1); }
+      { const k = M.rows.findIndex(x => String(x.name || '').trim() === (r.auto ? '' : r.name) && String(x.type || '').trim() === r.type); if (k >= 0) M.rows.splice(k, 1); }
     } catch (e) { warn.push(r.name + ': not created — ' + (e.message || e)); break; }
   }
   if (!M.rows.length) M.rows.push(hd2AddRow(M.c));
