@@ -12097,7 +12097,8 @@ function hd2KidBulkHtml() {
   if (!K.schema) return '';
   const p = K.schema.find(x => x.name === K.bf);
   return box(lb('Field') + `<select style="${HD2_IN}margin-bottom:10px;" onchange="EF.kids.bf=this.value;hd2EfDraw()"><option value="">— pick a field —</option>${K.schema.map(x => `<option ${x.name === K.bf ? 'selected' : ''} value="${esc(x.name)}">${esc(x.name)} (${esc(x.type.replace('_', ' '))})</option>`).join('')}</select>`
-    + (p ? lb('New value for every selected ' + one) + hd2BulkInput(p) + go : `<div style="font-size:11.5px;color:var(--text3);">Names are edited one at a time (open the ${one}).</div>`));
+    + (p && K.kind === 'asset' && p.name === 'Initiative' ? lb('Put every selected asset in initiative') + `<input id="efBV" list="efKInis" style="${HD2_IN}" placeholder="pick one or type a new name — blank takes them out"><datalist id="efKInis">${hd2KidInis().map(n => `<option value="${esc(n)}">`).join('')}</datalist><div style="font-size:11.5px;color:var(--text3);margin-top:4px;">Same as 🎯 Initiatives: a new name is added to the list, and the table reloads.</div>` + go
+      : p ? lb('New value for every selected ' + one) + hd2BulkInput(p) + go : `<div style="font-size:11.5px;color:var(--text3);">Names are edited one at a time (open the ${one}).</div>`));
 }
 async function hd2KidBulkGo(btn) {
   const K = EF.kids, e = EF.e, pick = [...K.sel].sort((a, b) => a - b).map(i => K.rows[i]);
@@ -12116,6 +12117,33 @@ async function hd2KidBulkGo(btn) {
     return hd2EfDraw();
   }
   const p = K.schema && K.schema.find(x => x.name === K.bf); if (!p) { btn.disabled = false; return err('Pick a field'); }
+  // Initiative on assets (operator 2026-11-23: "not sure if that then puts them into the initiative as it is shown in the initiatives table"):
+  // goes the same way as 🎯 Initiatives — a new name joins the names list first, the field is written by cplanAssetBulkEdit, the loaded rows
+  // take the value, and the main table reloads so the tree, the 🎯 counts and every other table show it.
+  if (K.kind === 'asset' && p.name === 'Initiative') {
+    const typed = String((document.getElementById('efBV') || {}).value || '').trim(), bd = typed && initiativeBad(typed);
+    if (bd) { btn.disabled = false; return err('✗ ' + bd); }
+    const ex = typed && [...(_hd2IniNames || []), ...hd2IniList().map(x => x.name)].find(x => x.toLowerCase() === typed.toLowerCase()), val = ex || typed;
+    if (val && !(_hd2IniNames || []).some(x => x.toLowerCase() === val.toLowerCase())) {
+      btn.textContent = 'Adding the initiative…';
+      const r = await call('initiativeNames', { op: 'add', name: val }).catch(x => ({ error: x.message }));
+      if (!r || r.error) { btn.disabled = false; btn.textContent = 'Apply to selected'; return err('✗ New initiative not created: ' + ((r && r.error) || 'no response') + ' — nothing written'); }
+      _hd2IniNames = r.names || [...(_hd2IniNames || []), val]; _hd2IniAdded = r.added || _hd2IniAdded;
+    }
+    let done = 0, stop = '';
+    for (let i = 0; i < pick.length && !stop; i += 20) {
+      const chunk = pick.slice(i, i + 20); btn.textContent = 'Saving ' + i + ' / ' + pick.length + '…';
+      const r = await call('cplanAssetBulkEdit', { field: 'initiative', items: chunk.map(x => ({ assetId: hdNid(x.id), value: val })) }).catch(x => ({ error: x.message }));
+      if (!r || r.error) { stop = (r && r.error) || 'no response'; break; }
+      (r.done || []).forEach(d => { const a = _hd2A.get(hdNid(d.assetId)); if (a) a.initiative = (d.after || {}).initiative || ''; const row = chunk.find(x => hdNid(x.id) === hdNid(d.assetId)); if (row) { row.ini = val; row.iniAll = val; } done++; });
+      if (r.stopped) stop = r.stopped.error || 'stopped';
+    }
+    K.mode = done && !stop ? '' : K.mode; K.reload = false; K.sel = new Set();
+    K.msg = (stop ? '✗ ' : '✓ ') + done + ' of ' + hd2Pl(pick.length, 'asset') + (val ? ' put in “' + val + '”' : ' taken out of their initiative') + (stop ? ' — stopped: ' + stop : '') + (done ? ' — updating the table…' : '');
+    hd2EfDraw();
+    if (done) hd2ReloadFromFlyout().then(() => { if (EF && EF.kids === K && /updating the table…$/.test(K.msg)) { K.msg = K.msg.replace(/ — updating the table…$/, ' — the table is updated'); hd2EfDraw(); } if (_hd2IniOpen) hd2IniDraw(); });
+    return;
+  }
   const val = hd2BulkVal(p), ok = [], bad = [];
   for (const r of pick) {
     btn.textContent = 'Saving ' + (ok.length + bad.length + 1) + ' / ' + pick.length + '…';
