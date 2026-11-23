@@ -13291,7 +13291,7 @@ function hd2Render() {
   // assets sit under one heading per cohort — an asset with several sits under its FIRST cohort only (its row shows all of them); the rest
   // go under (no cohort), last. The layer appears once any asset anywhere has a cohort. Runs stay inside it.
   const hasTags = (_hd2Rows || []).some(a => (a.cohorts || []).length), tagOf = a => String((a.cohorts || [])[0] || '').trim();
-  const byTag = (t, L) => { if (!hasTags) return byRun(t, L); const m = new Map(); L.forEach(a => { const g = tagOf(a) || '(no cohort)'; if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
+  const byTag = (t, L) => { if (!hasTags || !L.some(a => tagOf(a))) return byRun(t, L);   // only inside a type where some asset has a cohort — no empty (no cohort) headings elsewhere (operator 2026-11-23) const m = new Map(); L.forEach(a => { const g = tagOf(a) || '(no cohort)'; if (!m.has(g)) m.set(g, []); m.get(g).push(a); });
     return [...m.entries()].sort((x, y) => (x[0] === '(no cohort)') - (y[0] === '(no cohort)') || x[0].localeCompare(y[0], undefined, { numeric: true, sensitivity: 'base' }))
       .map(([g, TL]) => node(g, TL, 'tag', byRun(t, TL), TL, t === '(no type)' ? '' : t)).join(''); };
   const groups = assets => { const m = new Map(); assets.forEach(a => { const t = typeOf(a); if (!m.has(t)) m.set(t, []); m.get(t).push(a); });
