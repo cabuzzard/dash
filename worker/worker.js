@@ -1406,7 +1406,7 @@ async function reportBuild(env, assetId, premium) {
   } catch (e) { notes.push("analysis: " + e.message); }
   const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
     title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },
-    keywords: { topicId: topic.topicId || "", list: topicKw, demand }, product, hubResearch: hub.research, audience, sources, analysis, usage, notes };
+    keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, product, hubResearch: hub.research, audience, sources, analysis, usage, notes };
   await env.TRADES.put("report:" + assetId + ":" + at, JSON.stringify(rep));
   const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || [];
   idx.unshift({ at, premium: !!premium, sources: sources.length }); await env.TRADES.put("report:idx:" + assetId, JSON.stringify(idx.slice(0, 40)));
@@ -9703,7 +9703,19 @@ async function titleResearchBlock(env, titleId) {
   return lines.length ? "TITLE RESEARCH (primary — the search intent, questions and angle THIS piece is built on; the product is only the offer / call to action):\n" + lines.map(([k, v]) => `${k.replace(/^Title /, "")}: ${v}`).join("\n") : "";
 }
 // the keyword topic a title takes its research from: its own Topic ID, else its product's; returns { cid, topicId, keywords }
+// Niche keywords first (operator 2026-11-24: "a product is basically a sub topic or a niche"): the title's product (= its niche) keeps its
+// own Keywords; they lead the list, the topic's keywords follow as background — so each niche's title research, Series and Report work its
+// own slice instead of the whole topic. A product with no Keywords → the topic list exactly as before.
 async function titleTopicKeywords(env, hdr, tp) {
+  const base = await titleTopicKeywordsBase(env, hdr, tp);
+  const pid = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null; if (!pid) return base;
+  const pp = await fetch(`https://api.notion.com/v1/pages/${kwDashId(pid.replace(/-/g, ""))}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+  const niche = trRt(pp.properties, "Keywords").trim(); if (!niche) return base;
+  const split = s => String(s || "").split(/[,\n]/).map(x => x.trim()).filter(Boolean), seen = new Set();
+  const keywords = [...split(niche), ...split(base.keywords)].filter(k => { const n = k.toLowerCase(); if (seen.has(n)) return false; seen.add(n); return true; }).join(", ");
+  return { ...base, keywords, niche };
+}
+async function titleTopicKeywordsBase(env, hdr, tp) {
   const own = trRt(tp, "Topic ID").trim().replace(/-/g, ""), cid = (tp.Campaign?.relation || [])[0]?.id || null;
   if (own && own !== "__main" && cid) return { cid, topicId: own, keywords: await findClusterKeywordsForStack(env, hdr, "", cid, own) };
   const pid = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null; if (!pid) return { cid, topicId: own, keywords: "" };
