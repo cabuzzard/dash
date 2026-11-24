@@ -1361,10 +1361,15 @@ async function reportBuild(env, assetId, premium) {
   // news & trends: the hub digest's findings + the title's saved sources + a fresh free search (last 30 days) on the topic keywords
   const sources = [], seen = new Set(), push = (x, from) => { const u = String(x.url || ""); if (!/^https?:\/\//.test(u) || seen.has(u)) return; seen.add(u);
     sources.push({ n: sources.length + 1, claim: String(x.claim || x.title || "").slice(0, 400), publisher: String(x.publisher || "").slice(0, 80), date: String(x.date || "").slice(0, 10), url: u, from, why: String(x.why || "").slice(0, 300) }); };
-  const queries = (topicKw.length ? topicKw : [kwNorm(titleName)]).slice(0, 4);
+  // queries: the topic keywords, then each one's shorter core ("construction software implementation" → "construction software") — a 3-word
+  // phrase rarely appears whole in a headline, so the exact phrase alone found nothing on the first run (2026-11-24)
+  const base = topicKw.length ? topicKw : [kwNorm(titleName)], cores = base.map(k => k.split(" ")).filter(w => w.length > 2).map(w => w.slice(0, 2).join(" "));
+  const queries = [...new Set([...base.slice(0, 4), ...cores])].slice(0, 6);
+  // the hub digest is hub-wide: only its items that share a word with this topic belong in a topic report
+  const topicT = srTokens(base.join(" ") + " " + titleName), onTopic = x => { const w = srTokens((x.claim || x.title || "") + " " + (x.summary || "")); for (const t of topicT) if (w.has(t)) return true; return false; };
   try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2 })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
-  if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json").catch(() => null)) || []; pool.slice(0, 15).forEach(x => push(x, "digest")); }
-  const saved = (await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null)) || {}; (saved.sources || []).slice(-15).forEach(x => push(x, "title sources"));
+  if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json").catch(() => null)) || []; pool.filter(onTopic).slice(0, 15).forEach(x => push(x, "digest")); }
+  const saved = (await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null)) || {}; (saved.sources || []).filter(onTopic).slice(-15).forEach(x => push(x, "title sources"));
   const usage = {};
   if (premium) {
     const cap = await spendCheck(env, "perplexity"); if (cap) throw new Error(cap);
