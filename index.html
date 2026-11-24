@@ -11635,7 +11635,7 @@ function hd2FilterRun() {
 // a cluster's field is its name (kwHubApply renameCluster), a topic's are name + cluster (rename / setCluster); topic keywords open
 // the existing 🔑 keyword modal. Saved names update the row label in place — the tree is never redrawn.
 let _hd2Ents = [], EF = null;
-const HD2_LV = { hub: 'Hub', cluster: 'Cluster', topic: 'Topic', product: 'Product', title: 'Title', asset: 'Asset' };
+const HD2_LV = { hub: 'Hub', cluster: 'Cluster', topic: 'Topic', product: 'Niche', title: 'Title', asset: 'Asset' };   // operator 2026-11-24: a product is a niche — display name only
 function hd2EfEnsure() {
   let bg = document.getElementById('efBg'); if (bg) return bg;
   bg = document.createElement('div'); bg.id = 'efBg'; bg.className = 'amf-bg';
@@ -11927,7 +11927,7 @@ function reportHtml(R) {
     ${sec('gaps', 'Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
     ${sec('sources', 'Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
     ${sec('underneath', 'The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
-      <details><summary>Product${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
+      <details><summary>Niche${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
       <details><summary>Hub research</summary>${kv(R.hubResearch)}</details>`)}
     <section class="rp-sec rp-notes" data-sec="notes"><h3>Notes</h3><p class="rp-mute rp-nh" style="font-size:13px">Select any text in the report and tap 🖍 Highlight — it gets a number here, with room for a note.</p><ol class="rp-nl"></ol></section>
   </div>`;
@@ -12160,7 +12160,7 @@ async function hd2PlanDeploy(only) {
 // (clusters / topics), createProduct (on this topic), createDevTitle (on this product), createAsset (on this title), entitySave,
 // archiveProduct / deleteTitle / deleteAsset (titles and assets go to the Notion trash with what is under them).
 const HD2_KID = { hub: 'cluster', cluster: 'topic', topic: 'product', product: 'title', title: 'asset' };
-const HD2_KIDS_L = { cluster: 'Clusters', topic: 'Topics', product: 'Products', title: 'Titles', asset: 'Assets' };
+const HD2_KIDS_L = { cluster: 'Clusters', topic: 'Topics', product: 'Niches', title: 'Titles', asset: 'Assets' };
 const HD2_DEL_NOTE = {
   cluster: 'The cluster is removed; its topics stay in the hub with no cluster.',
   topic: 'Every keyword comes off the topic and the empty topic is removed. Its products stay, with no topic.',
@@ -12277,7 +12277,7 @@ function hd2KidAddHtml() {
   let f = '';
   if (k === 'cluster') f = lb('Cluster name') + I('efK1', 'cluster name') + lb('Its first topic') + I('efK2', 'topic name — blank = the cluster name') + lb('Topic keywords') + I('efK3', 'comma separated — blank = the topic name') + note('A cluster exists through its topics, so it starts with one.');
   if (k === 'topic') f = lb('Topic name') + I('efK1', 'topic name') + lb('Keywords') + I('efK3', 'comma separated — blank = the topic name') + note('In cluster ' + esc(e.name) + '.');
-  if (k === 'product') f = lb('Product name') + I('efK1', 'product name') + note('Status Planning, placed on topic ' + esc(e.name) + '.');
+  if (k === 'product') f = lb('Niche name') + I('efK1', 'niche name') + note('Status Planning, placed on topic ' + esc(e.name) + '.');
   if (k === 'title') f = lb('Title') + I('efK1', 'title') + note('Status Development, on product ' + esc(e.name) + '.');
   if (k === 'asset') {
     const types = hd2PlanTypes(true);
@@ -13520,7 +13520,7 @@ function hd2Render() {
   };
   const node = (label, kids, w, body, assets, type, pids, ent) => { const k = due(assets);
     const own = w === 'title' && pids && pids.length === 1 ? pmOf(pids[0]) : null;   // a product heading carries its own map entry for the filter
-    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${addCnt(label, kids, w, assets, type, pids, ent)}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Product', run: 'Run', tag: 'Cohort' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
+    return `<details data-i="${ix++}" data-due="${k}"${dueAttr(assets)} data-type="${esc(String(type || '').toLowerCase())}"${own ? ` data-in="${esc(own.initiative || '')}" data-sb="${esc(own.sub || '')}"` : ''} style="${K}"><summary class="hd2r ${w === 'asset' || w === 'tag' ? 'hd2t' : 'hd2h'}" data-lv="${({ cluster: 1, topic: 2, product: 3, title: 4, run: 7, tag: 8 })[w] || (pids ? 5 : 6)}"><span class="hd2mk">▶</span><span class="hd2ck" onclick="event.preventDefault();event.stopPropagation();hd2Ck(this)"></span><span class="hd2lb">${nm(label, ent)}${addCnt(label, kids, w, assets, type, pids, ent)}</span><span class="hd2lv">${w === 'title' ? '<span class="hd2pi">📦</span>' : w === 'asset' && pids ? '<span class="hd2pi">📄</span>' : ''}${({ cluster: 'Hub', topic: 'Cluster', product: 'Topic', title: 'Niche', run: 'Run', tag: 'Cohort' })[w] || (pids ? 'Title' : 'Asset type')}</span><span class="hd2sp"></span>${cols('', dueB(assets), agg(assets, pids), '', '')}</summary>${body}</details>`; };
   const leaf = a => { const t = String(a.rawAssetType || a.assetType || '').trim(), k = dueD(a) || pubW(a) ? 1 : 0;
     const [vi, vs] = iv(a);
     const aid = hdNid(a.assetId); if (aid) _hd2A.set(aid, a);
@@ -13823,7 +13823,7 @@ function hd2BulkDraw() {
     const { T, C, Tp, P } = hd2BulkTarget(), sel = (k, list, ph) => `<select onchange="hd2BulkSet('${k}', this.value)" style="${S}"><option value="">${ph}</option>${list.map((x, i) => `<option value="${i}" ${String(B[k]) === String(i) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
     p = `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
       <select onchange="hd2BulkSet('hub', this.value)" style="${S}">${_hd2Trees.map(x => `<option value="${esc(x.c)}" ${x.c === B.hub ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
-      ${T ? sel('cl', T.tree.map(x => x.name), 'Cluster…') : ''}${C ? sel('tp', C.topics.map(x => x.name), 'Topic…') : ''}${Tp ? sel('pr', Tp.products.map(x => x.name), 'Product…') : ''}${P ? sel('ti', P.titles.filter(x => x.key !== '__none').map(x => x.name), 'Title…') : ''}
+      ${T ? sel('cl', T.tree.map(x => x.name), 'Cluster…') : ''}${C ? sel('tp', C.topics.map(x => x.name), 'Topic…') : ''}${Tp ? sel('pr', Tp.products.map(x => x.name), 'Niche…') : ''}${P ? sel('ti', P.titles.filter(x => x.key !== '__none').map(x => x.name), 'Title…') : ''}
       ${go(`Move ${n} to this title`, 'hd2BulkMove()')}</div>
       <div style="font-size:11.5px;color:var(--text3);margin-top:4px;">An asset always sits on a title: pick down to the title. Its product and hub follow the title.</div>`;
   }
@@ -14031,7 +14031,7 @@ async function hd2Reload() {
 // every list). ✓ Apply keeps only the asset rows whose heading at each ticked level is one of the ticked names (levels AND, names within a level
 // OR), hides headings left empty, and opens the way down to what is left. ✕ Reset (toolbar or popup) clears it and closes what it opened.
 // Session only; works together with the other filters (Initiatives only, Due only, 🎯, count filters).
-const HD2_FLV = [[1, 'Hub'], [2, 'Cluster'], [3, 'Topic'], [4, 'Product'], [5, 'Title'], [6, 'Asset type'], [8, 'Cohort']];
+const HD2_FLV = [[1, 'Hub'], [2, 'Cluster'], [3, 'Topic'], [4, 'Niche'], [5, 'Title'], [6, 'Asset type'], [8, 'Cohort']];
 let _hd2F = {}, _hd2FD = null, _hd2FQ = '';   // _hd2F = applied {lv: Set(names)}; _hd2FD = the popup's draft
 const hd2FOn = F => Object.values(F || {}).some(S => S && S.size);
 const hd2NameOf = s => { const a = s.querySelector('.hd2nm'); return a ? a.textContent.trim() : ''; };
@@ -14163,7 +14163,7 @@ async function hd2IniApply(remove, given) {   // given = a name from the bulk ba
 // a select list. not a single select" + "with an all option"). A checkbox per heading level: ticked = every heading of that level is open,
 // unticked = closed. A change applies at once. All ticks / unticks every level. Level = the summary's data-lv: 1 Hub · 2 Cluster · 3 Topic ·
 // 4 Product · 5 Title · 6 Asset type · 7 Run (open = its assets show). Rows hidden by a filter follow too. The ticks are remembered per browser.
-const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Products'], [5, 'Titles'], [6, 'Asset types'], [8, 'Cohorts'], [7, 'Runs']];
+const HD2_LVS = [[1, 'Hubs'], [2, 'Clusters'], [3, 'Topics'], [4, 'Niches'], [5, 'Titles'], [6, 'Asset types'], [8, 'Cohorts'], [7, 'Runs']];
 let _hd2LvOn = new Set([1]); try { const s = JSON.parse(localStorage.getItem('hd2LvOn') || 'null'); if (Array.isArray(s)) _hd2LvOn = new Set(s.map(Number)); } catch (e) {}
 // operator 2026-11-23: the popup is a checklist + two clear buttons. ▾ Expand opens every heading of the ticked levels and the headings
 // above them (so they show); ▸ Collapse closes every heading of the ticked levels (and everything inside them). Unticked levels are left as

@@ -176,7 +176,7 @@ function reportHtml(R) {
     ${sec('gaps', 'Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
     ${sec('sources', 'Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
     ${sec('underneath', 'The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
-      <details><summary>Product${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
+      <details><summary>Niche${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
       <details><summary>Hub research</summary>${kv(R.hubResearch)}</details>`)}
     <section class="rp-sec rp-notes" data-sec="notes"><h3>Notes</h3><p class="rp-mute rp-nh" style="font-size:13px">Select any text in the report and tap 🖍 Highlight — it gets a number here, with room for a note.</p><ol class="rp-nl"></ol></section>
   </div>`;
