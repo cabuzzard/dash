@@ -1367,7 +1367,7 @@ async function reportBuild(env, assetId, premium) {
   const queries = [...new Set([...base.slice(0, 4), ...cores])].slice(0, 6);
   // the hub digest is hub-wide: only its items that share a word with this topic belong in a topic report
   const topicT = srTokens(base.join(" ") + " " + titleName), onTopic = x => { const w = srTokens((x.claim || x.title || "") + " " + (x.summary || "")); for (const t of topicT) if (w.has(t)) return true; return false; };
-  try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2, bingFresh: true })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
+  try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2, bingFresh: true, loose: true })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
   if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json").catch(() => null)) || []; pool.filter(onTopic).slice(0, 15).forEach(x => push(x, "digest")); }
   const saved = (await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null)) || {}; (saved.sources || []).filter(onTopic).slice(-15).forEach(x => push(x, "title sources"));
   const usage = {};
@@ -19426,7 +19426,7 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
 // Federal Register (rules) and PubMed (studies). Relevance matches the headline OR its summary. Zero model calls.
 // (freeNewsSearch above stays as-is for the hub news cron.)
 function dfsText(s) { return fnDecode(String(s || "")).replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#\d+;/g, " ").replace(/\s+/g, " ").trim(); }
-async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max = 40, feeds = ["bing", "google", "gdelt", "reddit"], gdeltMax = 8, bingFresh = false } = {}) {
+async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max = 40, feeds = ["bing", "google", "gdelt", "reddit"], gdeltMax = 8, bingFresh = false, loose = false } = {}) {
   const qs = [...new Set((queries || []).map(q => String(q || "").trim()).filter(q => q.length > 2))].slice(0, 16), seen = new Set(), items = [];
   const since = Date.now() - days * 864e5, sinceDay = new Date(since).toISOString().slice(0, 10);
   const day = t => { const d = Date.parse(t); return Number.isFinite(d) ? new Date(d).toISOString().slice(0, 10) : ""; };
@@ -19473,7 +19473,9 @@ async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max =
       for (const id of ids) { const r = sum?.result?.[id]; if (r) add({ title: r.title, summary: "", url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`, publisher: r.fulljournalname || r.source || "PubMed", date: day(String(r.sortpubdate || "").replace(/\//g, "-")), q, sourceMethod: "pubmed" }); }
     }
   }
-  return items.filter(x => phraseHit(x.q, x.title + " " + x.summary))   // the query's words together, not scattered
+  // loose (the 📊 Report, 2026-11-24): every query word somewhere in the headline or summary — real headlines split "construction … software"
+  const allWords = (q, t) => { const w = srTokens(t); for (const k of srTokens(q)) if (!w.has(k)) return false; return srTokens(q).size > 0; };
+  return items.filter(x => loose ? allWords(x.q, x.title + " " + x.summary) : phraseHit(x.q, x.title + " " + x.summary))   // the query's words together, not scattered
     .map(x => ({ ...x, score: (/^(federal-register|pubmed)$/.test(x.sourceMethod) ? 10 : 0) + Math.max(0, days - (x.date ? (Date.now() - Date.parse(x.date)) / 864e5 : days)) }))
     .sort((a, b) => b.score - a.score).slice(0, max)
     .map(x => ({ claim: x.title.slice(0, 600), summary: x.summary, publisher: x.publisher, url: x.url, date: x.date, split: "free", keywordsUsed: [x.q], sourceMethod: x.sourceMethod,
@@ -21286,7 +21288,7 @@ export default {
     if (body.action === "reportProbe") { if (externalCaller) return json({ error: "operator only" }, 403); const q = String(body.q || "construction software"), e = encodeURIComponent(q), out = {};
       for (const [k, u] of [["google", "https://news.google.com/rss/search?q=" + e + "+when:30d&hl=en-US&gl=US&ceid=US:en"], ["bing", "https://www.bing.com/news/search?q=" + e + "&format=rss"], ["bingFresh", "https://www.bing.com/news/search?q=" + e + "&format=rss&qft=sortbydate%3d%221%22"], ["reddit", "https://www.reddit.com/search.rss?q=" + e + "&sort=new&t=week"]]) {
         try { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }), t = await r.text(); out[k] = { status: r.status, len: t.length, items: (t.match(/<(item|entry)>/g) || []).length, dates: (t.match(/<pubDate>[^<]*/g) || []).slice(0, 4).map(x => x.slice(9)), titles: (t.match(/<title>[^<]*/g) || []).slice(1, 5).map(x => x.slice(7, 90)) }; } catch (x) { out[k] = { error: x.message }; } }
-      out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing"], bingFresh: true })).length; return json({ ok: true, q, out }); }
+      out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing"], bingFresh: true, loose: true })).length; return json({ ok: true, q, out }); }
     if (["reportRun", "reportList", "reportGet", "reportShare"].includes(body.action)) {
       if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
