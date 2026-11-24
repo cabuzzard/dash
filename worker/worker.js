@@ -1367,7 +1367,7 @@ async function reportBuild(env, assetId, premium) {
   const queries = [...new Set([...base.slice(0, 4), ...cores])].slice(0, 6);
   // the hub digest is hub-wide: only its items that share a word with this topic belong in a topic report
   const topicT = srTokens(base.join(" ") + " " + titleName), onTopic = x => { const w = srTokens((x.claim || x.title || "") + " " + (x.summary || "")); for (const t of topicT) if (w.has(t)) return true; return false; };
-  try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2 })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
+  try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2, bingFresh: true })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
   if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json").catch(() => null)) || []; pool.filter(onTopic).slice(0, 15).forEach(x => push(x, "digest")); }
   const saved = (await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null)) || {}; (saved.sources || []).filter(onTopic).slice(-15).forEach(x => push(x, "title sources"));
   const usage = {};
@@ -19426,7 +19426,7 @@ async function freeNewsSearch(env, queries, { days = 7, max = 12 } = {}) {
 // Federal Register (rules) and PubMed (studies). Relevance matches the headline OR its summary. Zero model calls.
 // (freeNewsSearch above stays as-is for the hub news cron.)
 function dfsText(s) { return fnDecode(String(s || "")).replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#\d+;/g, " ").replace(/\s+/g, " ").trim(); }
-async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max = 40, feeds = ["bing", "google", "gdelt", "reddit"], gdeltMax = 8 } = {}) {
+async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max = 40, feeds = ["bing", "google", "gdelt", "reddit"], gdeltMax = 8, bingFresh = false } = {}) {
   const qs = [...new Set((queries || []).map(q => String(q || "").trim()).filter(q => q.length > 2))].slice(0, 16), seen = new Set(), items = [];
   const since = Date.now() - days * 864e5, sinceDay = new Date(since).toISOString().slice(0, 10);
   const day = t => { const d = Date.parse(t); return Number.isFinite(d) ? new Date(d).toISOString().slice(0, 10) : ""; };
@@ -19442,7 +19442,7 @@ async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max =
   let gdeltAt = 0, gdeltN = 0;
   for (const q of qs) {
     const e = encodeURIComponent(q);
-    if (feeds.includes("bing")) for (const { g } of rss(await get(`https://www.bing.com/news/search?q=${e}&format=rss`))) {   // real article URLs
+    if (feeds.includes("bing")) for (const { g } of rss(await get(`https://www.bing.com/news/search?q=${e}&format=rss${bingFresh ? "&qft=sortbydate%3d%221%22" : ""}`))) {   // real article URLs
       let link = g(/<link>([\s\S]*?)<\/link>/); const u = link.match(/[?&]url=([^&]+)/); if (u) { try { link = decodeURIComponent(u[1]); } catch (err) {} }
       const date = day(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (!recent(date)) continue;
       add({ title: g(/<title>([\s\S]*?)<\/title>/), summary: g(/<description>([\s\S]*?)<\/description>/), url: link, publisher: g(/<News:Source>([\s\S]*?)<\/News:Source>/), date, q, sourceMethod: "bing-news" });
