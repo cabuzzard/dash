@@ -145,6 +145,10 @@ function reportHtml(R) {
   const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  // 😣 pains + complaints (2026-11-24): each item cites sources and/or the exact dissatisfaction searches, with what it opens up
+  const painL = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}${(p.signals || []).length ? ` <span class="rp-mute" style="font-size:12px">· searches: ${e(p.signals.join(', '))}</span>` : ''}${p.opening ? `<div style="font-size:13px;margin-top:2px">→ ${e(p.opening)}</div>` : ''}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  const DS = R.dissatisfaction || [], painsHtml = `<div style="font-weight:600;font-size:13px;margin:0 0 4px">Pain points</div>${painL(A.pains)}<div style="font-weight:600;font-size:13px;margin:12px 0 4px">Complaints</div>${painL(A.complaints)}` +
+    (DS.length ? `<details><summary>Dissatisfaction searches (${DS.length})</summary><ul>${DS.map(x => `<li>${e(x.search)} <span class="rp-mute">· ${Number(x.perMonth || 0).toLocaleString()}/mo${x.trend12m != null ? ' · ' + (x.trend12m > 0 ? '+' : '') + x.trend12m + '%' : ''}</span></li>`).join('')}</ul></details>` : '');
   const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
   const sec = (key, h, body) => `<section class="rp-sec" data-sec="${key}"><h3>${h}</h3>${body}</section>`;
   const d = new Date(R.at);
@@ -170,6 +174,7 @@ function reportHtml(R) {
     ${sec('demand', 'Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `${(R.keywords || {}).niche ? `<div style="font-size:13px;margin:0 0 4px"><b>Niche keywords:</b> ${e(R.keywords.niche)}</div>` : ''}<div class="rp-mute" style="font-size:13px">${(R.keywords || {}).niche ? 'All keywords (niche first, then the topic)' : 'Topic keywords'}: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
     ${sec('audience', 'What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
       Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
+    ${sec('pains', 'Pain points & complaints', painsHtml)}
     ${sec('opportunities', 'Opportunities', pts(A.opportunities))}
     ${sec('risks', 'Risks & pressures', pts(A.risks))}
     ${sec('next', 'Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}

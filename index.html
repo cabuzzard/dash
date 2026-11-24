@@ -11896,6 +11896,10 @@ function reportHtml(R) {
   const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  // 😣 pains + complaints (2026-11-24): each item cites sources and/or the exact dissatisfaction searches, with what it opens up
+  const painL = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}${(p.signals || []).length ? ` <span class="rp-mute" style="font-size:12px">· searches: ${e(p.signals.join(', '))}</span>` : ''}${p.opening ? `<div style="font-size:13px;margin-top:2px">→ ${e(p.opening)}</div>` : ''}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  const DS = R.dissatisfaction || [], painsHtml = `<div style="font-weight:600;font-size:13px;margin:0 0 4px">Pain points</div>${painL(A.pains)}<div style="font-weight:600;font-size:13px;margin:12px 0 4px">Complaints</div>${painL(A.complaints)}` +
+    (DS.length ? `<details><summary>Dissatisfaction searches (${DS.length})</summary><ul>${DS.map(x => `<li>${e(x.search)} <span class="rp-mute">· ${Number(x.perMonth || 0).toLocaleString()}/mo${x.trend12m != null ? ' · ' + (x.trend12m > 0 ? '+' : '') + x.trend12m + '%' : ''}</span></li>`).join('')}</ul></details>` : '');
   const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
   const sec = (key, h, body) => `<section class="rp-sec" data-sec="${key}"><h3>${h}</h3>${body}</section>`;
   const d = new Date(R.at);
@@ -11921,6 +11925,7 @@ function reportHtml(R) {
     ${sec('demand', 'Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `${(R.keywords || {}).niche ? `<div style="font-size:13px;margin:0 0 4px"><b>Niche keywords:</b> ${e(R.keywords.niche)}</div>` : ''}<div class="rp-mute" style="font-size:13px">${(R.keywords || {}).niche ? 'All keywords (niche first, then the topic)' : 'Topic keywords'}: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
     ${sec('audience', 'What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
       Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
+    ${sec('pains', 'Pain points & complaints', painsHtml)}
     ${sec('opportunities', 'Opportunities', pts(A.opportunities))}
     ${sec('risks', 'Risks & pressures', pts(A.risks))}
     ${sec('next', 'Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
@@ -14021,17 +14026,19 @@ function hd2ReportsDraw() {
   const reps = [...(_hd2A ? _hd2A.values() : [])].filter(a => /^report$/i.test(String(a.rawAssetType || a.assetType || '').trim()));
   const when = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
   const tree = new Map(), put = (m, k) => { if (!m.has(k)) m.set(k, new Map()); return m.get(k); };
-  reps.forEach(a => { const leaf = put(put(put(put(put(tree, a.hub || '(no hub)'), a.keywordCluster || '(no cluster)'), a.keywordTopic || '(no topic)'), a.product || '(no niche)'), a.title || '(no title)'); leaf.set(hdNid(a.assetId), a); });
+  // operator 2026-11-24: 'structure the reports … according to their topic vs sub topic structure' — Topic (with its cluster) → Subtopic (the niche) → reports; the hub level only when reports span hubs
+  const multiHub = new Set(reps.map(a => a.hub || '')).size > 1;
+  reps.forEach(a => { const top = (a.keywordCluster ? a.keywordCluster + ' › ' : '') + (a.keywordTopic || '(no topic)'); const t1 = multiHub ? put(tree, a.hub || '(no hub)') : tree; put(put(t1, top), a.product || '(no subtopic)').set(hdNid(a.assetId), a); });
   const cnt = m => { let n = 0; m.forEach(v => { n += v instanceof Map ? cnt(v) : 1; }); return n; };
-  const LV = ['Hub', 'Cluster', 'Topic', 'Niche', 'Title'];
+  const LV = multiHub ? ['Hub', 'Topic', 'Subtopic'] : ['Topic', 'Subtopic'];
   const row = (id, a) => { const x = S.idx[id] || {};
-    return `<div class="rt-r"><div style="min-width:0;flex:1;"><div style="font-weight:600;font-size:13px;">${esc(a.assetName || 'Report')}</div>
+    return `<div class="rt-r"><div style="min-width:0;flex:1;"><div style="font-weight:600;font-size:13px;">${esc(a.assetName || 'Report')}</div>${a.title && a.title !== a.product ? `<div style="font-size:12px;color:var(--text3);">Title: ${esc(a.title)}</div>` : ''}
       <div style="font-size:12px;color:var(--text3);">${x.at ? 'Last run ' + esc(when(x.at)) + ' · ' + x.runs + ' run' + (x.runs === 1 ? '' : 's') + ' · ' + x.sources + ' sources' : 'Not run yet'}${x.premium ? ' · ★ Premium' : ''}${x.published ? ' · 🟢 Published to members' : ''}${(x.shared || []).length ? ' · 👥 ' + x.shared.length + ' shared' : ''}${x.highlights ? ' · 🖍 ' + x.highlights : ''}</div></div>
       <button onclick="hd2ReportsView('${id}')" ${x.at ? '' : 'disabled'} style="${HD2_B()}">Open</button>
       <button onclick="hd2ReportsRun('${id}',this)" style="${HD2_B('var(--accent)')}">▶ Run</button></div>`; };
   const lvl = (m, d) => [...m.entries()].sort((p, q) => p[0].localeCompare(q[0])).map(([k, v]) => d === LV.length
     ? row(k, v)
-    : `<details ${d < 3 ? 'open' : ''} class="rt-d" style="margin-left:${d ? 14 : 0}px;"><summary><span class="rt-l">${LV[d]}</span> ${esc(k)} <span style="color:var(--text3);font-weight:400;">· ${cnt(v)}</span></summary>${lvl(v, d + 1)}</details>`).join('');
+    : `<details open class="rt-d" style="margin-left:${d ? 14 : 0}px;"><summary><span class="rt-l">${LV[d]}</span> ${esc(k)} <span style="color:var(--text3);font-weight:400;">· ${cnt(v)}</span></summary>${lvl(v, d + 1)}</details>`).join('');
   const body = S.open ? `<button onclick="_hd2RT.open=null;hd2ReportsDraw()" style="${HD2_B()}">← All reports</button><div style="margin-top:12px;">${S.openHtml || '<div style="color:var(--text3);">Loading…</div>'}</div>`
     : (S.busy ? `<div style="color:var(--text3);font-size:13px;">${esc(S.busy)}</div>` : '') + (reps.length ? lvl(tree, 0) : '<div style="color:var(--text3);font-size:13px;">No Report assets yet. Add an asset of type Report to a title.</div>');
   el.innerHTML = `<style>#hd2RT{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:4vh 16px;overflow:auto}

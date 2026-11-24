@@ -1376,7 +1376,8 @@ async function reportBuild(env, assetId, premium) {
     if (!env.PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY not set");
     const input = `Research, as of today (${at.slice(0, 10)}), the most important current developments, data, research, players and trends about: ${titleName}${topicKw.length ? " (keywords: " + topicKw.slice(0, 8).join(", ") + ")" : ""}.` +
       `${product.research.Customer ? " Audience: " + product.research.Customer.slice(0, 400) : ""} Prefer primary sources, original data and named trade press from the last 12 months. Never invent a source or a number.\n` +
-      'Return ONLY a fenced ```json block: {"findings":[{"claim":"one sentence","why":"why it matters to this audience","url":"","publisher":"","date":"YYYY-MM-DD"}]} — 10 to 20 findings, each with a real URL from your research.';
+      'ALSO find 5 to 12 REAL user complaints about the tools, platforms or providers in this niche — from G2, Capterra, Reddit, forums or app-store reviews (what people dislike: pricing, support, setup, missing features, lock-in). Each complaint must come from a page you actually read.\n' +
+      'Return ONLY a fenced ```json block: {"findings":[{"claim":"one sentence","why":"why it matters to this audience","url":"","publisher":"","date":"YYYY-MM-DD"}],"complaints":[{"claim":"the complaint in one sentence","quote":"a short verbatim quote, max 20 words","url":"","publisher":"","date":"YYYY-MM-DD"}]} — 10 to 20 findings, each with a real URL from your research.';
     const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST", headers: { Authorization: "Bearer " + env.PERPLEXITY_API_KEY.trim(), "Content-Type": "application/json" }, body: JSON.stringify({ preset: "medium", input }) });
     const txt = await r.text(); let dd = null; try { dd = JSON.parse(txt); } catch (e) {}
     if (!r.ok || !dd) throw new Error("Perplexity HTTP " + r.status + ": " + (dd?.error?.message || txt).slice(0, 300));
@@ -1384,15 +1385,32 @@ async function reportBuild(env, assetId, premium) {
     const out = drJson(dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n")) || {};
     const F = Array.isArray(out.findings) ? out.findings : []; F.forEach(x => push(x, "premium research"));
     if (!F.length) notes.push("premium research returned no findings");
+    const C = Array.isArray(out.complaints) ? out.complaints : []; C.forEach(x => push({ ...x, why: x.quote ? "“" + String(x.quote).slice(0, 200) + "”" : "" }, "complaint · premium"));
+    if (!C.length) notes.push("premium research returned no complaints");
+  }
+  // 😣 dissatisfaction searches (operator 2026-11-24 "complaints?"): keyword-store searches that start with the niche's lead terms and signal
+  // trouble or switching (alternatives, problems, cancel, pricing, vs …). Index range on kw_keywords.text, metrics by id (no GROUP BY — a
+  // grouped version scanned 159k rows; this reads ~1k).
+  let signals = [];
+  if (env.KWDB) {
+    const TROUBLE = /\b(alternatives?|alternative to|vs|versus|problems?|issues?|not working|down|outage|complaints?|reviews?|cancel\w*|refund|expensive|price increase|pricing|cost|slow|bugs?|support|switch\w*|migrat\w*|replace\w*|competitors?|sucks|worth it|hate|lawsuit|errors?|fix)\b/;
+    const leads = [...new Set((topic.niche ? topic.niche.split(/[,\n]/) : topicKw).map(s => kwNorm(s)).filter(s => s && s.length > 2))].slice(0, 3);
+    for (const l of leads) { try { const rs = (await env.KWDB.prepare("SELECT k.text t, m.avg_monthly_searches v, m.trend_pct tr FROM kw_keywords k CROSS JOIN kw_metrics m ON m.keyword_id = k.id WHERE k.text >= ?1 AND k.text < ?2").bind(l + " ", l + " ~").all()).results || [];
+        rs.filter(r => (r.v || 0) >= 10 && TROUBLE.test(String(r.t).slice(l.length))).forEach(r => signals.push(r)); } catch (e) { notes.push("dissatisfaction searches: " + e.message); } }
+    const best = new Map(); signals.forEach(r => { const o = best.get(r.t); if (!o || (r.v || 0) > (o.v || 0)) best.set(r.t, r); });
+    signals = [...best.values()].sort((a, b) => (b.v || 0) - (a.v || 0)).slice(0, 25).map(r => ({ search: r.t, perMonth: r.v || 0, trend12m: r.tr }));
   }
   // the analysis — one Claude call, text only, citing the numbered sources; nothing outside the packet
-  const packet = { title: titleName, hub: hub.name, topicKeywords: topicKw, searchDemand: demand.slice(0, 4000), titleResearch: titleRes, product, hubResearch: hub.research, audience,
+  const packet = { title: titleName, hub: hub.name, topicKeywords: topicKw, searchDemand: demand.slice(0, 4000), dissatisfactionSearches: signals, titleResearch: titleRes, product, hubResearch: hub.research, audience,
     sources: sources.map(s => ({ n: s.n, claim: s.claim, why: s.why, publisher: s.publisher, date: s.date, from: s.from })) };
   const refs = { type: "array", items: { type: "integer" } }, pt = { type: "object", properties: { point: { type: "string" }, refs }, required: ["point", "refs"] };
+  const pain = { type: "object", properties: { point: { type: "string" }, refs, signals: { type: "array", items: { type: "string" }, description: "exact dissatisfactionSearches this rests on" }, opening: { type: "string" } }, required: ["point", "refs", "signals", "opening"] };
   let analysis = {};
   try { analysis = await hcClaude(env, `You write a dated research briefing for the operator of a content hub — "everything important about this topic right now". ` +
       `Use ONLY the packet below. Every claim about the world must cite the numbered sources it rests on (refs = source numbers); demand figures come only from searchDemand. ` +
-      `Never invent a source, statistic, company or quote; if the packet is thin on something, say so in gaps. Plain, specific sentences — no hype.\n\nPACKET:\n` + JSON.stringify(packet),
+      `Never invent a source, statistic, company or quote; if the packet is thin on something, say so in gaps. Plain, specific sentences — no hype. ` +
+      `PAINS = what this audience struggles with (from the audience questions, Reddit, product / hub Pain Points, sources). COMPLAINTS = what users dislike about the current tools or providers (from dissatisfactionSearches — cite the exact searches in "signals" — and from sources marked "complaint"). ` +
+      `For each, "opening" = what it means for someone selling implementation, migration, integration or consulting. Only what the packet supports; empty lists are fine.\n\nPACKET:\n` + JSON.stringify(packet),
       "report_analysis", { type: "object", properties: {
         summary: { type: "string", description: "3-5 sentences: the state of this topic right now" },
         moving: { type: "array", items: pt, description: "4-8 trends / developments that are moving now" },
@@ -1401,12 +1419,14 @@ async function reportBuild(env, assetId, premium) {
         opportunities: { type: "array", items: pt, description: "3-6 concrete content / offer opportunities" },
         risks: { type: "array", items: pt, description: "2-5 risks, objections or competitive pressures" },
         gaps: { type: "array", items: { type: "string" }, description: "what the research is missing or thin on" },
-        nextTitles: { type: "array", items: { type: "object", properties: { title: { type: "string" }, keyword: { type: "string" }, why: { type: "string" } }, required: ["title", "keyword", "why"] }, description: "3-6 titles worth making next" } },
-        required: ["summary", "moving", "demand", "audience", "opportunities", "risks", "gaps", "nextTitles"] }, 4000, u => { usage.claude = u; });
+        nextTitles: { type: "array", items: { type: "object", properties: { title: { type: "string" }, keyword: { type: "string" }, why: { type: "string" } }, required: ["title", "keyword", "why"] }, description: "3-6 titles worth making next" },
+        pains: { type: "array", items: pain, description: "3-6 pain points this audience has" },
+        complaints: { type: "array", items: pain, description: "0-6 complaints about the current tools / providers" } },
+        required: ["summary", "moving", "demand", "audience", "pains", "complaints", "opportunities", "risks", "gaps", "nextTitles"] }, 5000, u => { usage.claude = u; });
   } catch (e) { notes.push("analysis: " + e.message); }
   const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
     title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },
-    keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, product, hubResearch: hub.research, audience, sources, analysis, usage, notes };
+    keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, product, hubResearch: hub.research, audience, dissatisfaction: signals, sources, analysis, usage, notes };
   await env.TRADES.put("report:" + assetId + ":" + at, JSON.stringify(rep));
   const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || [];
   idx.unshift({ at, premium: !!premium, sources: sources.length }); await env.TRADES.put("report:idx:" + assetId, JSON.stringify(idx.slice(0, 40)));
