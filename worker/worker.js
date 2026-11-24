@@ -21354,6 +21354,14 @@ export default {
         return json({ ok: true, reports: out });
       } catch (e) { return json({ error: e.message }, 500); }
     }
+    // reportGroups {op: get | save, data} (operator; 2026-11-24 "let me create groupings by drag and drop in the admin just for organization in
+    // that screen"): KV report:groups = { groups: [{id, name}], order: {groupId: [assetId…]} } — display only, read by nothing else.
+    if (body.action === "reportGroups") { if (externalCaller) return json({ error: "operator only" }, 403);
+      if (body.op === "save") { const d = body.data || {}, groups = (Array.isArray(d.groups) ? d.groups : []).slice(0, 60).map(g => ({ id: String(g.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 24), name: String(g.name || "").trim().slice(0, 80) })).filter(g => g.id && g.name);
+        const ids = new Set(groups.map(g => g.id)), order = {}; Object.entries(d.order || {}).forEach(([k, v]) => { if (ids.has(k) && Array.isArray(v)) order[k] = [...new Set(v.map(x => hubAssetId(x)).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 400); });
+        await env.TRADES.put("report:groups", JSON.stringify({ groups, order, at: new Date().toISOString() })); return json({ ok: true, groups, order }); }
+      return json({ ok: true, ...((await env.TRADES.get("report:groups", "json").catch(() => null)) || { groups: [], order: {} }) });
+    }
     if (body.action === "reportNotes") { if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
       try { return json(await reportNotesOp(env, aid, { id: "admin", name: "Admin", admin: true }, body)); } catch (e) { return json({ error: e.message }, 500); } }
