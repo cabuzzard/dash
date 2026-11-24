@@ -1421,17 +1421,38 @@ async function reportGet(env, assetId, at) {
   const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || []; const pick = at || (idx[0] || {}).at;
   return pick ? await env.TRADES.get("report:" + assetId + ":" + pick, "json").catch(() => null) : null;
 }
+// 🖍 Report highlights + notes (operator 2026-11-24: "any member who has given access to that page"; "tag is a highlight … each highlight
+// gets numbered and then a 1. 2. 3. appears in the notes section and everything after the list item is editable"). One shared list per
+// report (KV report:notes:<assetId>), kept across runs: {id, sec, text (the highlighted words), note, by, byName, at, editedBy, editedAt}.
+// Anyone who can open the report adds highlights and edits notes; only the highlight's author or the admin removes one.
+async function reportNotesOp(env, aid, who, body) {
+  const key = "report:notes:" + aid, D = (await env.TRADES.get(key, "json").catch(() => null)) || { seq: 0, items: [] }, sub = String(body.sub || "list"), now = new Date().toISOString();
+  const save = () => env.TRADES.put(key, JSON.stringify(D));
+  if (sub === "list") return { ok: true, items: D.items };
+  if (sub === "add") {
+    const text = String(body.text || "").replace(/\s+/g, " ").trim().slice(0, 600); if (text.length < 2) return { error: "Select some text to highlight" };
+    if (D.items.length >= 300) return { error: "This report already has 300 highlights — remove some first" };
+    const it = { id: "h" + (++D.seq).toString(36) + Date.now().toString(36), sec: String(body.sec || "").slice(0, 40), text, note: String(body.note || "").slice(0, 4000), by: who.id, byName: who.name, at: now, ver: String(body.ver || "").slice(0, 40) };
+    D.items.push(it); await save(); return { ok: true, item: it, items: D.items };
+  }
+  const it = D.items.find(x => x.id === body.id); if (!it) return { error: "That highlight was removed — refresh the report" };
+  if (sub === "edit") { it.note = String(body.note == null ? "" : body.note).slice(0, 4000); it.editedBy = who.name; it.editedAt = now; await save(); return { ok: true, item: it }; }
+  if (sub === "remove") { if (!who.admin && it.by !== who.id) return { error: "Only the person who made this highlight (or the admin) can remove it" };
+    D.items = D.items.filter(x => x !== it); await save(); return { ok: true, items: D.items }; }
+  return { error: "Unknown notes request" };
+}
 async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me" || op === "report") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report" || op === "notes") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
-  if (op === "report") { const aid = hubAssetId(body.assetId);
+  if (op === "report" || op === "notes") { const aid = hubAssetId(body.assetId);
     const pubR = (await env.TRADES.get("report:members", "json").catch(() => null)) || [];
     if (!(rec.links || []).includes("*") && !(rec.reports || []).includes(aid) && !pubR.includes(aid)) return { error: "This report isn't shared with you.", code: "no_access" };
+    if (op === "notes") return await reportNotesOp(env, aid, { id: email, name: rec.name || rec.gName || email.split("@")[0], admin: (rec.links || []).includes("*") }, body);
     const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
     const { usage, notes, ...pub } = rp; return { ok: true, report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
@@ -21290,6 +21311,9 @@ export default {
       for (const [k, u] of [["google", "https://news.google.com/rss/search?q=" + e + "+when:30d&hl=en-US&gl=US&ceid=US:en"], ["bing", "https://www.bing.com/news/search?q=" + e + "&format=rss"], ["bingFresh", "https://www.bing.com/news/search?q=" + e + "&format=rss&qft=sortbydate%3d%221%22"], ["reddit", "https://www.reddit.com/search.rss?q=" + e + "&sort=new&t=week"]]) {
         try { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }), t = await r.text(); out[k] = { status: r.status, len: t.length, items: (t.match(/<(item|entry)>/g) || []).length, dates: (t.match(/<pubDate>[^<]*/g) || []).slice(0, 4).map(x => x.slice(9)), titles: (t.match(/<title>[^<]*/g) || []).slice(1, 5).map(x => x.slice(7, 90)) }; } catch (x) { out[k] = { error: x.message }; } }
       out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing"], bingFresh: true, loose: true })).length; return json({ ok: true, q, out }); }
+    if (body.action === "reportNotes") { if (externalCaller) return json({ error: "operator only" }, 403);
+      const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
+      try { return json(await reportNotesOp(env, aid, { id: "admin", name: "Admin", admin: true }, body)); } catch (e) { return json({ error: e.message }, 500); } }
     if (["reportRun", "reportList", "reportGet", "reportShare"].includes(body.action)) {
       if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);

@@ -11868,6 +11868,8 @@ async function hd2RepShare(op, email) {
 }
 function hd2RepHtml() {
   const R = EF.rp || {}, V = R.versions || [], dis = R.busy ? 'disabled' : '';
+  // 🖍 highlights + notes wire up once this HTML is on the page (every redraw re-marks from the cached list)
+  if (R.rep) { const nid = hdNid(EF.e.id), ver = R.rep.at; setTimeout(() => rnAttach({ key: nid, ver, api: (sub, p) => call('reportNotes', Object.assign({ assetId: nid, sub }, p)) }), 0); }
   const when = at => { const d = new Date(at); return isNaN(d) ? at : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
   const link = R.rep ? 'https://aisystemimplementation.com/members/?report=' + hdNid(EF.e.id) : '';
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -11887,38 +11889,129 @@ function hd2RepHtml() {
 }
 // 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
 // Theme-neutral: inherits the page's text colour; borders and muted text are translucent so both light and dark pages read.
+// 🖍 Highlights (2026-11-24): select text in any section → 🖍 Highlight → numbered mark in the text + a numbered item in Notes with an
+// editable note (rnAttach wires it; the page supplies the api). Shared by everyone who can open the report, kept across runs.
 function reportHtml(R) {
   const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
   const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
-  const sec = (h, body) => `<section class="rp-sec"><h3>${h}</h3>${body}</section>`;
+  const sec = (key, h, body) => `<section class="rp-sec" data-sec="${key}"><h3>${h}</h3>${body}</section>`;
   const d = new Date(R.at);
   return `<style>.rp{line-height:1.55}.rp h2{margin:0 0 4px;font-size:22px}.rp h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;opacity:.75}
     .rp-sec{border-top:1px solid rgba(128,128,128,.28);padding:14px 0}.rp ul{margin:0;padding-left:20px}.rp li{margin:4px 0}.rp-mute{opacity:.6;margin:0}
     .rp-ref{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;font-size:11px;line-height:17px;text-align:center;text-decoration:none;border:1px solid rgba(128,128,128,.45);color:inherit}
     .rp-kv{margin:0 0 10px}.rp-kv b{display:block;font-size:12.5px;opacity:.75}.rp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid rgba(128,128,128,.45);margin-left:6px}
     .rp-src{display:grid;grid-template-columns:34px minmax(0,1fr);gap:4px 8px;font-size:13.5px;padding:6px 0;border-top:1px dashed rgba(128,128,128,.25)}.rp-src a{color:inherit}
-    .rp details{margin-top:8px}.rp summary{cursor:pointer;font-size:13px;opacity:.8}.rp pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}</style>
-  <div class="rp">
+    .rp details{margin-top:8px}.rp summary{cursor:pointer;font-size:13px;opacity:.8}.rp pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
+    mark.rp-hl{background:rgba(250,204,21,.42);color:inherit;border-radius:2px;padding:0 1px;cursor:pointer}
+    mark.rp-hl[data-first]::before{content:attr(data-n);display:inline-block;font-size:10px;font-weight:700;line-height:14px;min-width:14px;text-align:center;border-radius:7px;background:#ca8a04;color:#fff;margin-right:3px;vertical-align:1px}
+    .rp-hlbtn{position:fixed;z-index:3000;display:none;font:600 14px system-ui,sans-serif;padding:8px 14px;min-height:40px;border-radius:999px;border:none;background:#ca8a04;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.3);cursor:pointer}
+    .rp-nl{margin:6px 0 0;padding-left:26px}.rp-nl>li{margin:0 0 14px}.rp-nl>li::marker{font-weight:700;color:#ca8a04}
+    .rp-nq{font-size:13.5px;opacity:.85}.rp-nq a{color:inherit;text-decoration:none;border-bottom:1px dashed rgba(128,128,128,.6)}
+    .rp-nt{display:block;width:100%;box-sizing:border-box;margin:6px 0 2px;min-height:40px;font:inherit;font-size:14.5px;line-height:1.5;padding:7px 9px;border:1px solid rgba(128,128,128,.4);border-radius:8px;background:transparent;color:inherit;resize:vertical}
+    .rp-nt:focus{outline:2px solid #ca8a04;outline-offset:1px}.rp-nm{font-size:12px;opacity:.6;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .rp-nm button{font:inherit;background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:4px 0}.rp-flash{animation:rpf 1.2s}@keyframes rpf{0%{background:rgba(250,204,21,.9)}}</style>
+  <div class="rp" data-rn="1">
     <h2>${e(R.title && R.title.name)}</h2>
     <div class="rp-mute">${e(R.hub || '')} · research as of ${e(isNaN(d) ? R.at : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}${R.premium ? '<span class="rp-badge">★ Premium</span>' : '<span class="rp-badge">Free</span>'} · ${S.length} sources</div>
-    ${sec('Summary', A.summary ? `<p style="margin:0">${e(A.summary)}</p>` : '<p class="rp-mute">The analysis did not run — the research below is still current.</p>')}
-    ${sec("What's moving", pts(A.moving))}
-    ${sec('Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `<div class="rp-mute" style="font-size:13px">Topic keywords: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
-    ${sec('What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
+    ${sec('summary', 'Summary', A.summary ? `<p style="margin:0">${e(A.summary)}</p>` : '<p class="rp-mute">The analysis did not run — the research below is still current.</p>')}
+    ${sec('moving', "What's moving", pts(A.moving))}
+    ${sec('demand', 'Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `<div class="rp-mute" style="font-size:13px">Topic keywords: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
+    ${sec('audience', 'What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
       Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
-    ${sec('Opportunities', pts(A.opportunities))}
-    ${sec('Risks & pressures', pts(A.risks))}
-    ${sec('Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
-    ${sec('Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
-    ${sec('Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
-    ${sec('The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
+    ${sec('opportunities', 'Opportunities', pts(A.opportunities))}
+    ${sec('risks', 'Risks & pressures', pts(A.risks))}
+    ${sec('next', 'Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('gaps', 'Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('sources', 'Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
+    ${sec('underneath', 'The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
       <details><summary>Product${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
       <details><summary>Hub research</summary>${kv(R.hubResearch)}</details>`)}
+    <section class="rp-sec rp-notes" data-sec="notes"><h3>Notes</h3><p class="rp-mute rp-nh" style="font-size:13px">Select any text in the report and tap 🖍 Highlight — it gets a number here, with room for a note.</p><ol class="rp-nl"></ol></section>
   </div>`;
 }
+// ── 🖍 highlight + notes wiring. rnAttach({key, api, ver}) after the report HTML is on the page; api(sub, payload) → {ok, items|item} | {error}
+const RN = { key: '', items: null, api: null, root: null, ver: '', pending: null, timers: {} };
+function rnEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function rnAttach(cfg) {
+  const root = document.querySelector('.rp[data-rn]'); if (!root) return;
+  if (RN.key !== cfg.key) { RN.key = cfg.key; RN.items = null; }
+  RN.api = cfg.api; RN.ver = cfg.ver || ''; RN.root = root; rnBind();
+  if (root.dataset.rnb) return; root.dataset.rnb = '1';
+  root.addEventListener('click', ev => { const m = ev.target.closest('mark.rp-hl'); if (m) { ev.preventDefault(); rnGo(m.dataset.id, 'note'); } });
+  root.addEventListener('input', ev => { const t = ev.target.closest('.rp-nt'); if (t) rnNoteInput(t); });
+  if (RN.items) rnPaint(); else rnLoad();
+}
+async function rnLoad() { const r = await RN.api('list', {}).catch(x => ({ error: x.message })); RN.items = (r && r.items) || []; rnPaint(r && r.error); }
+function rnFind(scope, text) {   // first occurrence of the words (spacing ignored) in this section → [startNode, startOffset, endNode, endOffset]
+  const want = String(text || '').replace(/\s+/g, ' ').trim().toLowerCase(); if (!want) return null;
+  const w = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT); let n, s = '', map = [], sp = true, blk = null;
+  while ((n = w.nextNode())) { if (n.parentElement.closest('.rp-notes,h3,summary')) continue;
+    const b = n.parentElement.closest('li,p,div,pre'); if (b !== blk && !sp && map.length) { s += ' '; map.push(map[map.length - 1]); sp = true; } blk = b;
+    for (let i = 0; i < n.data.length; i++) { const c = n.data[i]; if (/\s/.test(c)) { if (!sp) { s += ' '; map.push([n, i]); sp = true; } } else { s += c.toLowerCase(); map.push([n, i]); sp = false; } } }
+  const k = s.indexOf(want); if (k < 0) return null; const a = map[k], z = map[k + want.length - 1]; return [a[0], a[1], z[0], z[1] + 1];
+}
+function rnWrap(f, num, id) {
+  const r = document.createRange(); r.setStart(f[0], f[1]); r.setEnd(f[2], f[3]);
+  const top = r.commonAncestorContainer.nodeType === 3 ? r.commonAncestorContainer.parentNode : r.commonAncestorContainer, nodes = [];
+  const w = document.createTreeWalker(top, NodeFilter.SHOW_TEXT); let x; while ((x = w.nextNode())) if (r.intersectsNode(x)) nodes.push([x, x === f[0] ? f[1] : 0, x === f[2] ? f[3] : x.data.length]);
+  let first = true;
+  nodes.forEach(([t, s, e]) => { if (e <= s || !t.data.slice(s, e).trim()) return; let mid = t; if (s > 0) mid = t.splitText(s); if (e - s < mid.data.length) mid.splitText(e - s);
+    const m = document.createElement('mark'); m.className = 'rp-hl'; m.dataset.n = num; m.dataset.id = id; m.title = 'Note ' + num; if (first) { m.dataset.first = '1'; first = false; }
+    mid.parentNode.insertBefore(m, mid); m.appendChild(mid); });
+  return !first;
+}
+function rnPaint(err) {
+  const root = RN.root; if (!root || !document.contains(root)) return;
+  root.querySelectorAll('mark.rp-hl').forEach(m => { const p = m.parentNode; while (m.firstChild) p.insertBefore(m.firstChild, m); p.removeChild(m); p.normalize(); });
+  const L = RN.items || [], found = {};
+  L.forEach((it, i) => { const sc = root.querySelector('[data-sec="' + (it.sec || '').replace(/"/g, '') + '"]:not(.rp-notes)'), scopes = sc ? [sc] : [...root.querySelectorAll('.rp-sec:not(.rp-notes)')];
+    for (const s of scopes) { const f = rnFind(s, it.text); if (f && rnWrap(f, i + 1, it.id)) { found[it.id] = true; break; } } });
+  const when = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+  const ol = root.querySelector('.rp-nl'), hint = root.querySelector('.rp-nh'); if (!ol) return;
+  if (hint) hint.textContent = err ? 'Notes could not load: ' + err : L.length ? 'Select more text and tap 🖍 Highlight to add to this list.' : 'Select any text in the report and tap 🖍 Highlight — it gets a number here, with room for a note.';
+  ol.innerHTML = L.map(it => `<li id="rpn-${rnEsc(it.id)}"><div class="rp-nq"><a href="#" onclick="rnGo('${rnEsc(it.id)}','text');return false">“${rnEsc(it.text.length > 220 ? it.text.slice(0, 220) + '…' : it.text)}”</a>${found[it.id] ? '' : ' <span class="rp-mute">(not in this version of the report)</span>'}</div>
+      <textarea class="rp-nt" data-id="${rnEsc(it.id)}" rows="2" placeholder="Add a note…" aria-label="Note ${L.indexOf(it) + 1}">${rnEsc(it.note || '')}</textarea>
+      <div class="rp-nm"><span>${rnEsc(it.byName || '')} · ${when(it.at)}${it.editedBy ? ' · edited by ' + rnEsc(it.editedBy) + ' ' + when(it.editedAt) : ''}</span><span class="rp-ns" data-id="${rnEsc(it.id)}"></span><button onclick="rnRemove('${rnEsc(it.id)}')">Remove</button></div></li>`).join('');
+}
+function rnGo(id, to) {
+  const el = to === 'note' ? document.getElementById('rpn-' + id) : RN.root && RN.root.querySelector('mark.rp-hl[data-id="' + id + '"]'); if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('rp-flash'); setTimeout(() => el.classList.remove('rp-flash'), 1300);
+  if (to === 'note') { const t = el.querySelector('.rp-nt'); if (t) setTimeout(() => t.focus({ preventScroll: true }), 350); }
+}
+function rnNoteInput(t) {
+  const id = t.dataset.id, it = (RN.items || []).find(x => x.id === id); if (!it) return; it.note = t.value;
+  const st = RN.root.querySelector('.rp-ns[data-id="' + id + '"]'); if (st) st.textContent = 'saving…';
+  clearTimeout(RN.timers[id]); RN.timers[id] = setTimeout(async () => { const r = await RN.api('edit', { id, note: t.value }).catch(x => ({ error: x.message }));
+    if (st) st.textContent = r && r.ok ? '✓ saved' : '✗ ' + ((r && r.error) || 'not saved'); if (r && r.item) Object.assign(it, r.item, { note: t.value }); }, 800);
+}
+async function rnRemove(id) {
+  const r = await RN.api('remove', { id }).catch(x => ({ error: x.message }));
+  if (!r || r.error) { const st = RN.root.querySelector('.rp-ns[data-id="' + id + '"]'); if (st) st.textContent = '✗ ' + ((r && r.error) || 'not removed'); return; }
+  RN.items = r.items || []; rnPaint();
+}
+function rnBtn() { let b = document.getElementById('rpHlBtn'); if (!b) { b = document.createElement('button'); b.id = 'rpHlBtn'; b.className = 'rp-hlbtn'; b.type = 'button'; b.textContent = '🖍 Highlight';
+    b.addEventListener('mousedown', e => e.preventDefault()); b.addEventListener('click', rnAdd); document.body.appendChild(b); } return b; }
+function rnBind() { if (RN.bound) return; RN.bound = true; let tm; document.addEventListener('selectionchange', () => { clearTimeout(tm); tm = setTimeout(rnSel, 120); }); window.addEventListener('scroll', () => { const b = document.getElementById('rpHlBtn'); if (b) b.style.display = 'none'; }, true); }
+function rnSel() {
+  const b = rnBtn(), sel = window.getSelection(), hide = () => { b.style.display = 'none'; RN.pending = null; };
+  if (!RN.root || !document.contains(RN.root) || !sel || !sel.rangeCount || sel.isCollapsed) return hide();
+  const r = sel.getRangeAt(0), c = r.commonAncestorContainer, el = c.nodeType === 3 ? c.parentElement : c, sec = el && el.closest('.rp-sec');
+  if (!sec || !RN.root.contains(sec) || sec.classList.contains('rp-notes')) return hide();
+  const text = sel.toString().replace(/\s+/g, ' ').trim(); if (text.length < 3 || text.length > 600) return hide();
+  const rc = r.getBoundingClientRect(), below = rc.top < 70; RN.pending = { sec: sec.dataset.sec, text };
+  b.style.display = 'block'; b.style.left = Math.max(8, Math.min(window.innerWidth - 150, rc.left + rc.width / 2 - 65)) + 'px'; b.style.top = (below ? rc.bottom + 10 : rc.top - 50) + 'px';
+}
+async function rnAdd() {
+  const p = RN.pending, b = rnBtn(); if (!p) return; b.textContent = 'Saving…';
+  const r = await RN.api('add', { sec: p.sec, text: p.text, ver: RN.ver }).catch(x => ({ error: x.message }));
+  b.textContent = '🖍 Highlight'; b.style.display = 'none'; RN.pending = null; try { window.getSelection().removeAllRanges(); } catch (e) {}
+  if (!r || r.error) { alertless((r && r.error) || 'Highlight not saved'); return; }
+  RN.items = r.items || [...(RN.items || []), r.item]; rnPaint(); rnGo(r.item.id, 'note');
+}
+function alertless(msg) { const h = RN.root && RN.root.querySelector('.rp-nh'); if (h) { h.textContent = '✗ ' + msg; h.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
 // ── ⬆ Page (operator 2026-11-23: "build that page from an asset cluster in that topic and deploy it to the main hub"; cluster = the Hub cohort).
 // On a Hub asset of a hand-authored hub page: worker hubPageDeploy preview lists every page slot with its live text and the text its source asset
 // holds (page-schema.json pins each source group to an asset). ⬆ Deploy = snapshot the live page into hub-versions/ → hubFieldsApply with the
