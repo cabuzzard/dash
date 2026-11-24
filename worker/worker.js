@@ -21284,9 +21284,9 @@ export default {
     // reportGet {assetId, at?} · reportShare {assetId, email, op: add|remove} (adds the email to the members list when it isn't there yet).
     // reportProbe {q} (operator only): what the free news feeds return to the Worker — status, size, items, after the date + phrase filters
     if (body.action === "reportProbe") { if (externalCaller) return json({ error: "operator only" }, 403); const q = String(body.q || "construction software"), e = encodeURIComponent(q), out = {};
-      for (const [k, u] of [["google", "https://news.google.com/rss/search?q=" + e + "+when:30d&hl=en-US&gl=US&ceid=US:en"], ["bing", "https://www.bing.com/news/search?q=" + e + "&format=rss"], ["reddit", "https://www.reddit.com/search.rss?q=" + e + "&sort=new&t=week"]]) {
-        try { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }), t = await r.text(); out[k] = { status: r.status, len: t.length, items: (t.match(/<(item|entry)>/g) || []).length, head: t.slice(0, 160) }; } catch (x) { out[k] = { error: x.message }; } }
-      out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing", "google", "reddit"] })).length; return json({ ok: true, q, out }); }
+      for (const [k, u] of [["google", "https://news.google.com/rss/search?q=" + e + "+when:30d&hl=en-US&gl=US&ceid=US:en"], ["bing", "https://www.bing.com/news/search?q=" + e + "&format=rss"], ["bingFresh", "https://www.bing.com/news/search?q=" + e + "&format=rss&qft=sortbydate%3d%221%22"], ["reddit", "https://www.reddit.com/search.rss?q=" + e + "&sort=new&t=week"]]) {
+        try { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }), t = await r.text(); out[k] = { status: r.status, len: t.length, items: (t.match(/<(item|entry)>/g) || []).length, dates: (t.match(/<pubDate>[^<]*/g) || []).slice(0, 4).map(x => x.slice(9)), titles: (t.match(/<title>[^<]*/g) || []).slice(1, 5).map(x => x.slice(7, 90)) }; } catch (x) { out[k] = { error: x.message }; } }
+      out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing"], bingFresh: true })).length; return json({ ok: true, q, out }); }
     if (["reportRun", "reportList", "reportGet", "reportShare"].includes(body.action)) {
       if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
