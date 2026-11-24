@@ -1319,16 +1319,115 @@ async function memberApps(env, rec) {
     const key = `${id}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + id)).slice(0, 32)}`;
     out.push({ id, kind: "studio", name: l.titleName || l.productName || "Script Studio", client: l.label || "", hub: l.hubName || "", product: l.productName || "", path: "/studio/?k=" + key });
   }
+  // 📊 reports shared with this member (superadmin: every report that has run)
+  const all = (await env.TRADES.get("report:all", "json").catch(() => null)) || [], mine = (rec.links || []).includes("*") ? all : all.filter(x => (rec.reports || []).includes(x.assetId));
+  for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId });
   return out;
+}
+// ── 📊 REPORT (operator 2026-11-24: "a new asset type which is 'report' which is a 'premium' or password protected admin report of all of the
+// important research and trends related to a topic at the time that it is run"; "1 c" = the operator reads it in the dash AND can share it
+// with a member (Google sign-in, aisystemimplementation.com/members); "2 title" = one per title; "3 run free and then put premium run button").
+// A Report asset snapshots everything its title knows, dated: keyword topic + search demand, title research, product research, hub research,
+// the digest's findings, audience questions (the Series idea sources) and a fresh free news search; ★ Premium adds one Perplexity research
+// pass (spend-capped). One Claude call writes the analysis on top, citing only the numbered sources. Versions: KV report:<assetId>:<at>,
+// index report:idx:<assetId> (newest first), all reports report:all. Shared with members via member:email:<email>.reports = [assetId].
+const REPORT_PF = ["Customer", "Niche", "Pain Points", "Emotions", "Benefits", "Transformation", "Objections", "Proof Points", "Unique Opportunity", "Offer Structure"];
+async function reportBuild(env, assetId, premium) {
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+  const a = await ivPage(assetId); if (!a || a.object === "error" || !a.properties) throw new Error("Asset not found");
+  const ap = a.properties, titleId = ivRid(ap, "Content Strategy"), pid = ivRid(ap, "Product");
+  if (!titleId) throw new Error("This report has no title — a report reads its title's research");
+  const t = await ivPage(titleId); if (!t || !t.properties) throw new Error("Title not found");
+  const tp = t.properties, titleName = hubRichText(tp.Title?.title || tp.Name?.title), cid = hubAssetId(ivRid(ap, "Campaign") || ivRid(tp, "Campaign"));
+  const notes = [], at = new Date().toISOString();
+  const topic = await titleTopicKeywords(env, hdr, tp).catch(e => { notes.push("topic: " + e.message); return { keywords: "" }; });
+  const topicKw = [...new Set(String(topic.keywords || "").split(/[,\n]/).map(kwNorm).filter(Boolean))];
+  const demand = topicKw.length ? await kwDemandBlock(env, topicKw.join(", "), { related: 15 }).catch(() => "") : "";
+  const titleRes = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)]));
+  let product = { name: "", facts: {}, research: {} };
+  if (pid) { try { const pp = await ivPage(pid); const v = writingFieldValues(pp.properties || {}); product.name = hubRichText(pp.properties?.Name?.title);
+      product.facts = Object.fromEntries(["Description", "Price", "Offer Structure"].map(k => [k, String(v[k] || "").slice(0, 1500)]).filter(x => x[1]));
+      const rr = await findBestProductResearchRecord(hdr, pid); if (rr && rr.properties) product.research = Object.fromEntries(REPORT_PF.map(k => [k, trRt(rr.properties, k).slice(0, 1500)]).filter(x => x[1]));
+    } catch (e) { notes.push("product: " + e.message); } }
+  let hub = { name: "", research: {} };
+  if (cid) { try { const h = HUB_SITES.find(x => hubAssetId(x.campaignId) === cid); hub.name = (h && h.name) || "";
+      const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } }).catch(() => []);
+      const first = k => { for (const r of rows || []) { const v = trRt(r.properties, k); if (v) return v; } return ""; };
+      hub.research = Object.fromEntries(["Statement", "Unique Opportunity", "Key Message", "Pain Points"].map(k => [k, first(k).slice(0, 1500)]).filter(x => x[1]));
+    } catch (e) { notes.push("hub research: " + e.message); } }
+  // audience: the Series idea sources (search questions, Google / YouTube autocomplete, Reddit, interviews) — fresh, cached per title
+  let ideas = { sources: {} }; try { ideas = await seriesIdeas(env, titleId, true); } catch (e) { notes.push("audience sources: " + e.message); }
+  const audience = Object.fromEntries(["Search questions", "Google autocomplete", "YouTube autocomplete", "Reddit", "Your interviews"].map(k => [k, ((ideas.sources || {})[k] || []).slice(0, 15).map(x => ({ t: x.t, v: x.v || 0, meta: x.meta || "", url: x.url || "" }))]).filter(x => x[1].length));
+  // news & trends: the hub digest's findings + the title's saved sources + a fresh free search (last 30 days) on the topic keywords
+  const sources = [], seen = new Set(), push = (x, from) => { const u = String(x.url || ""); if (!/^https?:\/\//.test(u) || seen.has(u)) return; seen.add(u);
+    sources.push({ n: sources.length + 1, claim: String(x.claim || x.title || "").slice(0, 400), publisher: String(x.publisher || "").slice(0, 80), date: String(x.date || "").slice(0, 10), url: u, from, why: String(x.why || "").slice(0, 300) }); };
+  const queries = (topicKw.length ? topicKw : [kwNorm(titleName)]).slice(0, 4);
+  try { (await digestFreeSearch(env, queries, { days: 30, max: 25, feeds: ["bing", "google", "reddit", "gdelt"], gdeltMax: 2 })).forEach(x => push(x, x.sourceMethod || "news")); } catch (e) { notes.push("news search: " + e.message); }
+  if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json").catch(() => null)) || []; pool.slice(0, 15).forEach(x => push(x, "digest")); }
+  const saved = (await env.TRADES.get("digest:sources:" + titleId, "json").catch(() => null)) || {}; (saved.sources || []).slice(-15).forEach(x => push(x, "title sources"));
+  const usage = {};
+  if (premium) {
+    const cap = await spendCheck(env, "perplexity"); if (cap) throw new Error(cap);
+    if (!env.PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY not set");
+    const input = `Research, as of today (${at.slice(0, 10)}), the most important current developments, data, research, players and trends about: ${titleName}${topicKw.length ? " (keywords: " + topicKw.slice(0, 8).join(", ") + ")" : ""}.` +
+      `${product.research.Customer ? " Audience: " + product.research.Customer.slice(0, 400) : ""} Prefer primary sources, original data and named trade press from the last 12 months. Never invent a source or a number.\n` +
+      'Return ONLY a fenced ```json block: {"findings":[{"claim":"one sentence","why":"why it matters to this audience","url":"","publisher":"","date":"YYYY-MM-DD"}]} — 10 to 20 findings, each with a real URL from your research.';
+    const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST", headers: { Authorization: "Bearer " + env.PERPLEXITY_API_KEY.trim(), "Content-Type": "application/json" }, body: JSON.stringify({ preset: "medium", input }) });
+    const txt = await r.text(); let dd = null; try { dd = JSON.parse(txt); } catch (e) {}
+    if (!r.ok || !dd) throw new Error("Perplexity HTTP " + r.status + ": " + (dd?.error?.message || txt).slice(0, 300));
+    const pc = pplxCost(dd.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, dd.usage).catch(() => {}); usage.perplexity = { cost: pc.cost, estimated: pc.estimated };
+    const out = drJson(dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n")) || {};
+    const F = Array.isArray(out.findings) ? out.findings : []; F.forEach(x => push(x, "premium research"));
+    if (!F.length) notes.push("premium research returned no findings");
+  }
+  // the analysis — one Claude call, text only, citing the numbered sources; nothing outside the packet
+  const packet = { title: titleName, hub: hub.name, topicKeywords: topicKw, searchDemand: demand.slice(0, 4000), titleResearch: titleRes, product, hubResearch: hub.research, audience,
+    sources: sources.map(s => ({ n: s.n, claim: s.claim, why: s.why, publisher: s.publisher, date: s.date, from: s.from })) };
+  const refs = { type: "array", items: { type: "integer" } }, pt = { type: "object", properties: { point: { type: "string" }, refs }, required: ["point", "refs"] };
+  let analysis = {};
+  try { analysis = await hcClaude(env, `You write a dated research briefing for the operator of a content hub — "everything important about this topic right now". ` +
+      `Use ONLY the packet below. Every claim about the world must cite the numbered sources it rests on (refs = source numbers); demand figures come only from searchDemand. ` +
+      `Never invent a source, statistic, company or quote; if the packet is thin on something, say so in gaps. Plain, specific sentences — no hype.\n\nPACKET:\n` + JSON.stringify(packet),
+      "report_analysis", { type: "object", properties: {
+        summary: { type: "string", description: "3-5 sentences: the state of this topic right now" },
+        moving: { type: "array", items: pt, description: "4-8 trends / developments that are moving now" },
+        demand: { type: "string", description: "2-4 sentences on search demand: the biggest terms, trends, intent — from searchDemand only" },
+        audience: { type: "array", items: { type: "string" }, description: "the 5-8 questions this audience is asking most (from the audience sources)" },
+        opportunities: { type: "array", items: pt, description: "3-6 concrete content / offer opportunities" },
+        risks: { type: "array", items: pt, description: "2-5 risks, objections or competitive pressures" },
+        gaps: { type: "array", items: { type: "string" }, description: "what the research is missing or thin on" },
+        nextTitles: { type: "array", items: { type: "object", properties: { title: { type: "string" }, keyword: { type: "string" }, why: { type: "string" } }, required: ["title", "keyword", "why"] }, description: "3-6 titles worth making next" } },
+        required: ["summary", "moving", "demand", "audience", "opportunities", "risks", "gaps", "nextTitles"] }, 4000, u => { usage.claude = u; });
+  } catch (e) { notes.push("analysis: " + e.message); }
+  const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
+    title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },
+    keywords: { topicId: topic.topicId || "", list: topicKw, demand }, product, hubResearch: hub.research, audience, sources, analysis, usage, notes };
+  await env.TRADES.put("report:" + assetId + ":" + at, JSON.stringify(rep));
+  const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || [];
+  idx.unshift({ at, premium: !!premium, sources: sources.length }); await env.TRADES.put("report:idx:" + assetId, JSON.stringify(idx.slice(0, 40)));
+  const all = ((await env.TRADES.get("report:all", "json").catch(() => null)) || []).filter(x => x.assetId !== assetId);
+  all.unshift({ assetId, name: rep.assetName, title: titleName, hub: hub.name, at }); await env.TRADES.put("report:all", JSON.stringify(all.slice(0, 300)));
+  // the summary also lands on the asset (Executive Summary), so the table shows the latest run
+  if (analysis.summary) await fetch("https://api.notion.com/v1/pages/" + kwDashId(assetId), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Executive Summary": { rich_text: richChunks(at.slice(0, 10) + (premium ? " · ★ Premium" : "") + " — " + analysis.summary) } } }) }).catch(() => {});
+  return rep;
+}
+async function reportGet(env, assetId, at) {
+  const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || []; const pick = at || (idx[0] || {}).at;
+  return pick ? await env.TRADES.get("report:" + assetId + ":" + pick, "json").catch(() => null) : null;
 }
 async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
+  if (op === "report") { const aid = hubAssetId(body.assetId);
+    if (!(rec.links || []).includes("*") && !(rec.reports || []).includes(aid)) return { error: "This report isn't shared with you.", code: "no_access" };
+    const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
+    const { usage, notes, ...pub } = rp; return { ok: true, report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
   const exp = Date.now() + MEMBER_DAYS * 864e5;
   return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", superadmin: (rec.links || []).includes("*"), ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec) };
@@ -21176,6 +21275,32 @@ export default {
     // X" / "Hub Contact › X" read line "X: text" of that field; fields marked "(…)" — images, links, logo markup — are not written by the writer
     // and are left alone). snapshot = a copy of the live page in hub-versions/<slug>/deploy-<time>/ before ⬆ Deploy writes the text through
     // hubFieldsApply (text only, never markup).
+    // ── 📊 Report actions (operator only): reportRun {assetId, premium} · reportList {assetId} → versions + who it's shared with ·
+    // reportGet {assetId, at?} · reportShare {assetId, email, op: add|remove} (adds the email to the members list when it isn't there yet).
+    if (["reportRun", "reportList", "reportGet", "reportShare"].includes(body.action)) {
+      if (externalCaller) return json({ error: "operator only" }, 403);
+      const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
+      try {
+        if (body.action === "reportRun") {
+          const lk = "report:lock:" + aid; if (await env.TRADES.get(lk)) return json({ error: "A run is already going for this report — give it a few minutes" }, 409);
+          await env.TRADES.put(lk, "1", { expirationTtl: 600 });
+          try { const rep = await reportBuild(env, aid, body.premium === true); return json({ ok: true, at: rep.at, report: rep }); } finally { await env.TRADES.delete(lk).catch(() => {}); }
+        }
+        if (body.action === "reportList") {
+          const versions = (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [], shared = [];
+          for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.reports || []).includes(aid)) shared.push({ email: k.name.slice(13), name: r.name || r.gName || "" }); }
+          return json({ ok: true, versions, shared, running: !!(await env.TRADES.get("report:lock:" + aid)) });
+        }
+        if (body.action === "reportGet") { const rep = await reportGet(env, aid, body.at); return rep ? json({ ok: true, report: rep }) : json({ error: "No run yet" }, 404); }
+        const email = String(body.email || "").trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "A valid email is required" }, 400);
+        const prev = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
+        if (body.op === "remove") { if (prev) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...prev, reports: (prev.reports || []).filter(x => x !== aid), updatedAt: Date.now() })); return json({ ok: true, removed: email }); }
+        const rec = prev || { name: String(body.name || "").slice(0, 120), links: [], at: Date.now() };
+        rec.reports = [...new Set([...(rec.reports || []), aid])]; rec.updatedAt = Date.now();
+        await env.TRADES.put("member:email:" + email, JSON.stringify(rec));
+        return json({ ok: true, email, newMember: !prev });
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "hubPageDeploy") {
       const slug = String(body.slug || "").trim();
       if (!HUB_HTML_FROZEN.has(slug)) return json({ error: "Deploy writes only to hand-authored hub pages" }, 400);

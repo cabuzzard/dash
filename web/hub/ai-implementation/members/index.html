@@ -82,8 +82,8 @@ function renderButton() {
 function appsView(d) {
   const pic = store.get("mb_pic");
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
-    + (d.apps.length ? d.apps.map(a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
-        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`).join("")
+    + (d.apps.length ? d.apps.map(a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : a.kind === "report" ? "📊 Research report" + (a.at ? " · " + new Date(a.at).toLocaleDateString() : "") : "", a.hub].filter(Boolean).join(" · "))}</div></a>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin && a.kind !== "report" ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`).join("")
       : `<div class="card">You're signed in, but no apps are set up for you yet.</div>`);
 }
 async function onCredential(resp) {
@@ -94,6 +94,7 @@ async function onCredential(resp) {
     if (!d.ok && d.code === "not_member") return signInView(`<b>${esc(d.email)}</b> isn't on the members list yet. If you were invited with a different Google account, sign in with that one.`);
     store.set("mb_token", d.token);
     try { store.set("mb_pic", JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).picture || null); } catch (e) {}
+    if (REPORT_ID) return reportView(d.token);
     appsView(d);
   } catch (e) { signInView("Sign-in didn't go through. Try again."); }
 }
@@ -104,6 +105,52 @@ async function shareMembers(btn) {
   try { if (navigator.share) { await navigator.share({ title: "Members", text, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
   try { await navigator.clipboard.writeText(text + " " + url); btn.textContent = "✓ Copied"; } catch (e) { btn.textContent = url; }
   setTimeout(() => { btn.textContent = "Share with client"; }, 2500);
+}
+// 📊 a shared research report (2026-11-24): /members/?report=<id> → worker member op "report" → rendered here, members only
+const REPORT_ID = new URLSearchParams(location.search).get("report") || "";
+async function reportView(tok, at) {
+  out.innerHTML = '<p class="lede">Loading the report…</p>'; document.querySelector(".wrap").style.maxWidth = "820px";
+  try { const d = await call({ op: "report", token: tok, assetId: REPORT_ID, at });
+    if (d.code === "signed_out") { store.set("mb_token", null); return signInView("Please sign in again."); }
+    if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This report isn't available.") + '</div><a class="home" href="/members/">← Your apps</a>'; return; }
+    const V = d.versions || [];
+    const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + "</option>").join("") + "</select>" : "";
+    out.innerHTML = '<div class="who"><a class="home" href="/members/">← Your apps</a>' + pick + "</div>" + reportHtml(d.report);
+  } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
+}
+// 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
+// Theme-neutral: inherits the page's text colour; borders and muted text are translucent so both light and dark pages read.
+function reportHtml(R) {
+  const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
+  const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
+  const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
+  const sec = (h, body) => `<section class="rp-sec"><h3>${h}</h3>${body}</section>`;
+  const d = new Date(R.at);
+  return `<style>.rp{line-height:1.55}.rp h2{margin:0 0 4px;font-size:22px}.rp h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;opacity:.75}
+    .rp-sec{border-top:1px solid rgba(128,128,128,.28);padding:14px 0}.rp ul{margin:0;padding-left:20px}.rp li{margin:4px 0}.rp-mute{opacity:.6;margin:0}
+    .rp-ref{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;font-size:11px;line-height:17px;text-align:center;text-decoration:none;border:1px solid rgba(128,128,128,.45);color:inherit}
+    .rp-kv{margin:0 0 10px}.rp-kv b{display:block;font-size:12.5px;opacity:.75}.rp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid rgba(128,128,128,.45);margin-left:6px}
+    .rp-src{display:grid;grid-template-columns:34px minmax(0,1fr);gap:4px 8px;font-size:13.5px;padding:6px 0;border-top:1px dashed rgba(128,128,128,.25)}.rp-src a{color:inherit}
+    .rp details{margin-top:8px}.rp summary{cursor:pointer;font-size:13px;opacity:.8}.rp pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}</style>
+  <div class="rp">
+    <h2>${e(R.title && R.title.name)}</h2>
+    <div class="rp-mute">${e(R.hub || '')} · research as of ${e(isNaN(d) ? R.at : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}${R.premium ? '<span class="rp-badge">★ Premium</span>' : '<span class="rp-badge">Free</span>'} · ${S.length} sources</div>
+    ${sec('Summary', A.summary ? `<p style="margin:0">${e(A.summary)}</p>` : '<p class="rp-mute">The analysis did not run — the research below is still current.</p>')}
+    ${sec("What's moving", pts(A.moving))}
+    ${sec('Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `<div class="rp-mute" style="font-size:13px">Topic keywords: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
+    ${sec('What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
+      Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
+    ${sec('Opportunities', pts(A.opportunities))}
+    ${sec('Risks & pressures', pts(A.risks))}
+    ${sec('Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
+    ${sec('The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
+      <details><summary>Product${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
+      <details><summary>Hub research</summary>${kv(R.hubResearch)}</details>`)}
+  </div>`;
 }
 function signOut() { store.set("mb_token", null); store.set("mb_pic", null); try { google.accounts.id.disableAutoSelect(); } catch (e) {} signInView(); }
 let gReady = false;
@@ -120,6 +167,7 @@ function gInit() {
   if (err) return signInView("Sign-in didn't go through. Try again.");
   const tok = store.get("mb_token"); if (!tok) { if (IN_APP) inAppView(); return; }
   out.innerHTML = `<p class="lede">Loading your apps…</p>`;
+  if (REPORT_ID) return reportView(tok);
   try { const d = await call({ op: "me", token: tok }); if (d.ok) return appsView(d); store.set("mb_token", null); signInView(d.code === "not_member" ? "Your account isn't on the members list any more." : ""); }
   catch (e) { signInView("Couldn't reach the server. Try again in a minute."); }
 })();

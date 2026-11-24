@@ -11747,6 +11747,7 @@ function hd2EfDraw() {
   else if (EF.tab === 'sched') bd = hd2SchedHtml();
   else if (EF.tab === 'plan') bd = hd2PlanHtml();
   else if (EF.tab === 'page') bd = hd2PageHtml();
+  else if (EF.tab === 'report') bd = hd2RepHtml();
   else if (D.kind === 'notion') {
     const ed = D.props.map((p, k) => ({ p, k })).filter(x => x.p.editable && !hd2IsNotes(x.p)), ro = D.props.filter(p => !p.editable);
     ed.sort((a, b) => (b.p.type === 'title') - (a.p.type === 'title') || a.p.name.localeCompare(b.p.name));
@@ -11821,13 +11822,95 @@ function hd2EfTabs() {
   if (k === 'hub') t.push(['design', '🎨 Design'], ['site', '🧱 Site designer']);
   if (k === 'asset' && hd2IsPlan()) t.push(['plan', '📋 Plan']);
   if (k === 'asset' && hd2IsHubAsset()) t.push(['page', '⬆ Page']);
+  if (k === 'asset' && hd2IsReport()) t.push(['report', '📊 Report']);
   if (k === 'asset') t.push(['library', '🗂 Library' + (EF.data && EF.data.library && EF.data.library.length ? ' (' + EF.data.library.length + ')' : '')]);
   return t;
 }
-function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'plan' && !EF.plan) return hd2PlanLoad(); if (t === 'page' && !EF.pg) return hd2PageLoad(); if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'site' && !EF.sd) return hd2SdLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
+function hd2EfTab(t) { if (!EF) return; EF.tab = t; if (t === 'plan' && !EF.plan) return hd2PlanLoad(); if (t === 'page' && !EF.pg) return hd2PageLoad(); if (t === 'report' && !EF.rp) return hd2RepLoad(); if (t === 'design' && !EF.ds) return hd2DsLoad(); if (t === 'site' && !EF.sd) return hd2SdLoad(); if (t === 'kids' && !EF.kids) return hd2KidsLoad(); if (t === 'research' && !EF.res) hd2ResLoad(); if (t === 'keywords' && !EF.kw) EF.kw = { seed: EF.e.name || '', chips: [], list: null, busy: '', log: '' }; hd2EfDraw(); }
 const HD2_IN = 'width:100%;box-sizing:border-box;font-size:14px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:inherit;';
 const HD2_B = (c = 'var(--border2)', t = 'var(--text)') => `font-size:12.5px;padding:6px 12px;border:1px solid ${c};border-radius:6px;background:var(--surface2);color:${t};cursor:pointer;`;
 
+// ── 📊 Report (operator 2026-11-24: "a 'premium' or password protected admin report of all of the important research and trends related to a
+// topic at the time that it is run"; read here AND shareable with a member; one per title; "run free and then put premium run button").
+// The tab on a Report-type asset: ▶ Run (free sources + one analysis call) · ★ Premium run (adds Perplexity research, spend-capped) ·
+// every dated version · share with a member by email (they sign in with Google at aisystemimplementation.com/members).
+function hd2IsReport() { if (!EF || EF.e.k !== 'asset') return false; const D = EF.data, p = D && D.props && D.props.find(x => x.name === 'Asset Type');
+  const v = p ? p.value : ((_hd2A.get(hdNid(EF.e.id)) || {}).rawAssetType || ''); return /^report$/i.test(String(v || '').trim()); }
+async function hd2RepLoad(at) {
+  const E = EF, id = hdNid(E.e.id); E.rp = Object.assign(E.rp || {}, { busy: (E.rp && E.rp.busy) || 'Loading the report…' }); hd2EfDraw();
+  const l = await call('reportList', { assetId: id }).catch(x => ({ error: x.message }));
+  let rep = null, err = l && l.error ? l.error : '';
+  if (!err && (l.versions || []).length) { const g = await call('reportGet', { assetId: id, at: at || l.versions[0].at }).catch(x => ({ error: x.message })); if (g && g.report) rep = g.report; else err = (g && g.error) || 'no response'; }
+  E.rp = { versions: (l && l.versions) || [], shared: (l && l.shared) || [], running: !!(l && l.running), rep, busy: '', msg: err ? '✗ ' + err : (l && l.running ? 'A run is going right now — ↻ Refresh in a minute.' : '') };
+  if (EF === E) hd2EfDraw();
+}
+async function hd2RepRun(premium) {
+  const E = EF, R = E.rp || (E.rp = {}); if (R.busy) return;
+  R.busy = premium ? '★ Premium run: the stored research, a fresh news search, Perplexity research, then the analysis — a few minutes…' : 'Running: the stored research, a fresh news search, then the analysis — about a minute…'; R.msg = ''; hd2EfDraw();
+  const r = await call('reportRun', { assetId: hdNid(E.e.id), premium: !!premium }).catch(x => ({ error: x.message }));
+  if (!r || r.error) { R.busy = ''; R.msg = '✗ ' + ((r && r.error) || 'no response') + ' — a long run may still finish; ↻ Refresh shortly'; return EF === E && hd2EfDraw(); }
+  R.busy = ''; await hd2RepLoad(r.at); showToast((premium ? '★ Premium report' : 'Report') + ' ready', 'success');
+}
+async function hd2RepShare(op, email) {
+  const E = EF, R = E.rp || {}; email = String(email || (document.getElementById('hd2RpEm') || {}).value || '').trim(); if (!email) return;
+  R.busy = op === 'remove' ? 'Removing…' : 'Sharing…'; hd2EfDraw();
+  const r = await call('reportShare', { assetId: hdNid(E.e.id), email, op }).catch(x => ({ error: x.message }));
+  R.busy = ''; if (!r || r.error) { R.msg = '✗ ' + ((r && r.error) || 'no response'); return EF === E && hd2EfDraw(); }
+  const at = R.rep && R.rep.at; await hd2RepLoad(at);
+  if (EF === E && E.rp) { E.rp.msg = op === 'remove' ? '✓ ' + email + ' no longer sees this report' : '✓ Shared with ' + email + (r.newMember ? ' — added to the members list' : '') + '. They open aisystemimplementation.com/members and sign in with Google.'; hd2EfDraw(); }
+}
+function hd2RepHtml() {
+  const R = EF.rp || {}, V = R.versions || [], dis = R.busy ? 'disabled' : '';
+  const when = at => { const d = new Date(at); return isNaN(d) ? at : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  const link = R.rep ? 'https://aisystemimplementation.com/members/?report=' + hdNid(EF.e.id) : '';
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button ${dis} onclick="hd2RepRun(false)" style="${HD2_B('var(--accent)')}">▶ Run report</button>
+      <button ${dis} onclick="hd2RepRun(true)" title="Adds one Perplexity research pass (spend-capped) to the free run" style="${HD2_B('#f5b942')}">★ Premium run</button>
+      <button ${dis} onclick="EF.rp=null;hd2RepLoad()" style="${HD2_B()}">↻ Refresh</button>
+      ${V.length ? `<select ${dis} onchange="hd2RepLoad(this.value)" style="${HD2_IN}width:auto;font-size:12.5px;padding:5px 8px;">${V.map(v => `<option value="${esc(v.at)}" ${R.rep && R.rep.at === v.at ? 'selected' : ''}>${esc(when(v.at))}${v.premium ? ' · ★' : ''} · ${v.sources} sources</option>`).join('')}</select>` : ''}
+      ${R.rep && R.rep.usage && R.rep.usage.perplexity ? `<span style="font-size:12px;color:var(--text3);">Perplexity $${Number(R.rep.usage.perplexity.cost || 0).toFixed(2)}${R.rep.usage.perplexity.estimated ? ' (est.)' : ''}</span>` : ''}</div>
+    ${R.busy || R.msg ? `<div style="margin:8px 0;font-size:12.5px;color:${/^✗/.test(R.msg || '') ? '#f87171' : /^✓/.test(R.msg || '') ? '#4ade80' : 'var(--text3)'};">${esc(R.busy || R.msg)}</div>` : ''}
+    <div style="margin:12px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;">
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">Shared with members</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;">${(R.shared || []).map(m => `<span style="font-size:12.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:999px;">${esc(m.name ? m.name + ' · ' : '')}${esc(m.email)} <button ${dis} onclick="hd2RepShare('remove','${esc(m.email)}')" title="Stop sharing" style="border:none;background:none;color:var(--text3);cursor:pointer;">✕</button></span>`).join('') || '<span style="font-size:12.5px;color:var(--text3);">Only you (dashboard) — not shared yet</span>'}</div>
+      <div style="display:flex;gap:6px;"><input id="hd2RpEm" ${dis} type="email" placeholder="member's Google email" style="${HD2_IN}font-size:13px;padding:6px 8px;"><button ${dis} onclick="hd2RepShare('add')" style="${HD2_B()}">Share</button></div>
+      ${link ? `<div style="font-size:12px;color:var(--text3);margin-top:6px;">Member link: <a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(link)}</a></div>` : ''}</div>
+    ${R.rep ? reportHtml(R.rep) + ((R.rep.notes || []).length ? `<div style="font-size:12px;color:var(--text3);margin-top:8px;">Run notes: ${esc(R.rep.notes.join(' · '))}</div>` : '') : (R.busy ? '' : '<div style="font-size:13px;color:var(--text3);margin-top:10px;">No run yet. ▶ Run report snapshots everything this title knows right now.</div>')}`;
+}
+// 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
+// Theme-neutral: inherits the page's text colour; borders and muted text are translucent so both light and dark pages read.
+function reportHtml(R) {
+  const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
+  const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
+  const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
+  const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
+  const sec = (h, body) => `<section class="rp-sec"><h3>${h}</h3>${body}</section>`;
+  const d = new Date(R.at);
+  return `<style>.rp{line-height:1.55}.rp h2{margin:0 0 4px;font-size:22px}.rp h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;opacity:.75}
+    .rp-sec{border-top:1px solid rgba(128,128,128,.28);padding:14px 0}.rp ul{margin:0;padding-left:20px}.rp li{margin:4px 0}.rp-mute{opacity:.6;margin:0}
+    .rp-ref{display:inline-block;min-width:18px;padding:0 5px;margin-left:3px;border-radius:9px;font-size:11px;line-height:17px;text-align:center;text-decoration:none;border:1px solid rgba(128,128,128,.45);color:inherit}
+    .rp-kv{margin:0 0 10px}.rp-kv b{display:block;font-size:12.5px;opacity:.75}.rp-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid rgba(128,128,128,.45);margin-left:6px}
+    .rp-src{display:grid;grid-template-columns:34px minmax(0,1fr);gap:4px 8px;font-size:13.5px;padding:6px 0;border-top:1px dashed rgba(128,128,128,.25)}.rp-src a{color:inherit}
+    .rp details{margin-top:8px}.rp summary{cursor:pointer;font-size:13px;opacity:.8}.rp pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}</style>
+  <div class="rp">
+    <h2>${e(R.title && R.title.name)}</h2>
+    <div class="rp-mute">${e(R.hub || '')} · research as of ${e(isNaN(d) ? R.at : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}${R.premium ? '<span class="rp-badge">★ Premium</span>' : '<span class="rp-badge">Free</span>'} · ${S.length} sources</div>
+    ${sec('Summary', A.summary ? `<p style="margin:0">${e(A.summary)}</p>` : '<p class="rp-mute">The analysis did not run — the research below is still current.</p>')}
+    ${sec("What's moving", pts(A.moving))}
+    ${sec('Search demand', (A.demand ? `<p style="margin:0 0 8px">${e(A.demand)}</p>` : '') + `<div class="rp-mute" style="font-size:13px">Topic keywords: ${e(((R.keywords || {}).list || []).join(', ') || 'none')}</div>` + ((R.keywords || {}).demand ? `<details><summary>Keyword store figures</summary><pre>${e(R.keywords.demand)}</pre></details>` : ''))}
+    ${sec('What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
+      Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
+    ${sec('Opportunities', pts(A.opportunities))}
+    ${sec('Risks & pressures', pts(A.risks))}
+    ${sec('Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
+    ${sec('Sources', S.length ? S.map(s => `<div class="rp-src"><span class="rp-ref" style="margin:2px 0 0">${s.n}</span><div><a href="${e(s.url)}" target="_blank" rel="noopener">${e(s.claim || s.url)}</a>${s.why ? `<div>${e(s.why)}</div>` : ''}<div class="rp-mute" style="font-size:12px">${e([s.publisher, s.date, s.from].filter(Boolean).join(' · '))}</div></div></div>`).join('') : '<p class="rp-mute">No sources found this run.</p>')}
+    ${sec('The research underneath', `<details><summary>Title research${R.title && R.title.outOfSync ? ' (keywords out of sync — not regenerated yet)' : ''}</summary>${kv(R.title && R.title.research)}</details>
+      <details><summary>Product${R.product && R.product.name ? ' — ' + e(R.product.name) : ''}</summary>${kv(Object.assign({}, (R.product || {}).facts, (R.product || {}).research))}</details>
+      <details><summary>Hub research</summary>${kv(R.hubResearch)}</details>`)}
+  </div>`;
+}
 // ── ⬆ Page (operator 2026-11-23: "build that page from an asset cluster in that topic and deploy it to the main hub"; cluster = the Hub cohort).
 // On a Hub asset of a hand-authored hub page: worker hubPageDeploy preview lists every page slot with its live text and the text its source asset
 // holds (page-schema.json pins each source group to an asset). ⬆ Deploy = snapshot the live page into hub-versions/ → hubFieldsApply with the
