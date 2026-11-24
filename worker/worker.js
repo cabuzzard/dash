@@ -1320,7 +1320,7 @@ async function memberApps(env, rec) {
     out.push({ id, kind: "studio", name: l.titleName || l.productName || "Script Studio", client: l.label || "", hub: l.hubName || "", product: l.productName || "", path: "/studio/?k=" + key });
   }
   // 📊 reports shared with this member (superadmin: every report that has run)
-  const all = (await env.TRADES.get("report:all", "json").catch(() => null)) || [], mine = (rec.links || []).includes("*") ? all : all.filter(x => (rec.reports || []).includes(x.assetId));
+  const all = (await env.TRADES.get("report:all", "json").catch(() => null)) || [], pubR = (await env.TRADES.get("report:members", "json").catch(() => null)) || [], mine = (rec.links || []).includes("*") ? all : all.filter(x => (rec.reports || []).includes(x.assetId) || pubR.includes(x.assetId));
   for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId });
   return out;
 }
@@ -1430,7 +1430,8 @@ async function handleMember(env, body) {
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
   if (op === "report") { const aid = hubAssetId(body.assetId);
-    if (!(rec.links || []).includes("*") && !(rec.reports || []).includes(aid)) return { error: "This report isn't shared with you.", code: "no_access" };
+    const pubR = (await env.TRADES.get("report:members", "json").catch(() => null)) || [];
+    if (!(rec.links || []).includes("*") && !(rec.reports || []).includes(aid) && !pubR.includes(aid)) return { error: "This report isn't shared with you.", code: "no_access" };
     const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
     const { usage, notes, ...pub } = rp; return { ok: true, report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
@@ -21301,9 +21302,19 @@ export default {
         if (body.action === "reportList") {
           const versions = (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [], shared = [];
           for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.reports || []).includes(aid)) shared.push({ email: k.name.slice(13), name: r.name || r.gName || "" }); }
-          return json({ ok: true, versions, shared, running: !!(await env.TRADES.get("report:lock:" + aid)) });
+          return json({ ok: true, versions, shared, running: !!(await env.TRADES.get("report:lock:" + aid)), published: ((await env.TRADES.get("report:members", "json").catch(() => null)) || []).includes(aid) });
         }
         if (body.action === "reportGet") { const rep = await reportGet(env, aid, body.at); return rep ? json({ ok: true, report: rep }) : json({ error: "No run yet" }, 404); }
+        // op publish / unpublish (operator 2026-11-24 "publish the report asset to the password protected members area"): every signed-in
+        // member sees it (KV report:members); publish also sets the asset Published (a Report is never a hub-publishable type, so nothing goes public)
+        if (body.op === "publish" || body.op === "unpublish") {
+          if (body.op === "publish" && !(await reportGet(env, aid))) return json({ error: "Run the report before publishing it" }, 400);
+          const P = new Set((await env.TRADES.get("report:members", "json").catch(() => null)) || []); if (body.op === "publish") P.add(aid); else P.delete(aid);
+          await env.TRADES.put("report:members", JSON.stringify([...P]));
+          let status = "";
+          if (body.op === "publish") { const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(aid), { method: "PATCH", headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Published" } } } }) }); status = r.ok ? "Published" : "status not set (" + r.status + ")"; }
+          return json({ ok: true, published: body.op === "publish", status });
+        }
         const email = String(body.email || "").trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "A valid email is required" }, 400);
         const prev = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
         if (body.op === "remove") { if (prev) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...prev, reports: (prev.reports || []).filter(x => x !== aid), updatedAt: Date.now() })); return json({ ok: true, removed: email }); }

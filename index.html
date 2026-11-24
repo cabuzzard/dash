@@ -11841,7 +11841,7 @@ async function hd2RepLoad(at) {
   const l = await call('reportList', { assetId: id }).catch(x => ({ error: x.message }));
   let rep = null, err = l && l.error ? l.error : '';
   if (!err && (l.versions || []).length) { const g = await call('reportGet', { assetId: id, at: at || l.versions[0].at }).catch(x => ({ error: x.message })); if (g && g.report) rep = g.report; else err = (g && g.error) || 'no response'; }
-  E.rp = { versions: (l && l.versions) || [], shared: (l && l.shared) || [], running: !!(l && l.running), rep, busy: '', msg: err ? '✗ ' + err : (l && l.running ? 'A run is going right now — ↻ Refresh in a minute.' : '') };
+  E.rp = { versions: (l && l.versions) || [], shared: (l && l.shared) || [], running: !!(l && l.running), published: !!(l && l.published), rep, busy: '', msg: err ? '✗ ' + err : (l && l.running ? 'A run is going right now — ↻ Refresh in a minute.' : '') };
   if (EF === E) hd2EfDraw();
 }
 async function hd2RepRun(premium) {
@@ -11850,6 +11850,13 @@ async function hd2RepRun(premium) {
   const r = await call('reportRun', { assetId: hdNid(E.e.id), premium: !!premium }).catch(x => ({ error: x.message }));
   if (!r || r.error) { R.busy = ''; R.msg = '✗ ' + ((r && r.error) || 'no response') + ' — a long run may still finish; ↻ Refresh shortly'; return EF === E && hd2EfDraw(); }
   R.busy = ''; await hd2RepLoad(r.at); showToast((premium ? '★ Premium report' : 'Report') + ' ready', 'success');
+}
+async function hd2RepPublish(on) {
+  const E = EF, R = E.rp || {}; if (R.busy) return; R.busy = on ? 'Publishing to members…' : 'Unpublishing…'; hd2EfDraw();
+  const r = await call('reportShare', { assetId: hdNid(E.e.id), op: on ? 'publish' : 'unpublish' }).catch(x => ({ error: x.message }));
+  R.busy = ''; if (!r || r.error) { R.msg = '✗ ' + ((r && r.error) || 'no response'); return EF === E && hd2EfDraw(); }
+  const at = R.rep && R.rep.at; await hd2RepLoad(at);
+  if (EF === E && E.rp) { E.rp.msg = on ? '✓ Published — every member sees it at aisystemimplementation.com/members' + (r.status === 'Published' ? ' · asset set to Published' : ' (asset ' + r.status + ')') : '✓ Unpublished — only the emails listed below still see it'; hd2EfDraw(); }
 }
 async function hd2RepShare(op, email) {
   const E = EF, R = E.rp || {}; email = String(email || (document.getElementById('hd2RpEm') || {}).value || '').trim(); if (!email) return;
@@ -11871,7 +11878,8 @@ function hd2RepHtml() {
       ${R.rep && R.rep.usage && R.rep.usage.perplexity ? `<span style="font-size:12px;color:var(--text3);">Perplexity $${Number(R.rep.usage.perplexity.cost || 0).toFixed(2)}${R.rep.usage.perplexity.estimated ? ' (est.)' : ''}</span>` : ''}</div>
     ${R.busy || R.msg ? `<div style="margin:8px 0;font-size:12.5px;color:${/^✗/.test(R.msg || '') ? '#f87171' : /^✓/.test(R.msg || '') ? '#4ade80' : 'var(--text3)'};">${esc(R.busy || R.msg)}</div>` : ''}
     <div style="margin:12px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;">
-      <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">Shared with members</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="font-size:13px;font-weight:600;">${R.published ? '🟢 Published to all members' : '⚪ Not published to members'}</span><span style="flex:1"></span>${R.rep ? `<button ${dis} onclick="hd2RepPublish(${!R.published})" style="${HD2_B(R.published ? 'var(--border2)' : 'var(--accent)')}">${R.published ? 'Unpublish' : '⬆ Publish to members'}</button>` : ''}</div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">Also shared with (by email)</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;">${(R.shared || []).map(m => `<span style="font-size:12.5px;padding:3px 8px;border:1px solid var(--border2);border-radius:999px;">${esc(m.name ? m.name + ' · ' : '')}${esc(m.email)} <button ${dis} onclick="hd2RepShare('remove','${esc(m.email)}')" title="Stop sharing" style="border:none;background:none;color:var(--text3);cursor:pointer;">✕</button></span>`).join('') || '<span style="font-size:12.5px;color:var(--text3);">Only you (dashboard) — not shared yet</span>'}</div>
       <div style="display:flex;gap:6px;"><input id="hd2RpEm" ${dis} type="email" placeholder="member's Google email" style="${HD2_IN}font-size:13px;padding:6px 8px;"><button ${dis} onclick="hd2RepShare('add')" style="${HD2_B()}">Share</button></div>
       ${link ? `<div style="font-size:12px;color:var(--text3);margin-top:6px;">Member link: <a href="${esc(link)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(link)}</a></div>` : ''}</div>
