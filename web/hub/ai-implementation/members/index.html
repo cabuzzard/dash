@@ -35,6 +35,13 @@ p.lede { color: var(--ink-soft); margin: 0 0 28px; }
 .share { margin-left: auto; font: 600 14px "Hanken Grotesk", sans-serif; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 999px; padding: 8px 16px; min-height: 38px; cursor: pointer; }
 .share:hover { border-color: var(--accent); color: var(--accent); }
 .hidden { display: none !important; }
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin: 0 0 18px; }
+.tab { font: 600 15px "Hanken Grotesk", sans-serif; background: none; border: none; border-bottom: 2px solid transparent; color: var(--ink-soft); padding: 10px 14px; min-height: 44px; cursor: pointer; margin-bottom: -1px; }
+.tab span { font-weight: 500; font-size: 13px; opacity: .75; }
+.tab.on { color: var(--ink-head); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h2.sec { font: 600 15px "Hanken Grotesk", sans-serif; color: var(--ink-soft); margin: 0 0 12px; }
+a.card.app { display: block; text-decoration: none; color: inherit; }
 </style>
 </head>
 <body>
@@ -79,12 +86,22 @@ function renderButton() {
   const el = document.getElementById("gbtn"); if (!el || !window.google || !google.accounts) return;
   google.accounts.id.renderButton(el, { theme: "outline", size: "large", text: "continue_with", shape: "pill", width: 280 });
 }
-function appsView(d) {
-  const pic = store.get("mb_pic");
+// Tabs (operator 2026-11-24: "the members page might have a list of reports or report tabs"): 📊 Reports (newest run first) · Apps.
+// Only the tabs the member has; the last tab picked is remembered in this browser.
+let _mbD = null;
+function appsView(d, tab) {
+  _mbD = d; const pic = store.get("mb_pic");
+  const reports = d.apps.filter(a => a.kind === "report").sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))), apps = d.apps.filter(a => a.kind !== "report");
+  const tabs = [["reports", "📊 Reports", reports], ["apps", "Apps", apps]].filter(t => t[2].length);
+  tab = tab || store.get("mb_tab"); if (!tabs.some(t => t[0] === tab)) tab = tabs.length ? tabs[0][0] : "";
+  const when = at => { const x = new Date(at); return isNaN(x) ? "" : x.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
+  const reportCard = a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
+  const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
+  const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
+  const list = tab === "reports" ? reports.map(reportCard).join("") : tab === "apps" ? apps.map(appCard).join("") : "";
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
-    + (d.apps.length ? d.apps.map(a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : a.kind === "report" ? "📊 Research report" + (a.at ? " · " + new Date(a.at).toLocaleDateString() : "") : "", a.hub].filter(Boolean).join(" · "))}</div></a>
-        <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin && a.kind !== "report" ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`).join("")
-      : `<div class="card">You're signed in, but no apps are set up for you yet.</div>`);
+    + (tabs.length ? bar + (tabs.length === 1 ? `<h2 class="sec">${tabs[0][1]}</h2>` : "") + list : `<div class="card">You're signed in, but nothing is set up for you yet.</div>`);
 }
 async function onCredential(resp) {
   out.innerHTML = `<p class="lede">Signing you in…</p>`;
@@ -109,13 +126,13 @@ async function shareMembers(btn) {
 // 📊 a shared research report (2026-11-24): /members/?report=<id> → worker member op "report" → rendered here, members only
 const REPORT_ID = new URLSearchParams(location.search).get("report") || "";
 async function reportView(tok, at) {
-  out.innerHTML = '<p class="lede">Loading the report…</p>'; document.querySelector(".wrap").style.maxWidth = "820px";
+  store.set("mb_tab", "reports"); out.innerHTML = '<p class="lede">Loading the report…</p>'; document.querySelector(".wrap").style.maxWidth = "820px";
   try { const d = await call({ op: "report", token: tok, assetId: REPORT_ID, at });
     if (d.code === "signed_out") { store.set("mb_token", null); return signInView("Please sign in again."); }
     if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This report isn't available.") + '</div><a class="home" href="/members/">← Your apps</a>'; return; }
     const V = d.versions || [];
     const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + "</option>").join("") + "</select>" : "";
-    out.innerHTML = '<div class="who"><a class="home" href="/members/">← Your apps</a>' + pick + "</div>" + reportHtml(d.report);
+    out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + reportHtml(d.report);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
 }
 // 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
