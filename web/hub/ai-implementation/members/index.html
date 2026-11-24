@@ -185,7 +185,7 @@ function reportHtml(R) {
 const RN = { key: '', items: null, api: null, root: null, ver: '', pending: null, timers: {} };
 function rnEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function rnAttach(cfg) {
-  const root = document.querySelector('.rp[data-rn]'); if (!root) return;
+  const root = cfg.root || document.querySelector('.rp[data-rn]'); if (!root) return;
   if (RN.key !== cfg.key) { RN.key = cfg.key; RN.items = null; }
   RN.api = cfg.api; RN.ver = cfg.ver || ''; RN.root = root; rnBind();
   if (root.dataset.rnb) return; root.dataset.rnb = '1';

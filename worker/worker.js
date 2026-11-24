@@ -21323,6 +21323,17 @@ export default {
       for (const [k, u] of [["google", "https://news.google.com/rss/search?q=" + e + "+when:30d&hl=en-US&gl=US&ceid=US:en"], ["bing", "https://www.bing.com/news/search?q=" + e + "&format=rss"], ["bingFresh", "https://www.bing.com/news/search?q=" + e + "&format=rss&qft=sortbydate%3d%221%22"], ["reddit", "https://www.reddit.com/search.rss?q=" + e + "&sort=new&t=week"]]) {
         try { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 dash-news" } }), t = await r.text(); out[k] = { status: r.status, len: t.length, items: (t.match(/<(item|entry)>/g) || []).length, dates: (t.match(/<pubDate>[^<]*/g) || []).slice(0, 4).map(x => x.slice(9)), titles: (t.match(/<title>[^<]*/g) || []).slice(1, 5).map(x => x.slice(7, 90)) }; } catch (x) { out[k] = { error: x.message }; } }
       out.kept = (await digestFreeSearch(env, [q], { days: 30, max: 25, feeds: ["bing"], bingFresh: true, loose: true })).length; return json({ ok: true, q, out }); }
+    // reportIndex (operator; 2026-11-24 "arrange reports in a structured tree in the admin"): every report that has run — last run, runs,
+    // premium, published to members, emails shared with, highlight count — one call for the Hub Dash 2 📊 Reports tree.
+    if (body.action === "reportIndex") { if (externalCaller) return json({ error: "operator only" }, 403);
+      try {
+        const all = (await env.TRADES.get("report:all", "json").catch(() => null)) || [], pub = new Set((await env.TRADES.get("report:members", "json").catch(() => null)) || []), shares = {};
+        for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); (r && r.reports || []).forEach(id => { (shares[id] = shares[id] || []).push(k.name.slice(13)); }); }
+        const out = await Promise.all(all.map(async x => { const idx = (await env.TRADES.get("report:idx:" + x.assetId, "json").catch(() => null)) || [], nt = (await env.TRADES.get("report:notes:" + x.assetId, "json").catch(() => null)) || { items: [] };
+          return { assetId: x.assetId, at: (idx[0] || {}).at || x.at, runs: idx.length, premium: !!(idx[0] || {}).premium, sources: (idx[0] || {}).sources || 0, published: pub.has(x.assetId), shared: shares[x.assetId] || [], highlights: (nt.items || []).length }; }));
+        return json({ ok: true, reports: out });
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "reportNotes") { if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
       try { return json(await reportNotesOp(env, aid, { id: "admin", name: "Admin", admin: true }, body)); } catch (e) { return json({ error: e.message }, 500); } }
