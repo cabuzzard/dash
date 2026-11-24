@@ -19442,7 +19442,7 @@ async function digestFreeSearch(env, queries, { days = DIGEST_PERIOD_DAYS, max =
   let gdeltAt = 0, gdeltN = 0;
   for (const q of qs) {
     const e = encodeURIComponent(q);
-    if (feeds.includes("bing")) for (const { g } of rss(await get(`https://www.bing.com/news/search?q=${e}&format=rss${bingFresh ? "&qft=sortbydate%3d%221%22" : ""}`))) {   // real article URLs
+    if (feeds.includes("bing")) for (const { g } of rss(await get(`https://www.bing.com/news/search?q=${bingFresh && q.includes(" ") ? encodeURIComponent('"' + q + '"') : e}&format=rss${bingFresh ? "&qft=sortbydate%3d%221%22" : ""}`))) {   // real article URLs
       let link = g(/<link>([\s\S]*?)<\/link>/); const u = link.match(/[?&]url=([^&]+)/); if (u) { try { link = decodeURIComponent(u[1]); } catch (err) {} }
       const date = day(g(/<pubDate>([\s\S]*?)<\/pubDate>/)); if (!recent(date)) continue;
       add({ title: g(/<title>([\s\S]*?)<\/title>/), summary: g(/<description>([\s\S]*?)<\/description>/), url: link, publisher: g(/<News:Source>([\s\S]*?)<\/News:Source>/), date, q, sourceMethod: "bing-news" });
