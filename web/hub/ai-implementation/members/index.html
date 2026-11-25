@@ -68,6 +68,11 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
 .od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
 .od-cb { margin: 10px 0 0 !important; }
+.od-coh { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.od-coh label { display: flex; flex-direction: column; font-size: 13px; color: var(--ink-soft); gap: 3px; }
+.od-coh .od-ca { grid-column: 1 / -1; }
+.od-coh input { border-radius: 10px; min-height: 36px; }
+@media (max-width: 560px) { .od-coh { grid-template-columns: 1fr; } }
 .mg-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 20px; }
 .mg-in { flex: 1; min-width: 0; font: 500 15px "Hanken Grotesk", sans-serif; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 38px; }
 .mg-msg { font-size: 13px; color: var(--ink-soft); }
@@ -368,10 +373,23 @@ const odDir = () => store.get(odKey()) || "";
 function odApi(sub, p) { return call(Object.assign({ op: "offerDeploy", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {})); }
 function odInit(d) {
   if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { page: true, cta: true, posts: true, welcome: true, sales: true } };
-  OD.report = d.report;
+  OD.report = d.report; OD.coh = OD.coh || {}; odRestorePlan();
   out.querySelectorAll(".rp-oact[data-i]").forEach(el => { const i = +el.dataset.i; el.innerHTML = `<button class="share od-cb" onclick="odOpen(${i})">🚀 Deploy this offer</button>`; });
   odFab(); odBindSel(); const jid = store.get(odJobKey()); if (jid) odApi("get", { jobId: jid }).then(j => { if (j && !j.error) { OD.job = j; odFab(); } }).catch(() => {});
 }
+// a drafted plan is kept (operator 2026-11-25: "without losing the existing proposed offer") — in this browser per report, and on the
+// server (offerplan:last:<id>), so a reload or another device opens it again; ↻ Redraft replaces it
+const odPlanKey = () => "mb_odplan:" + REPORT_ID;
+function odSavePlan() { if (OD && OD.plan) store.set(odPlanKey(), JSON.stringify({ plan: OD.plan, ctx: OD.ctx, idx: OD.idx, kind: OD.kind, titleId: OD.titleId, ini: OD.ini, coh: OD.coh, due: OD.due, inc: OD.inc })); }
+function odRestorePlan() {
+  if (OD.plan) return; let x = null; try { x = JSON.parse(store.get(odPlanKey()) || "null"); } catch (e) {}
+  const use = x => { if (!x || !x.plan || OD.plan) return; OD.plan = x.plan; OD.ctx = x.ctx; OD.idx = x.idx != null ? x.idx : (x.ctx && x.ctx.index != null ? x.ctx.index : -1); OD.kind = x.kind || (x.ctx && x.ctx.kind) || "";
+    OD.titleId = x.titleId || ""; OD.ini = x.ini || ""; OD.coh = x.coh || {}; if (x.due) OD.due = x.due; if (x.inc) OD.inc = x.inc; odFab(); if (OD.open) odDraw(); };
+  if (x) return use(x);
+  odApi("lastPlan").then(r => { if (r && r.ok && !r.none) { use(r); odSavePlan(); } }).catch(() => {});
+}
+async function odLoadOpts() { if (OD.opts || OD.optsBusy) return; OD.optsBusy = true;
+  const r = await odApi("options").catch(e => ({ error: e.message })); OD.optsBusy = false; OD.opts = r && !r.error ? r : { titles: [], cohorts: [], initiatives: [], error: (r && r.error) || "no response" }; odDraw(); }
 function odFab() {
   let b = document.getElementById("odFab"); if (!b) { b = document.createElement("button"); b.id = "odFab"; b.className = "od-fab"; b.onclick = () => odOpen(); document.body.appendChild(b); }
   const n = odDir().split("\n").filter(l => /^• /.test(l)).length, j = OD && OD.job;
@@ -395,7 +413,7 @@ function odGrab() {
 function odOpen(i) {
   if (!OD) return; OD.open = true; OD.msg = "";
   if (Number.isInteger(i)) { if (OD.idx !== i) { OD.plan = null; OD.ctx = null; } OD.idx = i; const c = ((OD.report.analysis || {}).opportunities || [])[i]; if (c && c.kind) OD.kind = c.kind; }
-  document.body.style.overflow = "hidden"; odDraw(); if (OD.job && OD.job.status !== "done" && OD.job.status !== "held") odRunLoop();
+  document.body.style.overflow = "hidden"; odDraw(); odLoadOpts(); if (OD.job && OD.job.status !== "done" && OD.job.status !== "held") odRunLoop();
 }
 function odClose() { if (!OD) return; OD.open = false; const m = document.getElementById("odM"); if (m) m.remove(); document.body.style.overflow = ""; odFab(); }
 function odDraw() {
@@ -408,7 +426,7 @@ function odDraw() {
     <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${s.op === "write" ? "write" : s.op === "run" ? "run" : "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
     <div style="display:flex;gap:8px;flex-wrap:wrap">${J.status === "held" ? `<button class="share" ${dis} onclick="odResumeJob()">↻ Retry from the held step</button>` : ""}${J.status === "done" || J.status === "held" ? `<button class="share" onclick="OD.job=null;store.set(odJobKey(),null);odDraw();odFab()">New deploy</button>` : ""}</div></div>`;
   const planHtml = !P ? "" : `<div class="od-sec"><div class="od-h">Plan</div>
-    <label class="od-l">Offer name</label><input class="mg-in od-in" id="odName" value="${esc(P.name)}" maxlength="120">
+    <label class="od-l">Offer name</label><input class="mg-in od-in" id="odName" value="${esc(P.name)}" maxlength="120" oninput="OD.plan.name=this.value;odSavePlan();const i=document.getElementById('odIni');if(i&&!OD.ini)i.placeholder=odIniDefault()">
     <div class="od-mute" style="margin:6px 0">${esc(P.promise || "")} · ${OD.ctx.kind === "consulting" ? "📞 consulting → book a call" : "📊 premium information → the report"}</div>
     <details open><summary>Selling points (${(P.sellingPoints || []).length})</summary><ul>${(P.sellingPoints || []).map(s => `<li><b>${esc(s.kind)}</b> ${esc(s.point)} ${s.source ? `<span class="od-mute">· ${esc(s.source)}</span>` : ""}</li>`).join("")}</ul></details>
     <details><summary>What each asset will be told (${2 + 4 + (P.posts || []).length + (P.welcome || []).length + (P.sales || []).length})</summary>
@@ -416,9 +434,10 @@ function odDraw() {
       ${(P.posts || []).map((x, i) => `<b>Post ${i + 1}: ${esc(x.name)}</b><p>${esc(x.directions)}</p>`).join("")}
       ${(P.welcome || []).map((x, i) => `<b>Welcome ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}
       ${(P.sales || []).map((x, i) => `<b>Sales ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}</div></details>
-    <label class="od-l">Due date (every asset)</label><input type="date" class="mg-in od-in" id="odDue" value="${esc(OD.due)}" onchange="OD.due=this.value">
+    ${odPlacementHtml()}
+    <label class="od-l">Due date (every asset)</label><input type="date" class="mg-in od-in" id="odDue" value="${esc(OD.due)}" onchange="OD.due=this.value;odSavePlan()">
     <div class="od-l">Include</div><div class="od-inc">${[["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked"> ${esc(l)}</label>`).join("")}</div>
-    <div class="od-mute" style="margin:8px 0">Initiative: <b>${esc(OD.ctx.titleName + " - " + P.name)}</b>. The Offer is created and written first; the rest only after it's written.</div>
+    <div class="od-mute" style="margin:8px 0">The Offer is created and written first; the rest only after it's written.</div>
     <button class="share od-go" ${dis} onclick="odStart()">🚀 Deploy stack</button></div>`;
   m.innerHTML = `<div class="od-box" role="dialog" aria-label="Deploy offer stack"><div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><b style="font-size:18px">🚀 Deploy offer stack</b><span style="flex:1"></span><button class="rp-nx" aria-label="Close" onclick="odClose()">✕</button></div>
     ${J && J.status !== "done" && J.status !== "held" ? "" : `<div class="od-sec">
@@ -432,19 +451,38 @@ function odDraw() {
     ${OD.msg ? `<div class="${/^✗/.test(OD.msg) ? "msg" : "od-mute"}" style="margin:8px 0">${esc(OD.msg)}</div>` : ""}${OD.busy ? `<div class="od-mute" style="margin:8px 0">${esc(OD.busy)}</div>` : ""}
     ${jobHtml || planHtml}</div>`;
 }
+// placement (operator 2026-11-25: "niche/title designation (assume it is all on the same title) … cohorting of the asset groups … common
+// initiative setting"): one title for the whole stack (default: the report's), one initiative on every asset, one cohort per asset group
+const OD_GROUPS = [["offer", "Offer"], ["page", "Sales page"], ["cta", "CTAs"], ["posts", "Selling-point posts + run"], ["welcome", "Welcome & nurture"], ["sales", "Sales series"]];
+function odTitle() { const T = (OD.opts && OD.opts.titles) || [], id = OD.titleId || (OD.ctx && OD.ctx.titleId); return T.find(t => t.id === id) || { id, name: OD.ctx ? OD.ctx.titleName : "", niche: "" }; }
+function odIniDefault() { return (odTitle().name || "") + " - " + ((OD.plan && OD.plan.name) || ""); }
+function odPlacementHtml() {
+  const O = OD.opts, T = (O && O.titles) || [], cur = odTitle(), byNiche = {};
+  T.forEach(t => { (byNiche[t.niche || "(no niche)"] = byNiche[t.niche || "(no niche)"] || []).push(t); });
+  const titleSel = !O ? `<div class="od-mute">Loading titles…</div>` : O.error ? `<div class="od-mute">Titles didn't load (${esc(O.error)}); the stack goes on the report's title: <b>${esc(cur.name)}</b></div>`
+    : `<select class="mg-in od-in" onchange="OD.titleId=this.value;odSavePlan();odDraw()">${Object.entries(byNiche).map(([n, L]) => `<optgroup label="${esc(n)}">${L.map(t => `<option value="${esc(t.id)}" ${t.id === cur.id ? "selected" : ""}>${esc(t.name)}${t.id === (OD.ctx && OD.ctx.titleId) ? " (this report's title)" : ""}</option>`).join("")}</optgroup>`).join("")}</select>`;
+  const dl = (id, L) => `<datalist id="${id}">${(L || []).map(x => `<option value="${esc(x)}">`).join("")}</datalist>`;
+  return `<label class="od-l">Niche / title (the whole stack goes on this one title)</label>${titleSel}
+    ${cur.niche ? `<div class="od-mute" style="margin:4px 0 0">Niche: <b>${esc(cur.niche)}</b></div>` : ""}
+    <label class="od-l">Initiative (every asset)</label><input class="mg-in od-in" id="odIni" list="odIniL" value="${esc(OD.ini || "")}" placeholder="${esc(odIniDefault())}" oninput="OD.ini=this.value.trim();odSavePlan()">${dl("odIniL", O && O.initiatives)}
+    <div class="od-mute" style="font-size:12.5px;margin:3px 0 0">Blank = the placeholder. Pick an existing initiative to add this stack to it.</div>
+    <label class="od-l">Cohorts (one per asset group)</label>${dl("odCohL", O && O.cohorts)}
+    <div class="od-coh"><label class="od-ca"><span>All groups</span><input class="mg-in" list="odCohL" placeholder="type once to fill every group" onchange="if(this.value.trim()){OD_GROUPS.forEach(g=>OD.coh[g[0]]=this.value.trim());odSavePlan();odDraw()}"></label>
+      ${OD_GROUPS.map(([k, l]) => `<label><span>${esc(l)}</span><input class="mg-in" list="odCohL" value="${esc(OD.coh[k] || "")}" placeholder="no cohort" oninput="OD.coh['${k}']=this.value.trim();odSavePlan()"></label>`).join("")}</div>`;
+}
 async function odPlan() {
   const ta = document.getElementById("odTa"), dir = ta ? ta.value : odDir();
   if (OD.idx < 0 && !dir.trim()) { OD.msg = "✗ Pick an offer card or write a direction"; return odDraw(); }
   OD.busy = "Drafting the plan…"; OD.msg = ""; odDraw();
   const r = await odApi("plan", { index: OD.idx, direction: dir, kind: OD.kind || undefined, at: OD.report.at }).catch(e => ({ error: e.message }));
   OD.busy = ""; if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
-  OD.plan = r.plan; OD.ctx = r.ctx; OD.kind = r.ctx.kind; odDraw();
+  OD.plan = r.plan; OD.ctx = r.ctx; OD.kind = r.ctx.kind; if (!OD.titleId) OD.titleId = r.ctx.titleId; odSavePlan(); odDraw();
 }
 async function odStart() {
   const n = document.getElementById("odName"); if (n) OD.plan.name = n.value.trim();
   if (!OD.plan.name) { OD.msg = "✗ The offer needs a name"; return odDraw(); } if (!OD.due) { OD.msg = "✗ Pick the due date"; return odDraw(); }
   OD.busy = "Starting…"; OD.msg = ""; odDraw();
-  const r = await odApi("start", { ctx: OD.ctx, plan: OD.plan, due: OD.due, include: OD.inc }).catch(e => ({ error: e.message }));
+  const r = await odApi("start", { ctx: OD.ctx, plan: OD.plan, due: OD.due, include: OD.inc, titleId: OD.titleId || OD.ctx.titleId, initiative: OD.ini || odIniDefault(), cohorts: OD.coh }).catch(e => ({ error: e.message }));
   OD.busy = ""; if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
   store.set(odJobKey(), r.jobId); OD.job = { id: r.jobId, status: "queued", i: 0, of: r.steps, name: OD.plan.name, initiative: r.initiative, due: OD.due, steps: [] }; odDraw(); odRunLoop();
 }

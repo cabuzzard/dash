@@ -1507,7 +1507,9 @@ async function offerPlan(env, body) {
     `Never invent a client, result, number, price or quote; a selling point either cites a source URL / exact search from the packet or is the operator's own direction (source ''). ` +
     `Every asset's directions must name the call to action: ${cta.action} (${cta.link}). Plain, specific, no hype.\n\nPACKET:\n` + JSON.stringify(packet), "offer_plan", schema, 9000, u => { usage = u; });
   if (!plan || !plan.name) throw new Error("The plan came back empty");
-  return { ok: true, ctx: { ...ctx, at: R.at, kind, cta, direction: dir, index: idx }, plan, usage };
+  const outP = { ok: true, ctx: { ...ctx, at: R.at, kind, cta, direction: dir, index: idx }, plan, usage };
+  await env.TRADES.put("offerplan:last:" + aid, JSON.stringify({ at: new Date().toISOString(), ctx: outP.ctx, plan }), { expirationTtl: 90 * 86400 }).catch(() => {});
+  return outP;
 }
 function offerDirections(job, own) {
   const p = job.plan, c = job.ctx;
@@ -1520,16 +1522,23 @@ async function offerDeployStart(env, body) {
   if (!/^[0-9a-f]{32}$/i.test(ctx.assetId || "") || !/^[0-9a-f]{32}$/i.test(ctx.titleId || "") || !/^[0-9a-f]{32}$/i.test(ctx.campaignId || "")) throw new Error("Draft the plan first");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new Error("Pick the due date");
   const name = String(plan.name || "").trim().slice(0, 120); if (!name) throw new Error("The offer needs a name");
-  const initiative = `${ctx.titleName} - ${name}`.slice(0, 200), N = name, S = [];
-  const mk = (key, type, title, own, extra = {}) => { S.push({ op: "create", key, type, title: title.slice(0, 300), own: String(own || ""), ...extra }); S.push({ op: "write", key }); };
+  // niche / title designation (operator 2026-11-25): the whole stack goes on ONE title — the report's, or another title of the same hub
+  if (body.titleId && hubAssetId(body.titleId) !== ctx.titleId) { const tid = hubAssetId(body.titleId), t = await ivPage(tid); if (!t || !t.properties) throw new Error("That title wasn't found");
+    const tp = t.properties, cid = hubAssetId(ivRid(tp, "Campaign")); if (cid && cid !== ctx.campaignId) throw new Error("That title belongs to another hub");
+    ctx.titleId = tid; ctx.titleName = hubRichText(tp.Title?.title || tp.Name?.title) || ctx.titleName; ctx.productId = hubAssetId(ivRid(tp, "Product") || ""); }
+  const initiative = (String(body.initiative || "").trim() || `${ctx.titleName} - ${name}`).slice(0, 200), N = name, S = [];
+  const bad = initiativeNameBad(initiative); if (bad) throw new Error(bad);
+  const coh = body.cohorts || {}, cohOf = g => String(coh[g] || "").replace(/,/g, " ").trim().slice(0, 100);   // one cohort per asset group (offer · page · cta · posts · welcome · sales)
+  const grp = k => /^cta/.test(k) ? "cta" : /^post|^run$/.test(k) ? "posts" : /^welcome/.test(k) ? "welcome" : /^sales/.test(k) ? "sales" : k;
+  const mk = (key, type, title, own, extra = {}) => { S.push({ op: "create", key, type, title: title.slice(0, 300), own: String(own || ""), cohort: cohOf(grp(key)), ...extra }); S.push({ op: "write", key }); };
   mk("offer", "Offer", `${N} - Offer`, plan.offer + "\n\nSELLING POINTS:\n" + (plan.sellingPoints || []).map(s => `- (${s.kind}) ${s.point}${s.source ? " [" + s.source + "]" : ""}`).join("\n"), { parent: "" });
   if (inc.page !== false) mk("page", "Landing Page", `${N} - Sales Page`, plan.page, { parent: "offer" });
   if (inc.cta !== false) OFFER_CTA_KINDS.forEach(k => mk("cta" + k.replace(/\s/g, ""), "CTA", `${N} - CTA ${k}`, (plan.cta || {})[k], { parent: "offer", format: k }));
-  if (inc.posts !== false && (plan.posts || []).length) { S.push({ op: "run", key: "run", run: `${N} - Selling Points` });
+  if (inc.posts !== false && (plan.posts || []).length) { S.push({ op: "run", key: "run", run: `${N} - Selling Points`, cohort: cohOf("posts") });
     plan.posts.slice(0, 12).forEach((x, i) => mk("post" + i, "single post", `${N} - ${x.name}`, x.directions, { run: `${N} - Selling Points` })); }
   if (inc.welcome !== false) (plan.welcome || []).slice(0, 5).forEach((x, i) => mk("welcome" + i, "Hub - Email Welcome Sequence", `${N} - Welcome ${i + 1} (day ${x.day})`, `Email ${i + 1} of 5, day ${x.day}. Job: ${x.job}\n${x.directions}`, { parent: "offer" }));
   if (inc.sales !== false) (plan.sales || []).slice(0, 5).forEach((x, i) => mk("sales" + i, "Direct Sales Email", `${N} - Sales ${i + 1} (day ${x.day})`, `Email ${i + 1} of 5, day ${x.day}. Job: ${x.job}\n${x.directions}`, { parent: "offer" }));
-  const id = "od" + Date.now().toString(36), job = { id, at: new Date().toISOString(), ctx, plan, due, initiative, steps: S, i: 0, ids: {}, log: [], status: "queued" };
+  const id = "od" + Date.now().toString(36), job = { id, at: new Date().toISOString(), ctx, plan, due, initiative, cohorts: coh, steps: S, i: 0, ids: {}, log: [], status: "queued" };
   await env.TRADES.put("offerdeploy:job:" + id, JSON.stringify(job));
   const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || []; L.unshift({ id, at: job.at, assetId: ctx.assetId, name: N });
   await env.TRADES.put("offerdeploy:jobs", JSON.stringify(L.slice(0, 40)));
@@ -1545,6 +1554,7 @@ async function offerDeployRun(env, invoke, jobId, budgetMs) {
   if (job.running && Date.now() - job.running < 3 * 60000) return { ...offerJobView(job), busy: true };
   job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
   const t0 = Date.now(), c = job.ctx;
+  if (!job.iniAdded) { const a = await invoke({ action: "initiativeNames", op: "add", name: job.initiative }).catch(e => ({ error: e.message })); if (a && !a.error) job.iniAdded = true; }
   while (job.i < job.steps.length && Date.now() - t0 < budgetMs) {
     const s = job.steps[job.i]; let ok = true, note = "";
     try {
@@ -1561,10 +1571,12 @@ async function offerDeployRun(env, invoke, jobId, budgetMs) {
         if (Object.keys(props).length) { const p = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
           if (!p.ok) note += " · fields not saved: " + ((await p.json().catch(() => ({}))).message || p.status); }
         if (!s.run) { const d = await invoke({ action: "setAssetDeadline", assetId: aid, date: job.due }); if (d && d.error) note += " · due not set: " + d.error; }
+        if (s.cohort) { const ch = await invoke({ action: "assetCohorts", op: "add", assetIds: [aid], cohorts: [s.cohort] }); if (!ch || ch.error) note += " · cohort not set: " + ((ch && ch.error) || "no response"); }
       } else if (s.op === "run") {
         const r = await runAssetEnsure(env, job.ids.offer, s.run, job.due); if (!r || !r.id) throw new Error("Run asset not made"); job.ids[s.key] = hubAssetId(r.id);
         await env.TRADES.put("route:run:" + s.run.toLowerCase(), JSON.stringify({ from: job.ids.offer, fromType: "Offer", run: s.run, at: new Date().toISOString() })).catch(() => {});
         if (r.existing) { const d = await invoke({ action: "setAssetDeadline", assetId: job.ids[s.key], date: job.due }); if (d && d.error) note = "due not set: " + d.error; }
+        if (s.cohort) { const ch = await invoke({ action: "assetCohorts", op: "add", assetIds: [job.ids[s.key]], cohorts: [s.cohort] }); if (!ch || ch.error) note += " · cohort not set: " + ((ch && ch.error) || "no response"); }
       } else if (s.op === "write") {
         const r = await invoke({ action: "writeAsset", assetId: job.ids[s.key] });
         if (!r || r.error || r.needsInterview) throw new Error((r && (r.error || r.reason)) || (r && r.needsInterview ? "needs an interview first" : "not written"));
@@ -1589,6 +1601,18 @@ async function offerDeployTick(env, invoke) {   // */4 cron: the oldest unfinish
 async function offerDeployOp(env, invoke, body) {
   const op = String(body.sub || body.op2 || "");
   if (op === "plan") return await offerPlan(env, body);
+  if (op === "lastPlan") { const x = await env.TRADES.get("offerplan:last:" + hubAssetId(body.assetId || ""), "json").catch(() => null); return x ? { ok: true, ...x } : { ok: true, none: true }; }
+  if (op === "options") {   // the modal's pickers: this hub's titles (with their niche), existing cohorts, existing initiative names
+    const ctx = await offerReportCtx(env, hubAssetId(body.assetId || ""));
+    const [titles, prods, coh] = await Promise.all([
+      notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: ivDash(ctx.campaignId) } } }).catch(e => { console.error("offer options titles:", e.message); return []; }),
+      notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: ivDash(ctx.campaignId) } } }).catch(e => { console.error("offer options niches:", e.message); return []; }),
+      invoke({ action: "assetCohorts", op: "list" }).catch(() => ({}))]);
+    const pn = new Map(prods.map(p => [hubAssetId(p.id), hubRichText(p.properties?.Name?.title)]));
+    const T = titles.filter(t => !t.archived && !/archiv/i.test(t.properties?.Status?.select?.name || "")).map(t => { const pid = hubAssetId(ivRid(t.properties, "Product") || "");
+      return { id: hubAssetId(t.id), name: hubRichText(t.properties?.Title?.title || t.properties?.Name?.title), productId: pid, niche: pn.get(pid) || "" }; }).filter(t => t.name).sort((a, b) => (a.niche + a.name).localeCompare(b.niche + b.name));
+    const ini = ((await env.TRADES.get("initiative:names", "json").catch(() => null)) || {}).names || [];
+    return { ok: true, ctx, titles: T, cohorts: (coh && coh.cohorts) || [], initiatives: ini }; }
   if (op === "start") return await offerDeployStart(env, body);
   if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 40000);
   if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
