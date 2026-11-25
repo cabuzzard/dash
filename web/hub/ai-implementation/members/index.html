@@ -157,7 +157,7 @@ function appsView(d, tab) {
   const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
-  if (tab === "interviews" && !IVM.items && !IVM.busy) setTimeout(() => ivmLoad(), 0);
+  if (tab === "interviews" && !IVM.items && !IVM.busy && !IVM.open) setTimeout(() => ivmLoad(), 0);
   const list = tab === "interviews" ? ivmHtml() : tab === "reports" ? mgList(d, reports, reportCard) : tab === "apps" ? apps.map(appCard).join("") : "";
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
     + (tabs.length ? bar + (tabs.length === 1 ? `<h2 class="sec">${tabs[0][1]}</h2>` : "") + list : `<div class="card">You're signed in, but nothing is set up for you yet.</div>`);
@@ -168,10 +168,10 @@ function appsView(d, tab) {
 const IVM = { items: null, busy: false, open: null, status: "Flagged", msg: "" };
 function ivmApi(sub, p) { return call(Object.assign({ op: "interviews", token: store.get("mb_token"), sub }, p || {})); }
 async function ivmLoad(status) {
-  if (status) IVM.status = status; IVM.busy = true; IVM.items = IVM.items || null; appsView(_mbD, "interviews");
+  if (status) IVM.status = status; IVM.busy = true; IVM.items = IVM.items || null; if (!IVM.open) appsView(_mbD, "interviews");
   const r = await ivmApi("list", { status: IVM.status }).catch(e => ({ error: e.message })); IVM.busy = false;
   if (!r || r.error) { IVM.msg = (r && r.error) || "Couldn't load"; IVM.items = IVM.items || []; } else { IVM.items = r.items || []; IVM.msg = ""; }
-  appsView(_mbD, "interviews");
+  if (!IVM.open) appsView(_mbD, "interviews");   // never redraw over an open interview (it would wipe the panel)
 }
 function ivmHtml() {
   if (IVM.open) return ivmAnswerHtml();
