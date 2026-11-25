@@ -89,7 +89,26 @@
         : `<span style="text-decoration:line-through;color:${C.ink3};">${e(x.quote)}</span> <span style="color:#ff7a00;font-weight:700;">${e(fixText)}</span>`;
       return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">${before}${mid}${after}</div>`;
     }
-    const init = () => { S.pick = {}; ((S.report || {}).items || []).forEach(x => { if (x.fix && !x.applied && /outdated|contested|wrong|mostly/.test(x.verdict)) S.pick[x.id] = true; }); };
+    // simplified (operator 2026-11-25): per finding — verdict in plain words · the exact part of the answer highlighted · why · a rewrite (or keep
+    // as is) in a text box · in flow / out of flow / ★ premium (premium stays in flow and is tagged). Nothing is ever "skipped": a rewrite that
+    // can't be placed leaves the answer as it is, still part of the answer.
+    const init = () => { S.pick = {}; S.choice = {}; S.local = S.local || {}; ((S.report || {}).items || []).forEach(x => { S.choice[x.id] = x.fix && !x.applied && /outdated|contested|wrong|mostly/.test(x.verdict) ? 'rewrite' : 'keep'; }); };
+    const LBL = { 'wrong': 'Wrong', 'outdated': 'Outdated', 'contested': 'Debated', 'mostly current': 'Mostly right', 'current': 'Right', 'opinion': 'Your opinion' };
+    // where the quoted words are: word for word → the same words ignoring case / punctuation → the sentence sharing most of its words (at least half)
+    function locate(x) { const list = (cfg.answers ? cfg.answers() : null) || (cfg.iv || {}).answers || [];
+      const order = [x.q, ...list.map((_, i) => i).filter(i => i !== x.q)].filter(i => i != null && list[i]);
+      for (const i of order) { const at = String(list[i]).indexOf(x.quote); if (x.quote && at >= 0) return { i, at, len: x.quote.length }; }
+      const W = wds(x.quote).split(' ').filter(Boolean); if (!W.length) return null;
+      for (const i of order) { const a = String(list[i]), re = /[^.!?\n]+[.!?]*/g; let m, best = null;
+        while ((m = re.exec(a))) { const sw = new Set(wds(m[0]).split(' ')), hit = W.filter(w => sw.has(w)).length / W.length; if (hit >= 0.5 && (!best || hit > best.hit)) best = { i, at: m.index, len: m[0].length, hit }; }
+        if (best) return best; }
+      return null; }
+    function view(x) { const L = locate(x), rw = S.edits[x.id] != null ? S.edits[x.id] : (x.fix || ''), useRw = S.choice[x.id] === 'rewrite' && rw && !x.applied && !S.local[x.id];
+      if (!L) return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">It said: “${e(x.quote)}”<div style="font-size:11.5px;color:${C.ink3};margin-top:3px;">(your answer has changed since the check — it stays as you wrote it)</div></div>`;
+      const a = answerOf(L.i), part = a.slice(L.at, L.at + L.len);
+      const mid = useRw ? `<span style="text-decoration:line-through;color:${C.ink3};">${e(part)}</span> <span style="color:#ff7a00;font-weight:700;">${e(rw)}</span>`
+        : `<mark style="background:rgba(250,204,21,.45);color:inherit;border-radius:2px;padding:0 1px;">${e(part)}</mark>`;
+      return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">${L.i !== x.q ? `<div style="font-size:11px;color:${C.ink3};">(in your answer to Q${L.i + 1})</div>` : ''}${e(a.slice(0, L.at))}${mid}${e(a.slice(L.at + L.len))}</div>`; }
     // a check still running on the worker (e.g. the phone dropped the long request) → keep polling until the report lands
     async function load(poll) {
       try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init();
@@ -104,6 +123,22 @@
         S.busy = 'The connection dropped — still checking on the server, the results will appear here…'; draw(); return load(true); }
       S.busy = ''; draw();
     }
+    async function applyChoices() {
+      const items = (S.report || {}).items || [], todo = items.filter(x => !x.applied && !S.local[x.id] && S.choice[x.id] === 'rewrite'); if (!todo.length) return;
+      const ids = todo.map(x => x.id), ov = {}; todo.forEach(x => { ov[x.id] = S.edits[x.id] != null ? S.edits[x.id] : (x.fix || ''); });
+      S.busy = 'Saving your choices…'; S.err = ''; draw(); let missed = ids;
+      try { const r = await req(cfg.call, 'ivExpertApply', { interviewId: cfg.interviewId, ids, overrides: ov }); S.report = r.report || S.report; missed = r.missed || []; if (cfg.onApplied) cfg.onApplied(r.answers || null, r); }
+      catch (err) { if (err.server === undefined) { S.busy = ''; S.err = err.message; return draw(); } }
+      let n = ids.length - missed.length, kept = 0;
+      for (const id of missed) { const x = items.find(i => i.id === id); const L = x && locate(x), t = L && answerBox(L.i), text = String(ov[id] || '').trim();
+        if (L && t && text) { t.value = t.value.slice(0, L.at) + text + t.value.slice(L.at + L.len); t.dispatchEvent(new Event('input', { bubbles: true })); S.local[id] = 'rewritten'; n++; }
+        else { S.local[id] = 'kept'; kept++; } }
+      ids.filter(id => !missed.includes(id)).forEach(id => { S.local[id] = 'rewritten'; });
+      S.done = `✓ ${n} rewritten${kept ? ` · ${kept} left as is (still part of your answer)` : ''}. Re-run the check if you'd like a second look.`; S.busy = ''; changed(); draw();
+    }
+    async function flowSet(id, mode) { const x = ((S.report || {}).items || []).find(i => i.id === id); if (!x) return;
+      if ((mode === 'out') !== !!x.heldOut) await holdQ(id);
+      if (premAsset() && (mode === 'prem') !== !!S.prem[id]) await premToggle(id); }
     async function apply() {
       const ids = Object.keys(S.pick).filter(k => S.pick[k]); if (!ids.length) return;
       const ov = {}; ids.forEach(k => { if (S.edits[k] != null) ov[k] = S.edits[k]; });
@@ -127,26 +162,27 @@
         ${S.err ? `<div style="font-size:12px;color:#c0392b;margin-top:8px;">${e(S.err)}</div>` : ''}
         ${R ? `<div style="font-size:12px;color:${C.ink2};margin:8px 0 2px;"><b>Field:</b> ${e(R.field)}</div>
           ${R.summary ? `<div style="font-size:12.5px;color:${C.ink};margin:4px 0 8px;">${e(R.summary)}</div>` : ''}
-          ${items.map(x => { const v = VC[x.verdict] || ['#888', 'rgba(127,127,127,.12)'];
-            return `<div style="border-top:1px solid ${C.line};padding:9px 0;">
-              <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;background:${v[1]};color:${v[0]};text-transform:uppercase;letter-spacing:.03em;">${e(x.verdict)}</span>
+          ${items.map(x => { const v = VC[x.verdict] || ['#888', 'rgba(127,127,127,.12)'], ch = S.choice[x.id] || 'keep', out = !!x.heldOut, prem = !!S.prem[x.id];
+            const rw = S.edits[x.id] != null ? S.edits[x.id] : (x.fix || x.quote || ''), done = x.applied ? 'rewritten' : S.local[x.id];
+            const seg = (on, xv, val, label, tip) => `<button type="button" data-x="${xv}" data-id="${e(x.id)}" data-v="${val}" title="${tip || ''}" ${S.busy ? 'disabled' : ''} style="${BTN}font-size:11.5px;${on ? 'background:' + C.ink + ';color:' + C.surf + ';border-color:' + C.ink + ';' : ''}">${label}</button>`;
+            return `<div style="border-top:1px solid ${C.line};padding:11px 0;">
+              <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:${v[1]};color:${v[0]};text-transform:uppercase;letter-spacing:.03em;">${e(LBL[x.verdict] || x.verdict)}</span>
                 <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:200px;">${questionOf(x.q) ? 'Q' + (x.q + 1) + ' · ' + e(questionOf(x.q)) : ''}</span></div>
-              <div data-xpv="${e(x.id)}">${x.applied ? inContext({ ...x, quote: x.appliedText || x.fix }, null) : inContext(x, x.fix && x.verdict !== 'opinion' ? (S.edits[x.id] != null ? S.edits[x.id] : x.fix) : null)}</div>
-              ${x.expert_view && x.verdict !== 'opinion' ? `<div style="font-size:12px;color:${C.ink2};margin-top:4px;">${e(x.expert_view)}</div>` : ''}
-              ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ Marketability: ${e(x.market)}</div>` : ''}
+              <div data-xpv="${e(x.id)}">${view(x)}</div>
+              <div style="font-size:12.5px;color:${C.ink2};margin-top:6px;">${x.verdict === 'opinion' ? 'Your view — it stays yours.' : e(x.expert_view || '')}</div>
+              ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ How a buyer would read it: ${e(x.market)}</div>` : ''}
               ${x.level_up ? `<div style="font-size:12px;color:${C.acc};margin-top:4px;">★ A top practitioner would add: ${e(x.level_up)}</div>` : ''}
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
-              ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
-              ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
-                : x.fix && (x.skipped || !inAnswers(x.quote)) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ Its words aren't in your answer as written, so it can't be swapped in automatically. Edit the suggestion and add it to your answer, or edit the answer yourself.</div>${x.q != null ? `<textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:5px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;"><button type="button" data-x="addq" data-id="${e(x.id)}" data-q="${x.q}" style="${BTN}font-size:11px;">＋ Add this to my answer to Q${(+x.q) + 1}</button><button type="button" data-x="editq" data-q="${x.q}" style="${BTN}font-size:11px;">✎ Edit my answer to Q${(+x.q) + 1}</button></div>` : ''}
-                  ${canHold ? `<div style="margin-top:5px;"><button type="button" data-x="holdq" data-id="${e(x.id)}" ${S.busy ? 'disabled' : ''} style="${BTN}font-size:11px;${x.heldOut ? 'color:#c0392b;border-color:#c0392b;' : ''}">${x.heldOut ? '⊘ Left out of the write-up — ↩ put it back' : '⊘ Leave this whole question out of the write-up'}</button></div>` : ''}`
-                : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
-                  <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
-                  <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea></span></label>` : ''}
+              ${done ? `<div style="font-size:12px;color:${done === 'kept' ? C.ink3 : DONE};margin-top:6px;">${done === 'kept' ? 'Left as is — still part of your answer.' : '✓ Rewritten in your answer.'}</div>`
+                : `<div style="font-size:11.5px;color:${C.ink3};margin-top:8px;">Rewrite (edit it into your own words):</div>
+              <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(rw)}</textarea>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:5px;">${seg(ch === 'rewrite', 'ch', 'rewrite', '✓ Use rewrite')}${seg(ch === 'keep', 'ch', 'keep', 'Keep as is')}</div>`}
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;"><span style="font-size:11px;color:${C.ink3};">Flow:</span>
+                ${seg(!out && !prem, 'flow', 'in', 'In flow', 'Used when the asset is written')}${canHold ? seg(out, 'flow', 'out', 'Out of flow', 'This whole answer (Q' + (x.q + 1) + ') is kept but not used in the write-up') : ''}${premAsset() ? seg(prem && !out, 'flow', 'prem', '★ Premium', 'Stays in flow AND is tagged for a premium offer') : ''}</div>
             </div>`; }).join('')}
-          ${items.some(x => x.fix && !x.applied && !x.skipped && inAnswers(x.quote)) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
-            <span style="font-size:11.5px;color:${C.ink3};flex:1;">Applying swaps only the quoted words in your answers; your own rewrites teach 🗣 Your voice.</span>
-            <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTN}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}
+          ${items.some(x => !x.applied && !S.local[x.id] && S.choice[x.id] === 'rewrite') ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
+            <span style="font-size:11.5px;color:${C.ink3};flex:1;">Puts each "Use rewrite" into your answer. Anything that can't be placed stays as you wrote it.</span>
+            <button type="button" data-x="apply2" ${S.busy ? 'disabled' : ''} style="${BTNP}">Save my choices</button></div>` : ''}
           ${S.done ? `<div style="font-size:12.5px;color:${DONE};margin-top:9px;">${e(S.done)}</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:9px;margin-top:6px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">Revised your answers? Run the next expert pass before anything is written.</span>
@@ -189,11 +225,14 @@
       t.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => t.focus(), 350); };
     el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'holdq') return holdQ(b.dataset.id);
       if (b.dataset.x === 'editq') return editQ(b.dataset.q);
+      if (b.dataset.x === 'ch') { S.choice[b.dataset.id] = b.dataset.v; return draw(); }
+      if (b.dataset.x === 'flow') return flowSet(b.dataset.id, b.dataset.v);
+      if (b.dataset.x === 'apply2') return applyChoices();
       if (b.dataset.x === 'addq') { const x = (((S.report || {}).items) || []).find(y => y.id === b.dataset.id) || {}; return editQ(b.dataset.q, S.edits[b.dataset.id] != null ? S.edits[b.dataset.id] : x.fix); } if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
-    el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value;
+    el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value; if (S.choice) S.choice[t.dataset.xe] = 'rewrite';
         const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xe), pv = el.querySelector(`[data-xpv="${t.dataset.xe}"]`);
-        if (x && pv) pv.innerHTML = inContext(x, t.value); } ev.stopPropagation(); });
+        if (x && pv) pv.innerHTML = view(x); } ev.stopPropagation(); });
     draw(); load();
     return el;
   }
