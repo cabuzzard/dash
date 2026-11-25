@@ -20677,7 +20677,9 @@ export default {
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
     NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
-    CORS["Access-Control-Allow-Origin"] = resolveOrigin(request);
+    // an internal self-call (https://internal.local/, no Origin) must not reset the shared CORS origin: the outer request — e.g. the members page on
+    // aisystemimplementation.com — would then answer with the dash origin and the browser drops it as "Failed to fetch" (2026-11-25)
+    if (new URL(request.url).hostname !== "internal.local") CORS["Access-Control-Allow-Origin"] = resolveOrigin(request);
     const PIN_VAL        = (env.PIN             || "").trim();
     const HMAC_SECRET    = (env.HMAC_SECRET     || "").trim();
     const TS_SECRET      = (env.TURNSTILE_SECRET|| "1x0000000000000000000000000000000AA").trim();
