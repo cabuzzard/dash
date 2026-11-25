@@ -20695,7 +20695,12 @@ export default {
     return hubWithAssetWrites(env, async () => {
       hierarchyEnv=env;
       await hubSitesMerge(env);
-      try{return await hubStructureRuntime(env).boundary(request,ctx,r=>this.fetchScoped(r,env,ctx));}
+      // per-request CORS (2026-11-25): CORS is one shared object that concurrent requests overwrite, so a members-page request answered while a dash
+      // request was in flight carried the dash origin → "Failed to fetch". The origin is stamped here, from THIS request, on the way out.
+      try{const res=await hubStructureRuntime(env).boundary(request,ctx,r=>this.fetchScoped(r,env,ctx));
+        const want=request.headers.get("Origin")?resolveOrigin(request):"";
+        if(want&&res&&!res.webSocket&&res.headers.has("Access-Control-Allow-Origin")&&res.headers.get("Access-Control-Allow-Origin")!==want){const out=new Response(res.body,res);out.headers.set("Access-Control-Allow-Origin",want);out.headers.set("Vary","Origin");return out;}
+        return res;}
       catch(error){return new Response(JSON.stringify({error:error.message,...(error.busy?{busy:true}:{})}),{status:error.busy?409:500,headers:{...CORS,'Access-Control-Allow-Origin':resolveOrigin(request),'Content-Type':'application/json'}});}
     });
   },
