@@ -1405,24 +1405,39 @@ async function reportBuild(env, assetId, premium) {
     sources: sources.map(s => ({ n: s.n, claim: s.claim, why: s.why, publisher: s.publisher, date: s.date, from: s.from })) };
   const refs = { type: "array", items: { type: "integer" } }, pt = { type: "object", properties: { point: { type: "string" }, refs }, required: ["point", "refs"] };
   const pain = { type: "object", properties: { point: { type: "string" }, refs, signals: { type: "array", items: { type: "string" }, description: "exact dissatisfactionSearches this rests on" }, opening: { type: "string" } }, required: ["point", "refs", "signals", "opening"] };
+  // 💡 offer card (operator 2026-11-24, docs/offer-stack.md): an opportunity = a service offer (audit, rollout, migration, adoption, training,
+  // content production, integration via partner) tied to the numbered pains/complaints, with its selling points — what the deploy builds from
+  const str = { type: "string" }, offerCard = { type: "object", required: ["name", "kind", "forWho", "problem", "deliverables", "delivery", "deliveryWhy", "evidence", "headline", "firstMove", "strength", "strengthWhy", "selling"], properties: {
+    name: str, kind: { type: "string", enum: ["consulting", "premium information"] },
+    forWho: { type: "object", properties: { company: str, buyer: str }, required: ["company", "buyer"] },
+    problem: { type: "object", properties: { text: str, pains: { type: "array", items: { type: "integer" }, description: "1-based numbers of the pains list" }, complaints: { type: "array", items: { type: "integer" }, description: "1-based numbers of the complaints list" }, searches: { type: "array", items: str, description: "exact dissatisfactionSearches" } }, required: ["text", "pains", "complaints", "searches"] },
+    deliverables: { type: "array", items: str, description: "3-5 concrete things the buyer gets" },
+    delivery: { type: "string", enum: ["solo", "solo+no-code", "needs dev partner"] }, deliveryWhy: str,
+    evidence: { type: "array", items: pt }, headline: { type: "string", description: "one line in the buyer's own words, built from a complaint / search / audience question — never invented" },
+    firstMove: { type: "object", properties: { where: str, send: str }, required: ["where", "send"] },
+    strength: { type: "string", enum: ["strong", "medium", "thin"] }, strengthWhy: str,
+    selling: { type: "object", required: ["benefits", "proof", "objections"], properties: { benefits: { type: "array", items: pt }, proof: { type: "array", items: pt },
+      objections: { type: "array", items: { type: "object", properties: { objection: str, answer: str, refs }, required: ["objection", "answer", "refs"] } } } } } };
   let analysis = {};
   try { analysis = await hcClaude(env, `You write a dated research briefing for the operator of a content hub — "everything important about this topic right now". ` +
       `Use ONLY the packet below. Every claim about the world must cite the numbered sources it rests on (refs = source numbers); demand figures come only from searchDemand. ` +
       `Never invent a source, statistic, company or quote; if the packet is thin on something, say so in gaps. Plain, specific sentences — no hype. ` +
       `PAINS = what this audience struggles with (from the audience questions, Reddit, product / hub Pain Points, sources). COMPLAINTS = what users dislike about the current tools or providers (from dissatisfactionSearches — cite the exact searches in "signals" — and from sources marked "complaint"). ` +
-      `For each, "opening" = what it means for someone selling implementation, migration, integration or consulting. Only what the packet supports; empty lists are fine.\n\nPACKET:\n` + JSON.stringify(packet),
+      `For each, "opening" = what it means for someone selling implementation, migration, integration or consulting. Only what the packet supports; empty lists are fine. ` +
+      `OPPORTUNITIES = offers the operator (a solo implementation consultant who is strongest at content production) could sell: each must solve at least one numbered pain or complaint (problem.pains / problem.complaints are 1-based positions in YOUR pains / complaints lists); drop any with nothing behind it. ` +
+      `kind "consulting" = a done-with / done-for-you service (CTA: book a call); "premium information" = paid research / reports / briefings (CTA: the report). Never a price, client name or result number unless a source states it. Strength: strong = several cited signals; thin = little evidence (say what's missing). Selling points cite sources like every other claim.\n\nPACKET:\n` + JSON.stringify(packet),
       "report_analysis", { type: "object", properties: {
         summary: { type: "string", description: "3-5 sentences: the state of this topic right now" },
         moving: { type: "array", items: pt, description: "4-8 trends / developments that are moving now" },
         demand: { type: "string", description: "2-4 sentences on search demand: the biggest terms, trends, intent — from searchDemand only" },
         audience: { type: "array", items: { type: "string" }, description: "the 5-8 questions this audience is asking most (from the audience sources)" },
-        opportunities: { type: "array", items: pt, description: "3-6 concrete content / offer opportunities" },
+        opportunities: { type: "array", items: offerCard, description: "0-5 OFFERS the operator could sell, strongest first (content ideas belong in nextTitles, never here)" },
         risks: { type: "array", items: pt, description: "2-5 risks, objections or competitive pressures" },
         gaps: { type: "array", items: { type: "string" }, description: "what the research is missing or thin on" },
         nextTitles: { type: "array", items: { type: "object", properties: { title: { type: "string" }, keyword: { type: "string" }, why: { type: "string" } }, required: ["title", "keyword", "why"] }, description: "3-6 titles worth making next" },
         pains: { type: "array", items: pain, description: "3-6 pain points this audience has" },
         complaints: { type: "array", items: pain, description: "0-6 complaints about the current tools / providers" } },
-        required: ["summary", "moving", "demand", "audience", "pains", "complaints", "opportunities", "risks", "gaps", "nextTitles"] }, 5000, u => { usage.claude = u; });
+        required: ["summary", "moving", "demand", "audience", "pains", "complaints", "opportunities", "risks", "gaps", "nextTitles"] }, 9000, u => { usage.claude = u; });
   } catch (e) { notes.push("analysis: " + e.message); }
   const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
     title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },

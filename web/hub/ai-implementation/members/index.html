@@ -236,10 +236,30 @@ function reportHtml(R) {
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
   // 😣 pains + complaints (2026-11-24): each item cites sources and/or the exact dissatisfaction searches, with what it opens up
-  const painL = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}${(p.signals || []).length ? ` <span class="rp-mute" style="font-size:12px">· searches: ${e(p.signals.join(', '))}</span>` : ''}${p.opening ? `<div style="font-size:13px;margin-top:2px">→ ${e(p.opening)}</div>` : ''}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
-  const DS = R.dissatisfaction || [], painsHtml = `<div style="font-weight:600;font-size:13px;margin:0 0 4px">Pain points</div>${painL(A.pains)}<div style="font-weight:600;font-size:13px;margin:12px 0 4px">Complaints</div>${painL(A.complaints)}` +
+  const painL = (L, pre) => (L || []).length ? `<ol style="margin:0;padding-left:24px">${L.map((p, i) => `<li id="rp-${pre}-${i + 1}">${e(p.point)} ${refs(p.refs)}${(p.signals || []).length ? ` <span class="rp-mute" style="font-size:12px">· searches: ${e(p.signals.join(', '))}</span>` : ''}${p.opening ? `<div style="font-size:13px;margin-top:2px">→ ${e(p.opening)}</div>` : ''}</li>`).join('')}</ol>` : '<p class="rp-mute">—</p>';
+  const DS = R.dissatisfaction || [], painsHtml = `<div style="font-weight:600;font-size:13px;margin:0 0 4px">Pain points</div>${painL(A.pains, 'p')}<div style="font-weight:600;font-size:13px;margin:12px 0 4px">Complaints</div>${painL(A.complaints, 'c')}` +
     (DS.length ? `<details><summary>Dissatisfaction searches (${DS.length})</summary><ul>${DS.map(x => `<li>${e(x.search)} <span class="rp-mute">· ${Number(x.perMonth || 0).toLocaleString()}/mo${x.trend12m != null ? ' · ' + (x.trend12m > 0 ? '+' : '') + x.trend12m + '%' : ''}</span></li>`).join('')}</ul></details>` : '');
   const kv = o => Object.entries(o || {}).filter(x => x[1]).map(([k, v]) => `<div class="rp-kv"><b>${e(k)}</b><div>${e(v).replace(/\n/g, '<br>')}</div></div>`).join('') || '<p class="rp-mute">nothing stored yet</p>';
+  // 💡 offer cards (2026-11-24, docs/offer-stack.md): an opportunity = an offer the operator can sell, tied to the numbered pains (p) and
+  // complaints (c) above. Old reports ({point, refs}) keep the plain list. .rp-oact is filled by the host page (🚀 Deploy, admin only).
+  const pc = (L, pre, w) => (L || []).map(n => `<a class="rp-ref" href="#rp-${pre}-${n}" onclick="event.preventDefault();const t=document.getElementById('rp-${pre}-${n}');if(t){t.scrollIntoView({behavior:'smooth',block:'center'});t.classList.add('rp-flash');setTimeout(()=>t.classList.remove('rp-flash'),1300)}" title="${w} ${n}">${pre.toUpperCase()}${n}</a>`).join('');
+  const offersHtml = L => !(L || []).length ? '<p class="rp-mute">—</p>' : !L[0].name ? pts(L) : L.map((o, i) => { const sp = o.selling || {}, pr = o.problem || {}, fw = o.forWho || {}, fm = o.firstMove || {};
+    const col = { strong: '#16a34a', medium: '#ca8a04', thin: '#9ca3af' }[o.strength] || '#9ca3af';
+    return `<div class="rp-offer" data-i="${i}"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b style="font-size:16px">${e(o.name)}</b>
+      <span class="rp-badge" style="border-color:${col};color:${col}">● ${e(o.strength || '')}</span><span class="rp-badge">${o.kind === 'premium information' ? '📊 premium information' : '📞 consulting'}</span></div>
+      ${o.strengthWhy ? `<div class="rp-mute" style="font-size:12.5px">${e(o.strengthWhy)}</div>` : ''}
+      <div class="rp-of"><b>For</b> ${e(fw.company || '')}${fw.buyer ? ' · buys: ' + e(fw.buyer) : ''}</div>
+      <div class="rp-of"><b>Solves</b> ${e(pr.text || '')} ${pc(pr.pains, 'p', 'pain')}${pc(pr.complaints, 'c', 'complaint')}${(pr.searches || []).length ? ` <span class="rp-mute" style="font-size:12px">· searches: ${e(pr.searches.join(', '))}</span>` : ''}</div>
+      ${(o.deliverables || []).length ? `<div class="rp-of"><b>You'd deliver</b><ul>${o.deliverables.map(x => `<li>${e(x)}</li>`).join('')}</ul></div>` : ''}
+      <div class="rp-of"><b>Delivery</b> ${e({ 'solo': 'you alone', 'solo+no-code': 'you + no-code tools', 'needs dev partner': 'needs a dev partner' }[o.delivery] || o.delivery || '')}${o.deliveryWhy ? ' — ' + e(o.deliveryWhy) : ''}</div>
+      ${(o.evidence || []).length ? `<div class="rp-of"><b>Evidence</b><ul>${o.evidence.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul></div>` : ''}
+      ${o.headline ? `<div class="rp-of"><b>Headline</b> “${e(o.headline)}”</div>` : ''}
+      ${fm.where || fm.send ? `<div class="rp-of"><b>First move</b> ${e(fm.where || '')}${fm.send ? ' — send: ' + e(fm.send) : ''}</div>` : ''}
+      <details><summary>Selling points (benefits ${(sp.benefits || []).length} · proof ${(sp.proof || []).length} · objections ${(sp.objections || []).length})</summary>
+        ${(sp.benefits || []).length ? `<div class="rp-of"><b>Benefits</b><ul>${sp.benefits.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul></div>` : ''}
+        ${(sp.proof || []).length ? `<div class="rp-of"><b>Proof</b><ul>${sp.proof.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul></div>` : ''}
+        ${(sp.objections || []).length ? `<div class="rp-of"><b>Objections</b><ul>${sp.objections.map(p => `<li><i>${e(p.objection)}</i> — ${e(p.answer)} ${refs(p.refs)}</li>`).join('')}</ul></div>` : ''}</details>
+      <div class="rp-oact" data-i="${i}"></div></div>`; }).join('');
   const sec = (key, h, body) => `<section class="rp-sec" data-sec="${key}"><h3>${h}</h3>${body}</section>`;
   const d = new Date(R.at);
   return `<style>.rp{line-height:1.55}.rp h2{margin:0 0 4px;font-size:22px}.rp h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px;opacity:.75}
@@ -255,7 +275,7 @@ function reportHtml(R) {
     .rp-nq{font-size:13.5px;opacity:.85}.rp-nq a{color:inherit;text-decoration:none;border-bottom:1px dashed rgba(128,128,128,.6)}
     .rp-nt{display:block;width:100%;box-sizing:border-box;margin:6px 0 2px;min-height:40px;font:inherit;font-size:14.5px;line-height:1.5;padding:7px 9px;border:1px solid rgba(128,128,128,.4);border-radius:8px;background:transparent;color:inherit;resize:vertical}
     .rp-nt:focus{outline:2px solid #ca8a04;outline-offset:1px}.rp-nm{font-size:12px;opacity:.6;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .rp-nm button{font:inherit;background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:4px 0}.rp-flash{animation:rpf 1.2s}@keyframes rpf{0%{background:rgba(250,204,21,.9)}}</style>
+    .rp-nm button{font:inherit;background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:4px 0}.rp-flash{animation:rpf 1.2s}.rp-offer{border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:12px 14px;margin:0 0 12px}.rp-of{font-size:14px;margin:6px 0 0}.rp-of>b{font-size:12px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-right:4px}.rp-of ul{margin:2px 0 0}@keyframes rpf{0%{background:rgba(250,204,21,.9)}}</style>
   <div class="rp" data-rn="1">
     <h2>${e(R.title && R.title.name)}</h2>
     <div class="rp-mute">${e(R.hub || '')} · research as of ${e(isNaN(d) ? R.at : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }))}${R.premium ? '<span class="rp-badge">★ Premium</span>' : '<span class="rp-badge">Free</span>'} · ${S.length} sources</div>
@@ -265,7 +285,7 @@ function reportHtml(R) {
     ${sec('audience', 'What the audience is asking', ((A.audience || []).length ? `<ul>${A.audience.map(q => `<li>${e(q)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>') +
       Object.entries(R.audience || {}).map(([k, L]) => `<details><summary>${e(k)} (${L.length})</summary><ul>${L.map(x => `<li>${x.url ? `<a href="${e(x.url)}" target="_blank" rel="noopener" style="color:inherit">${e(x.t)}</a>` : e(x.t)}${x.v ? ` <span class="rp-mute">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? ` <span class="rp-mute">· ${e(x.meta)}</span>` : ''}</li>`).join('')}</ul></details>`).join(''))}
     ${sec('pains', 'Pain points & complaints', painsHtml)}
-    ${sec('opportunities', 'Opportunities', pts(A.opportunities))}
+    ${sec('opportunities', 'Opportunities → offers', offersHtml(A.opportunities))}
     ${sec('risks', 'Risks & pressures', pts(A.risks))}
     ${sec('next', 'Titles worth making next', (A.nextTitles || []).length ? `<ul>${A.nextTitles.map(t => `<li><b>${e(t.title)}</b> <span class="rp-mute">· ${e(t.keyword)}</span><br>${e(t.why)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
     ${sec('gaps', 'Gaps in the research', (A.gaps || []).length ? `<ul>${A.gaps.map(g => `<li>${e(g)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>')}
