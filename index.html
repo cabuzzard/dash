@@ -11898,7 +11898,9 @@ function hd2RepHtml() {
 // editable note (rnAttach wires it; the page supplies the api). Shared by everyone who can open the report, kept across runs.
 function reportHtml(R) {
   const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const A = R.analysis || {}, S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
+  // the model sometimes hands back a list as a JSON string (2026-11-25: two Mountainwize reports) — read it as the list
+  const A = Object.fromEntries(Object.entries(R.analysis || {}).map(([k, v]) => { if (typeof v === 'string' && /^\s*[\[{]/.test(v)) { try { return [k, JSON.parse(v)]; } catch (e) {} } return [k, v]; }));
+  const S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';
   // 😣 pains + complaints (2026-11-24): each item cites sources and/or the exact dissatisfaction searches, with what it opens up
