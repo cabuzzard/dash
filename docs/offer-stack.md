@@ -21,14 +21,28 @@ questions). Two things are missing:
 The Offer Stack closes both: Report → offer card → ⚒ Make offer → Offer (private) + its selling children.
 
 ```
-Report (private · exists)
+Report (private · exists · one per TITLE)
   └─ Opportunity card  ── ⚒ Make offer ──►  Offer  (Parent · private · Development)
-                                               ├─ Single Post Run · kind "selling points"   (Publish, unwritten)
-                                               ├─ Direct Sales Email · kind "sequence"      (Publish, unwritten)
-                                               ├─ Offer Sales Page                          (Publish, unwritten)
-                                               └─ CTA × kinds                               (Publish, unwritten)
-Lead List ─► Direct Sales Email   (existing edge: who the emails go to)
+                                               ├─ Single Post Run · kind "selling points"          (Publish, unwritten)
+                                               ├─ Hub - Email Welcome Sequence · welcome & nurture (Publish, unwritten)
+                                               ├─ Direct Sales Email · kind "sequence" · sales     (Publish, unwritten)
+                                               ├─ Offer Sales Page                                 (Publish, unwritten)
+                                               └─ CTA × kinds · destination by offer kind          (Publish, unwritten)
+Lead List ─► Direct Sales Email   (existing edge: who the sales series goes to)
 ```
+
+**Operator decisions, 2026-11-24** ("so this offer stack gets deployed and written directly to that title …"):
+- **Same title.** The whole stack is created under the report's title — every asset in it, Offer and children, on that one title
+  (chain: niche → title → report → offer cards → offers; a report can yield several offers, each its own stack on the same title).
+- **Same due date.** Every asset in one stack gets the same Due date (picked in the ⚒ Make offer modal).
+- **Own initiative.** Every asset in the stack gets a NEW initiative named **`<Title> - <Offer name>`** (Assets `Initiative` text field;
+  name registered in KV `initiative:names`). One offer = one initiative, so the stack can be filtered as one unit.
+- **Selling points = a run of single posts** (Single Post Run, kind "selling points").
+- **Two email series:** (1) **welcome & nurture** — for people who sign up / request the report; (2) **sales** — from the offer, to a lead list.
+- **CTA follows the offer kind:** a **consulting** offer → CTAs book a call; a **premium information** offer → CTAs point to the report
+  (members link). The offer card carries `kind` (§ 2.1).
+- "Written directly" — after creating, the stack is written in order, parents first (Offer → Sales Page → CTAs → run → both email series),
+  through the normal writer (`writeAsset` via actq). Each child is written only once the Offer is written.
 
 ---
 
@@ -42,6 +56,7 @@ Renderer `reportHtml` is **duplicated** in `index.html` and `web/hub/ai-implemen
 ```js
 opportunities: { type: "array", minItems: 0, maxItems: 5, items: { type: "object", required: [...all below], properties: {
   name:        string,  // offer name, plain: "Procore Field Adoption Sprint"
+  kind:        "consulting" | "premium information",  // decides the CTA destination: book a call vs the report
   forWho:      { company: string,   // type + size: "GCs, 50-300 staff, already paying for Procore"
                  buyer: string },   // the role who signs: "COO / operations director"
   problem:     { text: string,
@@ -104,9 +119,12 @@ product (niche) and initiative as the report's title, so every writer gets the O
 |---|---|---|---|---|---|
 | 1 | `<Offer name> - Offer` | Offer | — | Development | no (private parent) |
 | 2 | `<Offer name> - Selling Points Run` | Single Post Run | `selling points` | Publish (unwritten) | yes, when published |
-| 3 | `<Offer name> - Email Sequence` | Direct Sales Email | `sequence` | Publish (unwritten) | sent, not posted |
-| 4 | `<Offer name> - Sales Page` | Offer Sales Page | — | Publish (unwritten) | yes |
-| 5 | `<Offer name> - CTA <kind>` × 4 | CTA | Hero / Inline Slim / Flyout / Email (Format field, existing CTA model) | Publish (unwritten) | yes |
+| 3 | `<Offer name> - Welcome & Nurture` | Hub - Email Welcome Sequence | — | Publish (unwritten) | sent, not posted |
+| 4 | `<Offer name> - Sales Series` | Direct Sales Email | `sequence` | Publish (unwritten) | sent, not posted |
+| 5 | `<Offer name> - Sales Page` | Offer Sales Page | — | Publish (unwritten) | yes |
+| 6 | `<Offer name> - CTA <kind>` × 4 | CTA | Hero / Inline Slim / Flyout / Email (Format field, existing CTA model) | Publish (unwritten) | yes |
+
+Every row: same **Title** (the report's), same **Due** date, same **Initiative** `<Title> - <Offer name>`.
 
 Rule: children wait at Publish unwritten; they're written only after the Offer is written (feedback_dash_children_wait_at_publish).
 
@@ -136,9 +154,24 @@ timeline), tightened from the card. No new facts beyond the card + report.
 - New: the run's ideas come from the Offer's Selling Points instead of a Series' idea list (`run` source = Offer). Needs edge
   **Offer → Single Post Run**.
 
-### 3.3 Direct Sales Email · kind "sequence"
+### 3.3a Welcome & nurture series (Hub - Email Welcome Sequence)
 
-Direct Sales Email exists in Asset Flow but has **no writer code yet** — this is the first build of it. Sequence of 5:
+For people who opt in — a CTA signup or a report request. Builds trust before any pitch. Sequence of 5 (one asset, numbered `SEQUENCE` block):
+
+| # | Day | Job | Reads |
+|---|---|---|---|
+| 1 | 0 | Welcome + deliver what they asked for (the report link / the call booking) | CTA, offer kind |
+| 2 | 2 | The biggest thing moving in their niche right now | report trends (cited) |
+| 3 | 5 | A pain they share, and what people in their position are doing about it | pains, audience questions |
+| 4 | 9 | A useful how-to / quick win (no pitch) | report opportunities, audience questions |
+| 5 | 14 | Soft introduction of the offer + CTA | offer card, CTA |
+
+Same field limits as the sales series. Needs edge **Offer → Hub - Email Welcome Sequence**.
+
+### 3.3b Sales series (Direct Sales Email · kind "sequence")
+
+Direct Sales Email exists in Asset Flow but has **no writer code yet** — this is the first build of it. Cold-to-warm outreach to a Lead
+List. Sequence of 5:
 
 | # | Day | Job | Reads |
 |---|---|---|---|
@@ -152,7 +185,6 @@ Fields per email: subject (≤60 chars), preview (≤90), body (≤150 words), C
 (not 5 assets) — the sequence is one unit. Recipients come from **Lead List → Direct Sales Email** (existing edge). Sending happens outside
 the writer (GHL), never automatically.
 
-Open: a separate **welcome series** for people who ask for the report (existing type "Hub - Email Welcome Sequence") — operator to decide.
 
 ### 3.4 Offer Sales Page
 
@@ -168,8 +200,9 @@ Published through the existing offer/hub path when the operator sets it Publishe
 
 ### 3.5 CTA × 4
 
-Existing CTA model (one type, child of Offer, Format = Hero / Inline Slim / Flyout / Email). Destination default: book a call; alt: "get the
-report" (members link). Short: label + one line.
+Existing CTA model (one type, child of Offer, Format = Hero / Inline Slim / Flyout / Email). **Destination is set by the offer's `kind`**
+(operator decision): consulting → **book a call** (the hub's booking link); premium information → **the report** (members link
+`/members/?report=<id>`, access via share/publish). Short: label + one line.
 
 ---
 
@@ -180,8 +213,14 @@ Worker action **`reportMakeOffer {assetId, at, index}`** (operator only):
 2. Finds the report's title (Report asset → its Title relation). Refuses if the report has no title.
 3. **Idempotent:** if an Offer with `Source Report = assetId` and the same opportunity `name` exists, returns it instead of creating a second.
 4. Creates the Offer (Development) with the OFFER CARD + Selling Points + Source Report, then the children (Publish, unwritten) with
-   Parent Asset = Offer. All through `createAsset` so flow guards apply. Nothing is written by a model in this step — it copies the card.
-5. Returns the ids; the button turns into "Offer made → open".
+   Parent Asset = Offer. All through `createAsset` so flow guards apply. Creating copies the card — no model call.
+   Every asset: Title = the report's title, **Due = the date picked in the modal**, **Initiative = `<Title> - <Offer name>`** (registered
+   in `initiative:names`).
+5. Then writes the stack, parents first, via actq `writeAsset`: Offer → Sales Page → CTAs → Selling Points Run → Welcome & Nurture →
+   Sales Series. A child whose parent fails to write is left unwritten and reported.
+6. Returns the ids + write results; the button turns into "Offer made → open".
+
+Modal inputs: due date (required), offer name (editable, prefilled), offer kind (prefilled from the card), children to include (all ticked).
 
 Dash: button on each card in Hub Dash 2's 📊 Report tab and the 📊 Reports panel. Members page: superadmin sees the button too; members never.
 A modal before creating lists exactly what will be made (names + types) and lets the operator untick children (e.g. skip the email
@@ -193,6 +232,7 @@ sequence). No `confirm()` dialogs.
 
 - Edge **Report → Offer** (feeds)
 - Edge **Offer → Single Post Run** (feeds)
+- Edge **Offer → Hub - Email Welcome Sequence** (feeds)
 - Kind **"selling points"** on Single Post Run
 - Kind **"sequence"** on Direct Sales Email
 - (already there: Offer → Offer Sales Page, Offer → CTA, Offer → Direct Sales Email, Lead List → Direct Sales Email, Title → Report)
@@ -209,10 +249,12 @@ Backup the graph before editing (`af.backup-offerstack.json`).
    one or two offers.
 2. Asset Flow edges/kinds (after approval).
 3. `reportMakeOffer` + button + preview modal — creates the stack, writes nothing.
-4. Writers, parents first: Offer → Sales Page → CTAs → Selling Points Run → Email Sequence (Direct Sales Email writer is new code).
+4. Writers, parents first: Offer → Sales Page → CTAs → Selling Points Run → Welcome & Nurture → Sales Series (Direct Sales Email writer
+   is new code; check whether Hub - Email Welcome Sequence has a writer row in Current Methods).
 5. First real offer end to end (suggested: Procore — most complaint searches), operator review, then the others.
 
-**Done when:** from a report card, one click creates the 8 assets under the right title; writing the Offer then each child produces copy
+**Done when:** from a report card, one click creates the 9 assets under the right title, all with the same due date and the new
+initiative, and writes them parents first; writing the Offer then each child produces copy
 whose every fact traces to the report; the Sales Page publishes on the AI hub; nothing ever shows a price or a claim the operator didn't
 supply or the report didn't cite.
 
@@ -220,15 +262,18 @@ supply or the report didn't cite.
 
 ## 7. Needs the operator's OK
 
-1. Asset Flow edges Report → Offer and Offer → Single Post Run.
+Decided 2026-11-24: same title · same due date · new initiative `<Title> - <Offer name>` · selling points = single post run ·
+two email series (welcome & nurture + sales) · CTA by offer kind (consulting → call, premium information → report) · written right after
+creation, parents first.
+
+Still open:
+1. Asset Flow edges Report → Offer, Offer → Single Post Run, Offer → Hub - Email Welcome Sequence.
 2. New kinds: "selling points" Single Post Run, "sequence" Direct Sales Email.
-3. Welcome series for report requesters: yes / no.
-4. Selling Points storage: new Notion property (recommended) vs a json block in the body.
-5. Default CTA destination: book a call (recommended) vs get the report.
+3. Selling Points storage: new Notion property (recommended) vs a json block in the body.
 
 ## 8. Cost
 
 - Report re-runs with offer cards: one Claude call each, ~7k output tokens max → ~10 reports ≈ a few dollars. ★ Premium runs add Perplexity
   per run (guarded by spendCheck).
 - ⚒ Make offer: no model calls.
-- Writing a full stack: ~6–8 writer calls (Offer, page, 4 CTAs, run, sequence).
+- Writing a full stack: ~9 writer calls (Offer, page, 4 CTAs, run, 2 email series).
