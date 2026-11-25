@@ -1332,7 +1332,7 @@ async function memberApps(env, rec) {
 // pass (spend-capped). One Claude call writes the analysis on top, citing only the numbered sources. Versions: KV report:<assetId>:<at>,
 // index report:idx:<assetId> (newest first), all reports report:all. Shared with members via member:email:<email>.reports = [assetId].
 const REPORT_PF = ["Customer", "Niche", "Pain Points", "Emotions", "Benefits", "Transformation", "Objections", "Proof Points", "Unique Opportunity", "Offer Structure"];
-async function reportBuild(env, assetId, premium) {
+async function reportBuild(env, assetId, premium, focus) {
   const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
   const a = await ivPage(assetId); if (!a || a.object === "error" || !a.properties) throw new Error("Asset not found");
   const ap = a.properties, titleId = ivRid(ap, "Content Strategy"), pid = ivRid(ap, "Product");
@@ -1341,6 +1341,10 @@ async function reportBuild(env, assetId, premium) {
   const tp = t.properties, titleName = hubRichText(tp.Title?.title || tp.Name?.title), cid = hubAssetId(ivRid(ap, "Campaign") || ivRid(tp, "Campaign"));
   const notes = [], at = new Date().toISOString();
   const topic = await titleTopicKeywords(env, hdr, tp).catch(e => { notes.push("topic: " + e.message); return { keywords: "" }; });
+  // 🎯 focus (operator 2026-11-25: "refocus the report on a different search term"): this run leads with these keywords, ahead of the niche's
+  // and the topic's — nothing on the niche or title changes. The version records the focus.
+  const focusKw = [...new Set((Array.isArray(focus) ? focus : String(focus || "").split(/[,\n]/)).map(kwNorm).filter(Boolean))].slice(0, 20);
+  if (focusKw.length) { const seenF = new Set(focusKw); topic.keywords = [...focusKw, ...String(topic.keywords || "").split(/[,\n]/).map(kwNorm).filter(k => k && !seenF.has(k))].join(", "); topic.niche = focusKw.join(", "); }
   const topicKw = [...new Set(String(topic.keywords || "").split(/[,\n]/).map(kwNorm).filter(Boolean))];
   const demand = topicKw.length ? await kwDemandBlock(env, topicKw.join(", "), { related: 15 }).catch(() => "") : "";
   const titleRes = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, hubRichText(tp[f]?.rich_text)]));
@@ -1441,10 +1445,10 @@ async function reportBuild(env, assetId, premium) {
   } catch (e) { notes.push("analysis: " + e.message); }
   const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
     title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },
-    keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, product, hubResearch: hub.research, audience, dissatisfaction: signals, sources, analysis, usage, notes };
+    keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, ...(focusKw.length ? { focus: focusKw } : {}), product, hubResearch: hub.research, audience, dissatisfaction: signals, sources, analysis, usage, notes };
   await env.TRADES.put("report:" + assetId + ":" + at, JSON.stringify(rep));
   const idx = (await env.TRADES.get("report:idx:" + assetId, "json").catch(() => null)) || [];
-  idx.unshift({ at, premium: !!premium, sources: sources.length }); await env.TRADES.put("report:idx:" + assetId, JSON.stringify(idx.slice(0, 40)));
+  idx.unshift({ at, premium: !!premium, sources: sources.length, ...(focusKw.length ? { focus: focusKw.join(", ") } : {}) }); await env.TRADES.put("report:idx:" + assetId, JSON.stringify(idx.slice(0, 40)));
   const all = ((await env.TRADES.get("report:all", "json").catch(() => null)) || []).filter(x => x.assetId !== assetId);
   all.unshift({ assetId, name: rep.assetName, title: titleName, hub: hub.name, at }); await env.TRADES.put("report:all", JSON.stringify(all.slice(0, 300)));
   // the summary also lands on the asset (Executive Summary), so the table shows the latest run
@@ -1644,6 +1648,42 @@ async function offerDeployTick(env, invoke) {   // */4 cron: the oldest unfinish
   for (const j of L.slice().reverse()) { const job = await env.TRADES.get("offerdeploy:job:" + j.id, "json").catch(() => null);
     if (job && (job.status === "queued" || job.status === "running" || (job.status === "waiting" && !(job.ivCheckedAt && Date.now() - job.ivCheckedAt < 3 * 60000)))) { const r = await offerDeployRun(env, invoke, j.id, 6 * 60000); if (!r || r.status !== "waiting") return r; } }
   return { idle: true };
+}
+// 🎯 report focus (operator 2026-11-25: "a generate new niche + report from keywords button and a refocus niche button which rewrites the existing
+// niche and regenerates the report, on every report"): sub run = re-run with focus keywords (this run only) · refocus = the niche's Keywords
+// (and optionally its name) are rewritten, then the report re-runs · newNiche = a new niche on the same topic + its title + Report, first run
+async function reportAdminOp(env, invoke, body) {
+  const aid = hubAssetId(body.assetId || ""); if (!/^[0-9a-f]{32}$/i.test(aid)) throw new Error("assetId required");
+  const sub = String(body.sub || ""), kws = [...new Set(String(body.keywords || "").split(/[,\n]/).map(s => s.trim()).filter(Boolean))].slice(0, 20), name = String(body.name || "").trim().slice(0, 150);
+  const run = async (id, focus) => { const r = await invoke({ action: "reportRun", assetId: id, premium: body.premium === true, ...(focus ? { focus } : {}) }); if (!r || r.error) throw new Error("Report run: " + ((r && r.error) || "no response")); return r.at; };
+  if (sub === "run") { if (!kws.length) throw new Error("Type the keywords to focus on"); return { ok: true, at: await run(aid, kws) }; }
+  const ctx = await offerReportCtx(env, aid);
+  if (sub === "refocus") {
+    if (!ctx.productId) throw new Error("This report's title has no niche");
+    if (!kws.length) throw new Error("Type the niche's new keywords");
+    const ch = { Keywords: kws.join(", "), ...(name ? { Name: name } : {}) };
+    const s = await invoke({ action: "entitySave", pageId: ctx.productId, changes: ch }); if (!s || s.error || !(s.saved || []).length) throw new Error("Niche not saved: " + ((s && (s.error || JSON.stringify(s.refused || []))) || "no response"));
+    await env.TRADES.put("report:focuslog:" + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), op: "refocus", assetId: aid, productId: ctx.productId, changes: ch }), { expirationTtl: 365 * 86400 }).catch(() => {});
+    return { ok: true, productId: ctx.productId, saved: s.saved, at: await run(aid) };
+  }
+  if (sub === "newNiche") {
+    if (!kws.length) throw new Error("Type the new niche's keywords"); const nn = name || kws[0].replace(/\b\w/g, c => c.toUpperCase());
+    const tp = (await ivPage(ctx.titleId)).properties || {}; let topicId = trRt(tp, "Topic ID").trim(), stack = "";
+    if (ctx.productId) { const pp = (await ivPage(ctx.productId)).properties || {}; if (!topicId) topicId = trRt(pp, "Topic ID").trim(); stack = pp["Product Stack"]?.select?.name || trRt(pp, "Product Stack").trim(); }
+    if (!topicId) throw new Error("This report's niche has no keyword topic to put the new niche on");
+    const p = await invoke({ action: "createProduct", title: nn, campaignId: ctx.campaignId, ...(stack ? { stack } : {}), topicId, status: "Planning", keywords: kws.join(", ") });
+    if (!p || p.error || !p.id) throw new Error("Niche not created: " + ((p && p.error) || "no response")); const pid = hubAssetId(p.id);
+    const tn = String(body.titleName || "").trim().slice(0, 200) || nn;
+    const t = await invoke({ action: "createDevTitle", title: tn, campaignId: ctx.campaignId, productId: pid, status: "Development", skipPillar: true, seedKeywords: kws.join(", ") });
+    if (!t || t.error || !t.id) throw new Error("Niche made, title not: " + ((t && t.error) || "no response")); const tid = hubAssetId(t.id);
+    await invoke({ action: "setTitleTopic", titleId: tid, topicId }).catch(() => {});
+    const a = await invoke({ action: "createAsset", titleId: tid, campId: ctx.campaignId, productId: pid, assetTitle: tn + " - Report", assetType: "Report" });
+    if (!a || a.error || !a.id) throw new Error("Niche + title made, Report not: " + ((a && a.error) || "no response")); const rid = hubAssetId(a.id);
+    await env.TRADES.put("report:focuslog:" + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), op: "newNiche", from: aid, productId: pid, titleId: tid, reportId: rid, keywords: kws }), { expirationTtl: 365 * 86400 }).catch(() => {});
+    let at = "", runErr = ""; try { at = await run(rid); } catch (e) { runErr = e.message; }
+    return { ok: true, productId: pid, titleId: tid, reportId: rid, niche: nn, title: tn, at, runErr };
+  }
+  throw new Error("Unknown report request");
 }
 // one router for the operator (dash) and the superadmin (members page): op plan | start | run | get | list | resume
 async function offerDeployOp(env, invoke, body) {
@@ -21329,6 +21369,12 @@ export default {
       const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
+    if (body.action === "member" && body.op === "reportAdmin") { try {   // 🎯 report focus bar on the members page (operator 2026-11-25) — superadmin only
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can do that." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        return json(await reportAdminOp(env, invoke, body)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "interviews") { try {   // 🎤 Interviews tab on the members page (operator 2026-11-25) — superadmin only for now
         const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
         const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can open interviews here." }, 403);
@@ -21638,7 +21684,7 @@ export default {
         if (body.action === "reportRun") {
           const lk = "report:lock:" + aid; if (await env.TRADES.get(lk)) return json({ error: "A run is already going for this report — give it a few minutes" }, 409);
           await env.TRADES.put(lk, "1", { expirationTtl: 600 });
-          try { const rep = await reportBuild(env, aid, body.premium === true); return json({ ok: true, at: rep.at, report: rep }); } finally { await env.TRADES.delete(lk).catch(() => {}); }
+          try { const rep = await reportBuild(env, aid, body.premium === true, body.focus); return json({ ok: true, at: rep.at, report: rep }); } finally { await env.TRADES.delete(lk).catch(() => {}); }
         }
         if (body.action === "reportList") {
           const versions = (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [], shared = [];

@@ -68,6 +68,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
 .od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
 .od-cb { margin: 10px 0 0 !important; }
+.rf summary { cursor: pointer; } .rf { margin: 0 0 16px; }
 .od-iv { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; font-size: 14.5px; } .od-iv a { color: var(--accent); font-weight: 600; }
 .od-coh { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
 .od-coh label { display: flex; flex-direction: column; font-size: 13px; color: var(--ink-soft); gap: 3px; }
@@ -292,11 +293,37 @@ async function reportView(tok, at) {
     if (d.code === "signed_out") { store.set("mb_token", null); return signInView("Please sign in again."); }
     if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This report isn't available.") + '</div><a class="home" href="/members/">← Your apps</a>'; return; }
     const V = d.versions || [];
-    const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + "</option>").join("") + "</select>" : "";
-    out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + reportHtml(d.report);
+    const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + (v.focus ? " · 🎯 " + esc(v.focus).slice(0, 60) : "") + "</option>").join("") + "</select>" : "";
+    out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + (d.admin ? rfBar(d.report) : "") + reportHtml(d.report);
     rnAttach({ key: REPORT_ID, ver: d.report.at, api: (sub, p) => call(Object.assign({ op: "notes", token: store.get("mb_token"), assetId: REPORT_ID, sub }, p)) });
     rpNotesFlyout(); odInit(d);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
+}
+// 🎯 Focus bar (operator 2026-11-25: "refocus the report on a different search term … a generate new niche + report from keywords button and
+// a refocus niche button which rewrites the existing niche and regenerates the report, on every report") — admin only, above the report:
+// ↻ re-run with these keywords leading (this run only) · ✎ rewrite the niche's keywords (+ name) and re-run · ＋ new niche on the same topic
+// with its own title + Report (first run), then opens it. A run takes 1-3 minutes.
+function rfBar(R) {
+  const kw = (R.focus || []).join(", ") || (R.keywords || {}).niche || "", nm = (R.product || {}).name || "";
+  return `<details class="card rf" ${R.focus ? "open" : ""}><summary><b>🎯 Focus</b> <span class="od-mute">${R.focus ? "this run led with: " + esc(R.focus.join(", ")) : "refocus this report or spin off a niche"}</span></summary>
+    <label class="od-l">Keywords to lead with (comma or one per line)</label><textarea class="od-ta" id="rfKw" rows="3" placeholder="executive function coaching, focus coach, adult adhd coach">${esc(kw)}</textarea>
+    <label class="od-l">Niche name <span style="text-transform:none;letter-spacing:0;font-weight:400">(for ✎ refocus: blank keeps "${esc(nm)}"; for ＋ new niche: blank = the first keyword)</span></label><input class="mg-in od-in" id="rfName" placeholder="${esc(nm)}">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0">
+      <button class="share" style="margin:0" onclick="rfGo('run')" title="This run only: the niche and title don't change">↻ Re-run with focus</button>
+      <button class="share" style="margin:0" onclick="rfGo('refocus')" title="Rewrites this niche's keywords (and name, if given) — every later run and asset follows">✎ Refocus niche &amp; re-run</button>
+      <button class="share od-go" style="margin:0" onclick="rfGo('newNiche')" title="A new niche on the same topic, with its own title and Report">＋ New niche + report</button></div>
+    <div class="od-mute" id="rfSt" style="margin:8px 0 0"></div></details>`;
+}
+async function rfGo(sub) {
+  const kw = (document.getElementById("rfKw") || {}).value || "", name = ((document.getElementById("rfName") || {}).value || "").trim(), st = document.getElementById("rfSt");
+  if (!kw.trim()) { st.textContent = "✗ Type the keywords first"; return; }
+  document.querySelectorAll(".rf button").forEach(b => b.disabled = true);
+  st.textContent = { run: "Re-running with this focus… (1-3 min)", refocus: "Rewriting the niche, then re-running… (1-3 min)", newNiche: "Making the niche, title and Report, then the first run… (2-4 min)" }[sub];
+  const r = await call({ op: "reportAdmin", token: store.get("mb_token"), sub, assetId: REPORT_ID, keywords: kw, name }).catch(e => ({ error: e.message }));
+  document.querySelectorAll(".rf button").forEach(b => b.disabled = false);
+  if (!r || r.error) { st.textContent = "✗ " + ((r && r.error) || "No response"); return; }
+  if (sub === "newNiche") { st.textContent = `✓ New niche "${r.niche}"${r.runErr ? " (first run failed: " + r.runErr + ")" : ""}. Opening its report…`; setTimeout(() => { location.href = "/members/?report=" + r.reportId; }, 1200); return; }
+  reportView(store.get("mb_token"), r.at);
 }
 // 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
 // Theme-neutral: inherits the page's text colour; borders and muted text are translucent so both light and dark pages read.
