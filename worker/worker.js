@@ -1460,6 +1460,143 @@ async function reportGet(env, assetId, at) {
 // gets numbered and then a 1. 2. 3. appears in the notes section and everything after the list item is editable"). One shared list per
 // report (KV report:notes:<assetId>), kept across runs: {id, sec, text (the highlighted words), note, by, byName, at, editedBy, editedAt}.
 // Anyone who can open the report adds highlights and edits notes; only the highlight's author or the admin removes one.
+// ── 🚀 Offer Stack deploy (operator 2026-11-24, docs/offer-stack.md) ───────────────────────────────────────────────────────────────
+// "a deploy with direction modal on the admin report page … grab ideas from the report and then type them into a text input and then use
+// that to direct the asset stack deployment". Two steps:
+//   offerPlan   — one Claude call: report (+ an offer card, optional) + the operator's direction → the offer + every asset's Writer Directions.
+//                 Nothing is created. The modal shows it for review.
+//   offerDeploy — a job (KV offerdeploy:job:<id>) of create / write steps, run in order by offerDeployRun (the modal drives it while open;
+//                 the */4 cron finishes it if the tab closes). All assets: the report's title, ONE new initiative "<Title> - <Offer>", the
+//                 same due date. Upstream first: the Offer is created and written (→ Publish) before any child exists; a failed write
+//                 holds the job (later steps never run on a broken upstream). Selling-point posts stand alone (Run reference, no parent),
+//                 the Run asset is the Offer's child and carries the due date.
+const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
+async function offerReportCtx(env, aid) {
+  const pg = await ivPage(aid); if (!pg || !pg.properties) throw new Error("Report asset not found");
+  const ap = pg.properties, titleId = hubAssetId(ivRid(ap, "Content Strategy")); if (!titleId) throw new Error("This report has no title");
+  const t = await ivPage(titleId), tp = (t && t.properties) || {};
+  const campaignId = hubAssetId(ivRid(ap, "Campaign") || ivRid(tp, "Campaign")), productId = hubAssetId(ivRid(ap, "Product") || ivRid(tp, "Product") || "");
+  if (!campaignId) throw new Error("The report's title has no hub (Campaign)");
+  return { assetId: aid, titleId, campaignId, productId, titleName: hubRichText(tp.Title?.title || tp.Name?.title) || "Title" };
+}
+async function offerPlan(env, body) {
+  const aid = hubAssetId(body.assetId || ""); if (!/^[0-9a-f]{32}$/i.test(aid)) throw new Error("assetId required");
+  const R = await reportGet(env, aid, body.at); if (!R) throw new Error("This report hasn't been run yet");
+  const A = R.analysis || {}, idx = Number.isInteger(body.index) ? body.index : (body.index === "" || body.index == null ? -1 : Number(body.index));
+  const card = idx >= 0 ? (A.opportunities || [])[idx] || null : null, dir = String(body.direction || "").trim().slice(0, 6000);
+  if (!card && !dir) throw new Error("Pick an offer card or type a direction");
+  const ctx = await offerReportCtx(env, aid);
+  const kind = /premium/i.test(String(body.kind || (card && card.kind) || "")) ? "premium information" : "consulting";
+  const reportLink = "https://aisystemimplementation.com/members/?report=" + aid, booking = await storyBookingLink(ctx.campaignId).catch(() => "");
+  const cta = kind === "consulting" ? { action: "book a call", link: booking && booking !== STORY_BOOKING_DUMMY ? booking : "[BOOKING LINK]" } : { action: "get the report", link: reportLink };
+  const packet = { title: ctx.titleName, hub: R.hub, reportDate: R.at, operatorDirection: dir, offerCard: card, offerKind: kind, cta,
+    summary: A.summary, pains: A.pains, complaints: A.complaints, audienceQuestions: A.audience, moving: A.moving, risks: A.risks, demand: A.demand,
+    sources: (R.sources || []).map(s => ({ n: s.n, claim: s.claim, url: s.url, publisher: s.publisher, date: s.date })) };
+  const dirs = { type: "string", description: "Writer Directions for this ONE asset: its job, which selling points / pains / sources to use (quote source URLs), angle, keywords. Facts only from the packet." };
+  const em = { type: "object", required: ["day", "job", "directions"], properties: { day: { type: "integer" }, job: { type: "string" }, directions: dirs } };
+  const schema = { type: "object", required: ["name", "promise", "sellingPoints", "offer", "page", "cta", "posts", "welcome", "sales"], properties: {
+    name: { type: "string", description: "the offer's short name" }, promise: { type: "string", description: "one line: the outcome, in the buyer's words" },
+    sellingPoints: { type: "array", items: { type: "object", required: ["kind", "point", "source"], properties: { kind: { type: "string", enum: ["pain", "benefit", "proof", "objection"] }, point: { type: "string" }, source: { type: "string", description: "source URL, or the exact search + volume, or '' for the operator's own direction" } } }, description: "6-12" },
+    offer: dirs, page: dirs,
+    cta: { type: "object", required: OFFER_CTA_KINDS, properties: Object.fromEntries(OFFER_CTA_KINDS.map(k => [k, dirs])) },
+    posts: { type: "array", items: { type: "object", required: ["name", "directions"], properties: { name: { type: "string", description: "the post's idea in plain words" }, directions: dirs } }, description: "one per selling point worth a post, 6-10" },
+    welcome: { type: "array", items: em, description: "exactly 5: welcome & nurture for people who opted in — deliver what they asked for, then value, then a soft offer on the last (days 0, 2, 5, 9, 14)" },
+    sales: { type: "array", items: em, description: "exactly 5: sales series to a cold list — pain, proof it's common, the offer, the main objection, last call (days 0, 3, 6, 10, 14)" } } };
+  let usage = null;
+  const plan = await hcClaude(env, `You plan an offer stack for a solo consultant's hub. The OPERATOR DIRECTION is the brief — follow it first; the offer card (if any) is the starting point; the report is the only source of facts. ` +
+    `Never invent a client, result, number, price or quote; a selling point either cites a source URL / exact search from the packet or is the operator's own direction (source ''). ` +
+    `Every asset's directions must name the call to action: ${cta.action} (${cta.link}). Plain, specific, no hype.\n\nPACKET:\n` + JSON.stringify(packet), "offer_plan", schema, 9000, u => { usage = u; });
+  if (!plan || !plan.name) throw new Error("The plan came back empty");
+  return { ok: true, ctx: { ...ctx, at: R.at, kind, cta, direction: dir, index: idx }, plan, usage };
+}
+function offerDirections(job, own) {
+  const p = job.plan, c = job.ctx;
+  return [`OFFER STACK — ${p.name} (${c.kind}) · initiative "${job.initiative}"`, `Promise: ${p.promise}`,
+    c.direction ? `OPERATOR DIRECTION:\n${c.direction}` : "", `THIS ASSET:\n${own}`, `CALL TO ACTION: ${c.cta.action} — ${c.cta.link}`,
+    `Facts come only from the Offer, the report (${c.at.slice(0, 10)}) and the sources named; never invent clients, results, numbers or prices.`].filter(Boolean).join("\n\n").slice(0, WRITER_DIRECTIONS_MAX);
+}
+async function offerDeployStart(env, body) {
+  const ctx = body.ctx || {}, plan = body.plan || {}, due = String(body.due || "").trim(), inc = body.include || {};
+  if (!/^[0-9a-f]{32}$/i.test(ctx.assetId || "") || !/^[0-9a-f]{32}$/i.test(ctx.titleId || "") || !/^[0-9a-f]{32}$/i.test(ctx.campaignId || "")) throw new Error("Draft the plan first");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new Error("Pick the due date");
+  const name = String(plan.name || "").trim().slice(0, 120); if (!name) throw new Error("The offer needs a name");
+  const initiative = `${ctx.titleName} - ${name}`.slice(0, 200), N = name, S = [];
+  const mk = (key, type, title, own, extra = {}) => { S.push({ op: "create", key, type, title: title.slice(0, 300), own: String(own || ""), ...extra }); S.push({ op: "write", key }); };
+  mk("offer", "Offer", `${N} - Offer`, plan.offer + "\n\nSELLING POINTS:\n" + (plan.sellingPoints || []).map(s => `- (${s.kind}) ${s.point}${s.source ? " [" + s.source + "]" : ""}`).join("\n"), { parent: "" });
+  if (inc.page !== false) mk("page", "Landing Page", `${N} - Sales Page`, plan.page, { parent: "offer" });
+  if (inc.cta !== false) OFFER_CTA_KINDS.forEach(k => mk("cta" + k.replace(/\s/g, ""), "CTA", `${N} - CTA ${k}`, (plan.cta || {})[k], { parent: "offer", format: k }));
+  if (inc.posts !== false && (plan.posts || []).length) { S.push({ op: "run", key: "run", run: `${N} - Selling Points` });
+    plan.posts.slice(0, 12).forEach((x, i) => mk("post" + i, "single post", `${N} - ${x.name}`, x.directions, { run: `${N} - Selling Points` })); }
+  if (inc.welcome !== false) (plan.welcome || []).slice(0, 5).forEach((x, i) => mk("welcome" + i, "Hub - Email Welcome Sequence", `${N} - Welcome ${i + 1} (day ${x.day})`, `Email ${i + 1} of 5, day ${x.day}. Job: ${x.job}\n${x.directions}`, { parent: "offer" }));
+  if (inc.sales !== false) (plan.sales || []).slice(0, 5).forEach((x, i) => mk("sales" + i, "Direct Sales Email", `${N} - Sales ${i + 1} (day ${x.day})`, `Email ${i + 1} of 5, day ${x.day}. Job: ${x.job}\n${x.directions}`, { parent: "offer" }));
+  const id = "od" + Date.now().toString(36), job = { id, at: new Date().toISOString(), ctx, plan, due, initiative, steps: S, i: 0, ids: {}, log: [], status: "queued" };
+  await env.TRADES.put("offerdeploy:job:" + id, JSON.stringify(job));
+  const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || []; L.unshift({ id, at: job.at, assetId: ctx.assetId, name: N });
+  await env.TRADES.put("offerdeploy:jobs", JSON.stringify(L.slice(0, 40)));
+  return { ok: true, jobId: id, steps: S.length, initiative };
+}
+function offerJobView(job) {
+  return { id: job.id, status: job.status, i: job.i, of: job.steps.length, initiative: job.initiative, due: job.due, name: job.plan.name, error: job.error || "",
+    steps: job.steps.map((s, k) => ({ op: s.op, key: s.key, title: s.title || s.run || (job.steps.find(x => x.op === "create" && x.key === s.key) || {}).title || "", done: k < job.i, id: job.ids[s.key] || "" })), log: job.log.slice(-12) };
+}
+async function offerDeployRun(env, invoke, jobId, budgetMs) {
+  const K = "offerdeploy:job:" + jobId, job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
+  if (job.status === "done" || job.status === "held") return offerJobView(job);
+  if (job.running && Date.now() - job.running < 3 * 60000) return { ...offerJobView(job), busy: true };
+  job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
+  const t0 = Date.now(), c = job.ctx;
+  while (job.i < job.steps.length && Date.now() - t0 < budgetMs) {
+    const s = job.steps[job.i]; let ok = true, note = "";
+    try {
+      if (s.op === "create") {
+        const r = await invoke({ action: "initiativeBuildAsset", titleId: c.titleId, campaignId: c.campaignId, productId: c.productId || undefined, assetType: s.type, assetTitle: s.title,
+          ...(s.parent ? { parentAssetId: job.ids[s.parent] } : {}), initiative: job.initiative, directions: offerDirections(job, s.own) });
+        if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created");
+        const aid = r.assetId; job.ids[s.key] = aid; note = r.warning || "";
+        const props = {};
+        if (s.format) props.Format = { select: { name: s.format } };
+        if (s.run) { await runEnsureProps(env); props.Run = { rich_text: ivRt(s.run) }; }
+        if (s.key === "offer") { await assetsTextPropEnsure(env, "Selling Points", "sellingpoints:prop");
+          props["Selling Points"] = { rich_text: richChunks((job.plan.sellingPoints || []).map(x => `(${x.kind}) ${x.point}${x.source ? " [" + x.source + "]" : ""}`).join("\n")) }; }
+        if (Object.keys(props).length) { const p = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+          if (!p.ok) note += " · fields not saved: " + ((await p.json().catch(() => ({}))).message || p.status); }
+        if (!s.run) { const d = await invoke({ action: "setAssetDeadline", assetId: aid, date: job.due }); if (d && d.error) note += " · due not set: " + d.error; }
+      } else if (s.op === "run") {
+        const r = await runAssetEnsure(env, job.ids.offer, s.run, job.due); if (!r || !r.id) throw new Error("Run asset not made"); job.ids[s.key] = hubAssetId(r.id);
+        await env.TRADES.put("route:run:" + s.run.toLowerCase(), JSON.stringify({ from: job.ids.offer, fromType: "Offer", run: s.run, at: new Date().toISOString() })).catch(() => {});
+        if (r.existing) { const d = await invoke({ action: "setAssetDeadline", assetId: job.ids[s.key], date: job.due }); if (d && d.error) note = "due not set: " + d.error; }
+      } else if (s.op === "write") {
+        const r = await invoke({ action: "writeAsset", assetId: job.ids[s.key] });
+        if (!r || r.error || r.needsInterview) throw new Error((r && (r.error || r.reason)) || (r && r.needsInterview ? "needs an interview first" : "not written"));
+        note = r.written ? "written" : "saved with notes: " + (r.violations || []).join(" · ").slice(0, 300);
+      }
+    } catch (e) { ok = false; note = e.message; }
+    job.log.push({ at: new Date().toISOString(), i: job.i, op: s.op, key: s.key, ok, note: String(note || "").slice(0, 400) });
+    if (!ok) { job.status = "held"; job.error = `${s.op} ${s.title || s.key}: ${note}`; break; }
+    job.i++;
+  }
+  if (job.status === "running") job.status = job.i >= job.steps.length ? "done" : "queued";
+  delete job.running; await env.TRADES.put(K, JSON.stringify(job));
+  return offerJobView(job);
+}
+async function offerDeployTick(env, invoke) {   // */4 cron: the oldest unfinished deploy, ~6 minutes
+  const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || [];
+  for (const j of L.slice().reverse()) { const job = await env.TRADES.get("offerdeploy:job:" + j.id, "json").catch(() => null);
+    if (job && (job.status === "queued" || job.status === "running")) return await offerDeployRun(env, invoke, j.id, 6 * 60000); }
+  return { idle: true };
+}
+// one router for the operator (dash) and the superadmin (members page): op plan | start | run | get | list | resume
+async function offerDeployOp(env, invoke, body) {
+  const op = String(body.sub || body.op2 || "");
+  if (op === "plan") return await offerPlan(env, body);
+  if (op === "start") return await offerDeployStart(env, body);
+  if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 40000);
+  if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
+  if (op === "resume") { const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
+    if (job.status === "held") { job.status = "queued"; job.error = ""; delete job.running; await env.TRADES.put(K, JSON.stringify(job)); } return offerJobView(job); }
+  if (op === "list") { const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || []; return { ok: true, jobs: body.assetId ? L.filter(x => x.assetId === hubAssetId(body.assetId)) : L }; }
+  return { error: "Unknown offer deploy request" };
+}
 // 📊 report groups (operator 2026-11-24): KV report:groups = { groups: [{id, name}], order: {groupId: [assetId…]} } — display only.
 // Saved from Hub Dash 2 (reportGroups) and from the members page by a superadmin (member op groupsSave); members see the same grouping.
 async function reportGroupsGet(env) { return (await env.TRADES.get("report:groups", "json").catch(() => null)) || { groups: [], order: {} }; }
@@ -21114,6 +21251,12 @@ export default {
       const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
+    if (body.action === "member" && body.op === "offerDeploy") { try {   // 🚀 Offer Stack deploy from the members report page — superadmin only
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can deploy offers." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const { token, op, action, ...rest } = body; return json(await offerDeployOp(env, invoke, rest)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member") { try { return json(await handleMember(env, body)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "studio") {
       if (!["start", "generate", "expertCheck"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
@@ -21379,6 +21522,10 @@ export default {
     }
     // reportGroups {op: get | save, data} (operator; 2026-11-24 "let me create groupings by drag and drop in the admin just for organization in
     // that screen"): KV report:groups = { groups: [{id, name}], order: {groupId: [assetId…]} } — display only, read by nothing else.
+    // offerDeploy {sub: plan | start | run | get | resume | list, …} — 🚀 Offer Stack deploy (docs/offer-stack.md)
+    if (body.action === "offerDeploy") { if (externalCaller) return json({ error: "operator only" }, 403);
+      const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+      try { return json(await offerDeployOp(env, invoke, body)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "reportGroups") { if (externalCaller) return json({ error: "operator only" }, 403);
       if (body.op === "save") return json(await reportGroupsSave(env, body.data));
       return json({ ok: true, ...(await reportGroupsGet(env)) });
@@ -21956,8 +22103,10 @@ export default {
           if (!/^[0-9a-f]{32}$/i.test(tid) || !/^[0-9a-f]{32}$/i.test(cid)) return json({ error: "titleId and campaignId required" }, 400);
           const bad = initiativeNameBad(init); if (bad) return json({ error: bad }, 400);
           if (dir.length > WRITER_DIRECTIONS_MAX) return json({ error: "Writer directions are at most " + WRITER_DIRECTIONS_MAX + " characters" }, 400);
-          const types = await cpcTypeOptions(), type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));
-          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is not an Asset Type option in Notion — a new type is never made here` }, 400);
+          const types = await cpcTypeOptions(), flowIB = await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null);
+          const flowTypesIB = ((flowIB && flowIB.rows) || []).filter(r => r.cells?.kind === "node" && /asset/i.test(r.cells?.role || "")).map(r => String(r.cells.label || "").trim()).filter(Boolean);
+          const type = types.find(x => cpcNorm(x) === cpcNorm(body.assetType || "")) || flowTypesIB.find(x => cpcNorm(x) === cpcNorm(body.assetType || ""));   // an Asset Flow type not yet in Notion (2026-11-24)
+          if (!type) return json({ error: `"${body.assetType || "(blank)"}" is neither an Asset Type option in Notion nor an Asset Flow type` }, 400);
           await initiativeEnsureProp(env); await writerDirectionsEnsureProp(env);
           const assetTitle = String(body.assetTitle || "").trim().slice(0, 300) || type;
           const a = await invoke({ action: "createAsset", titleId: tid, campId: cid, productId: body.productId ? hubAssetId(body.productId) : undefined, assetTitle, assetType: type,
@@ -60763,6 +60912,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
         await storyCronTick(env, invoke); })());   // single post story: one queued slot per tick
       cw("patchQueueTick", patchQueueTick(env));
       cw("actionQueueTick", actionQueueTick(env, this, ctx));
+      cw("offerDeployTick", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        await offerDeployTick(env, invoke); })());   // 🚀 offer stacks left running by a closed tab (2026-11-24)
       if (new Date().getUTCMinutes() < 4) cw("runRollupAll", runRollupAll(env));
       cw("upWriteTick", upWriteTick(env, this, ctx));   // upstream parents the roll-up found unwritten → the writer (2026-11-16)   // hourly: Run / Series status roll-up (2026-11-16)   // action queue: Claude runs dashboard actions in order (2026-11-16)
       cw("writeQueueTick", writeQueueTick(env, this, ctx));   // one-off write queue (2026-11-16)
