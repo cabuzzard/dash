@@ -51,6 +51,23 @@ body.rp-side.rp-nhide .rp-notes { transform: translateX(calc(100% + 32px)); visi
 body.rp-side.rp-nhide .rp-nbtn { display: block; }
 @media (min-width: 1180px) { body.rp-side:not(.rp-nhide) .wrap { margin: 0 400px 0 max(16px, calc(50vw - 610px)); } }
 @media (prefers-reduced-motion: reduce) { body.rp-side .rp-notes { transition: none; } }
+.od-fab { position: fixed; z-index: 1500; left: 16px; bottom: 16px; font: 600 15px "Hanken Grotesk", sans-serif; padding: 10px 18px; min-height: 44px; border-radius: 999px; border: 1px solid var(--accent); background: var(--bg); color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.18); cursor: pointer; }
+.od-grab { background: var(--accent) !important; }
+.od-bg { position: fixed; inset: 0; z-index: 2500; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow: auto; }
+.od-box { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; width: min(760px, 100%); padding: 18px 20px; box-shadow: 0 12px 48px rgba(0,0,0,.3); font-size: 15px; }
+.od-sec { border-top: 1px solid var(--line); padding: 12px 0; }
+.od-h { font-weight: 700; margin: 0 0 6px; }
+.od-l { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); margin: 10px 0 4px; }
+.od-in { width: 100%; border-radius: 10px; }
+.od-ta { width: 100%; box-sizing: border-box; font: 15px/1.5 "Hanken Grotesk", sans-serif; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); resize: vertical; margin: 0 0 8px; }
+.od-ta:focus, .od-in:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.od-mute { color: var(--ink-soft); font-size: 13.5px; }
+.od-inc { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.od-inc label { display: flex; align-items: center; gap: 6px; min-height: 32px; cursor: pointer; }
+.od-d { font-size: 13.5px; max-height: 340px; overflow: auto; } .od-d p { margin: 2px 0 10px; color: var(--ink-soft); white-space: pre-wrap; }
+.od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
+.od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
+.od-cb { margin: 10px 0 0 !important; }
 .mg-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 20px; }
 .mg-in { flex: 1; min-width: 0; font: 500 15px "Hanken Grotesk", sans-serif; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 38px; }
 .mg-msg { font-size: 13px; color: var(--ink-soft); }
@@ -223,7 +240,7 @@ async function reportView(tok, at) {
     const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + "</option>").join("") + "</select>" : "";
     out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + reportHtml(d.report);
     rnAttach({ key: REPORT_ID, ver: d.report.at, api: (sub, p) => call(Object.assign({ op: "notes", token: store.get("mb_token"), assetId: REPORT_ID, sub }, p)) });
-    rpNotesFlyout();
+    rpNotesFlyout(); odInit(d);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
 }
 // 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
@@ -340,6 +357,106 @@ function rnPaint(err) {
       <textarea class="rp-nt" data-id="${rnEsc(it.id)}" rows="2" placeholder="Add a note…" aria-label="Note ${L.indexOf(it) + 1}">${rnEsc(it.note || '')}</textarea>
       <div class="rp-nm"><span>${rnEsc(it.byName || '')} · ${when(it.at)}${it.editedBy ? ' · edited by ' + rnEsc(it.editedBy) + ' ' + when(it.editedAt) : ''}</span><span class="rp-ns" data-id="${rnEsc(it.id)}"></span><button onclick="rnRemove('${rnEsc(it.id)}')">Remove</button></div></li>`).join('');
 }
+// 🚀 Deploy with direction (operator 2026-11-24: "a deploy with direction modal on the admin report page … grab ideas from the report and then
+// type them into a text input and then use that to direct the asset stack deployment"). Admin only. Select text → ➕ Direction adds it to the
+// direction (kept in this browser per report); each offer card has 🚀 Deploy this offer; the 🚀 button bottom-left opens the modal:
+// ✨ Draft plan (worker offerDeploy sub:plan — nothing created) → review → 🚀 Deploy (sub:start, then sub:run steps while the modal is open;
+// the worker's cron finishes it if the tab closes). Every asset: this report's title, one new initiative, one due date. docs/offer-stack.md
+let OD = null;
+const odKey = () => "mb_dir:" + REPORT_ID, odJobKey = () => "mb_odjob:" + REPORT_ID;
+const odDir = () => store.get(odKey()) || "";
+function odApi(sub, p) { return call(Object.assign({ op: "offerDeploy", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {})); }
+function odInit(d) {
+  if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { page: true, cta: true, posts: true, welcome: true, sales: true } };
+  OD.report = d.report;
+  out.querySelectorAll(".rp-oact[data-i]").forEach(el => { const i = +el.dataset.i; el.innerHTML = `<button class="share od-cb" onclick="odOpen(${i})">🚀 Deploy this offer</button>`; });
+  odFab(); odBindSel(); const jid = store.get(odJobKey()); if (jid) odApi("get", { jobId: jid }).then(j => { if (j && !j.error) { OD.job = j; odFab(); } }).catch(() => {});
+}
+function odFab() {
+  let b = document.getElementById("odFab"); if (!b) { b = document.createElement("button"); b.id = "odFab"; b.className = "od-fab"; b.onclick = () => odOpen(); document.body.appendChild(b); }
+  const n = odDir().split("\n").filter(l => /^• /.test(l)).length, j = OD && OD.job;
+  b.textContent = "🚀 Deploy offer stack" + (n ? " · " + n + " idea" + (n === 1 ? "" : "s") : "") + (j && j.status !== "done" ? " · " + (j.status === "held" ? "⚠ held" : j.i + "/" + j.of) : "");
+}
+function odBindSel() {
+  if (window._odBound) return; window._odBound = true; let tm;
+  const btn = () => { let g = document.getElementById("odGrab"); if (!g) { g = document.createElement("button"); g.id = "odGrab"; g.type = "button"; g.className = "rp-hlbtn od-grab"; g.textContent = "➕ Direction";
+    g.addEventListener("mousedown", e => e.preventDefault()); g.addEventListener("click", odGrab); document.body.appendChild(g); } return g; };
+  document.addEventListener("selectionchange", () => { clearTimeout(tm); tm = setTimeout(() => { const g = btn(), h = document.getElementById("rpHlBtn");
+    if (!OD || !RN.pending || !h || h.style.display !== "block") { g.style.display = "none"; return; }
+    g.style.display = "block"; g.style.top = h.style.top; g.style.left = Math.min(window.innerWidth - 140, parseFloat(h.style.left) + h.offsetWidth + 8) + "px"; }, 180); });
+  window.addEventListener("scroll", () => { const g = document.getElementById("odGrab"); if (g) g.style.display = "none"; }, true);
+}
+function odGrab() {
+  const p = RN.pending; if (!p) return; const label = { summary: "Summary", moving: "What's moving", demand: "Search demand", audience: "Audience", pains: "Pain points", opportunities: "Offers", risks: "Risks", next: "Next titles", gaps: "Gaps", sources: "Sources" }[p.sec] || p.sec;
+  const cur = odDir(); store.set(odKey(), (cur ? cur.replace(/\s+$/, "") + "\n" : "") + "• " + label + ': "' + p.text + '"');
+  const g = document.getElementById("odGrab"); if (g) { g.textContent = "✓ Added"; setTimeout(() => { g.textContent = "➕ Direction"; g.style.display = "none"; }, 900); }
+  try { window.getSelection().removeAllRanges(); } catch (e) {} odFab(); if (OD.open) odDraw();
+}
+function odOpen(i) {
+  if (!OD) return; OD.open = true; OD.msg = "";
+  if (Number.isInteger(i)) { if (OD.idx !== i) { OD.plan = null; OD.ctx = null; } OD.idx = i; const c = ((OD.report.analysis || {}).opportunities || [])[i]; if (c && c.kind) OD.kind = c.kind; }
+  document.body.style.overflow = "hidden"; odDraw(); if (OD.job && OD.job.status !== "done" && OD.job.status !== "held") odRunLoop();
+}
+function odClose() { if (!OD) return; OD.open = false; const m = document.getElementById("odM"); if (m) m.remove(); document.body.style.overflow = ""; odFab(); }
+function odDraw() {
+  if (!OD || !OD.open) return; let m = document.getElementById("odM");
+  if (!m) { m = document.createElement("div"); m.id = "odM"; m.className = "od-bg"; m.onclick = e => { if (e.target === m) odClose(); }; document.body.appendChild(m); }
+  const A = OD.report.analysis || {}, cards = (A.opportunities || []).filter(o => o && o.name), P = OD.plan, J = OD.job, dis = OD.busy ? "disabled" : "";
+  const card = OD.idx >= 0 ? cards[OD.idx] : null;
+  const jobHtml = !J ? "" : `<div class="od-sec"><div class="od-h">Deploy: ${esc(J.name || "")} <span class="od-mute">· ${esc(J.initiative || "")} · due ${esc(J.due || "")}</span></div>
+    <div class="od-mute">${J.status === "done" ? "✓ Done, every asset created and written" : J.status === "held" ? "⚠ Held: " + esc(J.error || "") : "Working… step " + J.i + " of " + J.of + " (keeps going on the server if you close this)"}</div>
+    <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${s.op === "write" ? "write" : s.op === "run" ? "run" : "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${J.status === "held" ? `<button class="share" ${dis} onclick="odResumeJob()">↻ Retry from the held step</button>` : ""}${J.status === "done" || J.status === "held" ? `<button class="share" onclick="OD.job=null;store.set(odJobKey(),null);odDraw();odFab()">New deploy</button>` : ""}</div></div>`;
+  const planHtml = !P ? "" : `<div class="od-sec"><div class="od-h">Plan</div>
+    <label class="od-l">Offer name</label><input class="mg-in od-in" id="odName" value="${esc(P.name)}" maxlength="120">
+    <div class="od-mute" style="margin:6px 0">${esc(P.promise || "")} · ${OD.ctx.kind === "consulting" ? "📞 consulting → book a call" : "📊 premium information → the report"}</div>
+    <details open><summary>Selling points (${(P.sellingPoints || []).length})</summary><ul>${(P.sellingPoints || []).map(s => `<li><b>${esc(s.kind)}</b> ${esc(s.point)} ${s.source ? `<span class="od-mute">· ${esc(s.source)}</span>` : ""}</li>`).join("")}</ul></details>
+    <details><summary>What each asset will be told (${2 + 4 + (P.posts || []).length + (P.welcome || []).length + (P.sales || []).length})</summary>
+      <div class="od-d"><b>Offer</b><p>${esc(P.offer)}</p><b>Sales page</b><p>${esc(P.page)}</p>${Object.entries(P.cta || {}).map(([k, v]) => `<b>CTA ${esc(k)}</b><p>${esc(v)}</p>`).join("")}
+      ${(P.posts || []).map((x, i) => `<b>Post ${i + 1}: ${esc(x.name)}</b><p>${esc(x.directions)}</p>`).join("")}
+      ${(P.welcome || []).map((x, i) => `<b>Welcome ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}
+      ${(P.sales || []).map((x, i) => `<b>Sales ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}</div></details>
+    <label class="od-l">Due date (every asset)</label><input type="date" class="mg-in od-in" id="odDue" value="${esc(OD.due)}" onchange="OD.due=this.value">
+    <div class="od-l">Include</div><div class="od-inc">${[["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked"> ${esc(l)}</label>`).join("")}</div>
+    <div class="od-mute" style="margin:8px 0">Initiative: <b>${esc(OD.ctx.titleName + " - " + P.name)}</b>. The Offer is created and written first; the rest only after it's written.</div>
+    <button class="share od-go" ${dis} onclick="odStart()">🚀 Deploy stack</button></div>`;
+  m.innerHTML = `<div class="od-box" role="dialog" aria-label="Deploy offer stack"><div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><b style="font-size:18px">🚀 Deploy offer stack</b><span style="flex:1"></span><button class="rp-nx" aria-label="Close" onclick="odClose()">✕</button></div>
+    ${J && J.status !== "done" && J.status !== "held" ? "" : `<div class="od-sec">
+    <label class="od-l">Start from an offer card</label><select class="mg-in od-in" onchange="OD.idx=+this.value;OD.plan=null;const c=(OD.report.analysis.opportunities||[])[OD.idx];if(c&&c.kind)OD.kind=c.kind;odDraw()">
+      <option value="-1">— none, direction only —</option>${cards.map((c, i) => `<option value="${i}" ${i === OD.idx ? "selected" : ""}>${esc(c.name)} (${esc(c.strength || "")})</option>`).join("")}</select>
+    ${card ? `<div class="od-mute" style="margin:-4px 0 8px">${esc((card.forWho || {}).company || "")} · ${esc(card.headline || "")}</div>` : ""}
+    <label class="od-l">Direction: your brief (ideas you grabbed with ➕ Direction land here; edit freely)</label>
+    <textarea class="od-ta" id="odTa" rows="7" oninput="store.set(odKey(),this.value||null);odFab()" placeholder="e.g. Lead with the law-firm video angle, keep it done-for-you, emphasise distribution not just production…">${esc(odDir())}</textarea>
+    <label class="od-l">Offer kind</label><select class="mg-in od-in" onchange="OD.kind=this.value"><option value="consulting" ${OD.kind !== "premium information" ? "selected" : ""}>📞 Consulting: CTAs book a call</option><option value="premium information" ${OD.kind === "premium information" ? "selected" : ""}>📊 Premium information: CTAs point to the report</option></select>
+    <button class="share" ${dis} onclick="odPlan()">${P ? "↻ Redraft plan" : "✨ Draft plan"}</button> <span class="od-mute">One AI call (~1 min); nothing is created yet.</span></div>`}
+    ${OD.msg ? `<div class="${/^✗/.test(OD.msg) ? "msg" : "od-mute"}" style="margin:8px 0">${esc(OD.msg)}</div>` : ""}${OD.busy ? `<div class="od-mute" style="margin:8px 0">${esc(OD.busy)}</div>` : ""}
+    ${jobHtml || planHtml}</div>`;
+}
+async function odPlan() {
+  const ta = document.getElementById("odTa"), dir = ta ? ta.value : odDir();
+  if (OD.idx < 0 && !dir.trim()) { OD.msg = "✗ Pick an offer card or write a direction"; return odDraw(); }
+  OD.busy = "Drafting the plan…"; OD.msg = ""; odDraw();
+  const r = await odApi("plan", { index: OD.idx, direction: dir, kind: OD.kind || undefined, at: OD.report.at }).catch(e => ({ error: e.message }));
+  OD.busy = ""; if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
+  OD.plan = r.plan; OD.ctx = r.ctx; OD.kind = r.ctx.kind; odDraw();
+}
+async function odStart() {
+  const n = document.getElementById("odName"); if (n) OD.plan.name = n.value.trim();
+  if (!OD.plan.name) { OD.msg = "✗ The offer needs a name"; return odDraw(); } if (!OD.due) { OD.msg = "✗ Pick the due date"; return odDraw(); }
+  OD.busy = "Starting…"; OD.msg = ""; odDraw();
+  const r = await odApi("start", { ctx: OD.ctx, plan: OD.plan, due: OD.due, include: OD.inc }).catch(e => ({ error: e.message }));
+  OD.busy = ""; if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
+  store.set(odJobKey(), r.jobId); OD.job = { id: r.jobId, status: "queued", i: 0, of: r.steps, name: OD.plan.name, initiative: r.initiative, due: OD.due, steps: [] }; odDraw(); odRunLoop();
+}
+async function odRunLoop() {
+  if (!OD || !OD.job || OD.looping) return; OD.looping = true;
+  try { while (OD.job && (OD.job.status === "queued" || OD.job.status === "running")) {
+      const r = await odApi("run", { jobId: OD.job.id }).catch(e => ({ error: e.message }));
+      if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response") + " · it keeps going on the server"; odDraw(); break; }
+      OD.job = r; odDraw(); odFab(); if (r.busy) await new Promise(res => setTimeout(res, 15000));
+      if (!OD.open) break; } } finally { OD.looping = false; }
+}
+async function odResumeJob() { const r = await odApi("resume", { jobId: OD.job.id }).catch(e => ({ error: e.message })); if (r && !r.error) { OD.job = r; odDraw(); odRunLoop(); } else { OD.msg = "✗ " + ((r && r.error) || "No response"); odDraw(); } }
 // 📝 Notes flyout (operator 2026-11-24: "make the notes section a flyout that stays visible"): on this page the Notes section is pinned to
 // the right edge and scrolls on its own while the report scrolls beside it. Wide screens: open, report shifted left to make room; ✕ tucks
 // it into a 📝 Notes button. Narrow screens: starts tucked; the button (or tapping a highlight / adding one) slides it in over the report.

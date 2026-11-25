@@ -1633,7 +1633,7 @@ async function handleMember(env, body) {
     if (!(rec.links || []).includes("*") && !(rec.reports || []).includes(aid) && !pubR.includes(aid)) return { error: "This report isn't shared with you.", code: "no_access" };
     if (op === "notes") return await reportNotesOp(env, aid, { id: email, name: rec.name || rec.gName || email.split("@")[0], admin: (rec.links || []).includes("*") }, body);
     const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
-    const { usage, notes, ...pub } = rp; return { ok: true, report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
+    const { usage, notes, ...pub } = rp; return { ok: true, admin: (rec.links || []).includes("*"), report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
   if (op === "groupsSave") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can arrange report groups." }; return await reportGroupsSave(env, body.data); }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
   const exp = Date.now() + MEMBER_DAYS * 864e5;
