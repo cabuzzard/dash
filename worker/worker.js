@@ -1548,14 +1548,14 @@ function offerJobView(job) {
   return { id: job.id, status: job.status, i: job.i, of: job.steps.length, initiative: job.initiative, due: job.due, name: job.plan.name, error: job.error || "",
     steps: job.steps.map((s, k) => ({ op: s.op, key: s.key, title: s.title || s.run || (job.steps.find(x => x.op === "create" && x.key === s.key) || {}).title || "", done: k < job.i, id: job.ids[s.key] || "" })), log: job.log.slice(-12) };
 }
-async function offerDeployRun(env, invoke, jobId, budgetMs) {
+async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
   const K = "offerdeploy:job:" + jobId, job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
   if (job.status === "done" || job.status === "held") return offerJobView(job);
   if (job.running && Date.now() - job.running < 3 * 60000) return { ...offerJobView(job), busy: true };
   job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
   const t0 = Date.now(), c = job.ctx;
   if (!job.iniAdded) { const a = await invoke({ action: "initiativeNames", op: "add", name: job.initiative }).catch(e => ({ error: e.message })); if (a && !a.error) job.iniAdded = true; }
-  while (job.i < job.steps.length && Date.now() - t0 < budgetMs) {
+  while (job.i < job.steps.length && (oneStep || Date.now() - t0 < budgetMs)) {
     const s = job.steps[job.i]; let ok = true, note = "";
     try {
       if (s.op === "create") {
@@ -1585,7 +1585,8 @@ async function offerDeployRun(env, invoke, jobId, budgetMs) {
     } catch (e) { ok = false; note = e.message; }
     job.log.push({ at: new Date().toISOString(), i: job.i, op: s.op, key: s.key, ok, note: String(note || "").slice(0, 400) });
     if (!ok) { job.status = "held"; job.error = `${s.op} ${s.title || s.key}: ${note}`; break; }
-    job.i++;
+    job.i++; await env.TRADES.put(K, JSON.stringify(job));   // progress saved per step — a cut-off request never loses a finished step
+    if (oneStep) break;
   }
   if (job.status === "running") job.status = job.i >= job.steps.length ? "done" : "queued";
   delete job.running; await env.TRADES.put(K, JSON.stringify(job));
@@ -1614,7 +1615,7 @@ async function offerDeployOp(env, invoke, body) {
     const ini = ((await env.TRADES.get("initiative:names", "json").catch(() => null)) || {}).names || [];
     return { ok: true, ctx, titles: T, cohorts: (coh && coh.cohorts) || [], initiatives: ini }; }
   if (op === "start") return await offerDeployStart(env, body);
-  if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 40000);
+  if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 0, true);   // the modal: ONE step per call (a write can take ~90 s; a longer request is cut by the browser)
   if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
   if (op === "resume") { const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
     if (job.status === "held") { job.status = "queued"; job.error = ""; delete job.running; await env.TRADES.put(K, JSON.stringify(job)); } return offerJobView(job); }

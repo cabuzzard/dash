@@ -490,8 +490,10 @@ async function odRunLoop() {
   if (!OD || !OD.job || OD.looping) return; OD.looping = true;
   try { while (OD.job && (OD.job.status === "queued" || OD.job.status === "running")) {
       const r = await odApi("run", { jobId: OD.job.id }).catch(e => ({ error: e.message }));
-      if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response") + " · it keeps going on the server"; odDraw(); break; }
-      OD.job = r; odDraw(); odFab(); if (r.busy) await new Promise(res => setTimeout(res, 15000));
+      if (!r || r.error) {   // a dropped connection: the server keeps the step going — wait, read where it got to, carry on
+        OD.msg = "Connection dropped; the server is still working. Checking again…"; odDraw(); await new Promise(res => setTimeout(res, 20000));
+        const g = await odApi("get", { jobId: OD.job.id }).catch(() => null); if (g && !g.error) { OD.job = g; OD.msg = ""; odDraw(); odFab(); } if (!OD.open) break; continue; }
+      OD.msg = ""; OD.job = r; odDraw(); odFab(); if (r.busy) await new Promise(res => setTimeout(res, 15000));
       if (!OD.open) break; } } finally { OD.looping = false; }
 }
 async function odResumeJob() { const r = await odApi("resume", { jobId: OD.job.id }).catch(e => ({ error: e.message })); if (r && !r.error) { OD.job = r; odDraw(); odRunLoop(); } else { OD.msg = "✗ " + ((r && r.error) || "No response"); odDraw(); } }
