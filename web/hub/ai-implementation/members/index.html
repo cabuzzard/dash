@@ -147,17 +147,66 @@ let _mbD = null;
 function appsView(d, tab) {
   _mbD = d; const pic = store.get("mb_pic");
   const reports = d.apps.filter(a => a.kind === "report").sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))), apps = d.apps.filter(a => a.kind !== "report");
-  const tabs = [["reports", "📊 Reports", reports], ["apps", "Apps", apps]].filter(t => t[2].length);
+  const tabs = [["reports", "📊 Reports", reports], ["interviews", "🎤 Interviews", (IVM.items || []), d.superadmin], ["apps", "Apps", apps]].filter(t => t[2].length || t[3]);
   tab = tab || store.get("mb_tab"); if (!tabs.some(t => t[0] === tab)) tab = tabs.length ? tabs[0][0] : "";
   const when = at => { const x = new Date(at); return isNaN(x) ? "" : x.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
   const reportCard = a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
   const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
-  const list = tab === "reports" ? mgList(d, reports, reportCard) : tab === "apps" ? apps.map(appCard).join("") : "";
+  if (tab === "interviews" && !IVM.items && !IVM.busy) setTimeout(() => ivmLoad(), 0);
+  const list = tab === "interviews" ? ivmHtml() : tab === "reports" ? mgList(d, reports, reportCard) : tab === "apps" ? apps.map(appCard).join("") : "";
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
     + (tabs.length ? bar + (tabs.length === 1 ? `<h2 class="sec">${tabs[0][1]}</h2>` : "") + list : `<div class="card">You're signed in, but nothing is set up for you yet.</div>`);
 }
+// 🎤 Interviews tab (operator 2026-11-25: "list interviews also in the members area in their own tab") — admin only for now. Open interviews,
+// the ones an offer stack is waiting on first; answer in place (answers save as you go; ✓ Finish lets a waiting stack continue). Same worker
+// actions as the dash (getInterview / saveInterview) through the member op "interviews", so voice learning + downstream sync still happen.
+const IVM = { items: null, busy: false, open: null, status: "Flagged", msg: "" };
+function ivmApi(sub, p) { return call(Object.assign({ op: "interviews", token: store.get("mb_token"), sub }, p || {})); }
+async function ivmLoad(status) {
+  if (status) IVM.status = status; IVM.busy = true; IVM.items = IVM.items || null; appsView(_mbD, "interviews");
+  const r = await ivmApi("list", { status: IVM.status }).catch(e => ({ error: e.message })); IVM.busy = false;
+  if (!r || r.error) { IVM.msg = (r && r.error) || "Couldn't load"; IVM.items = IVM.items || []; } else { IVM.items = r.items || []; IVM.msg = ""; }
+  appsView(_mbD, "interviews");
+}
+function ivmHtml() {
+  if (IVM.open) return ivmAnswerHtml();
+  const sw = `<div style="display:flex;gap:8px;margin:0 0 14px"><button class="share" style="margin:0;${IVM.status === "Flagged" ? "border-color:var(--accent);color:var(--accent)" : ""}" onclick="IVM.items=null;ivmLoad('Flagged')">Open</button><button class="share" style="margin:0;${IVM.status === "Finished" ? "border-color:var(--accent);color:var(--accent)" : ""}" onclick="IVM.items=null;ivmLoad('Finished')">Finished (recent)</button></div>`;
+  if (IVM.busy && !IVM.items) return sw + '<p class="lede">Loading interviews…</p>';
+  if (IVM.msg) return sw + `<div class="msg">${esc(IVM.msg)}</div>`;
+  const L = IVM.items || []; if (!L.length) return sw + `<div class="card">${IVM.status === "Flagged" ? "No open interviews." : "Nothing finished yet."}</div>`;
+  const by = {}; L.forEach(x => { const k = x.stack ? "⏳ Offer stacks waiting on you" : (x.hub || "Other"); (by[k] = by[k] || []).push(x); });
+  const keys = Object.keys(by).sort((a, b) => (b.startsWith("⏳") - a.startsWith("⏳")) || a.localeCompare(b));
+  return sw + keys.map(k => `<section class="mg-g"><div class="mg-gh"><button class="mg-t" aria-expanded="${mgOpen().has("iv:" + k) || k.startsWith("⏳")}" onclick="mgToggle('iv:${esc(k).replace(/'/g, "")}')"><span class="mg-c">${mgOpen().has("iv:" + k) || k.startsWith("⏳") ? "▾" : "▸"}</span>${esc(k)} <span class="mg-n">${by[k].length}</span></button></div>
+    ${mgOpen().has("iv:" + k) || k.startsWith("⏳") ? by[k].map(x => `<a class="card app" href="#" onclick="event.preventDefault();ivmOpen('${x.id}')"><div class="t">${esc(x.title || "Interview")}</div>
+      <div class="m">${esc([x.of ? x.a + " of " + x.of + " answered" : "", x.forType, x.angle].filter(Boolean).join(" · "))}</div><div class="go">${x.a ? "Continue →" : "Answer →"}</div></a>`).join("") : ""}</section>`).join("");
+}
+async function ivmOpen(id) {
+  IVM.open = { id, busy: "Loading…" }; appsView(_mbD, "interviews"); window.scrollTo(0, 0);
+  const r = await ivmApi("get", { interviewId: id }).catch(e => ({ error: e.message }));
+  if (!r || r.error || !r.interview) { IVM.open = { id, err: (r && r.error) || "Couldn't load" }; } else IVM.open = { id, iv: r.interview, answers: r.interview.answers.slice(), saved: "" };
+  appsView(_mbD, "interviews");
+}
+function ivmAnswerHtml() {
+  const O = IVM.open, back = `<button class="share" style="margin:0 0 14px" onclick="ivmBack()">← All interviews</button>`;
+  if (O.busy) return back + `<p class="lede">${esc(O.busy)}</p>`; if (O.err) return back + `<div class="msg">${esc(O.err)}</div>`;
+  const iv = O.iv, done = iv.status === "Finished";
+  return back + `<h2 style="font:700 22px/1.25 'Bricolage Grotesque',sans-serif;margin:0 0 4px">${esc(iv.title || "Interview")}</h2><p class="lede" style="margin:0 0 18px">${esc(iv.angle || "")}${done ? " · ✓ Finished" : ""}</p>
+    ${iv.qs.map((q, i) => `<div class="card"><div style="font-weight:600;margin:0 0 8px">${i + 1}. ${esc(q)}</div><textarea class="od-ta" rows="5" data-i="${i}" oninput="IVM.open.answers[${i}]=this.value;IVM.open.dirty=true" onblur="ivmSave()" placeholder="Talk it out: plain words, real examples. It saves when you click away.">${esc(O.answers[i] || "")}</textarea></div>`).join("")}
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 40px"><button class="share" style="margin:0" onclick="ivmSave(true)">Save</button>
+      <button class="share od-go" style="margin:0" onclick="ivmSave(false,true)">✓ Finish interview</button><span class="od-mute" id="ivmSt">${esc(O.saved || "")}</span></div>`;
+}
+async function ivmSave(force, finish) {
+  const O = IVM.open; if (!O || !O.iv || (!O.dirty && !force && !finish)) return;
+  if (finish && !O.answers.some(a => String(a || "").trim())) { const s = document.getElementById("ivmSt"); if (s) s.textContent = "Answer at least one question first"; return; }
+  const s = document.getElementById("ivmSt"); if (s) s.textContent = "Saving…";
+  const r = await ivmApi("save", { interviewId: O.id, answers: O.answers, finish: !!finish }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { if (s) s.textContent = "✗ " + ((r && r.error) || "Not saved"); return; }
+  O.dirty = false; O.saved = "✓ Saved " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); if (r.interview) O.iv = r.interview;
+  if (finish) { O.saved = "✓ Finished: any offer stack waiting on it continues by itself"; IVM.items = null; appsView(_mbD, "interviews"); } else if (s) s.textContent = O.saved;
+}
+function ivmBack() { if (IVM.open && IVM.open.dirty) ivmSave(); IVM.open = null; IVM.items = null; ivmLoad(); }
 // 📊 Report groups (operator 2026-11-24: "I want grouping on the members admin screen"): the superadmin makes groups and drags reports
 // into them (or uses "Move to…" on a phone); everyone sees the reports under those groups. Same KV report:groups as Hub Dash 2's
 // 📊 Reports panel — display only. Members never see an empty group; the rest sit under "Other reports".

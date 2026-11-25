@@ -21327,6 +21327,26 @@ export default {
       const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
+    if (body.action === "member" && body.op === "interviews") { try {   // 🎤 Interviews tab on the members page (operator 2026-11-25) — superadmin only for now
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can open interviews here." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const sub = String(body.sub || "list");
+        if (sub === "list") {   // open interviews (+ the last finished ones), slim; offer-stack interviews flagged so they sort first
+          const st = body.status === "Finished" ? "Finished" : "Flagged";
+          const L = await ivList({ property: "Status", select: { equals: st } }); await hubSitesMerge(env);
+          const hubs = Object.fromEntries(HUB_SITES.map(h => [String(h.campaignId || "").replace(/-/g, ""), h.name]));
+          const km = await env.TRADES.list({ prefix: "interviewasset:" }).catch(() => ({ keys: [] })), stack = new Set();
+          for (const k of (km.keys || []).slice(0, 200)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.interviewId) stack.add(hubAssetId(v.interviewId)); }
+          const items = L.map(x => ({ id: x.id, title: x.title, angle: x.angle, hub: hubs[hubAssetId(x.cid || "")] || "", scope: x.scope, forType: x.forType, created: x.created, finishedAt: x.finishedAt,
+            a: (x.answers || []).filter(y => String(y || "").trim()).length, of: (x.qs || []).length, stack: stack.has(hubAssetId(x.id)) }))
+            .sort((a, b) => (b.stack - a.stack) || String(st === "Finished" ? b.finishedAt || "" : b.created || "").localeCompare(String(st === "Finished" ? a.finishedAt || "" : a.created || "")));
+          return json({ ok: true, status: st, items: st === "Finished" ? items.slice(0, 40) : items });
+        }
+        if (sub === "get") return json(await invoke({ action: "getInterview", interviewId: String(body.interviewId || "") }));
+        if (sub === "save") return json(await invoke({ action: "saveInterview", interviewId: String(body.interviewId || ""), answers: Array.isArray(body.answers) ? body.answers : undefined, finish: !!body.finish }));
+        return json({ error: "Unknown interviews request" }, 400); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "offerDeploy") { try {   // 🚀 Offer Stack deploy from the members report page — superadmin only
         const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
         const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can deploy offers." }, 403);
