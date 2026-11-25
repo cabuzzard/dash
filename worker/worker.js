@@ -21401,7 +21401,7 @@ export default {
         }
         // the dash's shared interview panel runs here too (operator 2026-11-25: "there was no expert check in the interview on the members page"):
         // its calls pass through, limited to the interview + 🔎 Expert check actions
-        if (sub === "x") { const IVX = new Set(["getInterview", "saveInterview", "removeInterview", "ivExpertGet", "ivExpertCheck", "ivExpertApply", "ivExpertHoldQuestion"]);
+        if (sub === "x") { const IVX = new Set(["getInterview", "saveInterview", "removeInterview", "ivExpertGet", "ivExpertCheck", "ivExpertApply", "ivExpertHoldQuestion", "ivExpertDraft", "premiumBank"]);
           const act = String(body.a || ""); if (!IVX.has(act)) return json({ error: "Not available on the members page: " + act });
           const { token, action, op, sub: _s, a: _a, b, ...rest } = body; return json(await invoke({ ...(b && typeof b === "object" ? b : {}), action: act })); }
         if (sub === "get") return json(await invoke({ action: "getInterview", interviewId: String(body.interviewId || "") }));
@@ -29228,6 +29228,12 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         x.heldOut = on; await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
         return json({ ok: true, report, held });
       }
+      // ivExpertDraft {interviewId, op: get | save, draft: {choice, edits, flow}} (operator 2026-11-25: "save both as draft") — the expert-check
+      // choices kept without applying anything: KV ivexpert:draft:<interviewId>, 90 days
+      if (body.action === "ivExpertDraft") { const K = "ivexpert:draft:" + hubAssetId(String(body.interviewId || "")); if (K.length < 20) return json({ error: "interviewId required" }, 400);
+        if (body.op === "save") { const d = body.draft || {}, clip = o => Object.fromEntries(Object.entries(o || {}).slice(0, 80).map(([k, v]) => [String(k).slice(0, 60), String(v ?? "").slice(0, 4000)]));
+          const draft = { choice: clip(d.choice), edits: clip(d.edits), at: new Date().toISOString() }; await env.TRADES.put(K, JSON.stringify(draft), { expirationTtl: 90 * 86400 }); return json({ ok: true, draft }); }
+        return json({ ok: true, draft: (await env.TRADES.get(K, "json").catch(() => null)) || null }); }
       if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
         const id = String(body.interviewId || "").replace(/-/g, "");
         let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}

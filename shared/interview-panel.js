@@ -110,8 +110,19 @@
         : `<mark style="background:rgba(250,204,21,.45);color:inherit;border-radius:2px;padding:0 1px;">${e(part)}</mark>`;
       return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">${L.i !== x.q ? `<div style="font-size:11px;color:${C.ink3};">(in your answer to Q${L.i + 1})</div>` : ''}${e(a.slice(0, L.at))}${mid}${e(a.slice(L.at + L.len))}</div>`; }
     // a check still running on the worker (e.g. the phone dropped the long request) → keep polling until the report lands
+    // 💾 draft (operator 2026-11-25: "save both as draft"): your choices + edited rewrites, kept on the server without applying anything
+    async function loadDraft() { try { const r = await req(cfg.call, 'ivExpertDraft', { interviewId: cfg.interviewId, op: 'get' }); const d = r.draft; const R = S.report;
+        if (!d || !R || (R.at && d.at && d.at < R.at)) return; const ids = new Set((R.items || []).map(x => x.id));
+        Object.entries(d.choice || {}).forEach(([k, v]) => { if (ids.has(k)) S.choice[k] = v; }); Object.entries(d.edits || {}).forEach(([k, v]) => { if (ids.has(k)) S.edits[k] = v; });
+        S.draftAt = d.at; draw(); } catch (err) {} }
+    async function saveDraft(quiet, skipAnswers) {
+      if (cfg.saveAnswers && !skipAnswers) { try { await cfg.saveAnswers(); } catch (err) {} }
+      if (!S.report) return; try { await req(cfg.call, 'ivExpertDraft', { interviewId: cfg.interviewId, op: 'save', draft: { choice: S.choice || {}, edits: S.edits || {} } });
+        S.draftAt = new Date().toISOString(); if (!quiet) S.done = '💾 Draft saved — your answers and your expert-check choices (nothing applied yet).'; S.err = ''; }
+      catch (err) { S.err = 'Draft not saved: ' + err.message; } draw(); }
+    el.saveDraft = saveDraft;
     async function load(poll) {
-      try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init();
+      try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init(); if (S.report && !poll) loadDraft();
         if (r.running) { S.busy = 'Still checking on the server — the results will appear here (about 1-2 minutes)…'; draw(); setTimeout(() => load(true), 10000); return; }
         if (poll) S.busy = ''; S.err = r.lastError || ''; } catch (err) {}
       draw(); }
@@ -183,6 +194,8 @@
           ${items.some(x => !x.applied && !S.local[x.id] && S.choice[x.id] === 'rewrite') ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;">Puts each "Use rewrite" into your answer. Anything that can't be placed stays as you wrote it.</span>
             <button type="button" data-x="apply2" ${S.busy ? 'disabled' : ''} style="${BTNP}">Save my choices</button></div>` : ''}
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><span style="font-size:11.5px;color:${C.ink3};flex:1;">${S.draftAt ? 'Draft saved ' + e(new Date(S.draftAt).toLocaleString()) : 'Not ready to apply? Save your answers and these choices as a draft.'}</span>
+            <button type="button" data-x="draft" ${S.busy ? 'disabled' : ''} style="${BTN}">💾 Save as draft</button></div>
           ${S.done ? `<div style="font-size:12.5px;color:${DONE};margin-top:9px;">${e(S.done)}</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:9px;margin-top:6px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">Revised your answers? Run the next expert pass before anything is written.</span>
@@ -228,6 +241,7 @@
       if (b.dataset.x === 'ch') { S.choice[b.dataset.id] = b.dataset.v; return draw(); }
       if (b.dataset.x === 'flow') return flowSet(b.dataset.id, b.dataset.v);
       if (b.dataset.x === 'apply2') return applyChoices();
+      if (b.dataset.x === 'draft') return saveDraft();
       if (b.dataset.x === 'addq') { const x = (((S.report || {}).items) || []).find(y => y.id === b.dataset.id) || {}; return editQ(b.dataset.q, S.edits[b.dataset.id] != null ? S.edits[b.dataset.id] : x.fix); } if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value; if (S.choice) S.choice[t.dataset.xe] = 'rewrite';
@@ -292,7 +306,7 @@
             <button data-m="save" style="${BTN}">💾 Save draft</button>
             <button data-m="finish" style="${BTNP}">✓ ${iv.status === 'Finished' ? 'Save' : 'Finish'}</button></div>` : ''}`;
       const xh = box.querySelector('[data-xhost]');
-      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, answers: () => S.answers, beforeRun: () => S.dirty ? save(false) : null,
+      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, answers: () => S.answers, beforeRun: () => S.dirty ? save(false) : null, saveAnswers: () => S.dirty ? save(false) : null,
         finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.'); await save(true); if (S.err) throw new Error(S.err); },
         noWrite: cfg.noWrite, onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
     }
@@ -307,7 +321,7 @@
       const b = ev.target.closest('[data-m]'); if (!b || S.busy) return;
       const m = b.dataset.m;
       if (m === 'close') close();
-      else if (m === 'save') save(false);
+      else if (m === 'save') { save(false); if (S.xEl && S.xEl.saveDraft) S.xEl.saveDraft(true, true); }
       else if (m === 'finish') { if (!S.answers.some(a => (a || '').trim())) { S.err = 'Answer at least one question to finish.'; draw(); return; } await save(true); if (!S.err && !M) close(); }
       else if (m === 'reflag') save(false, { reflag: true });
       else if (m === 'remove') { if (!confirm('Remove this interview?')) return; S.busy = 'Removing…'; draw();
