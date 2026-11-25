@@ -1529,9 +1529,14 @@ async function offerDeployStart(env, body) {
   const initiative = (String(body.initiative || "").trim() || `${ctx.titleName} - ${name}`).slice(0, 200), N = name, S = [];
   const bad = initiativeNameBad(initiative); if (bad) throw new Error(bad);
   const coh = body.cohorts || {}, cohOf = g => String(coh[g] || "").replace(/,/g, " ").trim().slice(0, 100);   // one cohort per asset group (offer · page · cta · posts · welcome · sales)
-  const grp = k => /^cta/.test(k) ? "cta" : /^post|^run$/.test(k) ? "posts" : /^welcome/.test(k) ? "welcome" : /^sales/.test(k) ? "sales" : k;
+  const grp = k => /^interview/.test(k) ? "interview" : /^cta/.test(k) ? "cta" : /^post|^run$/.test(k) ? "posts" : /^welcome/.test(k) ? "welcome" : /^sales/.test(k) ? "sales" : k;
   const mk = (key, type, title, own, extra = {}) => { S.push({ op: "create", key, type, title: title.slice(0, 300), own: String(own || ""), cohort: cohOf(grp(key)), ...extra }); S.push({ op: "write", key }); };
   mk("offer", "Offer", `${N} - Offer`, plan.offer + "\n\nSELLING POINTS:\n" + (plan.sellingPoints || []).map(s => `- (${s.kind}) ${s.point}${s.source ? " [" + s.source + "]" : ""}`).join("\n"), { parent: "" });
+  // 🎤 interview first (operator 2026-11-25: "interview should just be an asset … along with offer"; flow: report → offer + interview → write
+  // child assets): the Offer is created but NOT written; an Interview asset (same title / initiative, its own due date + cohort) carries the
+  // Offer's interview; the job waits until it's Finished, then writes the Offer from the answers, then everything else
+  if (inc.interview !== false) { const w = S.pop(); const ivDue = /^\d{4}-\d{2}-\d{2}$/.test(String(body.interviewDue || "")) ? body.interviewDue : due;
+    S.push(...offerInterviewSteps(N, ivDue, cohOf("interview"), String(body.interviewDirection || "")), w, { op: "ivused", key: "interview" }); }
   if (inc.page !== false) mk("page", "Landing Page", `${N} - Sales Page`, plan.page, { parent: "offer" });
   if (inc.cta !== false) OFFER_CTA_KINDS.forEach(k => mk("cta" + k.replace(/\s/g, ""), "CTA", `${N} - CTA ${k}`, (plan.cta || {})[k], { parent: "offer", format: k }));
   if (inc.posts !== false && (plan.posts || []).length) { S.push({ op: "run", key: "run", run: `${N} - Selling Points`, cohort: cohOf("posts") });
@@ -1544,21 +1549,41 @@ async function offerDeployStart(env, body) {
   await env.TRADES.put("offerdeploy:jobs", JSON.stringify(L.slice(0, 40)));
   return { ok: true, jobId: id, steps: S.length, initiative };
 }
+function offerInterviewSteps(N, due, cohort, direction) {
+  return [{ op: "create", key: "interview", type: "Interview", title: `${N} - Interview`.slice(0, 300), own: "The operator's interview for this Offer: their own stories, workflow, examples and opinions. Answer it on the 🎤 Interviews page; the Offer (and through it the whole stack) is written from the answers.", cohort, due, noWrite: true },
+    { op: "ivreq", key: "interview", direction }, { op: "await", key: "interview" }];
+}
+// ↻ an interview for a stack that's already written (operator 2026-11-25: "redeploy the current offer stack as an offer and interview"):
+// Interview asset + request → wait for the answers → rewrite the Offer → rewrite every child in the original order. Nothing else is created.
+async function offerAddInterview(env, body) {
+  const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) throw new Error("No such deploy");
+  if (job.status !== "done") throw new Error("This deploy isn't finished yet");
+  if (job.ids.interview) throw new Error("This stack already has an interview");
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(String(body.interviewDue || "")) ? body.interviewDue : job.due;
+  const writes = job.steps.filter(s => s.op === "write" && s.key !== "offer").map(s => ({ op: "write", key: s.key }));
+  job.steps.push(...offerInterviewSteps(job.plan.name, due, String(body.cohort || (job.cohorts || {}).interview || "").trim().slice(0, 100), String(body.direction || "")),
+    { op: "write", key: "offer" }, { op: "ivused", key: "interview" }, ...writes);
+  job.status = "queued"; job.error = ""; delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job));
+  return offerJobView(job);
+}
 function offerJobView(job) {
   return { id: job.id, status: job.status, i: job.i, of: job.steps.length, initiative: job.initiative, due: job.due, name: job.plan.name, error: job.error || "",
+    interview: job.ivId ? { id: job.ivId, assetId: job.ids.interview || "", url: "https://cabuzzard.github.io/dash/interviews/?id=" + job.ivId, answered: job.ivAnswered || 0, of: job.ivOf || 0 } : null,
     steps: job.steps.map((s, k) => ({ op: s.op, key: s.key, title: s.title || s.run || (job.steps.find(x => x.op === "create" && x.key === s.key) || {}).title || "", done: k < job.i, id: job.ids[s.key] || "" })), log: job.log.slice(-12) };
 }
 async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
   const K = "offerdeploy:job:" + jobId, job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
   if (job.status === "done" || job.status === "held") return offerJobView(job);
   if (job.running && Date.now() - job.running < 3 * 60000) return { ...offerJobView(job), busy: true };
+  if (job.status === "waiting" && job.ivCheckedAt && Date.now() - job.ivCheckedAt < 45000) return offerJobView(job);   // don't re-read the interview more than every 45 s
   // one runner at a time (2026-11-25: the cron and the modal overlapped and made duplicates): a lock token + a heartbeat written before every
   // step; each step re-reads the job and stops if another runner holds it, or the operator paused it. A step is ≤ ~100 s, the lock lasts 3 min.
   const lock = Math.random().toString(36).slice(2, 10); job.lock = lock; job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
   const t0 = Date.now(), c = job.ctx;
   if (!job.iniAdded) { const a = await invoke({ action: "initiativeNames", op: "add", name: job.initiative }).catch(e => ({ error: e.message })); if (a && !a.error) job.iniAdded = true; }
   while (job.i < job.steps.length && (oneStep || Date.now() - t0 < budgetMs)) {
-    { const cur = await env.TRADES.get(K, "json").catch(() => null); if (!cur || cur.lock !== lock || cur.status !== "running") return cur ? offerJobView(cur) : { error: "No such deploy" };
+    { const cur = await env.TRADES.get(K, "json").catch(() => null); if (!cur || cur.lock !== lock || (cur.status !== "running" && cur.status !== "waiting")) return cur ? offerJobView(cur) : { error: "No such deploy" };
+      job.status = "running";
       job.running = Date.now(); await env.TRADES.put(K, JSON.stringify(job)); }
     const s = job.steps[job.i]; let ok = true, note = "";
     try {
@@ -1574,13 +1599,30 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
           props["Selling Points"] = { rich_text: richChunks((job.plan.sellingPoints || []).map(x => `(${x.kind}) ${x.point}${x.source ? " [" + x.source + "]" : ""}`).join("\n")) }; }
         if (Object.keys(props).length) { const p = await fetch("https://api.notion.com/v1/pages/" + ivDash(aid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
           if (!p.ok) note += " · fields not saved: " + ((await p.json().catch(() => ({}))).message || p.status); }
-        if (!s.run) { const d = await invoke({ action: "setAssetDeadline", assetId: aid, date: job.due }); if (d && d.error) note += " · due not set: " + d.error; }
+        if (!s.run) { const d = await invoke({ action: "setAssetDeadline", assetId: aid, date: s.due || job.due }); if (d && d.error) note += " · due not set: " + d.error; }
         if (s.cohort) { const ch = await invoke({ action: "assetCohorts", op: "add", assetIds: [aid], cohorts: [s.cohort] }); if (!ch || ch.error) note += " · cohort not set: " + ((ch && ch.error) || "no response"); }
       } else if (s.op === "run") {
         const r = await runAssetEnsure(env, job.ids.offer, s.run, job.due); if (!r || !r.id) throw new Error("Run asset not made"); job.ids[s.key] = hubAssetId(r.id);
         await env.TRADES.put("route:run:" + s.run.toLowerCase(), JSON.stringify({ from: job.ids.offer, fromType: "Offer", run: s.run, at: new Date().toISOString() })).catch(() => {});
         if (r.existing) { const d = await invoke({ action: "setAssetDeadline", assetId: job.ids[s.key], date: job.due }); if (d && d.error) note = "due not set: " + d.error; }
         if (s.cohort) { const ch = await invoke({ action: "assetCohorts", op: "add", assetIds: [job.ids[s.key]], cohorts: [s.cohort] }); if (!ch || ch.error) note += " · cohort not set: " + ((ch && ch.error) || "no response"); }
+      } else if (s.op === "ivreq") {   // the interview record, on the OFFER (the writer reads an asset's own interview); linked from the Interview asset
+        const p = job.plan, dir = [`Interview the operator for the Offer "${p.name}" (${c.kind}): ${p.promise}`, c.direction ? "Operator direction:\n" + c.direction : "", s.direction ? "For this interview:\n" + s.direction : "",
+          "Ask for their own stories, workflow, examples, opinions and specifics that make the offer credible — what the report can't supply. Never ask for facts the report already has."].filter(Boolean).join("\n\n");
+        const r = await ivCreateForAsset(env, { assetId: job.ids.offer, direction: dir.slice(0, 3000), forceInterview: true });
+        const iv = ((r && r.interviews) || [])[0]; if (!iv || !iv.id) throw new Error((r && (r.error || r.reason)) || "interview not created");
+        job.ivId = hubAssetId(iv.id); job.ivOf = (iv.qs || []).length;
+        const link = "https://cabuzzard.github.io/dash/interviews/?id=" + job.ivId;
+        const p2 = await fetch("https://api.notion.com/v1/pages/" + ivDash(job.ids.interview), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Writer Directions": { rich_text: richChunks(offerDirections(job, "🎤 Answer it here: " + link + "\n" + (iv.qs || []).map((q, k) => (k + 1) + ". " + q).join("\n"))) } } }) });
+        if (!p2.ok) note = "link not saved on the Interview asset"; else note = (iv.qs || []).length + " questions";
+        await env.TRADES.put("interviewasset:" + job.ids.interview, JSON.stringify({ interviewId: job.ivId, offerId: job.ids.offer, jobId: job.id })).catch(() => {});
+      } else if (s.op === "await") {   // waits — not an error — until the interview is Finished
+        const pg = await ivPage(job.ivId); const iv = ivParse(pg); job.ivCheckedAt = Date.now(); job.ivAnswered = iv.answers.filter(a => String(a || "").trim()).length; job.ivOf = iv.qs.length;
+        if (iv.status !== "Finished") { job.status = "waiting"; job.log.push({ at: new Date().toISOString(), i: job.i, op: s.op, key: s.key, ok: true, note: `waiting: ${job.ivAnswered}/${job.ivOf} answered` }); job.log = job.log.slice(-200); break; }
+        await invoke({ action: "updateAssetStatus", assetId: job.ids.interview, status: "Publish", statusOnly: true }).catch(() => {});
+        note = `finished: ${job.ivAnswered}/${job.ivOf} answered`;
+      } else if (s.op === "ivused") {
+        const u = await invoke({ action: "updateAssetStatus", assetId: job.ids.interview, status: "Published", statusOnly: true }).catch(e => ({ error: e.message })); note = u && u.error ? "status not set: " + u.error : "used";
       } else if (s.op === "write") {
         const r = await invoke({ action: "writeAsset", assetId: job.ids[s.key] });
         if (!r || r.error || r.needsInterview) throw new Error((r && (r.error || r.reason)) || (r && r.needsInterview ? "needs an interview first" : "not written"));
@@ -1592,7 +1634,7 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
     job.i++; await env.TRADES.put(K, JSON.stringify(job));   // progress saved per step — a cut-off request never loses a finished step
     if (oneStep) break;
   }
-  if (job.status === "running") job.status = job.i >= job.steps.length ? "done" : "queued";
+  if (job.status === "running") job.status = job.i >= job.steps.length ? "done" : "queued";   // "waiting" stays waiting (the await step set it)
   { const cur = await env.TRADES.get(K, "json").catch(() => null); if (cur && cur.lock !== lock) return offerJobView(cur); }   // someone took over — never overwrite them
   delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job));
   return offerJobView(job);
@@ -1600,7 +1642,7 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
 async function offerDeployTick(env, invoke) {   // */4 cron: the oldest unfinished deploy, ~6 minutes
   const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || [];
   for (const j of L.slice().reverse()) { const job = await env.TRADES.get("offerdeploy:job:" + j.id, "json").catch(() => null);
-    if (job && (job.status === "queued" || job.status === "running")) return await offerDeployRun(env, invoke, j.id, 6 * 60000); }
+    if (job && (job.status === "queued" || job.status === "running" || (job.status === "waiting" && !(job.ivCheckedAt && Date.now() - job.ivCheckedAt < 3 * 60000)))) { const r = await offerDeployRun(env, invoke, j.id, 6 * 60000); if (!r || r.status !== "waiting") return r; } }
   return { idle: true };
 }
 // one router for the operator (dash) and the superadmin (members page): op plan | start | run | get | list | resume
@@ -1620,6 +1662,7 @@ async function offerDeployOp(env, invoke, body) {
     const ini = ((await env.TRADES.get("initiative:names", "json").catch(() => null)) || {}).names || [];
     return { ok: true, ctx, titles: T, cohorts: (coh && coh.cohorts) || [], initiatives: ini }; }
   if (op === "start") return await offerDeployStart(env, body);
+  if (op === "addInterview") return await offerAddInterview(env, body);
   if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 0, true);   // the modal: ONE step per call (a write can take ~90 s; a longer request is cut by the browser)
   if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
   if (op === "resume") { const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };

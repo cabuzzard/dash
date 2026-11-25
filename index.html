@@ -7281,6 +7281,11 @@ async function ao2NewTopicGo(slug) {
     const s = await call('setTitleTopic', { titleId: tid, topicId: id }).catch(e => ({ error: e.message }));
     done.push('title "' + title + '"' + (s && !s.error ? '' : ' (not placed in the topic: ' + ((s && s.error) || 'no response') + ')'));
     if (toAo2) await ao2SetToggle(tid, title, true);
+    // 📊 creation flow (operator 2026-11-25: idea → keywords → topic → niche → title → REPORT → offer + interview → child assets): every new
+    // title gets its Report asset, and its first free run starts in the background (~1-2 min; open it from 📊 Reports)
+    const ra = await call('createAsset', { titleId: tid, campId: h.campaignId, ...(pid ? { productId: pid } : {}), assetTitle: title + ' - Report', assetType: 'Report' }).catch(e => ({ error: e.message }));
+    if (ra && ra.id) { done.push('its Report (first run started)'); call('reportRun', { assetId: String(ra.id).replace(/-/g, ''), premium: false }).then(x => { if (x && x.error) showToast('Report run: ' + x.error, 'error'); else showToast('✓ Report ready: ' + title, 'success'); }).catch(() => {}); }
+    else done.push('(Report not created: ' + ((ra && ra.error) || 'no response') + ')');
   }
   delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
   showToast('✓ Created ' + done.join(' · ') + ' — no research run yet', 'success');

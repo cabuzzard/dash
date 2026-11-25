@@ -68,6 +68,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
 .od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
 .od-cb { margin: 10px 0 0 !important; }
+.od-iv { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; font-size: 14.5px; } .od-iv a { color: var(--accent); font-weight: 600; }
 .od-coh { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
 .od-coh label { display: flex; flex-direction: column; font-size: 13px; color: var(--ink-soft); gap: 3px; }
 .od-coh .od-ca { grid-column: 1 / -1; }
@@ -372,7 +373,7 @@ const odKey = () => "mb_dir:" + REPORT_ID, odJobKey = () => "mb_odjob:" + REPORT
 const odDir = () => store.get(odKey()) || "";
 function odApi(sub, p) { return call(Object.assign({ op: "offerDeploy", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {})); }
 function odInit(d) {
-  if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { page: true, cta: true, posts: true, welcome: true, sales: true } };
+  if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { interview: true, page: true, cta: true, posts: true, welcome: true, sales: true } };
   OD.report = d.report; OD.coh = OD.coh || {}; odRestorePlan();
   out.querySelectorAll(".rp-oact[data-i]").forEach(el => { const i = +el.dataset.i; el.innerHTML = `<button class="share od-cb" onclick="odOpen(${i})">🚀 Deploy this offer</button>`; });
   odFab(); odBindSel(); const jid = store.get(odJobKey()); if (jid) odApi("get", { jobId: jid }).then(j => { if (j && !j.error) { OD.job = j; odFab(); } }).catch(() => {});
@@ -380,11 +381,11 @@ function odInit(d) {
 // a drafted plan is kept (operator 2026-11-25: "without losing the existing proposed offer") — in this browser per report, and on the
 // server (offerplan:last:<id>), so a reload or another device opens it again; ↻ Redraft replaces it
 const odPlanKey = () => "mb_odplan:" + REPORT_ID;
-function odSavePlan() { if (OD && OD.plan) store.set(odPlanKey(), JSON.stringify({ plan: OD.plan, ctx: OD.ctx, idx: OD.idx, kind: OD.kind, titleId: OD.titleId, ini: OD.ini, coh: OD.coh, due: OD.due, inc: OD.inc })); }
+function odSavePlan() { if (OD && OD.plan) store.set(odPlanKey(), JSON.stringify({ plan: OD.plan, ctx: OD.ctx, idx: OD.idx, kind: OD.kind, titleId: OD.titleId, ini: OD.ini, coh: OD.coh, due: OD.due, inc: OD.inc, ivDue: OD.ivDue, ivDir: OD.ivDir })); }
 function odRestorePlan() {
   if (OD.plan) return; let x = null; try { x = JSON.parse(store.get(odPlanKey()) || "null"); } catch (e) {}
   const use = x => { if (!x || !x.plan || OD.plan) return; OD.plan = x.plan; OD.ctx = x.ctx; OD.idx = x.idx != null ? x.idx : (x.ctx && x.ctx.index != null ? x.ctx.index : -1); OD.kind = x.kind || (x.ctx && x.ctx.kind) || "";
-    OD.titleId = x.titleId || ""; OD.ini = x.ini || ""; OD.coh = x.coh || {}; if (x.due) OD.due = x.due; if (x.inc) OD.inc = x.inc; odFab(); if (OD.open) odDraw(); };
+    OD.titleId = x.titleId || ""; OD.ini = x.ini || ""; OD.coh = x.coh || {}; if (x.due) OD.due = x.due; if (x.inc) OD.inc = Object.assign({ interview: true }, x.inc); if (x.ivDue) OD.ivDue = x.ivDue; if (x.ivDir) OD.ivDir = x.ivDir; odFab(); if (OD.open) odDraw(); };
   if (x) return use(x);
   odApi("lastPlan").then(r => { if (r && r.ok && !r.none) { use(r); odSavePlan(); } }).catch(() => {});
 }
@@ -422,8 +423,13 @@ function odDraw() {
   const A = OD.report.analysis || {}, cards = (A.opportunities || []).filter(o => o && o.name), P = OD.plan, J = OD.job, dis = OD.busy ? "disabled" : "";
   const card = OD.idx >= 0 ? cards[OD.idx] : null;
   const jobHtml = !J ? "" : `<div class="od-sec"><div class="od-h">Deploy: ${esc(J.name || "")} <span class="od-mute">· ${esc(J.initiative || "")} · due ${esc(J.due || "")}</span></div>
-    <div class="od-mute">${J.status === "done" ? "✓ Done, every asset created and written" : J.status === "held" ? "⚠ Held: " + esc(J.error || "") : "Working… step " + J.i + " of " + J.of + " (keeps going on the server if you close this)"}</div>
-    <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${s.op === "write" ? "write" : s.op === "run" ? "run" : "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
+    <div class="od-mute">${J.status === "done" ? "✓ Done, every asset created and written" : J.status === "held" ? "⚠ Held: " + esc(J.error || "") : J.status === "waiting" ? "🎤 Waiting for your interview. The stack continues by itself once you mark it Finished." : "Working… step " + J.i + " of " + J.of + " (keeps going on the server if you close this)"}</div>
+    ${J.interview && J.status !== "done" ? `<div class="od-iv">🎤 Interview: ${J.interview.answered}/${J.interview.of} answered · <a href="${esc(J.interview.url)}" target="_blank" rel="noopener">Answer the interview →</a></div>` : ""}
+    <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${{ write: "write", run: "run", ivreq: "request interview", await: "wait for your answers", ivused: "mark interview used" }[s.op] || "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
+    ${J.status === "done" && !J.interview ? `<div class="od-sec"><div class="od-h">🎤 Add an interview and rewrite this stack</div><div class="od-mute">Creates an Interview asset, waits for your answers, then rewrites the Offer and every asset in this stack from them. Nothing else is created.</div>
+      <label class="od-l">Interview due</label><input type="date" class="mg-in od-in" id="odIvDue2" value="${esc(OD.ivDue || "")}" onchange="OD.ivDue=this.value">
+      <label class="od-l">Steer the questions (optional)</label><textarea class="od-ta" id="odIvDir2" rows="3" placeholder="e.g. my own content workflow, where human review saved a piece">${esc(OD.ivDir || "")}</textarea>
+      <button class="share od-go" ${dis} onclick="odAddInterview()">🎤 Add interview &amp; rewrite</button></div>` : ""}
     <div style="display:flex;gap:8px;flex-wrap:wrap">${J.status === "held" ? `<button class="share" ${dis} onclick="odResumeJob()">↻ Retry from the held step</button>` : ""}${J.status === "done" || J.status === "held" ? `<button class="share" onclick="OD.job=null;store.set(odJobKey(),null);odDraw();odFab()">New deploy</button>` : ""}</div></div>`;
   const planHtml = !P ? "" : `<div class="od-sec"><div class="od-h">Plan</div>
     <label class="od-l">Offer name</label><input class="mg-in od-in" id="odName" value="${esc(P.name)}" maxlength="120" oninput="OD.plan.name=this.value;odSavePlan();const i=document.getElementById('odIni');if(i&&!OD.ini)i.placeholder=odIniDefault()">
@@ -436,8 +442,10 @@ function odDraw() {
       ${(P.sales || []).map((x, i) => `<b>Sales ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}</div></details>
     ${odPlacementHtml()}
     <label class="od-l">Due date (every asset)</label><input type="date" class="mg-in od-in" id="odDue" value="${esc(OD.due)}" onchange="OD.due=this.value;odSavePlan()">
-    <div class="od-l">Include</div><div class="od-inc">${[["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked"> ${esc(l)}</label>`).join("")}</div>
-    <div class="od-mute" style="margin:8px 0">The Offer is created and written first; the rest only after it's written.</div>
+    <div class="od-l">Include</div><div class="od-inc">${[["interview", "🎤 Interview first (the stack waits for your answers)"], ["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked;odSavePlan();odDraw()"> ${esc(l)}</label>`).join("")}</div>
+    ${OD.inc.interview ? `<label class="od-l">Interview due</label><input type="date" class="mg-in od-in" value="${esc(OD.ivDue || odIvDueDefault())}" onchange="OD.ivDue=this.value;odSavePlan()">
+    <label class="od-l">Steer the interview questions (optional)</label><textarea class="od-ta" rows="3" oninput="OD.ivDir=this.value;odSavePlan()" placeholder="e.g. my own content workflow, real examples where human review saved a piece">${esc(OD.ivDir || "")}</textarea>` : ""}
+    <div class="od-mute" style="margin:8px 0">${OD.inc.interview ? "Order: Offer + Interview are created → you answer the interview → the Offer is written from your answers → then everything else." : "The Offer is created and written first; the rest only after it's written."}</div>
     <button class="share od-go" ${dis} onclick="odStart()">🚀 Deploy stack</button></div>`;
   m.innerHTML = `<div class="od-box" role="dialog" aria-label="Deploy offer stack"><div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><b style="font-size:18px">🚀 Deploy offer stack</b><span style="flex:1"></span><button class="rp-nx" aria-label="Close" onclick="odClose()">✕</button></div>
     ${J && J.status !== "done" && J.status !== "held" ? "" : `<div class="od-sec">
@@ -453,7 +461,7 @@ function odDraw() {
 }
 // placement (operator 2026-11-25: "niche/title designation (assume it is all on the same title) … cohorting of the asset groups … common
 // initiative setting"): one title for the whole stack (default: the report's), one initiative on every asset, one cohort per asset group
-const OD_GROUPS = [["offer", "Offer"], ["page", "Sales page"], ["cta", "CTAs"], ["posts", "Selling-point posts + run"], ["welcome", "Welcome & nurture"], ["sales", "Sales series"]];
+const OD_GROUPS = [["interview", "Interview"], ["offer", "Offer"], ["page", "Sales page"], ["cta", "CTAs"], ["posts", "Selling-point posts + run"], ["welcome", "Welcome & nurture"], ["sales", "Sales series"]];
 function odTitle() { const T = (OD.opts && OD.opts.titles) || [], id = OD.titleId || (OD.ctx && OD.ctx.titleId); return T.find(t => t.id === id) || { id, name: OD.ctx ? OD.ctx.titleName : "", niche: "" }; }
 function odIniDefault() { return (odTitle().name || "") + " - " + ((OD.plan && OD.plan.name) || ""); }
 function odPlacementHtml() {
@@ -482,19 +490,29 @@ async function odStart() {
   const n = document.getElementById("odName"); if (n) OD.plan.name = n.value.trim();
   if (!OD.plan.name) { OD.msg = "✗ The offer needs a name"; return odDraw(); } if (!OD.due) { OD.msg = "✗ Pick the due date"; return odDraw(); }
   OD.busy = "Starting…"; OD.msg = ""; odDraw();
-  const r = await odApi("start", { ctx: OD.ctx, plan: OD.plan, due: OD.due, include: OD.inc, titleId: OD.titleId || OD.ctx.titleId, initiative: OD.ini || odIniDefault(), cohorts: OD.coh }).catch(e => ({ error: e.message }));
+  const r = await odApi("start", { ctx: OD.ctx, plan: OD.plan, due: OD.due, include: OD.inc, titleId: OD.titleId || OD.ctx.titleId, initiative: OD.ini || odIniDefault(), cohorts: OD.coh, interviewDue: OD.ivDue || odIvDueDefault(), interviewDirection: OD.ivDir || "" }).catch(e => ({ error: e.message }));
   OD.busy = ""; if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
   store.set(odJobKey(), r.jobId); OD.job = { id: r.jobId, status: "queued", i: 0, of: r.steps, name: OD.plan.name, initiative: r.initiative, due: OD.due, steps: [] }; odDraw(); odRunLoop();
 }
 async function odRunLoop() {
   if (!OD || !OD.job || OD.looping) return; OD.looping = true;
-  try { while (OD.job && (OD.job.status === "queued" || OD.job.status === "running")) {
+  try { while (OD.job && (OD.job.status === "queued" || OD.job.status === "running" || OD.job.status === "waiting")) {
+      if (OD.job.status === "waiting") { await new Promise(res => setTimeout(res, 30000)); if (!OD.open) break; }
       const r = await odApi("run", { jobId: OD.job.id }).catch(e => ({ error: e.message }));
       if (!r || r.error) {   // a dropped connection: the server keeps the step going — wait, read where it got to, carry on
         OD.msg = "Connection dropped; the server is still working. Checking again…"; odDraw(); await new Promise(res => setTimeout(res, 20000));
         const g = await odApi("get", { jobId: OD.job.id }).catch(() => null); if (g && !g.error) { OD.job = g; OD.msg = ""; odDraw(); odFab(); } if (!OD.open) break; continue; }
       OD.msg = ""; OD.job = r; odDraw(); odFab(); if (r.busy) await new Promise(res => setTimeout(res, 15000));
       if (!OD.open) break; } } finally { OD.looping = false; }
+}
+function odIvDueDefault() { const d = new Date((OD.due || new Date().toISOString().slice(0, 10)) + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 2); const t = new Date().toISOString().slice(0, 10), v = d.toISOString().slice(0, 10); return v < t ? t : v; }
+async function odAddInterview() {
+  const due = (document.getElementById("odIvDue2") || {}).value || OD.ivDue || "", dir = (document.getElementById("odIvDir2") || {}).value || "";
+  if (!due) { OD.msg = "✗ Pick the interview's due date"; return odDraw(); }
+  OD.busy = "Adding the interview…"; odDraw();
+  const r = await odApi("addInterview", { jobId: OD.job.id, interviewDue: due, direction: dir }).catch(e => ({ error: e.message })); OD.busy = "";
+  if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); }
+  OD.job = r; odDraw(); odFab(); odRunLoop();
 }
 async function odResumeJob() { const r = await odApi("resume", { jobId: OD.job.id }).catch(e => ({ error: e.message })); if (r && !r.error) { OD.job = r; odDraw(); odRunLoop(); } else { OD.msg = "✗ " + ((r && r.error) || "No response"); odDraw(); } }
 // 📝 Notes flyout (operator 2026-11-24: "make the notes section a flyout that stays visible"): on this page the Notes section is pinned to
