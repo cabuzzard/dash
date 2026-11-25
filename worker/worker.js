@@ -1552,10 +1552,14 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
   const K = "offerdeploy:job:" + jobId, job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
   if (job.status === "done" || job.status === "held") return offerJobView(job);
   if (job.running && Date.now() - job.running < 3 * 60000) return { ...offerJobView(job), busy: true };
-  job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
+  // one runner at a time (2026-11-25: the cron and the modal overlapped and made duplicates): a lock token + a heartbeat written before every
+  // step; each step re-reads the job and stops if another runner holds it, or the operator paused it. A step is ≤ ~100 s, the lock lasts 3 min.
+  const lock = Math.random().toString(36).slice(2, 10); job.lock = lock; job.running = Date.now(); job.status = "running"; await env.TRADES.put(K, JSON.stringify(job));
   const t0 = Date.now(), c = job.ctx;
   if (!job.iniAdded) { const a = await invoke({ action: "initiativeNames", op: "add", name: job.initiative }).catch(e => ({ error: e.message })); if (a && !a.error) job.iniAdded = true; }
   while (job.i < job.steps.length && (oneStep || Date.now() - t0 < budgetMs)) {
+    { const cur = await env.TRADES.get(K, "json").catch(() => null); if (!cur || cur.lock !== lock || cur.status !== "running") return cur ? offerJobView(cur) : { error: "No such deploy" };
+      job.running = Date.now(); await env.TRADES.put(K, JSON.stringify(job)); }
     const s = job.steps[job.i]; let ok = true, note = "";
     try {
       if (s.op === "create") {
@@ -1564,7 +1568,7 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
         if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created");
         const aid = r.assetId; job.ids[s.key] = aid; note = r.warning || "";
         const props = {};
-        if (s.format) props.Format = { select: { name: s.format } };
+        if (s.format) props.Format = { rich_text: ivRt(s.format) };   // Assets Format is rich text (the CTA kind)
         if (s.run) { await runEnsureProps(env); props.Run = { rich_text: ivRt(s.run) }; }
         if (s.key === "offer") { await assetsTextPropEnsure(env, "Selling Points", "sellingpoints:prop");
           props["Selling Points"] = { rich_text: richChunks((job.plan.sellingPoints || []).map(x => `(${x.kind}) ${x.point}${x.source ? " [" + x.source + "]" : ""}`).join("\n")) }; }
@@ -1589,7 +1593,8 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
     if (oneStep) break;
   }
   if (job.status === "running") job.status = job.i >= job.steps.length ? "done" : "queued";
-  delete job.running; await env.TRADES.put(K, JSON.stringify(job));
+  { const cur = await env.TRADES.get(K, "json").catch(() => null); if (cur && cur.lock !== lock) return offerJobView(cur); }   // someone took over — never overwrite them
+  delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job));
   return offerJobView(job);
 }
 async function offerDeployTick(env, invoke) {   // */4 cron: the oldest unfinished deploy, ~6 minutes
@@ -1618,7 +1623,7 @@ async function offerDeployOp(env, invoke, body) {
   if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 0, true);   // the modal: ONE step per call (a write can take ~90 s; a longer request is cut by the browser)
   if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
   if (op === "resume") { const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
-    if (job.status === "held") { job.status = "queued"; job.error = ""; delete job.running; await env.TRADES.put(K, JSON.stringify(job)); } return offerJobView(job); }
+    if (job.status === "held") { job.status = "queued"; job.error = ""; delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job)); } return offerJobView(job); }
   if (op === "list") { const L = (await env.TRADES.get("offerdeploy:jobs", "json").catch(() => null)) || []; return { ok: true, jobs: body.assetId ? L.filter(x => x.assetId === hubAssetId(body.assetId)) : L }; }
   return { error: "Unknown offer deploy request" };
 }
