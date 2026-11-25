@@ -42,6 +42,24 @@ p.lede { color: var(--ink-soft); margin: 0 0 28px; }
 .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 h2.sec { font: 600 15px "Hanken Grotesk", sans-serif; color: var(--ink-soft); margin: 0 0 12px; }
 a.card.app { display: block; text-decoration: none; color: inherit; }
+.mg-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 20px; }
+.mg-in { flex: 1; min-width: 0; font: 500 15px "Hanken Grotesk", sans-serif; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 38px; }
+.mg-msg { font-size: 13px; color: var(--ink-soft); }
+.mg-g { margin: 0 0 22px; }
+.mg-gh { display: flex; align-items: center; gap: 6px; font: 600 16px "Hanken Grotesk", sans-serif; color: var(--ink-head); margin: 0 0 10px; }
+.mg-gh > span:first-child { flex: 1; }
+.mg-n, h2.mg-sec span { font-weight: 500; font-size: 13px; color: var(--ink-soft); }
+.mg-x { background: none; border: 1px solid var(--line); color: var(--ink-soft); border-radius: 999px; padding: 4px 10px; min-height: 32px; cursor: pointer; font: 500 13px "Hanken Grotesk", sans-serif; }
+.mg-x:hover { border-color: var(--accent); color: var(--accent); }
+.mg-z { border: 1px dashed transparent; border-radius: 16px; min-height: 48px; transition: border-color .15s, background .15s; }
+.mg-z:has(.mg-e) { border-color: var(--line); }
+.mg-on { border-color: var(--accent) !important; background: var(--surface); }
+.mg-e { font-size: 14px; color: var(--ink-soft); padding: 14px 16px; }
+.mg-it { position: relative; border-radius: 16px; }
+.mg-it .card { margin-bottom: 0; }
+.mg-bar { display: flex; gap: 8px; align-items: center; margin: 6px 0 14px; }
+.mg-h { font-size: 13px; color: var(--ink-soft); cursor: grab; user-select: none; }
+.mg-mv { margin-left: auto; padding: 4px 12px; min-height: 32px; font-weight: 500; }
 </style>
 </head>
 <body>
@@ -99,10 +117,58 @@ function appsView(d, tab) {
   const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
-  const list = tab === "reports" ? reports.map(reportCard).join("") : tab === "apps" ? apps.map(appCard).join("") : "";
+  const list = tab === "reports" ? mgList(d, reports, reportCard) : tab === "apps" ? apps.map(appCard).join("") : "";
   out.innerHTML = `<div class="who">${pic ? `<img src="${esc(pic)}" alt="">` : ""}<span>${esc(d.name || d.email)}${d.superadmin ? " · Superadmin — every client's apps" : ""}</span><button onclick="signOut()">Sign out</button></div>`
     + (tabs.length ? bar + (tabs.length === 1 ? `<h2 class="sec">${tabs[0][1]}</h2>` : "") + list : `<div class="card">You're signed in, but nothing is set up for you yet.</div>`);
 }
+// 📊 Report groups (operator 2026-11-24: "I want grouping on the members admin screen"): the superadmin makes groups and drags reports
+// into them (or uses "Move to…" on a phone); everyone sees the reports under those groups. Same KV report:groups as Hub Dash 2's
+// 📊 Reports panel — display only. Members never see an empty group; the rest sit under "Other reports".
+const mgId = s => String(s || "").replace(/-/g, "").toLowerCase();
+let _mgEdit = "", _mgDel = "", _mgMsg = "";
+function mgGroups(d) { const G = d.reportGroups || (d.reportGroups = { groups: [], order: {} }); G.groups = G.groups || []; G.order = G.order || {}; return G; }
+function mgList(d, reports, card) {
+  const G = mgGroups(d), byId = new Map(reports.map(a => [mgId(a.id), a])), used = new Set(), admin = !!d.superadmin;
+  const sec = G.groups.map(g => { const ids = (G.order[g.id] || []).map(mgId).filter(i => byId.has(i) && !used.has(i)); ids.forEach(i => used.add(i)); return { g, items: ids.map(i => byId.get(i)) }; });
+  const rest = reports.filter(a => !used.has(mgId(a.id)));
+  const opts = id => `<select class="share mg-mv" aria-label="Move to group" onchange="mgMove('${id}',this.value,'')"><option value="">Move to…</option>${G.groups.map(g => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join("")}<option value="_">Ungrouped</option></select>`;
+  const item = a => { const id = mgId(a.id); if (!admin) return card(a);
+    return `<div class="mg-it" draggable="true" ondragstart="mgDrag(event,'${id}')" ondragover="mgOver(event)" ondragleave="mgLeave(event)" ondrop="mgDrop(event,'',' ${id}')">${card(a)}<div class="mg-bar"><span class="mg-h" title="Drag to a group">⋮⋮ drag</span>${G.groups.length ? opts(id) : ""}</div></div>`; };
+  const head = (g, n) => { if (!admin) return `<h2 class="sec mg-sec">${esc(g.name)} <span>${n}</span></h2>`;
+    const edit = _mgEdit === g.id ? `<input class="mg-in" id="mgRn" value="${esc(g.name)}" maxlength="80" onkeydown="if(event.key==='Enter')mgRename('${g.id}');if(event.key==='Escape'){_mgEdit='';appsView(_mbD)}"><button class="share" onclick="mgRename('${g.id}')">Save</button>`
+      : `<span>${esc(g.name)} <span class="mg-n">${n}</span></span><button class="mg-x" title="Rename" aria-label="Rename group" onclick="_mgEdit='${g.id}';appsView(_mbD);setTimeout(()=>{const i=document.getElementById('mgRn');if(i)i.focus()},0)">✎</button><button class="mg-x" title="Delete group" aria-label="Delete group" onclick="mgDelete('${g.id}')">${_mgDel === g.id ? "Delete?" : "✕"}</button>`;
+    return `<div class="mg-gh">${edit}</div>`; };
+  const zone = (gid, inner, empty) => admin ? `<div class="mg-z" ondragover="mgOver(event)" ondragleave="mgLeave(event)" ondrop="mgDrop(event,'${gid}','')">${inner || `<div class="mg-e">${empty}</div>`}</div>` : inner;
+  let h = admin ? `<div class="mg-new"><input class="mg-in" id="mgName" placeholder="New group name, e.g. Construction Software" maxlength="80" onkeydown="if(event.key==='Enter')mgNew()"><button class="share" style="margin:0" onclick="mgNew()">＋ New group</button>${_mgMsg ? `<span class="mg-msg">${esc(_mgMsg)}</span>` : ""}</div>` : "";
+  sec.forEach(s => { if (!admin && !s.items.length) return; h += `<section class="mg-g">${head(s.g, s.items.length)}${zone(s.g.id, s.items.map(item).join(""), "Drag reports here")}</section>`; });
+  if (rest.length || admin) h += `<section class="mg-g">${G.groups.length || admin ? (admin ? `<div class="mg-gh"><span>Ungrouped <span class="mg-n">${rest.length}</span></span></div>` : `<h2 class="sec mg-sec">Other reports <span>${rest.length}</span></h2>`) : ""}${zone("_", rest.map(item).join(""), "Nothing here")}</section>`;
+  return h;
+}
+async function mgSave() {
+  const G = mgGroups(_mbD); _mgMsg = "Saving…"; appsView(_mbD);
+  try { const r = await call({ op: "groupsSave", token: store.get("mb_token"), data: { groups: G.groups, order: G.order } });
+    if (r && r.ok) { _mbD.reportGroups = { groups: r.groups, order: r.order }; _mgMsg = "✓ Saved"; } else _mgMsg = "✗ " + ((r && r.error) || "Not saved"); }
+  catch (e) { _mgMsg = "✗ Couldn't reach the server"; }
+  appsView(_mbD); setTimeout(() => { if (/^✓/.test(_mgMsg)) { _mgMsg = ""; appsView(_mbD); } }, 2000);
+}
+function mgMove(id, gid, beforeId) {
+  const G = mgGroups(_mbD); id = mgId(id); beforeId = mgId(beforeId);
+  if (beforeId) { gid = "_"; for (const g of G.groups) if ((G.order[g.id] || []).map(mgId).includes(beforeId)) gid = g.id; }
+  if (!gid || beforeId === id) return;
+  Object.keys(G.order).forEach(k => { G.order[k] = (G.order[k] || []).map(mgId).filter(x => x !== id); });
+  if (gid !== "_") { const L = G.order[gid] = G.order[gid] || []; const at = beforeId ? L.indexOf(beforeId) : -1; at >= 0 ? L.splice(at, 0, id) : L.push(id); }
+  mgSave();
+}
+function mgNew() { const i = document.getElementById("mgName"), n = (i && i.value || "").trim(); if (!n) { if (i) i.focus(); return; }
+  const G = mgGroups(_mbD); G.groups.push({ id: "g" + Date.now().toString(36), name: n.slice(0, 80) }); mgSave(); }
+function mgRename(gid) { const i = document.getElementById("mgRn"), n = (i && i.value || "").trim(), G = mgGroups(_mbD), g = G.groups.find(x => x.id === gid); _mgEdit = ""; if (g && n) { g.name = n.slice(0, 80); mgSave(); } else appsView(_mbD); }
+function mgDelete(gid) { if (_mgDel !== gid) { _mgDel = gid; appsView(_mbD); setTimeout(() => { if (_mgDel === gid) { _mgDel = ""; appsView(_mbD); } }, 4000); return; }
+  _mgDel = ""; const G = mgGroups(_mbD); G.groups = G.groups.filter(g => g.id !== gid); delete G.order[gid]; mgSave(); }
+let _mgDrag = "";
+function mgDrag(e, id) { _mgDrag = id; try { e.dataTransfer.setData("text/plain", id); e.dataTransfer.effectAllowed = "move"; } catch (x) {} }
+function mgOver(e) { e.preventDefault(); e.currentTarget.classList.add("mg-on"); }
+function mgLeave(e) { e.currentTarget.classList.remove("mg-on"); }
+function mgDrop(e, gid, before) { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("mg-on"); const id = _mgDrag; _mgDrag = ""; if (id) mgMove(id, gid, before.trim()); }
 async function onCredential(resp) {
   out.innerHTML = `<p class="lede">Signing you in…</p>`;
   try {

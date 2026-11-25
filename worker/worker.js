@@ -1445,6 +1445,13 @@ async function reportGet(env, assetId, at) {
 // gets numbered and then a 1. 2. 3. appears in the notes section and everything after the list item is editable"). One shared list per
 // report (KV report:notes:<assetId>), kept across runs: {id, sec, text (the highlighted words), note, by, byName, at, editedBy, editedAt}.
 // Anyone who can open the report adds highlights and edits notes; only the highlight's author or the admin removes one.
+// 📊 report groups (operator 2026-11-24): KV report:groups = { groups: [{id, name}], order: {groupId: [assetId…]} } — display only.
+// Saved from Hub Dash 2 (reportGroups) and from the members page by a superadmin (member op groupsSave); members see the same grouping.
+async function reportGroupsGet(env) { return (await env.TRADES.get("report:groups", "json").catch(() => null)) || { groups: [], order: {} }; }
+async function reportGroupsSave(env, d) { d = d || {};
+  const groups = (Array.isArray(d.groups) ? d.groups : []).slice(0, 60).map(g => ({ id: String(g.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 24), name: String(g.name || "").trim().slice(0, 80) })).filter(g => g.id && g.name);
+  const ids = new Set(groups.map(g => g.id)), order = {}; Object.entries(d.order || {}).forEach(([k, v]) => { if (ids.has(k) && Array.isArray(v)) order[k] = [...new Set(v.map(x => hubAssetId(x)).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 400); });
+  await env.TRADES.put("report:groups", JSON.stringify({ groups, order, at: new Date().toISOString() })); return { ok: true, groups, order }; }
 async function reportNotesOp(env, aid, who, body) {
   const key = "report:notes:" + aid, D = (await env.TRADES.get(key, "json").catch(() => null)) || { seq: 0, items: [] }, sub = String(body.sub || "list"), now = new Date().toISOString();
   const save = () => env.TRADES.put(key, JSON.stringify(D));
@@ -1465,7 +1472,7 @@ async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me" || op === "report" || op === "notes") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
@@ -1475,9 +1482,10 @@ async function handleMember(env, body) {
     if (op === "notes") return await reportNotesOp(env, aid, { id: email, name: rec.name || rec.gName || email.split("@")[0], admin: (rec.links || []).includes("*") }, body);
     const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
     const { usage, notes, ...pub } = rp; return { ok: true, report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
+  if (op === "groupsSave") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can arrange report groups." }; return await reportGroupsSave(env, body.data); }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
   const exp = Date.now() + MEMBER_DAYS * 864e5;
-  return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", superadmin: (rec.links || []).includes("*"), ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec) };
+  return { ok: true, email, name: rec.name || (g && g.name) || rec.gName || "", superadmin: (rec.links || []).includes("*"), ...(g ? { token: await memberToken(env, email, exp) } : {}), apps: await memberApps(env, rec), reportGroups: await reportGroupsGet(env) };
 }
 async function handleStudio(env, body) {
   const link = await studioLinkFromKey(env, body.k);
@@ -21357,10 +21365,8 @@ export default {
     // reportGroups {op: get | save, data} (operator; 2026-11-24 "let me create groupings by drag and drop in the admin just for organization in
     // that screen"): KV report:groups = { groups: [{id, name}], order: {groupId: [assetId…]} } — display only, read by nothing else.
     if (body.action === "reportGroups") { if (externalCaller) return json({ error: "operator only" }, 403);
-      if (body.op === "save") { const d = body.data || {}, groups = (Array.isArray(d.groups) ? d.groups : []).slice(0, 60).map(g => ({ id: String(g.id || "").replace(/[^a-z0-9]/gi, "").slice(0, 24), name: String(g.name || "").trim().slice(0, 80) })).filter(g => g.id && g.name);
-        const ids = new Set(groups.map(g => g.id)), order = {}; Object.entries(d.order || {}).forEach(([k, v]) => { if (ids.has(k) && Array.isArray(v)) order[k] = [...new Set(v.map(x => hubAssetId(x)).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 400); });
-        await env.TRADES.put("report:groups", JSON.stringify({ groups, order, at: new Date().toISOString() })); return json({ ok: true, groups, order }); }
-      return json({ ok: true, ...((await env.TRADES.get("report:groups", "json").catch(() => null)) || { groups: [], order: {} }) });
+      if (body.op === "save") return json(await reportGroupsSave(env, body.data));
+      return json({ ok: true, ...(await reportGroupsGet(env)) });
     }
     if (body.action === "reportNotes") { if (externalCaller) return json({ error: "operator only" }, 403);
       const aid = hubAssetId(body.assetId); if (!/^[0-9a-f]{32}$/i.test(aid)) return json({ error: "assetId required" }, 400);
