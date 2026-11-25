@@ -1663,6 +1663,9 @@ async function offerDeployOp(env, invoke, body) {
     return { ok: true, ctx, titles: T, cohorts: (coh && coh.cohorts) || [], initiatives: ini }; }
   if (op === "start") return await offerDeployStart(env, body);
   if (op === "addInterview") return await offerAddInterview(env, body);
+  if (op === "ivmap") { const L = await env.TRADES.list({ prefix: "interviewasset:" }).catch(() => ({ keys: [] }));   // Interview assets → their interview (Hub Dash 2 🎤 column)
+    const map = []; for (const k of (L.keys || []).slice(0, 200)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.interviewId) map.push({ assetId: k.name.slice(15), interviewId: v.interviewId }); }
+    return { ok: true, map }; }
   if (op === "run") return await offerDeployRun(env, invoke, String(body.jobId || ""), 0, true);   // the modal: ONE step per call (a write can take ~90 s; a longer request is cut by the browser)
   if (op === "get") { const job = await env.TRADES.get("offerdeploy:job:" + String(body.jobId || ""), "json").catch(() => null); return job ? offerJobView(job) : { error: "No such deploy" }; }
   if (op === "resume") { const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) return { error: "No such deploy" };
