@@ -21399,6 +21399,11 @@ export default {
             .sort((a, b) => (b.stack - a.stack) || String(st === "Finished" ? b.finishedAt || "" : b.created || "").localeCompare(String(st === "Finished" ? a.finishedAt || "" : a.created || "")));
           return json({ ok: true, status: st, items: st === "Finished" ? items.slice(0, 40) : items });
         }
+        // the dash's shared interview panel runs here too (operator 2026-11-25: "there was no expert check in the interview on the members page"):
+        // its calls pass through, limited to the interview + 🔎 Expert check actions
+        if (sub === "x") { const IVX = new Set(["getInterview", "saveInterview", "removeInterview", "ivExpertGet", "ivExpertCheck", "ivExpertApply", "ivExpertHoldQuestion"]);
+          const act = String(body.a || ""); if (!IVX.has(act)) return json({ error: "Not available on the members page: " + act });
+          const { token, action, op, sub: _s, a: _a, b, ...rest } = body; return json(await invoke({ ...(b && typeof b === "object" ? b : {}), action: act })); }
         if (sub === "get") return json(await invoke({ action: "getInterview", interviewId: String(body.interviewId || "") }));
         if (sub === "save") return json(await invoke({ action: "saveInterview", interviewId: String(body.interviewId || ""), answers: Array.isArray(body.answers) ? body.answers : undefined, finish: !!body.finish }));
         return json({ error: "Unknown interviews request" }, 400); } catch (e) { return json({ error: e.message }, 400); } }

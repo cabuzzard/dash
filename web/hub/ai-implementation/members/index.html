@@ -68,6 +68,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
 .od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
 .od-cb { margin: 10px 0 0 !important; }
+.ivm-panel { --text: var(--ink); --text2: var(--ink-soft); --text3: var(--ink-soft); --border: var(--line); --border2: var(--line); --surface2: var(--surface); --accent: var(--accent); font-size: 15px; }
 .rf summary { cursor: pointer; } .rf { margin: 0 0 16px; }
 .od-iv { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; font-size: 14.5px; } .od-iv a { color: var(--accent); font-weight: 600; }
 .od-coh { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
@@ -107,6 +108,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
   <div id="out"><p class="lede">Sign in with your Google account to open your apps.</p><div id="gbtn"></div></div>
 </div>
 <script src="https://accounts.google.com/gsi/client" async defer onload="gInit()"></script>
+<script src="https://cabuzzard.github.io/dash/shared/interview-panel.js?v=2026111001" defer></script>
 <script>
 // www. or the *.pages.dev preview → the one registered address, so Google's sign-in cookie and return address match (redirect_uri_mismatch, 2026-11-20)
 if (location.hostname !== "aisystemimplementation.com" && /aisystemimplementation\.com$/.test(location.hostname)) location.replace("https://aisystemimplementation.com" + location.pathname + location.search);
@@ -183,7 +185,12 @@ function ivmHtml() {
     ${mgOpen().has("iv:" + k) || k.startsWith("⏳") ? by[k].map(x => `<a class="card app" href="#" onclick="event.preventDefault();ivmOpen('${x.id}')"><div class="t">${esc(x.title || "Interview")}</div>
       <div class="m">${esc([x.of ? x.a + " of " + x.of + " answered" : "", x.forType, x.angle].filter(Boolean).join(" · "))}</div><div class="go">${x.a ? "Continue →" : "Answer →"}</div></a>`).join("") : ""}</section>`).join("");
 }
+// the dash's shared interview panel (shared/interview-panel.js) when it loaded: same answer screen as the dash, with 🔎 Expert check, autosave and
+// drafts; its worker calls go through the member op (sub "x"). Falls back to the simple screen below if the panel didn't load.
+const ivmCall = (a, b) => ivmApi("x", { a, b: b || {} });
 async function ivmOpen(id) {
+  if (window.InterviewPanel) { IVM.open = { id, panel: true }; appsView(_mbD, "interviews"); window.scrollTo(0, 0);
+    const el = document.getElementById("ivmPanel"); if (el) { InterviewPanel.open({ call: ivmCall, interviewId: id, mount: el, noWrite: true, onDone: () => { IVM.items = null; } }); return; } }
   IVM.open = { id, busy: "Loading…" }; appsView(_mbD, "interviews"); window.scrollTo(0, 0);
   const r = await ivmApi("get", { interviewId: id }).catch(e => ({ error: e.message }));
   if (!r || r.error || !r.interview) { IVM.open = { id, err: (r && r.error) || "Couldn't load" }; } else IVM.open = { id, iv: r.interview, answers: r.interview.answers.slice(), saved: "" };
@@ -191,6 +198,7 @@ async function ivmOpen(id) {
 }
 function ivmAnswerHtml() {
   const O = IVM.open, back = `<button class="share" style="margin:0 0 14px" onclick="ivmBack()">← All interviews</button>`;
+  if (O.panel) return back + '<div id="ivmPanel" class="ivm-panel"></div>';
   if (O.busy) return back + `<p class="lede">${esc(O.busy)}</p>`; if (O.err) return back + `<div class="msg">${esc(O.err)}</div>`;
   const iv = O.iv, done = iv.status === "Finished";
   return back + `<h2 style="font:700 22px/1.25 'Bricolage Grotesque',sans-serif;margin:0 0 4px">${esc(iv.title || "Interview")}</h2><p class="lede" style="margin:0 0 18px">${esc(iv.angle || "")}${done ? " · ✓ Finished" : ""}</p>
