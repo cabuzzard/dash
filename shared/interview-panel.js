@@ -138,7 +138,7 @@
               ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
               ${premAsset() ? `<div style="margin-top:5px;"><button type="button" data-x="prem" data-id="${e(x.id)}" title="Bank this argument on this asset — a Premium Take answers it later" style="${BTN}font-size:11px;${S.prem[x.id] ? 'color:#b7791f;border-color:#b7791f;' : ''}">${S.prem[x.id] ? '★ Saved for premium' : '☆ Save for premium'}</button></div>` : ''}
               ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
-                : x.fix && (x.skipped || !inAnswers(x.quote)) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ Skipped — its words aren't in your answer as written, so there's nothing to swap. Use it as a pointer if you want to edit your answer by hand.</div>
+                : x.fix && (x.skipped || !inAnswers(x.quote)) ? `<div style="font-size:11.5px;color:${C.ink3};margin-top:6px;">ⓘ Its words aren't in your answer as written, so it can't be swapped in automatically. Edit the suggestion and add it to your answer, or edit the answer yourself.</div>${x.q != null ? `<textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:5px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;"><button type="button" data-x="addq" data-id="${e(x.id)}" data-q="${x.q}" style="${BTN}font-size:11px;">＋ Add this to my answer to Q${(+x.q) + 1}</button><button type="button" data-x="editq" data-q="${x.q}" style="${BTN}font-size:11px;">✎ Edit my answer to Q${(+x.q) + 1}</button></div>` : ''}
                   ${canHold ? `<div style="margin-top:5px;"><button type="button" data-x="holdq" data-id="${e(x.id)}" ${S.busy ? 'disabled' : ''} style="${BTN}font-size:11px;${x.heldOut ? 'color:#c0392b;border-color:#c0392b;' : ''}">${x.heldOut ? '⊘ Left out of the write-up — ↩ put it back' : '⊘ Leave this whole question out of the write-up'}</button></div>` : ''}`
                 : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
                   <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
@@ -181,7 +181,15 @@
       try { const r = await req(cfg.call, 'ivExpertHoldQuestion', { interviewId: cfg.interviewId, id, on: !x.heldOut }); S.report = r.report; changed(); }
       catch (err) { S.err = err.message; }
       S.busy = ''; draw(); }
-    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'holdq') return holdQ(b.dataset.id); if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
+    // the answer box for question q, in the panel this expert check sits in
+    const answerBox = q => { let p = el; while (p && !(p.querySelector && p.querySelector('textarea[data-a="' + q + '"]'))) p = p.parentElement; return p ? p.querySelector('textarea[data-a="' + q + '"]') : null; };
+    const editQ = (q, add) => { const t = answerBox(q); if (!t) { S.err = 'Open the answers above to edit Q' + ((+q) + 1); draw(); return; }
+      if (add) { const f = String(add).trim(); if (f) { t.value = t.value.replace(/\s+$/, '') + (t.value.trim() ? '\n\n' : '') + f; t.dispatchEvent(new Event('input', { bubbles: true }));
+        S.done = 'Added to Q' + ((+q) + 1) + ' — it saves on its own. Re-run the expert check when you are done.'; draw(); } }
+      t.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => t.focus(), 350); };
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'holdq') return holdQ(b.dataset.id);
+      if (b.dataset.x === 'editq') return editQ(b.dataset.q);
+      if (b.dataset.x === 'addq') { const x = (((S.report || {}).items) || []).find(y => y.id === b.dataset.id) || {}; return editQ(b.dataset.q, S.edits[b.dataset.id] != null ? S.edits[b.dataset.id] : x.fix); } if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); else if (b.dataset.x === 'prem') premToggle(b.dataset.id); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value;
         const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xe), pv = el.querySelector(`[data-xpv="${t.dataset.xe}"]`);
