@@ -11899,7 +11899,7 @@ function hd2RepHtml() {
 function reportHtml(R) {
   const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // the model sometimes hands back a list as a JSON string (2026-11-25: two Mountainwize reports) — read it as the list
-  const A = Object.fromEntries(Object.entries(R.analysis || {}).map(([k, v]) => { if (typeof v === 'string' && /^\s*[\[{]/.test(v)) { try { return [k, JSON.parse(v)]; } catch (e) {} } return [k, v]; }));
+  const A = Object.fromEntries(Object.entries(R.analysis || {}).map(([k, v]) => { if (typeof v === 'string' && /^\s*[\[{]/.test(v)) { try { return [k, JSON.parse(v)]; } catch (e) { return [k, k === 'summary' || k === 'demand' ? v : []]; } } return [k, v]; }));   // broken text → an empty list, never a crash
   const S = R.sources || [], byN = new Map(S.map(s => [s.n, s]));
   const refs = L => (L || []).filter(n => byN.has(n)).map(n => `<a class="rp-ref" href="${e(byN.get(n).url)}" target="_blank" rel="noopener" title="${e(byN.get(n).publisher || byN.get(n).url)}">${n}</a>`).join('');
   const pts = L => (L || []).length ? `<ul>${L.map(p => `<li>${e(p.point)} ${refs(p.refs)}</li>`).join('')}</ul>` : '<p class="rp-mute">—</p>';

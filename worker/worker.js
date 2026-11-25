@@ -1444,7 +1444,7 @@ async function reportBuild(env, assetId, premium, focus) {
         required: ["summary", "moving", "demand", "audience", "pains", "complaints", "opportunities", "risks", "gaps", "nextTitles"] }, 9000, u => { usage.claude = u; });
   } catch (e) { notes.push("analysis: " + e.message); }
   // a list field returned as a JSON string (the model does this now and then) → parsed back into the list
-  for (const [k, v] of Object.entries(analysis || {})) if (typeof v === "string" && /^\s*[\[{]/.test(v)) { try { analysis[k] = JSON.parse(v); } catch (e) { notes.push("analysis." + k + " was text, not a list"); } }
+  for (const [k, v] of Object.entries(analysis || {})) if (typeof v === "string" && /^\s*[\[{]/.test(v)) { try { analysis[k] = JSON.parse(v); } catch (e) { notes.push("analysis." + k + " came back broken — re-run"); if (k !== "summary" && k !== "demand") analysis[k] = []; } }
   const rep = { v: 1, at, premium: !!premium, assetId, assetName: hubRichText(ap["Asset Title"]?.title), hub: hub.name, campaignId: cid,
     title: { id: titleId, name: titleName, research: titleRes, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox },
     keywords: { topicId: topic.topicId || "", list: topicKw, niche: topic.niche || "", demand }, ...(focusKw.length ? { focus: focusKw } : {}), product, hubResearch: hub.research, audience, dissatisfaction: signals, sources, analysis, usage, notes };
