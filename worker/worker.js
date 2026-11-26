@@ -1716,7 +1716,7 @@ const STACK_GROUPS = [
   { id: "posts", icon: "🧷", label: "Selling-point posts", test: k => /^post\d/.test(k) },
   { id: "welcome", icon: "✉️", label: "Welcome emails", test: k => /^welcome\d/.test(k) },
   { id: "sales", icon: "📨", label: "Sales emails", test: k => /^sales\d/.test(k) } ];
-const cmRowFor = (rows, type) => { const n = ivNorm(type); return rows.find(r => r.contractText.trim() && (ivNorm(r.name) === n || r.aliases.includes(n))) || null; };
+const cmRowFor = (rows, type) => { const n = ivNorm(type), R = rows.filter(r => r.contractText.trim()); return R.find(r => ivNorm(r.name) === n) || R.find(r => r.aliases[0] === n) || R.find(r => r.aliases.includes(n)) || null; };
 const stackJob = async (env, b) => b && b.jobId ? await env.TRADES.get("offerdeploy:job:" + b.jobId, "json").catch(() => null) : null;
 async function briefStack(env, b, job) {
   job = job || await stackJob(env, b); if (!job) return [];
@@ -2125,7 +2125,7 @@ async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave" || op === "brief" || op === "briefShare" || op === "briefReturn") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave" || op === "brief" || op === "briefShare" || op === "briefReturn" || op === "briefDir" || op === "briefStackAdd") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
