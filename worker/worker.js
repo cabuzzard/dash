@@ -1541,7 +1541,17 @@ async function writerBriefBuild(env, job) {
   L.push("## 6. Return format", "", "Send back **one JSON file per run**, exactly in this shape (it's imported straight into the tool):", "", "```json");
   L.push(JSON.stringify({ run: "<run name from section 1>", title: c.titleName, assetType: "single post", posts: [{ key: "<short-unique-key>", line: "<the post idea in one line>", thumbnail: "<optional image file name>",
     prewrite: Object.fromEntries(BRIEF_POST_FIELDS.map(([k]) => [k, "…"])) }] }, null, 2), "```", "", "**Fields:**"); BRIEF_POST_FIELDS.forEach(([k, d]) => li(`**${k}**: ${d}`)); L.push("");
-  return { md: L.join("\n"), runs: (plan.runs || []).length, posts: (plan.runs || []).reduce((n, r) => n + (r.posts || []).length, 0), answers: qa.length, err: plan.err || "" };
+  const json = { brief: `Writer brief: ${p.name}`, hub: R.hub || "", title: c.titleName, initiative: job.initiative, returnBy: due,
+    instructions: "You're writing social media posts for this offer. Use only the facts here, write in the operator's voice (voice), follow the rules, and return one JSON object per run exactly like returnFormat.example.",
+    assignment: (plan.runs || []).map(r => ({ run: String(r.name || "").replace(/^\s*run\s*\d+\s*[—:–-]\s*/i, ""), platform: r.platform, format: r.format, angle: r.angle, posts: (r.posts || []).map(x => ({ idea: x.idea, from: x.from })) })),
+    offer: { name: p.name, promise: p.promise, kind: c.kind, callToAction: { action: c.cta.action, link: c.cta.link && !/\[/.test(c.cta.link) ? c.cta.link : "" }, sellingPoints: arr(p.sellingPoints), salesPageForContext: (offer["Offer Page"] || "").slice(0, 6000) },
+    evidence: { summary: A.summary || "", pains: arr(A.pains).map(x => x.point), complaints: arr(A.complaints).map(x => ({ point: x.point, searches: x.signals || [] })), audienceQuestions: arr(A.audience), searchDemand: A.demand || "", sources },
+    voice: { notes: plan.voice, interview: qa.map(x => ({ question: x.q, answer: x.a })) },
+    rules: ["Use only the facts in this brief. Never invent clients, results, numbers, prices or quotes.", "A statistic or claim from the evidence keeps its source; if you can't place it, leave it out.",
+      "Write in the operator's voice: their phrases and examples beat generic marketing language.", "Every post points to the call to action, lightly; no hard selling in every post.", "Stay inside the field limits in returnFormat.fields."],
+    returnFormat: { oneJsonPerRun: true, example: { run: "<run name from assignment>", title: c.titleName, assetType: "single post", posts: [{ key: "<short-unique-key>", line: "<the post idea in one line>", thumbnail: "<optional image file name>", prewrite: Object.fromEntries(BRIEF_POST_FIELDS.map(([k]) => [k, "…"])) }] },
+      fields: Object.fromEntries(BRIEF_POST_FIELDS) } };
+  return { md: L.join("\n"), json, runs: (plan.runs || []).length, posts: (plan.runs || []).reduce((n, r) => n + (r.posts || []).length, 0), answers: qa.length, err: plan.err || "" };
 }
 async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
@@ -1713,7 +1723,8 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
           await invoke({ action: "setAssetDeadline", assetId: r.assetId, date: job.due }).catch(() => {});
           if (s.cohort) await invoke({ action: "assetCohorts", op: "add", assetIds: [r.assetId], cohorts: [s.cohort] }).catch(() => {}); }
         const b = await writerBriefBuild(env, job), bid = job.ids.brief;
-        await env.TRADES.put("wbrief:" + bid, JSON.stringify({ md: b.md, at: new Date().toISOString(), title: s.title, offer: job.plan.name, jobId: job.id, reportId: c.assetId, titleId: c.titleId, hub: "" }));
+        const prevB = await writerBriefGet(env, bid);
+        await env.TRADES.put("wbrief:" + bid, JSON.stringify({ md: b.md, json: b.json, at: new Date().toISOString(), title: s.title, offer: job.plan.name, jobId: job.id, reportId: c.assetId, titleId: c.titleId, campaignId: c.campaignId, productId: c.productId || "", returns: (prevB && prevB.returns) || [] }));
         const pb = await fetch("https://api.notion.com/v1/pages/" + ivDash(bid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Body: { rich_text: ivRt(b.md) } } }) });
         await invoke({ action: "updateAssetStatus", assetId: bid, status: "Publish", statusOnly: true }).catch(() => {});
         note = `${b.runs} runs · ${b.posts} post ideas · ${b.answers} interview answers${pb.ok ? "" : " · Body not saved on the asset (the brief page has it)"}${b.err ? " · plan: " + b.err : ""}`;
@@ -1844,7 +1855,7 @@ async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave" || op === "brief" || op === "briefShare") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave" || op === "brief" || op === "briefShare" || op === "briefReturn") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
@@ -1858,7 +1869,18 @@ async function handleMember(env, body) {
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
     const b = await writerBriefGet(env, aid); if (!b) return { error: "This brief hasn't been written yet." };
     let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
-    return { ok: true, admin, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md }, ...(admin ? { shared } : {}) }; }
+    return { ok: true, admin, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md, json: b.json || null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, posts: (x.data.posts || []).length, imported: x.imported || null })).filter(x => admin || true), ...(admin ? { shared } : {}) }; }
+  // 📥 a writer sends a run back on the brief page (operator 2026-11-25): validated, kept on the brief (KV) until the admin imports it
+  if (op === "briefReturn") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
+    if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
+    const b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
+    let data; try { data = JSON.parse(String(body.text || "").replace(/^```(?:json)?\s*|\s*```\s*$/g, "")); } catch (e) { return { error: "That isn't valid JSON: " + e.message }; }
+    const runs = (Array.isArray(data) ? data : [data]).filter(x => x && Array.isArray(x.posts)); if (!runs.length) return { error: "No run found — each run needs a \"posts\" list (see section 6 of the brief)" };
+    const bad = []; runs.forEach(r => r.posts.forEach((p, i) => { if (!p || !p.prewrite || typeof p.prewrite !== "object") bad.push((r.run || "run") + " post " + (i + 1) + ": no prewrite"); }));
+    if (bad.length) return { error: bad.slice(0, 5).join(" · ") };
+    b.returns = b.returns || []; runs.forEach(r => b.returns.push({ at: new Date().toISOString(), by: email, run: String(r.run || "Writer run").slice(0, 200), data: { ...r, posts: r.posts.slice(0, 60) } }));
+    b.returns = b.returns.slice(-30); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b));
+    return { ok: true, received: runs.map(r => ({ run: r.run, posts: r.posts.length })) }; }
   if (op === "briefShare") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can share a brief." };
     const aid = hubAssetId(body.assetId || ""), em = String(body.email || "").trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { error: "A valid email is required" };
     const prev = await env.TRADES.get("member:email:" + em, "json").catch(() => null);
@@ -21490,6 +21512,20 @@ export default {
       const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
+    if (body.action === "member" && body.op === "briefImport") { try {   // 📥 import a returned run into the brief's title (admin)
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can import." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return json({ error: "No such brief" });
+        const x = (b.returns || [])[Number(body.index)]; if (!x) return json({ error: "No such return" }); if (!b.titleId || !b.campaignId) return json({ error: "This brief doesn't know its title — rebuild it from the deploy" });
+        const made = [], skipped = [], failed = [];
+        for (const [i, p] of (x.data.posts || []).entries()) {
+          const r = await invoke({ action: "importAssetItem", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, run: x.run, key: String(p.key || x.run + "-" + (i + 1)).slice(0, 120),
+            assetTitle: String(p.prewrite["Platform Title"] || p.line || x.run + " " + (i + 1)).slice(0, 300), assetType: x.data.assetType || "single post", prewrite: p.prewrite }).catch(e => ({ error: e.message }));
+          if (r && r.skipped) skipped.push(p.key); else if (!r || r.error) failed.push((p.key || i + 1) + ": " + ((r && r.error) || "no response")); else made.push(r.assetId || r.id || p.key); }
+        x.imported = { at: new Date().toISOString(), made: made.length, skipped: skipped.length, failed: failed.length }; await env.TRADES.put("wbrief:" + aid, JSON.stringify(b));
+        return json({ ok: !failed.length, made: made.length, skipped: skipped.length, failed }); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "reportAdmin") { try {   // 🎯 report focus bar on the members page (operator 2026-11-25) — superadmin only
         const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
         const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can do that." }, 403);

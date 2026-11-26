@@ -341,12 +341,34 @@ async function briefView(tok) {
     const share = d.admin ? `<details class="card" style="margin:0 0 16px"><summary><b>Share with a writer</b> <span class="od-mute">${(d.shared || []).length ? "shared with " + esc(d.shared.join(", ")) : "not shared yet"}</span></summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input class="mg-in" id="bfEm" type="email" placeholder="writer@example.com" style="flex:1;min-width:200px"><button class="share" style="margin:0" onclick="briefShare()">Share</button></div>
       <div class="od-mute" id="bfSt" style="margin-top:6px">They sign in with that Google account and see only this brief.</div></details>` : "";
-    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span style="margin-left:auto;display:flex;gap:8px"><button class="share" style="margin:0" onclick="briefCopy(this)">Copy</button><button class="share" style="margin:0" onclick="briefDownload()">Download .md</button></span></div>`
-      + share + `<div class="card bf">${mdHtml(B.md)}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>`;
+    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${B.json ? '<button class="share" style="margin:0;border-color:var(--accent);color:var(--accent)" onclick="briefCopyJson(this)" title="The whole brief as one JSON packet, to paste into ChatGPT / Claude">Copy JSON</button><button class="share" style="margin:0" onclick="briefDownload(true)">.json</button>' : ""}<button class="share" style="margin:0" onclick="briefCopy(this)">Copy text</button><button class="share" style="margin:0" onclick="briefDownload()">.md</button></span></div>`
+      + share + `<div class="card bf">${mdHtml(B.md)}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>` + briefReturnHtml(d);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
 }
-async function briefCopy(b) { try { await navigator.clipboard.writeText(_bf.brief.md); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy"; }, 2000); }
-function briefDownload() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([_bf.brief.md], { type: "text/markdown" })); a.download = (_bf.brief.title || "writer-brief").replace(/[^\w-]+/g, "-").toLowerCase() + ".md"; a.click(); }
+// 📥 send the posts back here (operator 2026-11-25): paste or upload run.json; the admin sees each return and imports it into the run
+function briefReturnHtml(d) {
+  const R = d.returns || [];
+  return `<div class="card"><h3 style="font:700 18px 'Bricolage Grotesque',sans-serif;margin:0 0 6px">Send your posts back</h3>
+    <p class="od-mute" style="margin:0 0 8px">Paste one run's JSON (the format in section 6), or several as a list, or choose the .json file.</p>
+    <textarea class="od-ta" id="bfRet" rows="6" placeholder='{"run": "…", "posts": [{ "key": "…", "line": "…", "prewrite": { "Platform Title": "…" } }]}'></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" id="bfFile" accept=".json,application/json" onchange="briefFile(this)" style="font-size:13px;max-width:100%"><button class="share od-go" style="margin:0 0 0 auto" onclick="briefSend()">Send</button></div>
+    <div class="od-mute" id="bfRSt" style="margin-top:6px"></div>
+    ${R.length ? `<div class="od-l" style="margin-top:14px">Received</div>${R.map(x => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding:8px 0;font-size:14.5px"><b style="flex:1;min-width:160px">${esc(x.run)}</b><span class="od-mute">${x.posts} posts · ${esc(new Date(x.at).toLocaleString())}${x.by ? " · " + esc(x.by) : ""}</span>
+      ${x.imported ? `<span style="color:#16a34a;font-weight:600">✓ imported ${x.imported.made}${x.imported.skipped ? " · " + x.imported.skipped + " already there" : ""}${x.imported.failed ? " · " + x.imported.failed + " failed" : ""}</span>` : d.admin ? `<button class="share" style="margin:0" onclick="briefImport(${x.i},this)">Import</button>` : '<span class="od-mute">waiting for review</span>'}</div>`).join("")}` : ""}</div>`;
+}
+function briefFile(inp) { const f = inp.files && inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { document.getElementById("bfRet").value = String(r.result || ""); }; r.readAsText(f); }
+async function briefSend() { const t = (document.getElementById("bfRet") || {}).value || "", st = document.getElementById("bfRSt"); if (!t.trim()) { st.textContent = "Paste the JSON or choose the file first"; return; }
+  st.textContent = "Sending…"; const r = await call({ op: "briefReturn", token: store.get("mb_token"), assetId: BRIEF_ID, text: t }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { st.textContent = "✗ " + ((r && r.error) || "Not sent"); return; }
+  st.textContent = "✓ Received: " + r.received.map(x => x.run + " (" + x.posts + " posts)").join(", "); setTimeout(() => briefView(store.get("mb_token")), 1200); }
+async function briefImport(i, b) { b.disabled = true; b.textContent = "Importing…";
+  const r = await call({ op: "briefImport", token: store.get("mb_token"), assetId: BRIEF_ID, index: i }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { b.disabled = false; b.textContent = "Import"; const st = document.getElementById("bfRSt"); if (st) st.textContent = "✗ " + ((r && r.error) || "Not imported"); return; }
+  briefView(store.get("mb_token")); }
+async function briefCopyJson(b) { try { await navigator.clipboard.writeText(JSON.stringify(_bf.brief.json, null, 2)); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy JSON"; }, 2000); }
+async function briefCopy(b) { try { await navigator.clipboard.writeText(_bf.brief.md); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy text"; }, 2000); }
+function briefDownload(asJson) { const a = document.createElement("a"), base = (_bf.brief.title || "writer-brief").replace(/[^\w-]+/g, "-").toLowerCase();
+  a.href = URL.createObjectURL(asJson ? new Blob([JSON.stringify(_bf.brief.json, null, 2)], { type: "application/json" }) : new Blob([_bf.brief.md], { type: "text/markdown" })); a.download = base + (asJson ? ".json" : ".md"); a.click(); }
 async function briefShare() { const em = (document.getElementById("bfEm") || {}).value || "", st = document.getElementById("bfSt"); st.textContent = "Sharing…";
   const r = await call({ op: "briefShare", token: store.get("mb_token"), assetId: BRIEF_ID, email: em }).catch(e => ({ error: e.message }));
   st.textContent = r && r.ok ? `✓ Shared with ${r.email}${r.newMember ? " (added to the members list)" : ""}. Send them: ${location.origin}/members/?brief=${BRIEF_ID}` : "✗ " + ((r && r.error) || "Not shared"); }
