@@ -1761,6 +1761,139 @@ async function briefStackAddOp(env, b, body) {
 // 🔑 keywords: the terms chosen at this level (the report's keyword set for this niche) — terms only
 async function briefKeywords(env, b, job) { if (!b.reportId) return null; const R = await reportGet(env, b.reportId, job && job.ctx && job.ctx.at).catch(() => null) || await reportGet(env, b.reportId).catch(() => null);
   const K = (R && R.keywords) || {}; return { list: Array.isArray(K.list) ? K.list.slice(0, 40) : [], niche: R && typeof R.product === "string" ? R.product : String((R && R.product && R.product.name) || ""), demand: R && R.analysis ? String(R.analysis.demand || "").slice(0, 3000) : "" }; }
+// 📥 BRIEF IMPORTER (operator 2026-11-26: "importer has to do two things … create an asset to match what is returned (if not fitting an
+// existing)"; "this import is mostly a dev asset builder, not a writer or publisher"). Any JSON the chat sends back → PLAN (which type, how its
+// fields map onto that type's writing contract) → APPLY (one Development asset per item, External Write = the mapped fields, External Keep
+// Verbatim). Type order: the stack's own assets by key → an Asset Flow type whose contract fits → a kind of one → a NEW type (drafted, created
+// only when the operator approves: AF node + Current Methods contract, additive, AF backed up first). The paste-back's type picker is only a
+// hint — the importer's decision wins. Only the contract check runs here (advisory); grounding / expert checks, missing fields and rewrites
+// happen at publishing, on demand.
+const IMP_TRANSFORMS = ["copy", "first_sentence", "beats", "join", "constant", "missing"];
+function impItems(data) {
+  if (Array.isArray(data)) return { items: data.filter(x => x && typeof x === "object"), meta: {}, from: "list" };
+  if (!data || typeof data !== "object") return { items: [], meta: {}, from: "" };
+  const k = Object.keys(data).find(k => Array.isArray(data[k]) && data[k].length && data[k].every(x => x && typeof x === "object" && !Array.isArray(x)));
+  const meta = Object.fromEntries(Object.entries(data).filter(([x, v]) => x !== k && (typeof v !== "object" || v === null)).map(([x, v]) => [x, String(v).slice(0, 300)]));
+  return { items: k ? data[k] : [], meta, from: k || "" };
+}
+const impGet = (o, path) => String(path || "").split(".").reduce((v, p) => v == null ? v : v[p], o);
+const impSentences = t => String(t || "").replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+(?=[A-Z0-9"'“‘])/).map(s => s.trim()).filter(Boolean);
+function impBeats(t, min = 5, max = 8) { let S = impSentences(t); if (!S.length) return [];
+  while (S.length > max) { let k = 0, best = 1e9; for (let i = 0; i < S.length - 1; i++) { const l = S[i].length + S[i + 1].length; if (l < best) { best = l; k = i; } } S.splice(k, 2, S[k] + " " + S[k + 1]); }
+  return S; }
+function impApplyMap(item, map) { const f = {};
+  for (const m of map || []) { const src = impGet(item, m.from), v = src == null ? "" : typeof src === "object" ? JSON.stringify(src) : String(src);
+    const out = m.transform === "first_sentence" ? (impSentences(v)[0] || v) : m.transform === "beats" ? impBeats(v).map((s, i) => `${i + 1}. ${s}`).join("\n")
+      : m.transform === "join" ? String(m.from || "").split(",").map(p => impGet(item, p.trim())).filter(x => x != null && x !== "").map(String).join("\n\n")
+      : m.transform === "constant" ? String(m.value || "") : m.transform === "missing" ? "" : v;
+    if (out.trim()) f[m.field] = out.trim(); }
+  return f; }
+async function impTypes(env) {   // AF types that have a writing contract (name → contract)
+  const rows = writingRows(await writingMethodsTable(env).catch(() => ({ columns: [], rows: [] })));
+  const af = (await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null)) || { rows: [] };
+  return af.rows.filter(r => r.cells && r.cells.kind === "node").map(r => String(r.cells.label || "")).filter((l, i, A) => l && A.indexOf(l) === i)
+    .map(l => { const row = cmRowFor(rows, l); return row ? { type: l, row: row.name, contract: parseWritingContract(row.contractText).map(f => ({ name: f.name, rule: f.rule })) } : null; }).filter(Boolean);
+}
+async function briefImportPlan(env, b, body, email) {
+  let data; try { data = JSON.parse(String(body.text || "").trim().replace(/^```(?:json)?\s*|\s*```\s*$/g, "")); } catch (e) { throw new Error("That isn't valid JSON: " + e.message); }
+  const { items, meta, from } = impItems(data); if (!items.length) throw new Error("No list of items found in that JSON");
+  if (items.length > 200) throw new Error("Up to 200 items per import");
+  const job = await stackJob(env, b), stack = await briefStack(env, b, job), direction = String(body.direction || "").trim().slice(0, 2000), hint = String(body.typeHint || "").trim().slice(0, 120);
+  const name = String(body.name || "").trim().slice(0, 120);
+  const flat = x => x.fields && typeof x.fields === "object" ? { ...x.fields, ...(x.format ? { Format: x.format } : {}), ...(x.day != null ? { Day: String(x.day) } : {}) } : null;
+  let plan = null;
+  // 1 · the stack's own assets, by key (≥ half the items carry one of a group's keys)
+  for (const g of stack.filter(g => g.origin === "deploy")) { const K = new Set(g.items.map(z => z.key.toLowerCase())), hit = items.filter(x => K.has(String(x.key || "").toLowerCase())).length;
+    if (hit && hit >= items.length / 2) { plan = { decision: "stack", type: g.type, group: g.id, label: g.label, confidence: 1, reason: `${hit} of ${items.length} items carry this stack's keys`, contract: g.contract,
+      map: null, fill: g.items.map(z => ({ key: z.key, assetId: z.assetId })) }; break; } }
+  // 2-4 · one mapping call over a few sample items (the mapping is then applied to every item without a model)
+  if (!plan) { const T = await impTypes(env);
+    const sample = items.slice(0, 3).map(x => JSON.stringify(x).slice(0, 2500));
+    const schema = { type: "object", required: ["decision", "type", "confidence", "reason", "map"], properties: {
+      decision: { type: "string", enum: ["existing", "kind", "new"], description: "existing = an Asset Flow type below fits; kind = a variant of one of them (name it in kind); new = nothing fits — draft a new type" },
+      type: { type: "string", description: "the chosen type, exactly as listed (for new: the new type's name)" }, kind: { type: "string", description: "for kind: the variant's short name, else ''" },
+      confidence: { type: "number", description: "0-1, how sure the type and mapping are" }, reason: { type: "string" }, titleFrom: { type: "string", description: "the item key that names each item (e.g. title)" },
+      map: { type: "array", description: "one entry per contract field of the chosen type, in contract order", items: { type: "object", required: ["field", "transform"], properties: {
+        field: { type: "string" }, from: { type: "string", description: "item key (dot path), or comma-separated keys for join; '' when missing/constant" },
+        transform: { type: "string", enum: IMP_TRANSFORMS, description: "copy · first_sentence (the first sentence) · beats (split into 5-8 numbered beats) · join (several keys) · constant (value) · missing (nothing in the items supplies it — it is filled at publishing)" }, value: { type: "string" } } } },
+      newType: { type: "object", description: "only for decision new", properties: { label: { type: "string" }, parentType: { type: "string", description: "the listed type it sits nearest to" }, purpose: { type: "string" },
+        contract: { type: "array", items: { type: "object", required: ["name", "rule"], properties: { name: { type: "string" }, rule: { type: "string", description: "what the field holds; a length limit" } } } } } } } };
+    const prompt = `You map a batch of copy that an outside chat wrote back into a content system's asset types. Pick the ONE type whose writing contract the items fit best, then map each contract field to the items' keys. Prefer an existing type; a variant ("kind") of an existing type over a new type; a new type only when nothing fits. Never invent content — a field nothing supplies is "missing".
+${hint ? `The operator suggested the type "${hint}" — a hint only; decide on the fit.\n` : ""}${direction ? `OPERATOR DIRECTION FOR THIS IMPORT:\n${direction}\n` : ""}
+BATCH: ${items.length} items (list "${from || "top level"}"). Batch info: ${JSON.stringify(meta)}
+SAMPLE ITEMS:\n${sample.join("\n\n")}
+
+TYPES (name → contract fields):\n${T.map(t => `- ${t.type}: ${t.contract.map(f => f.name + " (" + f.rule.slice(0, 140) + ")").join("; ")}`).join("\n")}`;
+    const r = await hcClaude(env, prompt, "import_map", schema, 4000); if (!r || !r.type) throw new Error("The mapping didn't come back");
+    const t = T.find(x => ivNorm(x.type) === ivNorm(r.type));
+    if (r.decision !== "new" && !t) throw new Error(`The mapping picked "${r.type}", which isn't a type with a contract`);
+    const contract = r.decision === "new" ? ((r.newType && r.newType.contract) || []) : t.contract;
+    const map = contract.map(f => { const m = (r.map || []).find(x => ivNorm(x.field) === ivNorm(f.name)) || { transform: "missing" }; return { field: f.name, from: String(m.from || ""), transform: IMP_TRANSFORMS.includes(m.transform) ? m.transform : "copy", value: String(m.value || "") }; });
+    plan = { decision: r.decision, type: r.decision === "new" ? String((r.newType && r.newType.label) || r.type).slice(0, 80) : t.type, kind: String(r.kind || "").slice(0, 60), confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0)),
+      reason: String(r.reason || "").slice(0, 600), contract, map, titleFrom: String(r.titleFrom || ""), newType: r.decision === "new" ? r.newType || null : null }; }
+  // preview: the first two items after mapping + the advisory contract check over all
+  const fieldsOf = x => plan.decision === "stack" ? (flat(x) || {}) : impApplyMap(x, plan.map);
+  const warn = items.map((x, i) => { const f = fieldsOf(x), v = plan.contract.length ? validateWritingContract(plan.contract, Object.fromEntries(plan.contract.map(c => [c.name, String(f[c.name] || "")]))) : []; return v.length ? `${i + 1}: ${v.slice(0, 2).join("; ")}` : ""; }).filter(Boolean);
+  const id = "ip" + Date.now().toString(36);
+  const P = { id, at: new Date().toISOString(), by: email, ...plan, direction, hint, name, from, meta, items, made: {}, warnings: warn.slice(0, 60), status: "planned" };
+  await env.TRADES.put("wbimport:" + id, JSON.stringify(P), { expirationTtl: 60 * 86400 });
+  const LK = "wbimports:" + body.briefId, L = (await env.TRADES.get(LK, "json").catch(() => null)) || []; L.push(id); await env.TRADES.put(LK, JSON.stringify(L.slice(-40)));
+  return { ok: true, plan: impView(P), preview: items.slice(0, 2).map(x => fieldsOf(x)) };
+}
+const impView = P => ({ id: P.id, at: P.at, decision: P.decision, type: P.type, kind: P.kind, group: P.group || "", label: P.label || "", confidence: P.confidence, reason: P.reason, map: P.map, contract: P.contract,
+  newType: P.newType, n: P.items.length, made: Object.keys(P.made || {}).length, warnings: P.warnings, status: P.status, name: P.name, direction: P.direction, hint: P.hint, missing: (P.map || []).filter(m => m.transform === "missing").map(m => m.field), failed: P.failed || [] });
+// approve a NEW type: Asset Flow node (backup first, additive) + a Current Methods row with its contract
+async function impCreateType(env, P) {
+  const nt = P.newType || {}, label = String(nt.label || P.type).trim().slice(0, 80); if (!label) throw new Error("The new type has no name");
+  const AFK = "infoflow:table:assetflowgraph", af = await env.TRADES.get(AFK, "json"); if (!af || !Array.isArray(af.rows)) throw new Error("Asset Flow unavailable");
+  if (!af.rows.some(r => r.cells && r.cells.kind === "node" && ivNorm(r.cells.label) === ivNorm(label))) {
+    await env.TRADES.put(AFK + ":backup:" + Date.now().toString(36), JSON.stringify(af), { expirationTtl: 180 * 86400 });
+    const par = af.rows.find(r => r.cells && r.cells.kind === "node" && ivNorm(r.cells.label) === ivNorm(nt.parentType || "")), wb = af.rows.find(r => r.cells && r.cells.kind === "node" && r.cells.label === "Writer Brief");
+    const nid = "n" + crypto.randomUUID().replace(/-/g, "").slice(0, 20), x = Number((par && par.cells.x) || 1100) + 220, y = Number((par && par.cells.y) || 1700) + 80;
+    af.rows.push({ id: nid, cells: { kind: "node", label, role: (par && par.cells.role) || "Free Published Asset", interview: "None", x: String(x), y: String(y),
+      notes: `Created by the writer brief importer (${new Date().toISOString().slice(0, 10)}, operator-approved): ${String(nt.purpose || "").slice(0, 600)}${nt.parentType ? "\nNearest type: " + nt.parentType : ""}` } });
+    if (wb) af.rows.push({ id: "e-brief-imp-" + nid.slice(1, 9), cells: { kind: "edge", source: wb.id, target: nid, relation: "routes", condition: "a writer brief paste-back the importer mapped to this type", description: "Writer brief importer (operator-approved new type)" } });
+    af.at = Date.now(); await env.TRADES.put(AFK, JSON.stringify(af)); }
+  const CMK = "infoflow:table:currentmethods", cm = await env.TRADES.get(CMK, "json"); if (!cm || !Array.isArray(cm.rows)) throw new Error("Current Methods unavailable");
+  const cc = (cm.columns.find(c => ivNorm(c.name) === "contract") || {}).id || "cwcontract01";
+  if (!cm.rows.some(r => ivNorm(r.cells.cname01 || "") === ivNorm(label))) {
+    cm.rows.push({ id: "rimp" + Date.now().toString(36), cells: { cname01: label, cmuzq36hb77sq: label, cmatch01: label, civtier01: "None", ckind01: "child", [cc]: (nt.contract || P.contract || []).map(f => `${f.name} — ${f.rule}`).join("\n"),
+      c2: `Created by the writer brief importer (operator-approved). ${String(nt.purpose || "").slice(0, 400)}` } });
+    cm.at = Date.now(); await env.TRADES.put(CMK, JSON.stringify(cm)); }
+  return label;
+}
+async function briefImportApply(env, invoke, b, body) {
+  const K = "wbimport:" + String(body.planId || ""), P = await env.TRADES.get(K, "json").catch(() => null); if (!P) throw new Error("That import plan has expired — paste it again");
+  const job = await stackJob(env, b); if (!job) throw new Error("This brief has no deploy stack");
+  if (P.decision === "new" && !P.typeCreated) { if (!body.approveNewType) throw new Error("This is a new asset type — approve it first"); P.type = await impCreateType(env, P); P.typeCreated = true; }
+  const from = Math.max(0, Number(body.from) || 0), part = P.items.slice(from, from + 8), src = "Writer brief import · " + new Date().toISOString().slice(0, 10);
+  const offer = (job.plan && job.plan.name) || b.offer || "Offer", vids = new Set((await env.TRADES.get("vshorts:" + body.briefId, "json").catch(() => null)) || []);
+  P.failed = P.failed || [];
+  for (const [k, x] of part.entries()) { const i = from + k; if (P.made[i]) continue;
+    try {
+      if (P.decision === "stack") { const z = P.fill.find(z => z.key.toLowerCase() === String(x.key || "").toLowerCase()); if (!z || !z.assetId) { P.failed.push((x.key || i + 1) + ": not in the stack"); continue; }
+        const f = x.fields && typeof x.fields === "object" ? { ...x.fields, ...(x.format ? { Format: x.format } : {}), ...(x.day != null ? { Day: String(x.day) } : {}) } : {};
+        await extWriteSet(env, z.assetId, JSON.stringify(f, null, 2), src); P.made[i] = z.assetId; continue; }
+      const f = impApplyMap(x, P.map); if (P.kind) f.Format = f.Format || P.kind;
+      const nm = String(impGet(x, P.titleFrom) || f["Platform Title"] || f.Title || f.Headline || `${P.type} ${i + 1}`).replace(/\s+/g, " ").slice(0, 200);
+      const r = await invoke({ action: "initiativeBuildAsset", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, assetType: P.type, assetTitle: `${P.name || offer} - ${nm}`.slice(0, 300),
+        ...(job.ids.offer ? { parentAssetId: job.ids.offer } : {}), initiative: job.initiative, directions: offerDirections(job, (P.direction ? P.direction + "\n" : "") + `Imported from the writer brief (${P.type}${P.kind ? " · " + P.kind : ""}); the copy is in External Write — check facts, fill missing fields and rewrite only at publishing.`) });
+      if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created"); const id = hubAssetId(r.assetId);
+      await extWriteSet(env, id, JSON.stringify(f, null, 2), src);
+      await hfAssetPatch(id, { "Asset Status": { select: { name: "Development" } }, "External Keep": { select: { name: "Verbatim" } }, ...(P.name ? { Run: { rich_text: ivRt(P.name) } } : {}) }).catch(e => P.failed.push((i + 1) + ": status/keep not set — " + e.message));
+      if (ivNorm(P.type) === ivNorm("Single Post Video Short")) {   // keep the script ready for the render at publishing
+        const beats = String(f["Video Spec"] || "").split("\n").map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean), v = videoNorm({ title: nm, headline: f.Hook || nm, beats, cta: "" }, i);
+        if (v) { await env.TRADES.put("vshort:" + id, JSON.stringify({ ...v, assetId: id, briefId: body.briefId, run: P.name || "", themeId: "", render: null })); vids.add(id); } }
+      P.made[i] = id; job.ids["imp:" + P.id + ":" + i] = id;
+    } catch (e) { P.failed.push((i + 1) + ": " + e.message); } }
+  if (vids.size) await env.TRADES.put("vshorts:" + body.briefId, JSON.stringify([...vids]));
+  await env.TRADES.put("offerdeploy:job:" + job.id, JSON.stringify(job));
+  const next = from + part.length < P.items.length ? from + part.length : null; P.status = next == null ? "done" : "importing";
+  await env.TRADES.put(K, JSON.stringify(P), { expirationTtl: 60 * 86400 });
+  return { ok: true, videos: true, next, total: P.items.length, made: Object.keys(P.made).length, failed: P.failed.slice(-10), plan: impView(P) };
+}
+async function briefImportList(env, briefId) { const L = (await env.TRADES.get("wbimports:" + briefId, "json").catch(() => null)) || [];
+  return (await Promise.all(L.slice(-15).map(id => env.TRADES.get("wbimport:" + id, "json").catch(() => null)))).filter(Boolean).map(impView).reverse(); }
 async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
   return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
 async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
@@ -21875,6 +22008,18 @@ export default {
           if (r && r.skipped) skipped.push(p.key); else if (!r || r.error) failed.push((p.key || i + 1) + ": " + ((r && r.error) || "no response")); else made.push(r.assetId || r.id || p.key); }
         x.imported = { at: new Date().toISOString(), made: made.length, skipped: skipped.length, failed: failed.length }; await env.TRADES.put("wbrief:" + aid, JSON.stringify(b));
         return json({ ok: !failed.length, made: made.length, skipped: skipped.length, failed }); } catch (e) { return json({ error: e.message }, 400); } }
+    if (body.action === "member" && body.op === "briefImporter") { try {   // 📥 the brief importer (admin): plan · apply · list
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can import." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+        const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return json({ error: "No such brief" }); body.briefId = aid;
+        if (!b.titleId || !b.campaignId) return json({ error: "This brief doesn't know its title — rebuild it from the deploy" });
+        const sub = String(body.sub || "list");
+        if (sub === "plan") return json(await briefImportPlan(env, b, body, em));
+        if (sub === "apply") return json(await briefImportApply(env, invoke, b, body));
+        if (sub === "list") return json({ ok: true, imports: await briefImportList(env, aid), types: (await impTypes(env)).map(t => t.type).sort() });
+        return json({ error: "Unknown sub " + sub }); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "shortVideo") { try {   // 🎬 short videos from a brief (admin): backgrounds, template, renders
         const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
         const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can do that." }, 403);

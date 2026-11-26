@@ -381,11 +381,12 @@ async function briefView(tok) {
 }
 function wbPick(id, quiet) { const A = document.getElementById("wbAdd"), I = document.getElementById("wbInfo"); if (!I) return;
   if (id === "__add") { document.getElementById("wbSel").value = _wbSel; return wbAddOpen(); }
-  _wbSel = id; if (A) A.innerHTML = ""; const g = wbG(id); if (!g) { I.innerHTML = ""; wbPasteDraw(); return; }
+  _wbSel = id; if (A) A.innerHTML = ""; const g = wbG(id); if (!g) { I.innerHTML = ""; wbPasteSync(); return; }
   I.innerHTML = `<details class="wb-fl"><summary class="od-mute">${esc(g.type)} · ${esc(g.count)}${g.row ? " · contract: " + esc(g.row) : g.kind === "videos" ? "" : ' · <span style="color:#b45309">no writing contract</span>'}</summary>
     <p style="margin:6px 0">${esc(g.task)}</p>${g.kind === "videos" ? "" : `<ul style="margin:0;font-size:14px">${(g.contract || []).map(f => `<li><b>${esc(f.name)}</b>: ${esc(f.rule)}</li>`).join("")}</ul>`}
     ${g.origin === "added" && !(g.items || []).length ? `<button class="share" style="margin:8px 0 0" onclick="wbAddRemove('${g.id}',this)">Remove from the stack</button>` : ""}</details>`;
-  wbPasteDraw(); }
+  wbPasteSync(); }
+function wbPasteSync() { const t = document.getElementById("impType"), g = wbG(_wbSel); if (!t) return wbPasteDraw(); if (g && [...t.options].some(o => o.value === g.type)) t.value = g.type; }
 function wbStruct(g) { const L = [`# ASSET STRUCTURE: ${g.label} (${g.type})`, "", g.task, "", "**How many:** " + g.count, ""];
   if (g.kind === "videos") L.push("**Beat map** (every script follows it):", ...(g.beatMap || []).map(b => `- **${b.beat}** (${b.at}): ${b.what}`), "", "**Rules:**", ...(g.rules || []).map(x => "- " + x), "");
   else { L.push("**Fields for each item** (use these exact names; follow each rule):", ...(g.contract || []).map(f => `- **${f.name}**: ${f.rule}`), "");
@@ -415,29 +416,48 @@ async function wbAddGo(b) { const type = document.getElementById("wbAddT").value
   if (!r || r.error) { b.disabled = false; document.getElementById("wbSt").textContent = "✗ " + ((r && r.error) || "Not added"); return; } _wbSel = r.id; briefView(store.get("mb_token")); }
 async function wbAddRemove(id, b) { b.disabled = true; const r = await call({ op: "briefStackAdd", token: store.get("mb_token"), assetId: BRIEF_ID, sub: "remove", id }).catch(e => ({ error: e.message }));
   if (!r || r.error) { b.disabled = false; document.getElementById("wbSt").textContent = "✗ " + ((r && r.error) || "Not removed"); return; } _wbSel = ""; briefView(store.get("mb_token")); }
-// 📥 paste back for the selected type + what came back for it
-function wbPasteDraw() { const P = document.getElementById("wbPasteIn"); if (!P) return; const g = wbG(_wbSel);
-  if (!g) { P.innerHTML = '<div class="od-mute">Pick a type in the strip first.</div>'; return; }
-  const R = (_bf.returns || []).filter(x => x.stack === g.id), legacy = (_bf.returns || []).filter(x => !x.stack);
-  P.innerHTML = `<div class="od-mute" style="margin:0 0 6px">${g.icon} ${esc(g.label)}: paste the chat's JSON</div>
-    <textarea class="od-ta" id="rbRet" rows="6" placeholder='${esc(JSON.stringify(g.example).slice(0, 140))}…'></textarea>
-    <div class="wb-row"><input type="file" accept=".json,application/json" onchange="rbFile(this)" style="font-size:13px;max-width:100%;flex:1"><button class="share od-go" style="margin:0" onclick="wbSend(this)">${_bf.admin ? (g.origin === "deploy" ? "Send + fill assets" : "Send + create assets") : "Send"}</button></div>
-    <div class="od-mute" id="bfRSt" style="margin-top:6px"></div>
-    ${R.length ? `<div class="od-l" style="margin-top:10px">Received</div>${R.map(x => `<div class="wb-rcv"><span>${x.items || x.videos} items · ${esc(new Date(x.at).toLocaleDateString())}${x.warnings && x.warnings.length ? ` · <span title="${esc(x.warnings.join("\n"))}" style="color:#b45309">⚠ ${x.warnings.length}</span>` : ""}</span>
-      ${x.imported ? `<span style="color:#16a34a;font-weight:600">✓ ${x.kind === "stack" ? (x.imported.skipped ? x.imported.skipped + " filled" : "") + (x.imported.made ? " " + x.imported.made + " new" : "") : x.imported.made + " made"}${x.imported.failed ? " · " + x.imported.failed + " failed" : ""}</span>` : _bf.admin ? `<button class="share" style="margin:0" onclick="briefImport(${x.i},this)">${x.importing ? "Resume" : g.origin === "deploy" ? "Fill assets" : "Create assets"}</button>` : '<span class="od-mute">waiting</span>'}</div>`).join("")}` : ""}
-    ${legacy.length ? `<details style="margin-top:10px"><summary class="od-mute">Earlier returns (${legacy.length})</summary>${briefReturnHtml({ ..._bf, returns: legacy })}</details>` : ""}`; }
-async function wbSend(b) { const st = document.getElementById("bfRSt"), g = wbG(_wbSel); let t = (document.getElementById("rbRet") || {}).value || ""; if (!g) return; if (!t.trim()) { st.textContent = "Paste the JSON or choose the file first"; return; }
-  try { let j = JSON.parse(t.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, ""));
-    if (g.kind === "videos") { if (Array.isArray(j)) j = { videos: j }; j.stack = g.id; }
-    else { if (Array.isArray(j)) j = { items: j }; ["posts", "emails", "ctas", "assets"].forEach(k => { if (!j.items && Array.isArray(j[k])) j.items = j[k]; });
-      (j.items || []).forEach(x => { if (x && !x.fields) { const { key, format, day, ...rest } = x; x.fields = rest; } }); j.stack = g.id; delete j.ribbon; }
-    t = JSON.stringify(j); } catch (e) { st.textContent = "✗ That isn't valid JSON: " + e.message; return; }
-  b.disabled = true; st.textContent = "Sending…"; const res = await call({ op: "briefReturn", token: store.get("mb_token"), assetId: BRIEF_ID, text: t }).catch(e => ({ error: e.message }));
-  if (!res || res.error) { b.disabled = false; st.textContent = "✗ " + ((res && res.error) || "Not sent"); return; }
-  st.textContent = "✓ Received " + res.received.map(x => x.posts + " items" + (x.warnings ? " (" + x.warnings + " flagged, saved anyway)" : "")).join(", ");
-  _wbOpen.add("wbPaste"); if (!_bf.admin) { setTimeout(() => briefView(store.get("mb_token")), 1200); return; }
-  const d = await call({ op: "brief", token: store.get("mb_token"), assetId: BRIEF_ID }).catch(() => null); const last = d && d.returns && d.returns.filter(x => x.stack === g.id).pop();
-  _wbAssets = null; if (last && !last.imported) { st.textContent += " · writing into the assets…"; await briefImport(last.i, b); } else briefView(store.get("mb_token")); }
+// 📥 paste back = the importer (operator 2026-11-26): name · type picker (a hint — the importer decides) · direction · JSON → the mapping →
+// Development assets. A confident match onto an existing type runs straight through; a new type waits for approval.
+let _imp = { list: null, types: [], plan: null };
+const impCall = (sub, x) => call({ op: "briefImporter", token: store.get("mb_token"), assetId: BRIEF_ID, sub, ...(x || {}) }).catch(e => ({ error: e.message }));
+async function wbPasteDraw() { const P = document.getElementById("wbPasteIn"); if (!P) return; const g = wbG(_wbSel);
+  if (!_bf.admin) { P.innerHTML = '<div class="od-mute">Only the admin imports for now.</div>'; return; }
+  const types = [...new Set([...(_bf.stack || []).map(x => x.type), ...(_imp.types || [])])];
+  P.innerHTML = `<input class="mg-in" id="impName" placeholder="Name for this batch (e.g. Video posts Nov 25)" style="width:100%;margin:0 0 6px">
+    <select class="mg-in" id="impType" style="width:100%;margin:0 0 6px"><option value="">Type: let the importer decide</option>${types.map(t => `<option ${g && g.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
+    <textarea class="od-ta" id="impDir" rows="2" placeholder="Direction for this import (optional)…" style="margin:0 0 6px"></textarea>
+    <textarea class="od-ta" id="rbRet" rows="6" placeholder="Paste the chat's JSON here…"></textarea>
+    <div class="wb-row"><input type="file" accept=".json,application/json" onchange="rbFile(this)" style="font-size:13px;max-width:100%;flex:1"><button class="share od-go" style="margin:0" onclick="impPlan(this)">Check + import</button></div>
+    <div class="od-mute" id="bfRSt" style="margin-top:6px"></div><div id="impPlanBox"></div><div id="impList"></div>`;
+  if (!_imp.list) { const r = await impCall("list"); if (r && r.ok) { _imp.list = r.imports; _imp.types = r.types; return wbPasteDraw(); } }
+  impListDraw(); if (_imp.plan) impPlanDraw(); }
+function impListDraw() { const B = document.getElementById("impList"); if (!B) return; const L = _imp.list || []; if (!L.length) { B.innerHTML = ""; return; }
+  B.innerHTML = `<div class="od-l" style="margin-top:12px">Imports</div>` + L.map(p => `<div class="wb-rcv"><span><b>${esc(p.name || p.type)}</b> <span class="od-mute">${esc(p.type)}${p.kind ? " · " + esc(p.kind) : ""} · ${p.made}/${p.n} · ${esc(new Date(p.at).toLocaleDateString())}</span></span>
+    ${p.status === "done" ? `<span style="color:#16a34a;font-weight:600">✓ ${p.made}${p.failed.length ? ` · <span title="${esc(p.failed.join("\n"))}" style="color:#b45309">⚠ ${p.failed.length}</span>` : ""}</span>` : `<button class="share" style="margin:0" onclick="impShow('${p.id}')">${p.made ? "Resume" : "Review"}</button>`}</div>`).join(""); }
+function impShow(id) { _imp.plan = (_imp.list || []).find(p => p.id === id) || null; impPlanDraw(); }
+async function impPlan(b) { const st = document.getElementById("bfRSt"), t = (document.getElementById("rbRet") || {}).value || ""; if (!t.trim()) { st.textContent = "Paste the JSON or choose the file first"; return; }
+  b.disabled = true; st.textContent = "Reading the batch and matching it to a type…";
+  const r = await impCall("plan", { text: t, name: document.getElementById("impName").value.trim(), typeHint: document.getElementById("impType").value, direction: document.getElementById("impDir").value.trim() });
+  b.disabled = false; if (!r || r.error) { st.textContent = "✗ " + ((r && r.error) || "No answer"); return; }
+  _imp.plan = { ...r.plan, preview: r.preview }; _imp.list = null; st.textContent = ""; impPlanDraw(); impCall("list").then(x => { if (x && x.ok) { _imp.list = x.imports; impListDraw(); } });
+  if (r.plan.decision !== "new" && r.plan.confidence >= 0.85) impApply(document.getElementById("impGo")); }
+function impPlanDraw() { const B = document.getElementById("impPlanBox"), p = _imp.plan; if (!B || !p) return;
+  const dec = { stack: "fills this stack's own assets", existing: "an existing type", kind: "a kind of an existing type", new: "a NEW type (needs your approval)" }[p.decision] || p.decision;
+  const tr = { copy: "", first_sentence: " · first sentence", beats: " · split into beats", join: " · joined", constant: " · fixed text", missing: "" };
+  B.innerHTML = `<div class="card" style="margin:10px 0 0;padding:12px"><div><b>${esc(p.type)}</b>${p.kind ? " · " + esc(p.kind) : ""} <span class="od-mute">${dec} · ${Math.round((p.confidence || 0) * 100)}% sure · ${p.n} items</span></div>
+    <div class="od-mute" style="margin:4px 0 8px">${esc(p.reason || "")}</div>
+    ${p.map ? `<table style="width:100%;font-size:13px;border-collapse:collapse">${p.map.map(m => `<tr style="border-top:1px solid var(--line)"><td style="padding:4px 6px 4px 0"><b>${esc(m.field)}</b></td><td style="padding:4px 0">${m.transform === "missing" ? '<span style="color:#b45309">missing · filled at publishing</span>' : m.transform === "constant" ? "“" + esc(m.value) + "”" : esc(m.from) + tr[m.transform]}</td></tr>`).join("")}</table>` : ""}
+    ${p.newType ? `<div class="od-mute" style="margin-top:6px">New type near “${esc(p.newType.parentType || "")}”: ${esc(p.newType.purpose || "")}</div>` : ""}
+    ${p.preview && p.preview[0] ? `<details style="margin-top:6px"><summary class="od-mute">First item, as it will be saved</summary><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${esc(JSON.stringify(p.preview[0], null, 2))}</pre></details>` : ""}
+    ${(p.warnings || []).length ? `<details style="margin-top:6px"><summary style="color:#b45309">⚠ ${p.warnings.length} off-contract (imported anyway, fixed at publishing)</summary><div style="font-size:12px">${p.warnings.slice(0, 20).map(esc).join("<br>")}</div></details>` : ""}
+    <div class="wb-row" style="margin-top:10px"><button class="share od-go" id="impGo" style="margin:0" onclick="impApply(this)">${p.decision === "new" ? "Approve the new type + create " + p.n : p.decision === "stack" ? "Fill " + p.n + " stack assets" : (p.made ? "Resume: " : "Create ") + (p.n - (p.made || 0)) + " Development assets"}</button>
+    <button class="share" style="margin:0" onclick="_imp.plan=null;document.getElementById('impPlanBox').innerHTML=''">Close</button><span class="od-mute" id="impSt"></span></div></div>`; }
+async function impApply(b) { const p = _imp.plan, st = document.getElementById("impSt"); if (!p || !b) return; b.disabled = true;
+  let r = await impCall("apply", { planId: p.id, approveNewType: p.decision === "new", from: 0 });
+  while (r && !r.error && r.next != null) { st.textContent = `${r.made} / ${r.total}…`; r = await impCall("apply", { planId: p.id, from: r.next }); }
+  if (!r || r.error) { b.disabled = false; st.textContent = "✗ " + ((r && r.error) || "Stopped") + " — Resume picks up where it stopped"; return; }
+  _imp.plan = null; _imp.list = null; _wbAssets = null; _wbOpen.add("wbPaste");
+  document.getElementById("bfRSt").textContent = `✓ ${r.made} of ${r.total} done${r.failed.length ? " · " + r.failed.length + " failed: " + r.failed.slice(0, 2).join(" · ") : ""}`; wbPasteDraw(); if (_wbOpen.has("wbBuilt")) wbAssetsLoad(); }
 // 🧱 built assets: this deploy's assets (same initiative) grouped by type, the rest of the title folded below; each opens in Hub Dash 2
 async function wbAssetsLoad() { const r = await call({ op: "reportAdmin", token: store.get("mb_token"), sub: "assets", assetId: _bf.reportId }).catch(e => ({ error: e.message }));
   _wbAssets = r && !r.error ? r : { error: (r && r.error) || "Couldn't load" }; wbAssetsDraw(); }
