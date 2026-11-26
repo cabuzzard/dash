@@ -1663,6 +1663,45 @@ function videoNorm(v, i) {
   return { key: str(v.key || v.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "video-" + (i + 1)).slice(0, 100), title,
     headline: str(v.headline || v.hook || title).slice(0, 80), theme: str(v.theme || v.background || v.visual).slice(0, 80), beats, cta: str(v.cta || v.callToAction).slice(0, 160), voiceover: str(v.voiceover || v.vo || v.spoken).slice(0, 4000) };
 }
+// 📋 WRITER BRIEF RIBBON (operator 2026-11-25: "copy writing information (not asset flow info downstream but all upstream, maybe a pillar or
+// offer + interview and all upstream research) take the copy to chat (any chat) paste back for various stack assets … clipboard copies for every
+// asset type … paste back json … generate the assets … all visible in a ribbon across the top of the writer brief"; start with the post-interview
+// stack: LinkedIn, sales CTA, email series, short video run — more types are added here as needed). Each item's fields = its Current Methods
+// writing contract; the paste-back becomes one asset per item via importAssetItem (External Write = the fields).
+const BRIEF_RIBBON = [
+  { id: "linkedin", icon: "💼", label: "LinkedIn run", type: "LinkedIn Post - Any Parent", row: "LinkedIn Post - Any Parent", run: "LinkedIn", count: "8-12 posts",
+    task: "A run of LinkedIn posts that sells the offer through its pains and selling points. One idea per post, each tied to a pain, complaint, selling point or interview answer. Mix problem posts, story/proof posts from the interview, how-it-works posts and a few direct offer posts." },
+  { id: "cta", icon: "🎯", label: "Sales CTAs", type: "CTA", row: "CTA", run: "CTAs", count: "4 CTAs, one per placement: Hero, Inline Slim, Flyout, Email (put the placement in the item's \"format\")",
+    task: "Calls to action for the offer, one per placement on the hub. Use the offer's call to action exactly; never invent a different next step." },
+  { id: "welcome", icon: "✉️", label: "Welcome emails", type: "Hub - Email Welcome Sequence", row: "Hub - Email Welcome Sequence", run: "Welcome Series", count: "5 emails, days 0, 2, 4, 7, 10 (put the day in the item's \"day\")",
+    task: "A welcome and nurture series for someone who just signed up: deliver value first, tell the operator's story from the interview, build trust, then point to the offer." },
+  { id: "sales", icon: "📨", label: "Sales emails", type: "Direct Sales Email", row: "Direct Sales Email", run: "Sales Series", count: "5 emails: the pain → proof it's common → the offer → the main objection → last call (put the day in \"day\")",
+    task: "A direct sales sequence for the offer, written to one buyer at a time." },
+  { id: "video", icon: "🎬", label: "Short videos", kind: "videos", run: "Short Videos", count: "as many as asked (e.g. 50)",
+    task: "Scripts for 30-75 second vertical caption videos (text on a photo background, most people watch muted)." },
+];
+async function briefRibbon(env, b) {
+  const rows = writingRows(await writingMethodsTable(env).catch(() => ({ columns: [], rows: [] }))), offer = b.offer || (b.json && b.json.offer && b.json.offer.name) || "Offer";
+  return BRIEF_RIBBON.map(r => { const ret = (b.returns || []).map((x, i) => ({ ...x, i })).filter(x => x.ribbon === r.id || (r.kind === "videos" && x.kind === "videos"));
+    const base = { id: r.id, icon: r.icon, label: r.label, count: r.count, task: r.task, run: `${offer} - ${r.run}`, kind: r.kind || "fields",
+      returned: ret.reduce((n, x) => n + ((x.data.items || x.data.videos || []).length), 0), imported: ret.reduce((n, x) => n + ((x.imported && x.imported.made + x.imported.skipped) || 0), 0) };
+    if (r.kind === "videos") { const v = videoSection(b); return { ...base, rules: v.json.rules, beatMap: v.json.beatMap, example: v.json.example }; }
+    const row = rows.find(x => ivNorm(x.name) === ivNorm(r.row)), contract = row ? parseWritingContract(row.contractText) : [];
+    return { ...base, type: r.type, contract: contract.map(f => ({ name: f.name, rule: f.rule })),
+      example: { ribbon: r.id, run: base.run, items: [{ key: "<short-unique-key>", ...(r.id === "cta" ? { format: "Hero" } : /welcome|sales/.test(r.id) ? { day: 0 } : {}), fields: Object.fromEntries(contract.map(f => [f.name, "…"])) }] } }; });
+}
+// the copywriting information: everything UPSTREAM of the assets (title pillar, offer, research evidence, interview, voice, rules) — no plan of
+// downstream assets; the ribbon carries each type's task
+async function briefUpstream(env, b) {
+  const J = b.json || {}, pillar = b.titleId ? String(await extractPillarContent(ivHdr(), ivDash(b.titleId)).catch(() => "") || "").trim().slice(0, 12000) : "";
+  const L = [`# Copywriting brief: ${J.offer && J.offer.name || b.offer || ""}`, "", `**Hub:** ${J.hub || ""} · **Title:** ${J.title || b.title || ""}${J.initiative ? " · **Initiative:** " + J.initiative : ""}`, "",
+    "Everything the writer needs, from upstream: the title's pillar, the offer, the research behind it and the operator's own interview. Pick an asset type in the ribbon for its task and return format.", ""];
+  if (pillar) L.push("## The title pillar", "", pillar, "");
+  const md = String(b.md || ""), cut = (a, z) => { const i = md.indexOf(a); if (i < 0) return ""; const j = z ? md.indexOf(z, i + a.length) : -1; return md.slice(i, j < 0 ? undefined : j).trim(); };
+  [cut("## 2. The offer", "## 3."), cut("## 3. The evidence", "## 4."), cut("## 4. The operator's voice", "## 5."), cut("## 5. Rules", "## 6.")].filter(Boolean).forEach(x => L.push(x.replace(/^## \d+\. /, "## "), ""));
+  const json = { brief: "Copywriting brief: " + (J.offer && J.offer.name || b.offer || ""), hub: J.hub, title: J.title || b.title, initiative: J.initiative, ...(pillar ? { titlePillar: pillar } : {}), offer: J.offer, evidence: J.evidence, voice: J.voice, rules: J.rules };
+  return { md: L.join("\n"), json };
+}
 async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
   return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
 async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
@@ -2043,12 +2082,22 @@ async function handleMember(env, body) {
     let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
     const design = await briefDesign(env, b.campaignId).catch(() => null);
     const vs = videoSection(b), md = /## 8\. Short videos/.test(b.md || "") ? b.md : (b.md || "") + "\n\n" + vs.md;
-    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md, json: b.json ? { ...b.json, returnFormatVideos: vs.json, design } : null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, kind: x.kind || "posts", posts: (x.data.posts || []).length, videos: (x.data.videos || []).length, imported: x.imported || null, importing: x.importing || null })), ...(admin ? { shared } : {}) }; }
+    const [up, ribbon] = await Promise.all([briefUpstream(env, b).catch(() => null), briefRibbon(env, b).catch(() => [])]);
+    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md, json: b.json ? { ...b.json, returnFormatVideos: vs.json, design } : null }, upstream: up, ribbon, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, kind: x.kind || "posts", ribbon: x.ribbon || (x.kind === "videos" ? "video" : ""), posts: (x.data.posts || []).length, videos: (x.data.videos || []).length, items: (x.data.items || []).length, warnings: x.warnings || null, imported: x.imported || null, importing: x.importing || null })), ...(admin ? { shared } : {}) }; }
   // 📥 a writer sends a run back on the brief page (operator 2026-11-25): validated, kept on the brief (KV) until the admin imports it
   if (op === "briefReturn") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
     const b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
     let data; try { data = JSON.parse(String(body.text || "").replace(/^```(?:json)?\s*|\s*```\s*$/g, "")); } catch (e) { return { error: "That isn't valid JSON: " + e.message }; }
+    // 📋 a ribbon paste-back: {ribbon: "<id>", run?, items: [{key, fields: {…contract fields}}]} — checked against the type's contract (advisory)
+    const rsrc = (Array.isArray(data) ? data : [data]).filter(x => x && x.ribbon && Array.isArray(x.items));
+    if (rsrc.length) { const R = await briefRibbon(env, b), got = []; b.returns = b.returns || [];
+      for (const r of rsrc) { const it = R.find(x => x.id === r.ribbon && x.kind === "fields"); if (!it) return { error: `"${r.ribbon}" isn't a ribbon type here (${R.filter(x => x.kind === "fields").map(x => x.id).join(", ")})` };
+        const items = r.items.filter(x => x && x.fields && typeof x.fields === "object").slice(0, 40); if (!items.length) return { error: "No items with \"fields\" in the " + it.label + " return" };
+        const seen = new Set(); items.forEach((x, i) => { x.key = String(x.key || it.id + "-" + (i + 1)).toLowerCase().replace(/[^a-z0-9-]+/g, "-").slice(0, 80); if (seen.has(x.key)) x.key += "-" + (i + 1); seen.add(x.key); });
+        const C = it.contract.map(f => ({ name: f.name, rule: f.rule })), warnings = items.map((x, i) => { const v = C.length ? validateWritingContract(C, Object.fromEntries(Object.entries(x.fields).map(([k, y]) => [k, String(y == null ? "" : y)]))) : []; return v.length ? (x.key || i + 1) + ": " + v.slice(0, 3).join("; ") : ""; }).filter(Boolean);
+        b.returns.push({ at: new Date().toISOString(), by: email, ribbon: it.id, kind: "ribbon", run: String(r.run || it.run).slice(0, 200), data: { ribbon: it.id, items }, warnings: warnings.slice(0, 20) }); got.push({ run: r.run || it.run, posts: items.length, warnings: warnings.length }); }
+      b.returns = b.returns.slice(-40); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return { ok: true, received: got }; }
     // 🎬 videos.json (section 8): one object with "videos", or a bare list of scripts
     const vsrc = Array.isArray(data) && data.length && data.every(x => x && !Array.isArray(x.posts) && !Array.isArray(x.videos)) ? { videos: data } : data;
     const vruns = (Array.isArray(vsrc) ? vsrc : [vsrc]).filter(x => x && Array.isArray(x.videos));
@@ -21701,6 +21750,18 @@ export default {
         const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return json({ error: "No such brief" });
         const x = (b.returns || [])[Number(body.index)]; if (!x) return json({ error: "No such return" }); if (!b.titleId || !b.campaignId) return json({ error: "This brief doesn't know its title — rebuild it from the deploy" });
+        if (x.kind === "ribbon") {   // 📋 one asset of the ribbon type per item, 8 per call (the page loops on "next")
+          const it = BRIEF_RIBBON.find(r => r.id === x.ribbon); if (!it) return json({ error: "Unknown ribbon type " + x.ribbon });
+          const I = x.data.items || [], from = Math.max(0, Number(body.from) || 0), part = I.slice(from, from + 8), acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
+          for (const [k, p] of part.entries()) { const n = from + k + 1, f = p.fields || {};
+            const name = String(f["Platform Title"] || f.Title || f.Headline || p.title || it.label + " " + n).slice(0, 200);
+            const title = it.id === "cta" ? `${x.run} - ${p.format || "CTA"}: ${name}` : /welcome|sales/.test(it.id) ? `${x.run} ${n}${p.day != null ? " (day " + p.day + ")" : ""}: ${name}` : `${x.run} - ${name}`;
+            const r = await invoke({ action: "importAssetItem", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, run: x.run, key: it.id + "-" + p.key, assetTitle: title.slice(0, 300), assetType: it.type,
+              prewrite: { ...f, ...(p.format ? { Format: p.format } : {}), ...(p.day != null ? { Day: String(p.day), "Sequence": String(n) } : {}) } }).catch(e => ({ error: e.message }));
+            if (!r || r.error || !r.assetId) acc.failed.push(p.key + ": " + ((r && r.error) || "no response")); else r.existing ? acc.skipped++ : acc.made++; }
+          const next = from + part.length < I.length ? from + part.length : null;
+          if (next == null) { x.imported = { at: new Date().toISOString(), made: acc.made, skipped: acc.skipped, failed: acc.failed.length }; delete x.importing; } else x.importing = acc;
+          await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return json({ ok: true, videos: true, next, total: I.length, made: acc.made, skipped: acc.skipped, failed: acc.failed }); }
         if (x.kind === "videos") {   // 🎬 one Single Post Video Short per script, 8 per call; the page calls again with "next" until done
           const V = x.data.videos || [], from = Math.max(0, Number(body.from) || 0), part = V.slice(from, from + 8), ids = new Set((await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || []);
           const acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
