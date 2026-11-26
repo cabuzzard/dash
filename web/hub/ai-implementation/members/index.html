@@ -84,7 +84,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .rc-development { border-left: 5px solid #f59e0b; } .rc-interview { border-left: 5px solid #dc2626; background: rgba(220,38,38,.06); } .rc-publish { border-left: 5px solid #16a34a; background: rgba(22,163,74,.06); }
 .rc-development .rc-st { color: #d97706; font-weight: 600; } .rc-interview .rc-st { color: #dc2626; font-weight: 600; } .rc-publish .rc-st { color: #16a34a; font-weight: 600; }
 .mg-col { flex: 0 0 34px; text-align: right; font-size: 14px; font-weight: 600; color: var(--ink-soft); font-variant-numeric: tabular-nums; } .mg-iv { color: #dc2626; } .mg-pb { color: #16a34a; }
-.mg-sp { flex: 0 0 82px; } .mg-colh { display: flex; align-items: center; gap: 6px; padding: 0 0 2px; border-bottom: 1px solid var(--line); margin: 0 0 4px; }
+.mg-sp { flex: 0 0 84px; } .mg-gh .mg-x { flex: 0 0 auto; min-width: 36px; } .mg-gh .mg-x:nth-last-child(2) { margin-left: 6px; } .mg-colh { display: flex; align-items: center; gap: 6px; padding: 0 0 2px; border-bottom: 1px solid var(--line); margin: 0 0 4px; }
 .mg-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 20px; }
 .mg-in { flex: 1; min-width: 0; font: 500 15px "Hanken Grotesk", sans-serif; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 38px; }
 .mg-msg { font-size: 13px; color: var(--ink-soft); }
@@ -252,15 +252,15 @@ function mgList(d, reports, card) {
   const drop = gid => admin ? ` ondragover="mgOver(event)" ondragleave="mgLeave(event)" ondrop="mgDrop(event,'${gid}','')"` : "";
   const head = (g, n, L) => { if (!admin) return `<div class="mg-gh">${tog(g.id, g.name, n, L)}${cnt(L)}</div>`;
     const edit = _mgEdit === g.id ? `<input class="mg-in" id="mgRn" value="${esc(g.name)}" maxlength="80" onkeydown="if(event.key==='Enter')mgRename('${g.id}');if(event.key==='Escape'){_mgEdit='';appsView(_mbD)}"><button class="share" onclick="mgRename('${g.id}')">Save</button>`
-      : `${tog(g.id, g.name, n, L)}<button class="mg-x" title="Rename" aria-label="Rename group" onclick="_mgEdit='${g.id}';appsView(_mbD);setTimeout(()=>{const i=document.getElementById('mgRn');if(i)i.focus()},0)">✎</button><button class="mg-x" title="Delete group" aria-label="Delete group" onclick="mgDelete('${g.id}')">${_mgDel === g.id ? "Delete?" : "✕"}</button>`;
-    return `<div class="mg-gh"${drop(g.id)}>${edit}${cnt(L)}</div>`; };
+      : `${tog(g.id, g.name, n, L)}${cnt(L)}<button class="mg-x" title="Rename" aria-label="Rename group" onclick="_mgEdit='${g.id}';appsView(_mbD);setTimeout(()=>{const i=document.getElementById('mgRn');if(i)i.focus()},0)">✎</button><button class="mg-x" title="Delete group" aria-label="Delete group" onclick="mgDelete('${g.id}')">${_mgDel === g.id ? "Delete?" : "✕"}</button>`;
+    return `<div class="mg-gh"${drop(g.id)}>${edit}${_mgEdit === g.id ? cnt(L) + '<span class="mg-sp"></span>' : ""}</div>`; };
   const zone = (gid, inner, empty) => !open.has(gid) ? "" : admin ? `<div class="mg-z"${drop(gid)}>${inner || `<div class="mg-e">${empty}</div>`}</div>` : inner;
   const shown = sec.filter(s => admin || s.items.length), restHead = G.groups.length || admin, ids = shown.map(s => s.g.id).concat(rest.length || admin ? ["_"] : []);
   let h = admin ? `<div class="mg-new"><input class="mg-in" id="mgName" placeholder="New group name, e.g. Construction Software" maxlength="80" onkeydown="if(event.key==='Enter')mgNew()"><button class="share" style="margin:0" onclick="mgNew()">＋ New group</button>${_mgMsg ? `<span class="mg-msg">${esc(_mgMsg)}</span>` : ""}</div>` : "";
-  h += `<div class="mg-colh"><span style="flex:1"></span>${admin ? '<span class="mg-sp"></span>' : ""}<span class="mg-col" title="reports">📊</span><span class="mg-col mg-iv" title="mid-interview">🎤</span><span class="mg-col mg-pb" title="at Publish">✓</span></div>`;
+  h += `<div class="mg-colh"><span style="flex:1"></span><span class="mg-col" title="reports">📊</span><span class="mg-col mg-iv" title="mid-interview">🎤</span><span class="mg-col mg-pb" title="at Publish">✓</span>${admin ? '<span class="mg-sp"></span>' : ""}</div>`;
   if (shown.length) h += `<div class="mg-all"><button class="mg-x" onclick="mgAll(${JSON.stringify(ids).replace(/"/g, "&quot;")},true)">Expand all</button><button class="mg-x" onclick="mgAll([],false)">Collapse all</button></div>`;
   shown.forEach(s => { h += `<section class="mg-g">${head(s.g, s.items.length, s.items)}${zone(s.g.id, s.items.map(item).join(""), "Drag reports here")}</section>`; });
-  if (rest.length || admin) h += `<section class="mg-g">${restHead ? `<div class="mg-gh"${drop("_")}>${tog("_", admin ? "Ungrouped" : "Other reports", rest.length, rest)}${admin ? '<span class="mg-sp"></span>' : ""}${cnt(rest)}</div>` : ""}${restHead ? zone("_", rest.map(item).join(""), "Nothing here") : rest.map(item).join("")}</section>`;
+  if (rest.length || admin) h += `<section class="mg-g">${restHead ? `<div class="mg-gh"${drop("_")}>${tog("_", admin ? "Ungrouped" : "Other reports", rest.length, rest)}${cnt(rest)}${admin ? '<span class="mg-sp"></span>' : ""}</div>` : ""}${restHead ? zone("_", rest.map(item).join(""), "Nothing here") : rest.map(item).join("")}</section>`;
   return h;
 }
 async function mgSave() {
