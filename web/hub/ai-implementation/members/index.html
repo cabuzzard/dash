@@ -114,6 +114,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .mg-mv { margin-left: auto; padding: 4px 12px; min-height: 32px; font-weight: 500; }
 .wb-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-areas:"ctl side" "up side";gap:14px;align-items:start}.wb-ctl{grid-area:ctl;margin:0}.wb-side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}.wb-up{grid-area:up;display:flex;flex-direction:column;gap:14px;min-width:0}
 .wb-b{margin:0}.wb-b>summary{cursor:pointer;list-style-position:inside}.wb-in{margin-top:10px;overflow-wrap:anywhere}.wb-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.wb-sel{flex:1;min-width:180px}.wb-fl{margin-top:8px}.wb-fl>summary{cursor:pointer}
+.vs-prev{border-radius:12px;padding:18px 16px 16px;min-height:200px;max-width:300px;text-align:center;background-size:cover}.vs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 10px;margin:6px 0}.vs-f{display:flex;flex-direction:column;font-size:12px;color:var(--ink-soft)}.vs-f input{font-size:13px;margin-top:2px}
 .wb-kw{display:flex;flex-wrap:wrap;gap:6px}.wb-kw span{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:14px}.wb-rcv{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-top:1px solid var(--line);padding:7px 0;font-size:14px}
 .wb-a{display:flex;gap:8px;justify-content:space-between;align-items:baseline;padding:6px 4px;border-top:1px solid var(--line);text-decoration:none;color:inherit;font-size:14px}.wb-a:hover{background:rgba(127,127,127,.08)}
 @media(max-width:860px){.wb-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"ctl" "side" "up"}}
@@ -348,7 +349,7 @@ let _bf = null;
 // Every large box starts collapsed. Phone: control strip → right column → upstream. Video render/layout lives on the asset type flyout, not here.
 let _wbSel = "", _wbOpen = new Set(), _wbAssets = null;
 const wbBox = (id, title, sub, body, extra) => `<details class="card wb-b" id="${id}" ${_wbOpen.has(id) ? "open" : ""} ontoggle="wbTog(this)"${extra || ""}><summary><b>${title}</b>${sub ? ` <span class="od-mute">${sub}</span>` : ""}</summary><div class="wb-in">${body}</div></details>`;
-function wbTog(d) { if (d.open) _wbOpen.add(d.id); else _wbOpen.delete(d.id); if (d.id === "wbBuilt" && d.open && !_wbAssets) wbAssetsLoad(); }
+function wbTog(d) { if (d.open) _wbOpen.add(d.id); else _wbOpen.delete(d.id); if (d.id === "wbBuilt" && d.open && !_wbAssets) wbAssetsLoad(); if (d.id === "wbVs" && d.open) vsLoad(); }
 const wbG = id => (_bf.stack || []).find(g => g.id === id);
 async function briefView(tok) {
   out.innerHTML = '<p class="lede">Loading the brief…</p>'; document.querySelector(".wrap").style.maxWidth = "1180px";
@@ -378,6 +379,7 @@ async function briefView(tok) {
         ${wbBox("wbKw", "🔑 Keywords", (K.list || []).length + " chosen for this report", kw)}
         ${wbBox("wbWritten", "📝 Written brief", "offer · interview · topical pillar", mdHtml(written || "_Nothing yet._"))}
         ${wbBox("wbAll", "📚 All upstream", "research, direction, evidence, rules", mdHtml(research || "_Nothing yet._") + (d.design ? `<div style="margin-top:10px"><button class="share" style="margin:0" onclick="briefCopyDesign(this)">Copy design JSON</button></div>` + briefDesignHtml(d.design) : ""))}
+        ${d.admin ? wbBox("wbVs", "🎬 Video style", "typography, colours, pace and backgrounds, matched to the hub", '<div id="vsIn"></div>') : ""}
         <p class="od-mute">Written ${esc(new Date(d.brief.at).toLocaleString())}${D.offer ? " · deploy “" + esc(D.offer) + "”" : ""}</p>
       </div></div>`;
     wbPick(_wbSel, true); if (_wbOpen.has("wbBuilt")) wbAssetsDraw();
@@ -392,6 +394,7 @@ function wbPick(id, quiet) { const A = document.getElementById("wbAdd"), I = doc
   wbPasteSync(); }
 function wbPasteSync() { const t = document.getElementById("impType"), g = wbG(_wbSel); if (!t) return wbPasteDraw(); if (g && [...t.options].some(o => o.value === g.type)) t.value = g.type; }
 function wbStruct(g) { const L = [`# ASSET STRUCTURE: ${g.label} (${g.type})`, "", g.task, "", "**How many:** " + g.count, ""];
+  if (g.kind === "videos" && _vs) L.push(`**Video style** (this hub): text on a photo, one line on screen at a time, read muted. Headline ≤ ${_vs.lines.headlineMaxWords} words; ${_vs.lines.minLines}-${_vs.lines.maxLines} lines per script; each line ≤ ${_vs.lines.maxWordsPerLine} words.`, "");
   if (g.kind === "videos") L.push("**Beat map** (every script follows it):", ...(g.beatMap || []).map(b => `- **${b.beat}** (${b.at}): ${b.what}`), "", "**Rules:**", ...(g.rules || []).map(x => "- " + x), "");
   else { L.push("**Fields for each item** (use these exact names; follow each rule):", ...(g.contract || []).map(f => `- **${f.name}**: ${f.rule}`), "");
     if (g.origin === "deploy") L.push("**The assets to write** (one item each; keep its key exactly):", ...g.items.map(x => `- \`${x.key}\`${x.format ? " (" + x.format + ")" : ""}: ${x.title}${x.job ? "\n  Job: " + x.job.replace(/\n+/g, " ") : ""}`), ""); }
@@ -462,6 +465,43 @@ async function impApply(b) { const p = _imp.plan, st = document.getElementById("
   if (!r || r.error) { b.disabled = false; st.textContent = "✗ " + ((r && r.error) || "Stopped") + " — Resume picks up where it stopped"; return; }
   _imp.plan = null; _imp.list = null; _wbAssets = null; _wbOpen.add("wbPaste");
   document.getElementById("bfRSt").textContent = `✓ ${r.made} of ${r.total} done${r.failed.length ? " · " + r.failed.length + " failed: " + r.failed.slice(0, 2).join(" · ") : ""}`; wbPasteDraw(); if (_wbOpen.has("wbBuilt")) wbAssetsLoad(); }
+// 🎬 VIDEO STYLE (operator 2026-11-26): the hub's look for text-over-background videos, built from the hub design + audience research,
+// editable, with a test render (one Grok background in the style + one Creatomate render)
+let _vs = null, _vsTest = null, _vsPoll = 0;
+const vsCall = (sub, x) => call({ op: "shortVideo", token: store.get("mb_token"), assetId: BRIEF_ID, sub, ...(x || {}) }).catch(e => ({ error: e.message }));
+async function vsLoad() { const B = document.getElementById("vsIn"); if (!B) return; B.innerHTML = '<div class="od-mute">Loading…</div>'; const r = await vsCall("style");
+  if (!r || r.error) { B.innerHTML = `<div class="msg">${esc((r && r.error) || "Couldn't load")}</div>`; return; } _vs = r.style; _vsTest = r.test; vsDraw(); }
+function vsDraw() { const B = document.getElementById("vsIn"); if (!B) return; const s = _vs;
+  if (!s) { B.innerHTML = `<p style="margin:0 0 8px">No video style for this hub yet. It's built from the hub's live page (fonts, colours, photography) and the report's audience.</p><button class="share od-go" style="margin:0" onclick="vsBuild(this)">Build from the hub + research</button><span class="od-mute" id="vsSt" style="margin-left:8px"></span>`; return; }
+  const inp = (g, k, w) => `<label class="vs-f"><span>${esc(k)}</span><input class="mg-in" data-g="${g}" data-k="${k}" value="${esc(Array.isArray(s[g][k]) ? s[g][k].join("; ") : s[g][k])}" style="width:${w || 100}%"></label>`;
+  const sw = c => `<span style="display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line);vertical-align:middle;background:${esc(c)}"></span>`;
+  const T = _vsTest || {};
+  B.innerHTML = `<div class="vs-prev" style="background:linear-gradient(${s.colors.shade}${Math.round(s.colors.shadeOpacity * 255).toString(16).padStart(2, "0")},${s.colors.shade}${Math.round(s.colors.shadeOpacity * 255).toString(16).padStart(2, "0")}),#6b7a72${T.bgUrl ? ` url('${esc(T.bgUrl)}') center/cover` : ""}">
+      <div style="font:${s.typography.headlineWeight} 19px '${esc(s.typography.headlineFont)}',sans-serif;color:${s.colors.text};text-transform:${s.typography.textTransform}">Headline in the hub's type</div>
+      <div style="font:${s.typography.captionWeight} 15px '${esc(s.typography.captionFont)}',sans-serif;color:${s.colors.text};margin-top:38px;text-shadow:0 1px 3px #333">One line of the script at a time.</div>
+      <div style="margin-top:14px;display:inline-block;padding:5px 12px;border-radius:999px;background:${s.colors.ctaBg};color:${s.colors.ctaText};font:700 12px '${esc(s.typography.captionFont)}',sans-serif">Book a strategy call</div></div>
+    <div class="od-mute" style="margin:6px 0 10px">${sw(s.colors.text)} text ${sw(s.colors.shade)} shade ${Math.round(s.colors.shadeOpacity * 100)}% ${sw(s.colors.ctaBg)} CTA ${sw(s.colors.highlight)} highlight · ${esc(s.typography.headlineFont)} ${s.typography.headlineWeight} / ${esc(s.typography.captionFont)} ${s.typography.captionWeight} · ${s.pacing.wordsPerSecond} words/s</div>
+    ${["typography", "colors", "pacing", "lines", "backgrounds"].map(g => `<details class="wb-fl"><summary><b>${g[0].toUpperCase() + g.slice(1)}</b> <span class="od-mute">${esc((s.why || {})[g] || "")}</span></summary><div class="vs-grid">${Object.keys(s[g]).map(k => inp(g, k)).join("")}</div></details>`).join("")}
+    <div class="wb-row" style="margin-top:10px"><button class="share od-go" style="margin:0" onclick="vsSave(this)">Save edits</button><button class="share" style="margin:0" onclick="vsBuild(this)">Rebuild from the hub + research</button><span class="od-mute" id="vsSt"></span></div>
+    <div class="od-l" style="margin-top:14px">Test render</div>
+    <input class="mg-in" id="vsH" placeholder="Headline (≤ ${s.lines.headlineMaxWords} words)" value="${esc(T.headline || "")}" style="width:100%;margin:0 0 6px">
+    <textarea class="od-ta" id="vsT" rows="4" placeholder="Paste one script…">${esc(T.text || "")}</textarea>
+    <input class="mg-in" id="vsC" placeholder="CTA (e.g. Book a strategy call)" value="${esc(T.cta || "")}" style="width:100%;margin:0 0 6px">
+    <div class="wb-row"><button class="share" style="margin:0" onclick="vsTest(this,true)">Test fit</button><button class="share od-go" style="margin:0" onclick="vsTest(this,false)" title="${T.bgUrl ? "Reuses the test background" : "Makes one Grok background in the style"} + one Creatomate render">Render test</button>${T.bgUrl ? `<label class="od-mute"><input type="checkbox" id="vsNewBg"> new background</label>` : ""}</div>
+    <div class="od-mute" id="vsTSt" style="margin-top:6px">${T.render ? (T.render.status === "done" ? "" : T.render.status === "failed" ? "✗ " + esc(T.render.error || "failed") : "Rendering… (" + esc(T.render.status) + ")") : ""}</div>
+    ${T.render && T.render.status === "done" ? `<video src="${esc(T.render.url)}" controls playsinline style="width:100%;max-width:300px;border-radius:10px;margin-top:8px;display:block"></video><a href="${esc(T.render.url)}" target="_blank" rel="noopener" class="od-mute">Open the MP4 ↗</a>` : ""}`;
+  if (T.render && !/done|failed/.test(T.render.status) && !_vsPoll) vsPollStart(); }
+async function vsBuild(b) { b.disabled = true; const st = document.getElementById("vsSt"); if (st) st.textContent = "Reading the hub design + the research…";
+  const r = await vsCall("styleBuild"); b.disabled = false; if (!r || r.error) { if (st) st.textContent = "✗ " + ((r && r.error) || "Not built"); return; } _vs = r.style; vsDraw(); }
+async function vsSave(b) { const p = {}; document.querySelectorAll("#vsIn input[data-g]").forEach(i => { (p[i.dataset.g] = p[i.dataset.g] || {})[i.dataset.k] = i.value; }); b.disabled = true;
+  const r = await vsCall("styleSave", { style: p }); b.disabled = false; const st = document.getElementById("vsSt"); if (!r || r.error) { st.textContent = "✗ " + ((r && r.error) || "Not saved"); return; } _vs = r.style; vsDraw(); document.getElementById("vsSt").textContent = "✓ Saved"; }
+async function vsTest(b, dry) { const st = document.getElementById("vsTSt"), nb = document.getElementById("vsNewBg"); b.disabled = true; st.textContent = dry ? "Checking against the template…" : "Making the background + starting the render…";
+  const r = await vsCall("testRender", { headline: document.getElementById("vsH").value, text: document.getElementById("vsT").value, cta: document.getElementById("vsC").value, dry, newBg: !!(nb && nb.checked) }); b.disabled = false;
+  if (!r || r.error) { st.textContent = "✗ " + ((r && r.error) || "No answer"); return; }
+  if (dry) { const x = r.result || {}; st.textContent = x.errors && x.errors.length ? "✗ " + JSON.stringify(x.errors).slice(0, 300) : "✓ Fits the template" + (x.warnings && x.warnings.length ? " · " + JSON.stringify(x.warnings).slice(0, 200) : ""); return; }
+  _vsTest = r.test; vsDraw(); vsPollStart(); }
+function vsPollStart() { clearInterval(_vsPoll); let n = 0; _vsPoll = setInterval(async () => { if (++n > 60) { clearInterval(_vsPoll); _vsPoll = 0; return; } const r = await vsCall("testCheck");
+  if (r && r.test) { _vsTest = r.test; if (/done|failed/.test(r.test.render.status)) { clearInterval(_vsPoll); _vsPoll = 0; vsDraw(); } else { const st = document.getElementById("vsTSt"); if (st) st.textContent = "Rendering… (" + r.test.render.status + ")"; } } }, 5000); }
 // 🧱 built assets: this deploy's assets (same initiative) grouped by type, the rest of the title folded below; each opens in Hub Dash 2
 async function wbAssetsLoad() { const r = await call({ op: "reportAdmin", token: store.get("mb_token"), sub: "assets", assetId: _bf.reportId }).catch(e => ({ error: e.message }));
   _wbAssets = r && !r.error ? r : { error: (r && r.error) || "Couldn't load" }; wbAssetsDraw(); }
