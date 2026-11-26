@@ -1586,6 +1586,19 @@ async function briefDesign(env, campaignId) {
     const best = rows.map(r => ({ r, n: F.filter(k => hubRichText(r.properties?.[k]?.rich_text).trim()).length })).sort((a, b) => b.n - a.n)[0];
     if (best && best.n) research = clean(Object.fromEntries(F.map(k => [k.toLowerCase().replace(/\s+/g, "_"), hubRichText(best.r.properties[k]?.rich_text).trim().slice(0, 3000)]))); } catch (e) {}
   const fam = n => n ? `${n}, system-ui, sans-serif` : "";
+  // a HAND-AUTHORED hub (operator 2026-11-25: "this spec is still generating the old cartoons and isn't the spec that generated the new hub
+  // page"): the live page is the only authority on its look. The committed design spec predates it → kept, but labelled legacy and kept OUT of
+  // the top-level imagery / avoid / style. The page's own design files (colour combos, editable fields, section schema) come in instead.
+  const handAuthored = !!hub.frozen, base = H.slug ? "https://cabuzzard.github.io/dash/web/hub/" + H.slug + "/" : "";
+  const [combosJ, fieldsJ, schemaJ] = handAuthored && base ? await Promise.all(["color-combos.json", "design-fields.json", "page-schema.json"].map(n => fetch(base + n, { cf: { cacheTtl: 600 } }).then(r => r.ok ? r.json() : null).catch(() => null))) : [null, null, null];
+  const combos = ((combosJ && combosJ.color_combos) || []), cur = combos.find(x => String(x.primary || "").toLowerCase() === String(vars.green || "").toLowerCase());
+  const photos = [...html.matchAll(/<img\b[^>]*>/gi)].map(m => { const tag = m[0], src = (/src="([^"]{0,60})/.exec(tag) || [])[1] || "", alt = (/alt="([^"]*)"/.exec(tag) || [])[1] || "";
+    const at = html.lastIndexOf("class=\"", m.index), cls = at > m.index - 400 ? (/class="([^"]*)"/.exec(html.slice(at, m.index)) || [])[1] || "" : "";
+    return clean({ kind: /^data:image\/jpe?g/i.test(src) ? "photograph (JPEG, embedded)" : /^data:image\/png/i.test(src) ? "PNG (embedded)" : /\.svg/i.test(src) ? "SVG" : src ? "image file" : "", alt, near: cls }); }).filter(x => x.kind);
+  const pageDesign = handAuthored ? clean({ authored: hub.frozen, rule: "The live page is the design master. Match its colours, type, radii, shadows and photographic style; ignore legacy_design_spec.",
+    imagery_on_page: photos, current_combo: cur ? cur.name : "", color_combos: combos.map(x => clean({ id: x.id, name: x.name, primary: x.primary, bright: x.bright, dark: x.dark, soft: x.soft, ink: x.ink, muted: x.muted, bg: x.bg })),
+    editable_fields: fieldsJ ? (fieldsJ.fields || []).flatMap(g => (g.fields || []).map(x => clean({ group: g.group, id: x.id, label: x.label, type: x.type, section: x.section, default: x.default }))) : [],
+    page_rules: schemaJ ? schemaJ.rules || [] : [], design_variables: schemaJ && schemaJ.design ? schemaJ.design.variables || [] : [] }) : null;
   const colorVars = clean(Object.fromEntries(Object.entries(vars).filter(([, x]) => isColor(x)).map(([k, x]) => [k.replace(/-/g, "_"), x])));
   const fontUse = Object.fromEntries([...new Set([fonts0, f.display, f.body, f.mono].filter(Boolean))].map(n => [n, reg[n] ? clean({ google_fonts: reg[n].query ? "https://fonts.googleapis.com/css2?family=" + reg[n].query + "&display=swap" : "", fallback: reg[n].fallback || "" }) : {}]));
   return clean({
@@ -1600,17 +1613,20 @@ async function briefDesign(env, campaignId) {
     shadows: clean(Object.fromEntries(Object.entries(vars).filter(([k]) => /^shadow/.test(k)).map(([k, x]) => [k.replace(/^shadow-?/, "") || "base", x]))),
     type: clean({ base_size: vars["text-base"] || "", line_height: vars.leading || "", body: pick(rule("body"), TYPE_KEYS), h1: clean({ ...(pick(rule("h1"), TYPE_KEYS) || {}), size: sizeOf("h1") }), h2: clean({ ...(pick(rule("h2"), TYPE_KEYS) || {}), size: sizeOf("h2") }), h3: clean({ ...(pick(rule("h3"), TYPE_KEYS) || {}), size: sizeOf("h3") }) }),
     buttons: clean({ primary: pick(rule(".btn-primary") || rule(".btn"), ["background", "color", "border-radius", "padding", "font-weight", "font-size", "box-shadow", "border"]), secondary: pick(rule(".btn-secondary") || rule(".btn-ghost") || rule(".btn-outline"), ["background", "color", "border-radius", "padding", "font-weight", "border"]) }),
-    style_notes: [v("img.mood"), v("img.palette_use"), v("img.medium"), research.visual_register || ""].filter(Boolean).join(" · "),
+    // the operator's own style line for the hand-authored AI hub (pasted 2026-11-25), then what the page itself shows
+    style_notes: handAuthored ? [H.slug === "ai-implementation" ? "Clean, professional, high contrast, no gradients heavier than 15%" : "", vars.font ? "type: " + String(vars.font).split(",")[0] : "", photos.some(p => /photograph/.test(p.kind)) ? "imagery: real photographs, not illustrations" : ""].filter(Boolean).join(" · ")
+      : [v("img.mood"), v("img.palette_use"), v("img.medium"), research.visual_register || ""].filter(Boolean).join(" · "),
+    page_design: pageDesign,
     brand: clean({ logo_text: hub.logoText || "", site_title: hub.meta?.title || "", description: hub.meta?.description || "", og_title: hub.meta?.ogTitle || "", subject: hub.design?.subject || "", audience: hub.design?.audience || "", job: hub.design?.job || "",
       photography: hub.design?.photography || "", avoided: hub.design?.avoided || "", contact_email: hub.email || "" }),
     design_brief: clean(Object.fromEntries(Object.entries(hub.design || {}).filter(([k, x]) => typeof x === "string" && !["subject", "audience", "job", "photography", "avoided"].includes(k)).map(([k, x]) => [k, x]))),
     research_design: research,
     color_roles: clean(Object.fromEntries(Object.entries(notes).map(([k, x]) => [k.replace(/-/g, "_"), x]))),
     css_color_variables: colorVars, css_variables: vars, mirror_tokens: t,
-    imagery: clean(Object.fromEntries(Object.entries(specGroups.img || {}).map(([k, x]) => [k, x.value]))),
-    reference: clean(Object.fromEntries(Object.entries(specGroups.ref || {}).map(([k, x]) => [k, x.value]))),
-    avoid: clean(Object.fromEntries(Object.entries(specGroups.avoid || {}).map(([k, x]) => [k, x.value]))),
-    design_spec: specGroups });
+    imagery: handAuthored ? null : clean(Object.fromEntries(Object.entries(specGroups.img || {}).map(([k, x]) => [k, x.value]))),
+    reference: handAuthored ? null : clean(Object.fromEntries(Object.entries(specGroups.ref || {}).map(([k, x]) => [k, x.value]))),
+    avoid: handAuthored ? null : clean(Object.fromEntries(Object.entries(specGroups.avoid || {}).map(([k, x]) => [k, x.value]))),
+    ...(handAuthored ? { legacy_design_spec: Object.keys(specGroups).length ? { note: "OLDER spec, from before the hand-authored page (illustration era). NOT what the live page uses — do not follow its imagery or colours.", ...specGroups } : null } : { design_spec: specGroups }) });
 }
 async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
