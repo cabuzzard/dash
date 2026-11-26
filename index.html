@@ -38048,6 +38048,15 @@ async function loadMorningTodos() {
 // Deep link: dash/#keywords (or any tab name) opens that tab once logged in —
 // clicks the real tab so switchTab gets its event. Used by the microsites'
 // "🔎 Find keywords" link.
+// #asset=<id> (operator 2026-11-25: report assets on the members page link here): Hub Dash 2 opens, then that asset's record flyout
+(function openHashAsset() {
+  const m = /#asset=([0-9a-f-]{32,36})/i.exec(location.hash || ''); if (!m) return; const id = m[1].replace(/-/g, ''); let tries = 0;
+  const t = setInterval(async () => { const tab = document.querySelector(`.tab[onclick="switchTab('hubdash2')"]`), pin = document.getElementById('pinScreen'), locked = pin && getComputedStyle(pin).display !== 'none';
+    if (++tries > 600) return clearInterval(t); if (!tab || !SESSION_TOKEN || locked) return;
+    if (!document.getElementById('hd2Tree')) { if (!tab.classList.contains('active')) tab.click(); return; }
+    clearInterval(t); const a = (_hd2A && _hd2A.get(id)) || null;
+    const i = _hd2Ents.push({ k: 'asset', id, name: a ? hdName(a) : 'Asset' }) - 1; hd2EntOpen(i); }, 500);
+})();
 (function openHashTab() {
   const name = (location.hash || '').slice(1);
   if (!/^[a-z]+$/i.test(name)) return;

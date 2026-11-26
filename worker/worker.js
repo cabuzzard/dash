@@ -1659,7 +1659,18 @@ async function reportAdminOp(env, invoke, body) {
   const sub = String(body.sub || ""), kws = [...new Set(String(body.keywords || "").split(/[,\n]/).map(s => s.trim()).filter(Boolean))].slice(0, 20), name = String(body.name || "").trim().slice(0, 150);
   const run = async (id, focus) => { const r = await invoke({ action: "reportRun", assetId: id, premium: body.premium === true, ...(focus ? { focus } : {}) }); if (!r || r.error) throw new Error("Report run: " + ((r && r.error) || "no response")); return r.at; };
   if (sub === "run") { if (!kws.length) throw new Error("Type the keywords to focus on"); return { ok: true, at: await run(aid, kws) }; }
+  // 🧩 the report's assets (operator 2026-11-25: "have reports show a list of their assets and we can open those in flyout mode, maybe link to
+  // hub dash 2"): every asset on the report's title, slim; sub asset = one asset's filled fields, read only (entityGet)
+  if (sub === "asset") { const id = hubAssetId(body.id || ""); if (!/^[0-9a-f]{32}$/i.test(id)) throw new Error("id required");
+    const g = await invoke({ action: "entityGet", pageId: id }); if (!g || g.error) throw new Error((g && g.error) || "not found");
+    const ctxA = await offerReportCtx(env, aid), own = (g.props || []).find(p => p.name === "Content Strategy"); if (own && !(own.value || []).map(hubAssetId).includes(ctxA.titleId)) throw new Error("That asset isn't under this report's title");
+    return { ok: true, id, title: g.title, url: g.url, props: (g.props || []).filter(p => p.value != null && p.value !== "" && !(Array.isArray(p.value) && !p.value.length) && !/^(Content Strategy|Campaign|Product|Interviews|Method)$/.test(p.name)).map(p => ({ name: p.name, type: p.type, value: Array.isArray(p.value) ? p.value.join(", ") : String(p.value).slice(0, 6000) })) }; }
   const ctx = await offerReportCtx(env, aid);
+  if (sub === "assets") {
+    const L = (await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(ctx.titleId) } } })).filter(x => !x.archived && !x.in_trash);
+    const P = x => x.properties || {};
+    return { ok: true, titleId: ctx.titleId, titleName: ctx.titleName, assets: L.map(x => ({ id: hubAssetId(x.id), name: hubRichText(P(x)["Asset Title"]?.title), type: P(x)["Asset Type"]?.select?.name || "", status: P(x)["Asset Status"]?.select?.name || "",
+      run: hubRichText(P(x).Run?.rich_text), due: P(x).Deadline?.date?.start || "", initiative: hubRichText(P(x).Initiative?.rich_text), cohort: (P(x).Cohort?.multi_select || []).map(o => o.name).join(", "), parent: hubAssetId(ivRid(P(x), "Parent Asset") || "") })) }; }
   if (sub === "refocus") {
     if (!ctx.productId) throw new Error("This report's title has no niche");
     if (!kws.length) throw new Error("Type the niche's new keywords");

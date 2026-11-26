@@ -70,6 +70,11 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-cb { margin: 10px 0 0 !important; }
 .ivm-panel { --text: var(--ink); --text2: var(--ink-soft); --text3: var(--ink-soft); --border: var(--line); --border2: var(--line); --surface2: var(--surface); --accent: var(--accent); font-size: 15px; }
 .rf summary { cursor: pointer; } .rf { margin: 0 0 16px; }
+.ra summary { cursor: pointer; } .ra { margin: 0 0 16px; } .ra-g { margin: 0 0 8px; } .ra-g > summary { font-weight: 600; font-size: 14.5px; padding: 4px 0; }
+.ra-r { display: grid; grid-template-columns: minmax(0,1fr) auto auto 52px; gap: 10px; align-items: baseline; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--line); padding: 8px 2px; min-height: 40px; cursor: pointer; font: 14px "Hanken Grotesk", sans-serif; color: var(--ink); }
+.ra-r:hover .ra-n { color: var(--accent); } .ra-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .ra-r { grid-template-columns: minmax(0,1fr) auto; } .ra-r > :nth-child(2), .ra-r > :nth-child(4) { display: none; } }
+.ra-f { border-top: 1px solid var(--line); padding: 8px 0; } .ra-v { white-space: pre-wrap; font-size: 14.5px; overflow-wrap: anywhere; }
 .od-iv { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; font-size: 14.5px; } .od-iv a { color: var(--accent); font-weight: 600; }
 .od-coh { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
 .od-coh label { display: flex; flex-direction: column; font-size: 13px; color: var(--ink-soft); gap: 3px; }
@@ -302,7 +307,7 @@ async function reportView(tok, at) {
     if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This report isn't available.") + '</div><a class="home" href="/members/">← Your apps</a>'; return; }
     const V = d.versions || [];
     const pick = V.length > 1 ? '<select class="share" style="margin-left:auto" onchange="reportView(store.get(\'mb_token\'), this.value)">' + V.map(v => '<option value="' + esc(v.at) + '"' + (v.at === d.report.at ? " selected" : "") + ">" + esc(new Date(v.at).toLocaleString()) + (v.premium ? " · ★" : "") + (v.focus ? " · 🎯 " + esc(v.focus).slice(0, 60) : "") + "</option>").join("") + "</select>" : "";
-    out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + (d.admin ? rfBar(d.report) : "") + reportHtml(d.report);
+    out.innerHTML = '<div class="who"><a class="home" href="/members/">← All reports</a>' + pick + "</div>" + (d.admin ? rfBar(d.report) + raBox() : "") + reportHtml(d.report);
     rnAttach({ key: REPORT_ID, ver: d.report.at, api: (sub, p) => call(Object.assign({ op: "notes", token: store.get("mb_token"), assetId: REPORT_ID, sub }, p)) });
     rpNotesFlyout(); odInit(d);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
@@ -333,6 +338,39 @@ async function rfGo(sub) {
   if (sub === "newNiche") { st.textContent = `✓ New niche "${r.niche}"${r.runErr ? " (first run failed: " + r.runErr + ")" : ""}. Opening its report…`; setTimeout(() => { location.href = "/members/?report=" + r.reportId; }, 1200); return; }
   reportView(store.get("mb_token"), r.at);
 }
+// 🧩 Assets (operator 2026-11-25: "have reports show a list of their assets and we can open those in flyout mode, maybe link to hub dash 2") —
+// admin only: every asset on the report's title, grouped by run (else by type), with status + due; a click opens a read-only flyout of its
+// filled fields, with "Open in Hub Dash 2 ↗" (dash deep link #asset=<id> opens the same asset's flyout there).
+const RA = { list: null, busy: false, err: "" };
+const raApi = (sub, p) => call(Object.assign({ op: "reportAdmin", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {}));
+function raBox() { return `<details class="card ra" id="raBox" ontoggle="if(this.open&&!RA.list&&!RA.busy)raLoad()"><summary><b>🧩 Assets</b> <span class="od-mute" id="raSum">everything on this report's title</span></summary><div id="raBody" style="margin-top:10px"></div></details>`; }
+async function raLoad() { RA.busy = true; raDraw(); const r = await raApi("assets").catch(e => ({ error: e.message })); RA.busy = false;
+  if (!r || r.error) RA.err = (r && r.error) || "Couldn't load"; else { RA.list = r.assets || []; RA.title = r.titleName; } raDraw(); }
+function raDraw() {
+  const b = document.getElementById("raBody"), sm = document.getElementById("raSum"); if (!b) return;
+  if (RA.busy) { b.innerHTML = '<div class="od-mute">Loading…</div>'; return; } if (RA.err) { b.innerHTML = `<div class="msg">${esc(RA.err)}</div>`; return; }
+  const L = RA.list || []; if (sm) sm.textContent = L.length + " on “" + (RA.title || "") + "”";
+  const g = {}; L.forEach(a => { const k = a.run ? "Run · " + a.run : (a.type || "(no type)"); (g[k] = g[k] || []).push(a); });
+  const keys = Object.keys(g).sort((x, y) => (y.startsWith("Run") - x.startsWith("Run")) || x.localeCompare(y));
+  const col = s => /^published$/i.test(s) ? "#16a34a" : /^publish$/i.test(s) ? "#2563eb" : /development/i.test(s) ? "#ca8a04" : "var(--ink-soft)";
+  b.innerHTML = keys.map(k => `<details class="ra-g" ${keys.length <= 3 ? "open" : ""}><summary>${esc(k)} <span class="od-mute">${g[k].length}</span></summary>
+    ${g[k].sort((x, y) => String(x.type).localeCompare(String(y.type)) || String(x.name).localeCompare(String(y.name))).map(a => `<button type="button" class="ra-r" onclick="raOpen('${a.id}')">
+      <span class="ra-n">${esc(a.name || "(untitled)")}</span><span class="od-mute">${esc(a.type)}</span><span style="color:${col(a.status)};font-weight:600">${esc(a.status || "")}</span><span class="od-mute">${a.due ? esc(new Date(a.due + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })) : ""}</span></button>`).join("")}</details>`).join("") || '<div class="od-mute">No assets on this title.</div>';
+}
+async function raOpen(id) {
+  let m = document.getElementById("raM"); if (!m) { m = document.createElement("div"); m.id = "raM"; m.className = "od-bg"; m.onclick = e => { if (e.target === m) raClose(); }; document.body.appendChild(m); }
+  document.body.style.overflow = "hidden"; const a = (RA.list || []).find(x => x.id === id) || {};
+  const head = `<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><b style="font-size:17px;flex:1">${esc(a.name || "Asset")}</b><button class="rp-nx" aria-label="Close" onclick="raClose()">✕</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><a class="share" style="margin:0;text-decoration:none" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#asset=${id}">Open in Hub Dash 2 ↗</a><span id="raNotion"></span></div>`;
+  m.innerHTML = `<div class="od-box" role="dialog" aria-label="Asset">${head}<div class="od-mute">Loading…</div></div>`;
+  const r = await raApi("asset", { id }).catch(e => ({ error: e.message })); if (!document.getElementById("raM")) return;
+  if (!r || r.error) { m.querySelector(".od-box").innerHTML = head + `<div class="msg">${esc((r && r.error) || "Couldn't load")}</div>`; return; }
+  const first = ["Asset Type", "Asset Status", "Deadline", "Run", "Initiative", "Cohort", "Format", "Platform Title", "Headline Primary", "Headline Accent", "Body", "Description", "Post Caption", "Hashtags", "Offer Page", "Writer Directions"];
+  const P = (r.props || []).slice().sort((x, y) => { const i = first.indexOf(x.name), j = first.indexOf(y.name); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j) || x.name.localeCompare(y.name); });
+  m.querySelector(".od-box").innerHTML = head + P.map(p => `<div class="ra-f"><div class="od-l" style="margin:0 0 2px">${esc(p.name)}</div><div class="ra-v">${/^https?:\/\//.test(p.value) ? `<a href="${esc(p.value)}" target="_blank" rel="noopener">${esc(p.value)}</a>` : esc(p.value)}</div></div>`).join("");
+  const nl = m.querySelector("#raNotion"); if (nl && r.url) nl.innerHTML = `<a class="share" style="margin:0;text-decoration:none" target="_blank" rel="noopener" href="${esc(r.url)}">Notion ↗</a>`;
+}
+function raClose() { const m = document.getElementById("raM"); if (m) m.remove(); document.body.style.overflow = ""; }
 // 📊 Report renderer — the same function on the dash (Hub Dash 2 › 📊 Report) and the members page (aisystemimplementation.com/members/?report=).
 // Theme-neutral: inherits the page's text colour; borders and muted text are translucent so both light and dark pages read.
 // 🖍 Highlights (2026-11-24): select text in any section → 🖍 Highlight → numbered mark in the text + a numbered item in Notes with an
