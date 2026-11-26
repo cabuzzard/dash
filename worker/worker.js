@@ -1950,7 +1950,9 @@ async function vsAttach(env, assetId, videoUrl, bgUrl) {
   const id = hubAssetId(assetId), hdr = { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }, page = await ivPage(id); if (!page || !page.properties) throw new Error("Asset not found");
   const slots = { "Video URL": videoUrl, ...(bgUrl ? { "Post Image": bgUrl } : {}) };
   await libraryArchive(hdr, page, slots);
-  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: Object.fromEntries(Object.entries(slots).map(([k, u]) => [k, { url: u }])) }) });
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { ...Object.fromEntries(Object.entries(slots).map(([k, u]) => [k, { url: u }])),
+    // rendered = ready to publish (operator 2026-11-26: "these rendered assets should be set to publish … give a due date of the next sunday")
+    "Asset Status": { select: { name: "Publish" } }, Deadline: { date: { start: (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() + (7 - d.getUTCDay() || 7)); return d.toISOString().slice(0, 10); })() } } } }) });
   if (!r.ok) throw new Error("Video not saved on the asset: " + ((await r.json().catch(() => ({}))).message || r.status));
   const p2 = (await ivPage(id)) || {}, old = ((p2.properties || {}).Library || {}).files || [], day = new Date().toISOString().slice(0, 10);
   if (!old.some(f => f.type !== "external")) { const add = Object.entries(slots).filter(([, u]) => !old.some(f => f.external && f.external.url === u)).map(([k, u]) => ({ type: "external", name: (k + " · " + day).slice(0, 100), external: { url: u } }));
