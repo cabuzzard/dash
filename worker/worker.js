@@ -1518,11 +1518,11 @@ async function writerBriefBuild(env, job) {
   L.push(`# Writer Brief: ${p.name}`, "", `**Hub:** ${R.hub || ""} · **Title:** ${c.titleName} · **Initiative:** ${job.initiative}${due ? ` · **Return by:** ${due}` : ""}`, "",
     "You're writing social media posts for this offer. Everything you need is below: the offer, the evidence behind it, and the operator's own words. Write in their voice, use only the facts given, and send the posts back in the format in section 6.", "");
   L.push("## 1. The assignment", "");
-  (plan.runs || []).forEach((r, i) => { L.push(`### Run ${i + 1}: ${r.name}`, `**Platform:** ${r.platform} · **Format:** ${r.format} · **Posts:** ${(r.posts || []).length}`, "", r.angle || "", "");
+  (plan.runs || []).forEach((r, i) => { L.push(`### Run ${i + 1}: ${String(r.name || "").replace(/^\s*run\s*\d+\s*[—:–-]\s*/i, "")}`, `**Platform:** ${r.platform} · **Format:** ${r.format} · **Posts:** ${(r.posts || []).length}`, "", r.angle || "", "");
     (r.posts || []).forEach((x, k) => L.push(`${k + 1}. ${x.idea}${x.from ? ` _(from: ${x.from})_` : ""}`)); L.push(""); });
   if (!(plan.runs || []).length) L.push("Write 2-3 runs of 5-10 posts each from the selling points and pains below.", "");
   L.push("## 2. The offer", "", `**${p.name}**: ${p.promise || ""}`, "", `**Call to action:** ${c.cta.action}${c.cta.link && !/\[/.test(c.cta.link) ? ` (${c.cta.link})` : ""}`, "");
-  if (offer["Offer Page"]) L.push("**The sales page (for context, don't copy it):**", "", offer["Offer Page"].slice(0, 6000), "");
+  if (offer["Offer Page"]) L.push("**The sales page (for context, don't copy it):**", "", offer["Offer Page"].slice(0, 6000).replace(/^#{1,6}\s*(.+)$/gm, "**$1**"), "");
   L.push("**Selling points:**"); arr(p.sellingPoints).forEach(s => li(`(${s.kind}) ${s.point}`, s.source ? ` [${s.source}]` : "")); L.push("");
   L.push("## 3. The evidence", ""); if (A.summary) L.push(A.summary, "");
   if (arr(A.pains).length) { L.push("**Pain points:**"); arr(A.pains).forEach(x => li(x.point)); L.push(""); }
