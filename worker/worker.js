@@ -1629,6 +1629,103 @@ async function briefDesign(env, campaignId) {
     ...(handAuthored ? { legacy_design_spec: Object.keys(specGroups).length ? { note: "OLDER spec, from before the hand-authored page (illustration era). NOT what the live page uses — do not follow its imagery or colours.", ...specGroups } : null } : { design_spec: specGroups }) });
 }
 async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
+// 🎬 SHORT VIDEOS from a Writer Brief (operator 2026-11-25: "interview -> writer brief -> external chat -> then a grok call for backgrounds.
+// 50 scripts written externally need a return path. then a typography editor screen to lay out the text then render them as video"):
+// brief section 8 asks for videos.json → briefReturn keeps it → briefImport makes one "Single Post Video Short" asset per script (Notion type
+// "social reel informative", Run = the return's run, script = External Write, KV vshort:<assetId>) → 🎨 ~10 Grok backgrounds (one per theme,
+// KV vbg:<briefId>) → 🎬 Creatomate renders each script into the operator's template (typography is laid out in Creatomate's editor) → R2 →
+// Video URL. Beat map + caption layout from the operator's shooting guide (docs/video-guide.md).
+const VIDEO_BEATS = [["hook", "0:00-0:03", "the hook on screen, no greeting"], ["promise", "0:03-0:08", "the outcome in one sentence"], ["credibility", "0:08-0:15", "why listen, one line"],
+  ["step", "0:15-0:40", "3 numbered steps, verbs up front (one beat each)"], ["example", "0:40-0:55", "one concrete before/after"], ["cta", "0:55-1:05", "the call to action"]];
+const VIDEO_RULES = ["Hook in the first 3 seconds: no greeting, no logo intro, no \"Hi, I'm\".", "One idea per video, one example, one call to action.",
+  "headline: under 8 words, on screen from the first frame, and different from the first caption (two chances to stop a scroller).",
+  "Captions are burned in: short lines (about 7 words max), one beat per caption, 2-6 seconds each.", "30-75 seconds in total; cut anything that doesn't earn its place.",
+  "theme: 2-4 words naming the picture behind the text (e.g. \"cluttered inbox\", \"quiet office at dusk\"); similar videos share a theme.", "Use only the facts in the brief. Never invent numbers, clients or results."];
+const VIDEO_SLOTS = [["Background", "image", "full frame, behind everything"], ["Headline", "text", "top of the frame, on from the first frame"], ["Caption-1 … Caption-8", "text", "a little below centre; one beat each, timed by the tool"], ["CTA", "text", "last beat, 3 seconds"]];
+function videoExample(b) { return { run: (b.offer || "Offer") + " - Short Videos", title: b.title || "", assetType: "short video",
+  videos: [{ key: "<short-unique-key>", title: "<working title>", headline: "<under 8 words, top of frame>", theme: "<2-4 word background theme>",
+    beats: VIDEO_BEATS.filter(x => x[0] !== "cta").map(([k]) => ({ beat: k, text: "<caption, about 7 words>", sec: k === "hook" ? 3 : 5 })), cta: "<the call to action, short>", voiceover: "<optional: the spoken script>" }] }; }
+function videoSection(b) {
+  const L = ["## 8. Short videos (when the assignment asks for them)", "", "Scripts for 30-75 second vertical (9:16) videos: captions on screen over a photo background, sound optional (most people watch muted). Send them all back in one JSON file:", "", "```json", JSON.stringify(videoExample(b), null, 2), "```", "",
+    "**Beat map** (the order every script follows):", ...VIDEO_BEATS.map(([k, t, d]) => `- **${k}** (${t}): ${d}`), "", "**Rules:**", ...VIDEO_RULES.map(r => "- " + r), ""];
+  return { md: L.join("\n"), json: { oneJsonForAllVideos: true, beatMap: VIDEO_BEATS.map(([beat, at, what]) => ({ beat, at, what })), rules: VIDEO_RULES, example: videoExample(b) } };
+}
+// one returned script → the shape the tool uses. Lenient (the 50 were written before this format existed): beats may be strings, or
+// "lines"/"captions"/"scenes", or one "script" text split into sentences.
+function videoNorm(v, i) {
+  if (!v || typeof v !== "object") return null; const str = x => String(x == null ? "" : x).replace(/\s+/g, " ").trim();
+  let raw = v.beats || v.captions || v.lines || v.scenes || v.slides;
+  if (!Array.isArray(raw)) { const t = str(v.script || v.text || v.body || v.copy); raw = t ? t.split(/(?<=[.!?])\s+|\n+/).map(str).filter(Boolean) : []; }
+  const beats = raw.map((x, k) => typeof x === "string" ? { beat: "", text: str(x), sec: 4 } : { beat: str(x.beat || x.type || x.label), text: str(x.text || x.caption || x.line || x.onScreen || x.on_screen || x.copy), sec: Number(x.sec || x.seconds || x.duration) || 4 })
+    .filter(x => x.text).slice(0, 8).map(x => ({ ...x, sec: Math.min(12, Math.max(1.5, x.sec)) }));
+  if (!beats.length) return null;
+  const title = str(v.title || v.name || v.headline || beats[0].text).slice(0, 200);
+  return { key: str(v.key || v.id || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "video-" + (i + 1)).slice(0, 100), title,
+    headline: str(v.headline || v.hook || title).slice(0, 80), theme: str(v.theme || v.background || v.visual).slice(0, 80), beats, cta: str(v.cta || v.callToAction).slice(0, 160), voiceover: str(v.voiceover || v.vo || v.spoken).slice(0, 4000) };
+}
+async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
+  return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
+async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
+  const r = await fetch("https://api.creatomate.com" + path, { method, headers: { Authorization: "Bearer " + k, "Content-Type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error("Creatomate: " + ((d && (d.hint || d.message || d.error)) || "HTTP " + r.status)); return d; }
+// the template's element names (VIDEO_SLOTS) ← one script. Unused caption slots are removed; times run back to back.
+function ctmMods(v, bgUrl) { const m = { Background: bgUrl, Headline: v.headline }; let t = 0;
+  for (let k = 1; k <= 8; k++) { const b = v.beats[k - 1]; if (b) { m["Caption-" + k] = b.text; m["Caption-" + k + ".time"] = t; m["Caption-" + k + ".duration"] = b.sec; t += b.sec; } else m["Caption-" + k] = {}; }
+  if (v.cta) { m.CTA = v.cta; m["CTA.time"] = t; m["CTA.duration"] = 3; t += 3; } else m.CTA = {};
+  m["Headline.time"] = 0; m["Headline.duration"] = t; m.duration = t; return m; }
+async function shortVideoOp(env, body) {
+  const aid = hubAssetId(body.assetId || ""), sub = String(body.sub || "list"), b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
+  const settings = (await env.TRADES.get("ctm:settings", "json").catch(() => null)) || {};
+  const KB = "vbg:" + aid, bg = (await env.TRADES.get(KB, "json").catch(() => null)) || { themes: [] };
+  const put = (id, v) => env.TRADES.put("vshort:" + id, JSON.stringify(v));
+  if (sub === "list") return { ok: true, videos: await vshortList(env, aid), bg, settings: { templateId: settings.templateId || "", key: !!(env.CREATOMATE_API_KEY || "").trim() }, slots: VIDEO_SLOTS };
+  if (sub === "settings") { const tid = String(body.templateId || "").trim(); if (tid && !/^[0-9a-f-]{20,40}$/i.test(tid)) return { error: "That doesn't look like a Creatomate template ID" };
+    await env.TRADES.put("ctm:settings", JSON.stringify({ ...settings, templateId: tid, at: new Date().toISOString() })); return { ok: true, templateId: tid }; }
+  const vids = await vshortList(env, aid);
+  if (sub === "bgPlan") {   // one Claude call: the scripts → N themes, each a wordless 9:16 Grok prompt in the hub's look
+    if (!vids.length) return { error: "Import the scripts first" }; const n = Math.max(1, Math.min(Number(body.n) || 10, 12, vids.length));
+    const D = await briefDesign(env, b.campaignId).catch(() => ({})) || {};
+    const look = { colors: D.colors, style: D.style_notes, imagery: D.imagery || (D.page_design && D.page_design.imagery_on_page), avoid: D.avoid, brand: D.brand && { subject: D.brand.subject, audience: D.brand.audience, photography: D.brand.photography } };
+    const plan = await hcClaude(env, `You plan BACKGROUND PHOTOS for a series of short vertical (9:16) caption videos. Group the scripts below into exactly ${n} visual themes (every script in one theme; similar topics share), and write one image prompt per theme for xAI Grok Imagine.\n\n` +
+      `Each prompt: 60-100 words, one paragraph, a REAL PHOTOGRAPH (not illustration, not 3D, not cartoon) of a quiet, credible professional-services setting or object that fits the theme: an office corner, a desk, documents, a laptop, a notebook, a calendar, hands at work (no faces). ` +
+      `It sits BEHIND white or dark captions, so: soft depth of field, calm and uncluttered (at most 2-3 objects), the upper third and the centre band plain and slightly darker or softer than a normal photo, no bright hotspots, no window blown out. Match the hub's colours as accents (a green object, a tint), never a colour wash. ` +
+      `Vertical 9:16 composition. Absolutely no text, letters, numbers, screens with readable content, logos or watermarks. End with: "No text, no letters, no logos, no watermarks."\n\nHUB LOOK:\n${JSON.stringify(look).slice(0, 6000)}\n\nSCRIPTS:\n` +
+      JSON.stringify(vids.map(v => ({ key: v.key, theme: v.theme, headline: v.headline, beats: v.beats.map(x => x.text).join(" / ").slice(0, 300) }))).slice(0, 50000),
+      "video_bg_plan", { type: "object", required: ["themes"], properties: { themes: { type: "array", items: { type: "object", required: ["name", "prompt", "videos"], properties: { name: { type: "string" }, prompt: { type: "string" }, videos: { type: "array", items: { type: "string" }, description: "script keys" } } } } } }, 8000);
+    let T = plan && plan.themes; if (!Array.isArray(T)) { try { T = JSON.parse(T); } catch (e) { T = []; } } if (!T.length) return { error: "The planner returned no themes, try again" };
+    const themes = T.slice(0, n).map((x, i) => ({ id: "t" + (i + 1), name: String(x.name || "Theme " + (i + 1)).slice(0, 80), prompt: String(x.prompt || "").slice(0, 3000), url: "", keys: (x.videos || []).map(String) }));
+    for (const v of vids) { const t = themes.find(x => x.keys.includes(v.key)) || themes[0]; await put(v.assetId, { ...v, themeId: t.id }); }
+    await env.TRADES.put(KB, JSON.stringify({ themes: themes.map(({ keys, ...x }) => x), at: new Date().toISOString() })); return { ok: true, themes: themes.length }; }
+  if (sub === "bgRender") {   // one theme → one Grok photo → R2
+    const t = bg.themes.find(x => x.id === body.themeId); if (!t) return { error: "No such theme" }; if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
+    const prompt = String(body.prompt || t.prompt).trim().slice(0, 5000), go = aspect => grokImageFetch(env, { campaignId: b.campaignId }, { method: "POST", headers: { Authorization: "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
+      body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt, n: 1, aspect_ratio: aspect, resolution: "2k" }) });
+    let xr = await go("9:16"), xd = await xr.json().catch(() => ({})); if (!xr.ok) { xr = await go("3:4"); xd = await xr.json().catch(() => ({})); }
+    if (!xr.ok) return { error: (xd.error && (xd.error.message || xd.error)) || "xAI image error " + xr.status }; const src = xd.data && xd.data[0] && xd.data[0].url; if (!src) return { error: "xAI returned no image" };
+    let url = src; if (env.MEDIA) { const pr = await fetch(src); if (pr.ok) { const ct = pr.headers.get("content-type") || "image/jpeg", key = `images/video-bg/${aid}/${t.id}-${Date.now().toString(36)}.${/png/.test(ct) ? "png" : /webp/.test(ct) ? "webp" : "jpg"}`;
+      await env.MEDIA.put(key, await pr.arrayBuffer(), { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } }); url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } }
+    t.url = url; t.prompt = prompt; t.at = new Date().toISOString(); await env.TRADES.put(KB, JSON.stringify(bg)); return { ok: true, themeId: t.id, url }; }
+  const v = vids.find(x => x.assetId === hubAssetId(body.videoId || "")); if (!v) return { error: "No such video" };
+  if (sub === "assign") { if (!bg.themes.some(x => x.id === body.themeId)) return { error: "No such theme" }; await put(v.assetId, { ...v, themeId: body.themeId }); return { ok: true }; }
+  if (sub === "edit") { const n = videoNorm({ ...v, ...(body.video || {}) }, 0); if (!n) return { error: "A video needs at least one caption" }; await put(v.assetId, { ...v, ...n, key: v.key }); return { ok: true }; }
+  if (sub === "render") {   // the script → Creatomate template → render id (body.dry: validate only)
+    if (!settings.templateId) return { error: "Set the Creatomate template ID first" }; const t = bg.themes.find(x => x.id === v.themeId);
+    if (!t || !t.url) return { error: "This video's background isn't made yet" };
+    const req = { template_id: settings.templateId, modifications: ctmMods(v, t.url), metadata: v.assetId, ...(body.dry ? { dry_run: true } : {}) };
+    const d = await ctmApi(env, "POST", "/v2/renders", req); const r = Array.isArray(d) ? d[0] : d;
+    if (body.dry) return { ok: true, dry: true, result: { valid: r.valid, errors: r.errors, warnings: r.warnings } };
+    await put(v.assetId, { ...v, render: { id: r.id, status: r.status || "planned", at: new Date().toISOString(), warnings: r.warnings || [] } }); return { ok: true, render: r.id, status: r.status, warnings: r.warnings || [] }; }
+  if (sub === "check") {   // poll; succeeded → R2 (Creatomate keeps files 30 days) → Video URL on the asset, status Publish
+    if (!v.render || !v.render.id) return { error: "Not rendered yet" }; if (v.render.status === "done") return { ok: true, status: "done", url: v.render.url };
+    const r = await ctmApi(env, "GET", "/v2/renders/" + encodeURIComponent(v.render.id)), st = String(r.status || "");
+    if (st === "failed") { await put(v.assetId, { ...v, render: { ...v.render, status: "failed", error: String(r.error_message || "failed").slice(0, 300) } }); return { ok: true, status: "failed", error: r.error_message }; }
+    if (st !== "succeeded" || !r.url) return { ok: true, status: st || "rendering" };
+    let url = r.url; if (env.MEDIA) { const vr = await fetch(r.url); if (vr.ok) { const key = `videos/${v.assetId}/ctm-${Date.now().toString(36)}.mp4`;
+      await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } }); url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } }
+    await hfAssetPatch(v.assetId, { "Video URL": { url }, "Asset Status": { select: { name: "Publish" } } }).catch(() => {});
+    await put(v.assetId, { ...v, render: { ...v.render, status: "done", url, done: new Date().toISOString() } }); return { ok: true, status: "done", url }; }
+  return { error: "Unknown sub " + sub };
+}
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
 async function offerReportCtx(env, aid) {
   const pg = await ivPage(aid); if (!pg || !pg.properties) throw new Error("Report asset not found");
@@ -1945,13 +2042,22 @@ async function handleMember(env, body) {
     const b = await writerBriefGet(env, aid); if (!b) return { error: "This brief hasn't been written yet." };
     let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
     const design = await briefDesign(env, b.campaignId).catch(() => null);
-    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md, json: b.json ? { ...b.json, design } : null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, posts: (x.data.posts || []).length, imported: x.imported || null })).filter(x => admin || true), ...(admin ? { shared } : {}) }; }
+    const vs = videoSection(b), md = /## 8\. Short videos/.test(b.md || "") ? b.md : (b.md || "") + "\n\n" + vs.md;
+    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md, json: b.json ? { ...b.json, returnFormatVideos: vs.json, design } : null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, kind: x.kind || "posts", posts: (x.data.posts || []).length, videos: (x.data.videos || []).length, imported: x.imported || null, importing: x.importing || null })), ...(admin ? { shared } : {}) }; }
   // 📥 a writer sends a run back on the brief page (operator 2026-11-25): validated, kept on the brief (KV) until the admin imports it
   if (op === "briefReturn") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
     const b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
     let data; try { data = JSON.parse(String(body.text || "").replace(/^```(?:json)?\s*|\s*```\s*$/g, "")); } catch (e) { return { error: "That isn't valid JSON: " + e.message }; }
-    const runs = (Array.isArray(data) ? data : [data]).filter(x => x && Array.isArray(x.posts)); if (!runs.length) return { error: "No run found — each run needs a \"posts\" list (see section 6 of the brief)" };
+    // 🎬 videos.json (section 8): one object with "videos", or a bare list of scripts
+    const vsrc = Array.isArray(data) && data.length && data.every(x => x && !Array.isArray(x.posts) && !Array.isArray(x.videos)) ? { videos: data } : data;
+    const vruns = (Array.isArray(vsrc) ? vsrc : [vsrc]).filter(x => x && Array.isArray(x.videos));
+    if (vruns.length) { const got = []; b.returns = b.returns || [];
+      for (const r of vruns) { const vids = r.videos.map(videoNorm).filter(Boolean), seen = new Set(); vids.forEach((v, i) => { if (seen.has(v.key)) v.key += "-" + (i + 1); seen.add(v.key); });
+        if (!vids.length) return { error: "No usable scripts: each video needs captions (\"beats\") — see section 8 of the brief" };
+        const run = String(r.run || (b.offer || "Offer") + " - Short Videos").slice(0, 200); b.returns.push({ at: new Date().toISOString(), by: email, run, kind: "videos", data: { ...r, videos: vids.slice(0, 120) } }); got.push({ run, posts: vids.length, videos: vids.length }); }
+      b.returns = b.returns.slice(-30); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return { ok: true, received: got }; }
+    const runs = (Array.isArray(data) ? data : [data]).filter(x => x && Array.isArray(x.posts)); if (!runs.length) return { error: "No run found — each run needs a \"posts\" list (section 6), or \"videos\" (section 8)" };
     const bad = []; runs.forEach(r => r.posts.forEach((p, i) => { if (!p || !p.prewrite || typeof p.prewrite !== "object") bad.push((r.run || "run") + " post " + (i + 1) + ": no prewrite"); }));
     if (bad.length) return { error: bad.slice(0, 5).join(" · ") };
     b.returns = b.returns || []; runs.forEach(r => b.returns.push({ at: new Date().toISOString(), by: email, run: String(r.run || "Writer run").slice(0, 200), data: { ...r, posts: r.posts.slice(0, 60) } }));
@@ -21595,6 +21701,18 @@ export default {
         const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return json({ error: "No such brief" });
         const x = (b.returns || [])[Number(body.index)]; if (!x) return json({ error: "No such return" }); if (!b.titleId || !b.campaignId) return json({ error: "This brief doesn't know its title — rebuild it from the deploy" });
+        if (x.kind === "videos") {   // 🎬 one Single Post Video Short per script, 8 per call; the page calls again with "next" until done
+          const V = x.data.videos || [], from = Math.max(0, Number(body.from) || 0), part = V.slice(from, from + 8), ids = new Set((await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || []);
+          const acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
+          for (const v of part) {
+            const pw = [`Headline: ${v.headline}`, `Theme: ${v.theme}`, "", ...v.beats.map((c, k) => `${k + 1}. [${c.beat || "beat"} · ${c.sec}s] ${c.text}`), v.cta ? "CTA: " + v.cta : "", v.voiceover ? "\nVoiceover:\n" + v.voiceover : ""].filter(z => z !== null).join("\n");
+            const r = await invoke({ action: "importAssetItem", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, run: x.run, key: "v-" + v.key, assetTitle: v.title, assetType: "social reel informative", prewrite: pw }).catch(e => ({ error: e.message }));
+            if (!r || r.error || !r.assetId) { acc.failed.push(v.key + ": " + ((r && r.error) || "no response")); continue; }
+            const id = hubAssetId(r.assetId), old = await env.TRADES.get("vshort:" + id, "json").catch(() => null);
+            await env.TRADES.put("vshort:" + id, JSON.stringify({ ...(old || {}), ...v, assetId: id, briefId: aid, run: x.run, themeId: (old && old.themeId) || "", render: (old && old.render) || null })); ids.add(id); r.existing ? acc.skipped++ : acc.made++; }
+          await env.TRADES.put("vshorts:" + aid, JSON.stringify([...ids])); const next = from + part.length < V.length ? from + part.length : null;
+          if (next == null) { x.imported = { at: new Date().toISOString(), made: acc.made, skipped: acc.skipped, failed: acc.failed.length }; delete x.importing; } else x.importing = acc;
+          await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return json({ ok: true, videos: true, next, total: V.length, made: acc.made, skipped: acc.skipped, failed: acc.failed }); }
         const made = [], skipped = [], failed = [];
         for (const [i, p] of (x.data.posts || []).entries()) {
           const r = await invoke({ action: "importAssetItem", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, run: x.run, key: String(p.key || x.run + "-" + (i + 1)).slice(0, 120),
@@ -21602,6 +21720,10 @@ export default {
           if (r && r.skipped) skipped.push(p.key); else if (!r || r.error) failed.push((p.key || i + 1) + ": " + ((r && r.error) || "no response")); else made.push(r.assetId || r.id || p.key); }
         x.imported = { at: new Date().toISOString(), made: made.length, skipped: skipped.length, failed: failed.length }; await env.TRADES.put("wbrief:" + aid, JSON.stringify(b));
         return json({ ok: !failed.length, made: made.length, skipped: skipped.length, failed }); } catch (e) { return json({ error: e.message }, 400); } }
+    if (body.action === "member" && body.op === "shortVideo") { try {   // 🎬 short videos from a brief (admin): backgrounds, template, renders
+        const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
+        const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can do that." }, 403);
+        NOTION_TOKEN = (env.NOTION_TOKEN || "").trim(); return json(await shortVideoOp(env, body)); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "reportAdmin") { try {   // 🎯 report focus bar on the members page (operator 2026-11-25) — superadmin only
         const em = await memberFromToken(env, body.token); if (!em) return json({ error: "Please sign in again.", code: "signed_out" });
         const rec = await env.TRADES.get("member:email:" + em, "json").catch(() => null); if (!rec || !(rec.links || []).includes("*")) return json({ error: "Only the admin can do that." }, 403);
