@@ -22243,6 +22243,29 @@ export default {
         return json({ ok: true, assetId: id, field, before, after });
       } catch (e) { return json({ error: e.message, rate: /rate.?limit|429/i.test(e.message) }, /rate.?limit|429/i.test(e.message) ? 429 : 500); }
     }
+    // moveTitleAssets {fromTitleId, toTitleId, dryRun?} (operator 2026-11-25: "move all these to one niche and govern them under one report"):
+    // EVERY asset of a title moves to another title of the same hub, together — so Series → Run → item parent links stay right (the one-asset
+    // move refuses an asset with a parent for exactly that reason). Content Strategy + Campaign + Product follow the target title. Logged to
+    // KV movetitle:log:<ts>. A parent outside the moved set is reported, never changed.
+    if (body.action === "moveTitleAssets") { if (externalCaller) return json({ error: "operator only" }, 403);
+      NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+      try {
+        const from = hubAssetId(String(body.fromTitleId || "")), to = hubAssetId(String(body.toTitleId || ""));
+        if (!/^[0-9a-f]{32}$/i.test(from) || !/^[0-9a-f]{32}$/i.test(to) || from === to) return json({ error: "fromTitleId and toTitleId (different) required" }, 400);
+        const [F_, T_] = await Promise.all([ivPage(from), ivPage(to)]); if (!F_ || !T_ || !T_.properties) return json({ error: "title not found" }, 404);
+        const cid = hubAssetId(ivRid(T_.properties, "Campaign")), pid = hubAssetId(ivRid(T_.properties, "product") || ivRid(T_.properties, "Product") || "");
+        if (cid !== hubAssetId(ivRid(F_.properties, "Campaign"))) return json({ error: "Both titles must be in the same hub" }, 400);
+        const list = (await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(from) } } })).filter(x => !x.archived && !x.in_trash);
+        const ids = new Set(list.map(x => hubAssetId(x.id))), outside = list.filter(x => { const p = ivRid(x.properties, "Parent Asset"); return p && !ids.has(hubAssetId(p)); }).map(x => hubRichText(x.properties["Asset Title"]?.title));
+        if (body.dryRun) return json({ ok: true, dryRun: true, count: list.length, outsideParents: outside });
+        const props = { "Content Strategy": { relation: [{ id: ivDash(to) }] }, Campaign: { relation: [{ id: ivDash(cid) }] }, ...(pid ? { Product: { relation: [{ id: ivDash(pid) }] } } : {}) };
+        const moved = [], failed = [];
+        for (const x of list) { const r = await fetch("https://api.notion.com/v1/pages/" + x.id, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) });
+          if (r.ok) moved.push(hubAssetId(x.id)); else { const d = await r.json().catch(() => ({})); failed.push({ id: hubAssetId(x.id), error: d.message || r.status }); if (r.status === 429) break; } }
+        await env.TRADES.put("movetitle:log:" + Date.now().toString(36), JSON.stringify({ at: new Date().toISOString(), from, to, moved, failed, outsideParents: outside }), { expirationTtl: 365 * 86400 });
+        return json({ ok: !failed.length, count: list.length, moved: moved.length, failed, outsideParents: outside });
+      } catch (e) { return json({ error: e.message }, 500); }
+    }
     if (body.action === "cplanCreateAsset" || body.action === "cplanRemoveAsset" || body.action === "cplanRemoveAssets" || body.action === "cplanRestoreAsset" || body.action === "cplanRemovedLog" || body.action === "initiativeBuildAsset" || body.action === "importAssetItem") {
       if (externalCaller) return json({ error: "operator only" }, 403);
       NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
