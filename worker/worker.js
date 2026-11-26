@@ -1943,6 +1943,20 @@ function vsMods(st) { if (!st) return {}; const T = st.typography, C = st.colors
   m["Headline.font_family"] = T.headlineFont; m["Headline.font_weight"] = String(T.headlineWeight); m["Headline.font_size"] = T.headlineSizeVmin + " vmin"; m["Headline.fill_color"] = C.text; m["Headline.text_transform"] = T.textTransform;
   for (let k = 1; k <= 8; k++) { m[`Caption-${k}.font_family`] = T.captionFont; m[`Caption-${k}.font_weight`] = String(T.captionWeight); m[`Caption-${k}.font_size`] = T.captionSizeVmin + " vmin"; m[`Caption-${k}.fill_color`] = C.text; m[`Caption-${k}.text_transform`] = T.textTransform; }
   m["Shade.fill_color"] = C.shade + a; m["CTA.background_color"] = C.ctaBg; m["CTA.fill_color"] = C.ctaText; m["CTA.font_family"] = T.captionFont; return m; }
+// a finished render → its asset (operator 2026-11-26: "it should be in the post section of the flyout for the asset … and tie files and the
+// library"): Video URL (the flyout's 🎬 Video player) + Post Image (the background), whatever they held before goes to the Library, and the
+// new files are listed in the Library too ("Video URL · <date>" / "Post Image · <date>"), so every render stays on the asset
+async function vsAttach(env, assetId, videoUrl, bgUrl) {
+  const id = hubAssetId(assetId), hdr = { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }, page = await ivPage(id); if (!page || !page.properties) throw new Error("Asset not found");
+  const slots = { "Video URL": videoUrl, ...(bgUrl ? { "Post Image": bgUrl } : {}) };
+  await libraryArchive(hdr, page, slots);
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: Object.fromEntries(Object.entries(slots).map(([k, u]) => [k, { url: u }])) }) });
+  if (!r.ok) throw new Error("Video not saved on the asset: " + ((await r.json().catch(() => ({}))).message || r.status));
+  const p2 = (await ivPage(id)) || {}, old = ((p2.properties || {}).Library || {}).files || [], day = new Date().toISOString().slice(0, 10);
+  if (!old.some(f => f.type !== "external")) { const add = Object.entries(slots).filter(([, u]) => !old.some(f => f.external && f.external.url === u)).map(([k, u]) => ({ type: "external", name: (k + " · " + day).slice(0, 100), external: { url: u } }));
+    if (add.length) await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { Library: { files: [...add, ...old.map(f => ({ type: "external", name: f.name, external: { url: f.external.url } }))].slice(0, 100) } } }) }); }
+  return { ok: true, assetId: id };
+}
 async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
   return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
 async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
@@ -1967,6 +1981,10 @@ async function shortVideoOp(env, body) {
   if (sub === "style") return { ok: true, style: await videoStyleGet(env, b.campaignId), test: await env.TRADES.get("vtest:" + aid, "json").catch(() => null) };
   if (sub === "styleBuild") return { ok: true, style: await videoStyleBuild(env, b) };
   if (sub === "styleSave") return { ok: true, style: await videoStyleSave(env, b.campaignId, body.style || {}) };
+  if (sub === "attachTest") { const T = (await env.TRADES.get("vtest:" + aid, "json").catch(() => null)) || {}; if (!T.render || T.render.status !== "done") return { error: "The test render isn't finished" };
+    const target = hubAssetId(body.target || ""); if (!/^[0-9a-f]{32}$/.test(target)) return { error: "target asset required" };
+    await vsAttach(env, target, T.render.url, T.bgUrl); const old = await env.TRADES.get("vshort:" + target, "json").catch(() => null);
+    if (old) await put(target, { ...old, render: { id: T.render.id, status: "done", url: T.render.url, done: new Date().toISOString(), test: true }, bgUrl: T.bgUrl }); return { ok: true, assetId: target }; }
   if (sub === "testRender" || sub === "testCheck") { const TK = "vtest:" + aid, T = (await env.TRADES.get(TK, "json").catch(() => null)) || {}, st = await videoStyleGet(env, b.campaignId);
     if (sub === "testCheck") { if (!T.render || !T.render.id) return { error: "No test render yet" }; if (T.render.status === "done") return { ok: true, test: T };
       const r = await ctmApi(env, "GET", "/v2/renders/" + encodeURIComponent(T.render.id)), s2 = String(r.status || "");
@@ -2030,7 +2048,7 @@ async function shortVideoOp(env, body) {
     if (st !== "succeeded" || !r.url) return { ok: true, status: st || "rendering" };
     let url = r.url; if (env.MEDIA) { const vr = await fetch(r.url); if (vr.ok) { const key = `videos/${v.assetId}/ctm-${Date.now().toString(36)}.mp4`;
       await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } }); url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } }
-    await hfAssetPatch(v.assetId, { "Video URL": { url }, "Asset Status": { select: { name: "Publish" } } }).catch(() => {});
+    const t2 = bg.themes.find(x => x.id === v.themeId); await vsAttach(env, v.assetId, url, t2 && t2.url).catch(() => hfAssetPatch(v.assetId, { "Video URL": { url } }));
     await put(v.assetId, { ...v, render: { ...v.render, status: "done", url, done: new Date().toISOString() } }); return { ok: true, status: "done", url }; }
   return { error: "Unknown sub " + sub };
 }

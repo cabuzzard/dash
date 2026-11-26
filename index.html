@@ -12754,17 +12754,17 @@ function hd2ImgPrev(inp) { const im = inp.parentElement.querySelector('img.hd2-p
 // fills it on every image save). ↺ Use puts one back in its slot, and the image it replaces goes into the Library in turn.
 function hd2LibraryHtml() {
   const D = EF.data; if (!D || D.kind !== 'notion') return '';
-  const L = D.library || [], slotOf = n => (/^(Thumbnail|Post Image|Instagram Background)\b/.exec(n || '') || [])[1] || 'Thumbnail';
-  if (!L.length) return '<div style="font-size:13px;color:var(--text3);">No earlier images yet. When this asset\'s thumbnail, post image or Instagram background is replaced, the old one is kept here.</div>';
+  const L = D.library || [], slotOf = n => (/^(Thumbnail|Post Image|Instagram Background|Video URL)\b/.exec(n || '') || [])[1] || 'Thumbnail'; const isVid = x => /\.(mp4|webm|mov)(\?|$)/i.test(x.url || '') || /^Video URL/.test(x.name || '');
+  if (!L.length) return '<div style="font-size:13px;color:var(--text3);">No files yet. When this asset\'s thumbnail, post image or Instagram background is replaced, the old one is kept here.</div>';
   return '<div style="font-size:12.5px;color:var(--text3);margin-bottom:10px;">' + L.length + ' earlier image' + (L.length === 1 ? '' : 's') + ', newest first. ↺ Use puts one back; the current one is kept here in its place.</div>'
     + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">' + L.map((x, n) => '<div style="border:1px solid var(--border2);border-radius:8px;padding:8px;min-width:0;">'
-    + '<a href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(x.url) + '" alt="" loading="lazy" style="display:block;width:100%;height:140px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.opacity=.15"></a>'
+    + (isVid(x) ? '<video src="' + esc(x.url) + '" controls playsinline preload="metadata" style="display:block;width:100%;height:220px;object-fit:contain;border-radius:6px;background:#000;"></video>' : '<a href="' + esc(x.url) + '" target="_blank" rel="noopener"><img src="' + esc(x.url) + '" alt="" loading="lazy" style="display:block;width:100%;height:140px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);" onerror="this.style.opacity=.15"></a>')
     + '<div style="font-size:12px;font-weight:700;margin:6px 0 6px;overflow-wrap:anywhere;">' + esc(x.name || slotOf(x.name)) + '</div>'
     + '<button style="' + HD2_B('var(--accent)', 'var(--accent)') + '" onclick="hd2LibUse(' + n + ')">↺ Use as ' + esc(slotOf(x.name)) + '</button></div>').join('') + '</div>';
 }
 async function hd2LibUse(n) {
   if (!EF || !EF.data) return; const x = (EF.data.library || [])[n]; if (!x) return;
-  const slot = (/^(Thumbnail|Post Image|Instagram Background)\b/.exec(x.name || '') || [])[1] || 'Thumbnail', key = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground' }[slot];
+  const slot = (/^(Thumbnail|Post Image|Instagram Background|Video URL)\b/.exec(x.name || '') || [])[1] || 'Thumbnail', key = { 'Thumbnail': 'thumbnail', 'Post Image': 'postImage', 'Instagram Background': 'instagramBackground', 'Video URL': 'videoUrl' }[slot];
   EF.msg = 'Putting it back…'; hd2EfDraw();
   const r = await call('updatePublishFields', { assetId: EF.e.id, [key]: x.url }).catch(e => ({ error: e.message }));
   if (!EF) return; if (!r || r.error) { EF.msg = '✗ Not restored: ' + ((r && r.error) || 'no response'); return hd2EfDraw(); }
