@@ -112,6 +112,11 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .mg-bar { display: flex; gap: 8px; align-items: center; margin: 6px 0 14px; }
 .mg-h { font-size: 13px; color: var(--ink-soft); cursor: grab; user-select: none; }
 .mg-mv { margin-left: auto; padding: 4px 12px; min-height: 32px; font-weight: 500; }
+.wb-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-areas:"ctl side" "up side";gap:14px;align-items:start}.wb-ctl{grid-area:ctl;margin:0}.wb-side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}.wb-up{grid-area:up;display:flex;flex-direction:column;gap:14px;min-width:0}
+.wb-b{margin:0}.wb-b>summary{cursor:pointer;list-style-position:inside}.wb-in{margin-top:10px;overflow-wrap:anywhere}.wb-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.wb-sel{flex:1;min-width:180px}.wb-fl{margin-top:8px}.wb-fl>summary{cursor:pointer}
+.wb-kw{display:flex;flex-wrap:wrap;gap:6px}.wb-kw span{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:14px}.wb-rcv{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;border-top:1px solid var(--line);padding:7px 0;font-size:14px}
+.wb-a{display:flex;gap:8px;justify-content:space-between;align-items:baseline;padding:6px 4px;border-top:1px solid var(--line);text-decoration:none;color:inherit;font-size:14px}.wb-a:hover{background:rgba(127,127,127,.08)}
+@media(max-width:860px){.wb-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"ctl" "side" "up"}}
 .rb-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;margin:0 0 4px;scrollbar-width:thin}.rb-chip{flex:none;display:flex;gap:8px;align-items:center;text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:9px 14px;cursor:pointer;font:inherit;color:inherit}.rb-chip small{display:block;color:#64748b;font-size:12px}.rb-chip .rb-i{font-size:20px}.rb-chip.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(22,163,74,.15)}.rb-p{border-top:3px solid var(--accent)}
 </style>
 </head>
@@ -334,70 +339,117 @@ function mdHtml(md) {
   flush(); if (code) out.push(`<pre class="bf-code">${esc(code.join("\n"))}</pre>`); return out.join("");
 }
 let _bf = null;
+// 📦 WRITER BRIEF (operator 2026-11-26 sketch): a control strip (📋 Copy all upstream + direction box · asset type dropdown with "+ Add new" ·
+// 📋 Copy structure), the right column (Paste back, Built assets → Hub Dash 2), and the upstream readouts (Keywords · Written brief · All upstream).
+// Every large box starts collapsed. Phone: control strip → right column → upstream. Video render/layout lives on the asset type flyout, not here.
+let _wbSel = "", _wbOpen = new Set(), _wbAssets = null;
+const wbBox = (id, title, sub, body, extra) => `<details class="card wb-b" id="${id}" ${_wbOpen.has(id) ? "open" : ""} ontoggle="wbTog(this)"${extra || ""}><summary><b>${title}</b>${sub ? ` <span class="od-mute">${sub}</span>` : ""}</summary><div class="wb-in">${body}</div></details>`;
+function wbTog(d) { if (d.open) _wbOpen.add(d.id); else _wbOpen.delete(d.id); if (d.id === "wbBuilt" && d.open && !_wbAssets) wbAssetsLoad(); }
+const wbG = id => (_bf.stack || []).find(g => g.id === id);
 async function briefView(tok) {
-  out.innerHTML = '<p class="lede">Loading the brief…</p>'; document.querySelector(".wrap").style.maxWidth = "980px";
+  out.innerHTML = '<p class="lede">Loading the brief…</p>'; document.querySelector(".wrap").style.maxWidth = "1180px";
   try { const d = await call({ op: "brief", token: tok, assetId: BRIEF_ID });
     if (d.code === "signed_out") { store.set("mb_token", null); return signInView("Please sign in again."); }
     if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This brief isn't available.") + '</div><a class="home" href="/members/">← Members</a>'; return; }
-    _bf = d; const B = d.brief, U = d.upstream || { md: B.md };
-    const share = d.admin ? `<details class="card" style="margin:0 0 14px"><summary><b>Share with a writer</b> <span class="od-mute">${(d.shared || []).length ? "shared with " + esc(d.shared.join(", ")) : "not shared yet"}</span></summary>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input class="mg-in" id="bfEm" type="email" placeholder="writer@example.com" style="flex:1;min-width:200px"><button class="share" style="margin:0" onclick="briefShare()">Share</button></div>
-      <div class="od-mute" id="bfSt" style="margin-top:6px">They sign in with that Google account and see only this brief.</div></details>` : "";
-    const legacy = (d.returns || []).filter(x => !x.ribbon);
-    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span class="od-mute" style="margin-left:auto">${esc(B.title || "")}</span></div>` + share
-      + `<div class="rb-bar">${(d.ribbon || []).map(r => `<button class="rb-chip" id="rbc-${r.id}" onclick="rbOpen('${r.id}')"><span class="rb-i">${r.icon}</span><span><b>${esc(r.label)}</b><small>${r.returned ? r.returned + " back" + (r.imported ? " · " + r.imported + " in" : "") : "not started"}</small></span></button>`).join("")}</div>
-      <div id="rbPanel"></div>
-      <div class="card bf"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><b style="font:700 17px 'Bricolage Grotesque',sans-serif">Copywriting information</b><span class="od-mute">everything upstream: pillar, offer, research, interview, voice</span>
-        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="share" style="margin:0" onclick="rbCopyUp(this)">Copy text</button>${d.design ? '<button class="share" style="margin:0" onclick="briefCopyDesign(this)">Copy design JSON</button>' : ""}</span></div>
-        ${mdHtml(U.md)}${d.design ? briefDesignHtml(d.design) : ""}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>`
-      + (legacy.length ? briefReturnHtml({ ...d, returns: legacy }) : "");
-    rbOpen(_rbOpen && (d.ribbon || []).some(r => r.id === _rbOpen) ? _rbOpen : ((d.ribbon || [])[0] || {}).id);
+    _bf = d; const S = d.stack || []; if (!_wbSel || !wbG(_wbSel)) _wbSel = (S[0] || {}).id || "";
+    const P = (d.upstream && d.upstream.parts) || {}, K = d.keywords || {}, D = d.deploy || {};
+    const kw = (K.list || []).length ? `<div class="wb-kw">${K.list.map(k => `<span>${esc(k)}</span>`).join("")}</div>` : '<div class="od-mute">No keywords on this report yet.</div>';
+    const written = [P.offer, P.voice, P.pillar ? "## The title pillar\n\n" + P.pillar : ""].filter(Boolean).join("\n\n");
+    const research = [D.direction ? "## Operator direction (from the deploy)\n\n" + D.direction : "", K.demand ? "## Search demand\n\n" + K.demand : "", P.evidence, P.rules].filter(Boolean).join("\n\n");
+    const opts = S.map(g => `<option value="${g.id}" ${g.id === _wbSel ? "selected" : ""}>${g.icon} ${esc(g.label)}${g.origin === "deploy" ? " · " + g.items.length : ""}${g.returned ? " · " + g.returned + " back" : ""}</option>`).join("");
+    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span class="od-mute" style="margin-left:auto">${esc(d.brief.title || "")}</span></div>
+    <div class="wb-grid">
+      <div class="card wb-ctl">
+        <div class="wb-row"><button class="share od-go" style="margin:0" onclick="wbCopyUp(this)" title="Keywords + written brief + all upstream + your direction below">📋 Copy all upstream</button>
+          <select class="mg-in wb-sel" id="wbSel" onchange="wbPick(this.value)">${opts || '<option value="">(no stack on this brief)</option>'}<option value="__add">＋ Add new type…</option></select>
+          <button class="share od-go" style="margin:0" onclick="wbCopyStruct(this)" title="The selected type's job, fields, the assets to fill and the JSON to send back">📋 Copy structure</button></div>
+        <div id="wbAdd"></div><div id="wbInfo"></div>
+        <textarea class="od-ta" id="wbDir" rows="2" placeholder="Direction for the chat (added to Copy all upstream)…" onchange="wbDirSave()" style="margin:8px 0 0">${esc(d.direction || "")}</textarea>
+        <div class="od-mute" id="wbSt"></div></div>
+      <div class="wb-side">
+        ${wbBox("wbPaste", "📥 Paste back", "", '<div id="wbPasteIn"></div>')}
+        ${d.admin ? wbBox("wbBuilt", "🧱 Built assets", D.initiative ? esc(D.initiative) : "", '<div id="wbBuiltIn"><div class="od-mute">Loading…</div></div>') : ""}
+      </div>
+      <div class="wb-up">
+        ${wbBox("wbKw", "🔑 Keywords", (K.list || []).length + " chosen for this report", kw)}
+        ${wbBox("wbWritten", "📝 Written brief", "offer · interview · topical pillar", mdHtml(written || "_Nothing yet._"))}
+        ${wbBox("wbAll", "📚 All upstream", "research, direction, evidence, rules", mdHtml(research || "_Nothing yet._") + (d.design ? `<div style="margin-top:10px"><button class="share" style="margin:0" onclick="briefCopyDesign(this)">Copy design JSON</button></div>` + briefDesignHtml(d.design) : ""))}
+        <p class="od-mute">Written ${esc(new Date(d.brief.at).toLocaleString())}${D.offer ? " · deploy “" + esc(D.offer) + "”" : ""}</p>
+      </div></div>`;
+    wbPick(_wbSel, true); if (_wbOpen.has("wbBuilt")) wbAssetsDraw();
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
 }
-// 📋 the ribbon (operator 2026-11-25): one chip per asset type → its task, a clipboard copy for any chat (upstream + task + fields + return JSON),
-// the paste-back box, and Import → one asset per item
-let _rbOpen = "";
-const rbItem = id => (_bf.ribbon || []).find(r => r.id === id);
-function rbPrompt(r) { const U = (_bf.upstream && _bf.upstream.md) || _bf.brief.md, L = [U, "", "---", "", "# YOUR TASK: " + r.label, "", r.task, "", "**How many:** " + r.count, ""];
-  if (r.kind === "videos") { L.push("**Beat map** (every script follows it):", ...(r.beatMap || []).map(b => `- **${b.beat}** (${b.at}): ${b.what}`), "", "**Rules:**", ...(r.rules || []).map(x => "- " + x), ""); }
-  else { L.push("**Fields to write for each item** (use these exact names; follow each rule):", ...(r.contract || []).map(f => `- **${f.name}**: ${f.rule}`), ""); }
-  L.push("**Reply with ONLY this JSON** (one object; it's pasted straight back into the tool):", "```json", JSON.stringify(r.example, null, 2), "```", "", "Use only the facts above. Never invent clients, results, numbers, prices or quotes. Write in the operator's voice.");
+function wbPick(id, quiet) { const A = document.getElementById("wbAdd"), I = document.getElementById("wbInfo"); if (!I) return;
+  if (id === "__add") { document.getElementById("wbSel").value = _wbSel; return wbAddOpen(); }
+  _wbSel = id; if (A) A.innerHTML = ""; const g = wbG(id); if (!g) { I.innerHTML = ""; wbPasteDraw(); return; }
+  I.innerHTML = `<details class="wb-fl"><summary class="od-mute">${esc(g.type)} · ${esc(g.count)}${g.row ? " · contract: " + esc(g.row) : g.kind === "videos" ? "" : ' · <span style="color:#b45309">no writing contract</span>'}</summary>
+    <p style="margin:6px 0">${esc(g.task)}</p>${g.kind === "videos" ? "" : `<ul style="margin:0;font-size:14px">${(g.contract || []).map(f => `<li><b>${esc(f.name)}</b>: ${esc(f.rule)}</li>`).join("")}</ul>`}
+    ${g.origin === "added" && !(g.items || []).length ? `<button class="share" style="margin:8px 0 0" onclick="wbAddRemove('${g.id}',this)">Remove from the stack</button>` : ""}</details>`;
+  wbPasteDraw(); }
+function wbStruct(g) { const L = [`# ASSET STRUCTURE: ${g.label} (${g.type})`, "", g.task, "", "**How many:** " + g.count, ""];
+  if (g.kind === "videos") L.push("**Beat map** (every script follows it):", ...(g.beatMap || []).map(b => `- **${b.beat}** (${b.at}): ${b.what}`), "", "**Rules:**", ...(g.rules || []).map(x => "- " + x), "");
+  else { L.push("**Fields for each item** (use these exact names; follow each rule):", ...(g.contract || []).map(f => `- **${f.name}**: ${f.rule}`), "");
+    if (g.origin === "deploy") L.push("**The assets to write** (one item each; keep its key exactly):", ...g.items.map(x => `- \`${x.key}\`${x.format ? " (" + x.format + ")" : ""}: ${x.title}${x.job ? "\n  Job: " + x.job.replace(/\n+/g, " ") : ""}`), ""); }
+  L.push("**Reply with ONLY this JSON** (one object; it's pasted straight back into the tool):", "```json", JSON.stringify(g.example, null, 2), "```", "", "Use only the facts in the copywriting information. Never invent clients, results, numbers, prices or quotes. Write in the operator's voice.");
   return L.join("\n"); }
-function rbOpen(id) { const r = rbItem(id), P = document.getElementById("rbPanel"); if (!r || !P) return; _rbOpen = id;
-  document.querySelectorAll(".rb-chip").forEach(c => c.classList.toggle("on", c.id === "rbc-" + id));
-  const R = (_bf.returns || []).filter(x => x.ribbon === id);
-  P.innerHTML = `<div class="card rb-p"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font:700 19px 'Bricolage Grotesque',sans-serif;margin:0 0 4px">${r.icon} ${esc(r.label)}</h3>
-      <p style="margin:0 0 4px">${esc(r.task)}</p><p class="od-mute" style="margin:0">${esc(r.count)} · run "${esc(r.run)}"</p></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="share od-go" style="margin:0" onclick="rbCopy('${id}',this)" title="Upstream copy info + this task + the fields + the JSON to send back. Paste into ChatGPT, Claude, any chat">📋 Copy for chat</button><button class="share" style="margin:0" onclick="rbCopyJson('${id}',this)">Copy JSON</button></div></div>
-    ${r.kind === "videos" ? "" : `<details style="margin:8px 0 0"><summary class="od-mute" style="cursor:pointer">Fields (${(r.contract || []).length}, from the writing contract)</summary><ul style="margin:6px 0 0;font-size:14px">${(r.contract || []).map(f => `<li><b>${esc(f.name)}</b>: ${esc(f.rule)}</li>`).join("")}</ul></details>`}
-    <div class="od-l" style="margin-top:12px">Paste the chat's JSON back</div>
-    <textarea class="od-ta" id="rbRet" rows="5" placeholder='${esc(JSON.stringify(r.example).slice(0, 160))}…'></textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="file" accept=".json,application/json" onchange="rbFile(this)" style="font-size:13px;max-width:100%"><button class="share od-go" style="margin:0 0 0 auto" onclick="rbSend('${id}',this)">${_bf.admin ? "Send + create assets" : "Send"}</button></div>
-    <div class="od-mute" id="rbSt" style="margin-top:6px"></div>
-    ${R.length ? `<div class="od-l" style="margin-top:12px">Received</div>${R.map(x => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding:7px 0;font-size:14px"><b style="flex:1;min-width:160px">${esc(x.run)}</b>
-      <span class="od-mute">${x.items || x.videos} items · ${esc(new Date(x.at).toLocaleString())}${x.warnings && x.warnings.length ? ` · <span title="${esc(x.warnings.join("\n"))}" style="color:#b45309">⚠ ${x.warnings.length} off-contract</span>` : ""}</span>
-      ${x.imported ? `<span style="color:#16a34a;font-weight:600">✓ ${x.imported.made} assets${x.imported.skipped ? " · " + x.imported.skipped + " already there" : ""}${x.imported.failed ? " · " + x.imported.failed + " failed" : ""}</span>` : _bf.admin ? `<button class="share" style="margin:0" onclick="briefImport(${x.i},this)">${x.importing ? "Resume" : "Create assets"}</button>` : '<span class="od-mute">waiting for review</span>'}</div>`).join("")}` : ""}
-    ${r.kind === "videos" && _bf.admin ? '<div id="svBox" style="margin-top:12px"></div>' : ""}</div>`;
-  if (r.kind === "videos" && _bf.admin) svLoad(); }
-async function rbCopy(id, b) { try { await navigator.clipboard.writeText(rbPrompt(rbItem(id))); b.textContent = "✓ Copied, paste into the chat"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "📋 Copy for chat"; }, 2500); }
-async function rbCopyJson(id, b) { const r = rbItem(id), U = (_bf.upstream && _bf.upstream.json) || {};
-  const j = { ...U, design: _bf.design || undefined, task: { type: r.label, what: r.task, howMany: r.count, ...(r.kind === "videos" ? { beatMap: r.beatMap, rules: r.rules } : { fields: Object.fromEntries((r.contract || []).map(f => [f.name, f.rule])) }) },
-    returnFormat: { replyWithOnlyThis: true, example: r.example } };
-  try { await navigator.clipboard.writeText(JSON.stringify(j, null, 2)); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy JSON"; }, 2000); }
-async function rbCopyUp(b) { try { await navigator.clipboard.writeText((_bf.upstream && _bf.upstream.md) || _bf.brief.md); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy text"; }, 2000); }
-function rbFile(inp) { const f = inp.files && inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { document.getElementById("rbRet").value = String(r.result || ""); }; r.readAsText(f); }
-async function rbSend(id, b) { const st = document.getElementById("rbSt"), r = rbItem(id); let t = (document.getElementById("rbRet") || {}).value || ""; if (!t.trim()) { st.textContent = "Paste the JSON or choose the file first"; return; }
-  // the chat may drop the "ribbon" tag or wrap the items — tag it with this chip's type
-  try { let j = JSON.parse(t.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, "")); if (r.kind === "videos") { if (Array.isArray(j)) j = { videos: j }; }
-    else { if (Array.isArray(j)) j = { items: j }; if (!j.items && Array.isArray(j.posts)) j.items = j.posts; if (!j.items && Array.isArray(j.emails)) j.items = j.emails; if (!j.items && Array.isArray(j.ctas)) j.items = j.ctas;
-      (j.items || []).forEach(x => { if (x && !x.fields) { const { key, format, day, ...rest } = x; x.fields = rest; } }); j.ribbon = id; j.run = j.run || r.run; }
+const wbFlash = (b, t, back) => { b.textContent = t; setTimeout(() => { b.textContent = back; }, 2200); };
+async function wbCopyStruct(b) { const g = wbG(_wbSel); if (!g) return wbFlash(b, "Pick a type first", "📋 Copy structure");
+  try { await navigator.clipboard.writeText(wbStruct(g)); wbFlash(b, "✓ Copied", "📋 Copy structure"); } catch (e) { wbFlash(b, "Copy failed", "📋 Copy structure"); } }
+function wbUpText() { const d = _bf, P = (d.upstream && d.upstream.parts) || {}, K = d.keywords || {}, D = d.deploy || {}, dir = (document.getElementById("wbDir") || {}).value || "";
+  return [`# Copywriting information: ${D.offer || d.brief.offer || ""}`, `**Title:** ${d.brief.title || ""}${D.initiative ? " · **Initiative:** " + D.initiative : ""}`,
+    dir.trim() ? "## Direction for this chat\n\n" + dir.trim() : "", (K.list || []).length ? "## Keywords\n\n" + K.list.join(", ") : "",
+    P.offer, P.voice, P.pillar ? "## The title pillar\n\n" + P.pillar : "", D.direction ? "## Operator direction (from the deploy)\n\n" + D.direction : "", K.demand ? "## Search demand\n\n" + K.demand : "", P.evidence, P.rules]
+    .filter(Boolean).join("\n\n"); }
+async function wbCopyUp(b) { try { await navigator.clipboard.writeText(wbUpText()); wbFlash(b, "✓ Copied", "📋 Copy all upstream"); } catch (e) { wbFlash(b, "Copy failed", "📋 Copy all upstream"); } }
+async function wbDirSave() { if (!_bf.admin) return; const st = document.getElementById("wbSt"), t = document.getElementById("wbDir").value;
+  const r = await call({ op: "briefDir", token: store.get("mb_token"), assetId: BRIEF_ID, text: t }).catch(e => ({ error: e.message })); _bf.direction = t;
+  st.textContent = r && r.ok ? "✓ Direction saved" : "✗ " + ((r && r.error) || "Not saved"); setTimeout(() => { st.textContent = ""; }, 2500); }
+async function wbAddOpen() { const A = document.getElementById("wbAdd"); A.innerHTML = '<div class="od-mute" style="margin-top:8px">Loading the types…</div>';
+  const r = await call({ op: "briefStackAdd", token: store.get("mb_token"), assetId: BRIEF_ID, sub: "options" }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { A.innerHTML = `<div class="msg" style="margin-top:8px">${esc((r && r.error) || "Couldn't load")}</div>`; return; }
+  A.innerHTML = `<div class="wb-row" style="margin-top:8px"><select class="mg-in" id="wbAddT" style="flex:1;min-width:200px">${r.options.map(o => `<option>${esc(o)}</option>`).join("")}</select>
+    <input class="mg-in" id="wbAddC" placeholder="how many (e.g. 10)" style="width:150px"><button class="share od-go" style="margin:0" onclick="wbAddGo(this)">Add to the stack</button><button class="share" style="margin:0" onclick="document.getElementById('wbAdd').innerHTML=''">Cancel</button></div>
+    <input class="mg-in" id="wbAddK" placeholder="its job, in a line (optional)" style="width:100%;margin-top:6px"><div class="od-mute" style="margin-top:4px">Asset Flow types with a writing contract. New items become assets in this deploy, under the Offer.</div>`; }
+async function wbAddGo(b) { const type = document.getElementById("wbAddT").value; b.disabled = true;
+  const r = await call({ op: "briefStackAdd", token: store.get("mb_token"), assetId: BRIEF_ID, sub: "add", type, count: document.getElementById("wbAddC").value.trim(), task: document.getElementById("wbAddK").value.trim() }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { b.disabled = false; document.getElementById("wbSt").textContent = "✗ " + ((r && r.error) || "Not added"); return; } _wbSel = r.id; briefView(store.get("mb_token")); }
+async function wbAddRemove(id, b) { b.disabled = true; const r = await call({ op: "briefStackAdd", token: store.get("mb_token"), assetId: BRIEF_ID, sub: "remove", id }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { b.disabled = false; document.getElementById("wbSt").textContent = "✗ " + ((r && r.error) || "Not removed"); return; } _wbSel = ""; briefView(store.get("mb_token")); }
+// 📥 paste back for the selected type + what came back for it
+function wbPasteDraw() { const P = document.getElementById("wbPasteIn"); if (!P) return; const g = wbG(_wbSel);
+  if (!g) { P.innerHTML = '<div class="od-mute">Pick a type in the strip first.</div>'; return; }
+  const R = (_bf.returns || []).filter(x => x.stack === g.id), legacy = (_bf.returns || []).filter(x => !x.stack);
+  P.innerHTML = `<div class="od-mute" style="margin:0 0 6px">${g.icon} ${esc(g.label)}: paste the chat's JSON</div>
+    <textarea class="od-ta" id="rbRet" rows="6" placeholder='${esc(JSON.stringify(g.example).slice(0, 140))}…'></textarea>
+    <div class="wb-row"><input type="file" accept=".json,application/json" onchange="rbFile(this)" style="font-size:13px;max-width:100%;flex:1"><button class="share od-go" style="margin:0" onclick="wbSend(this)">${_bf.admin ? (g.origin === "deploy" ? "Send + fill assets" : "Send + create assets") : "Send"}</button></div>
+    <div class="od-mute" id="bfRSt" style="margin-top:6px"></div>
+    ${R.length ? `<div class="od-l" style="margin-top:10px">Received</div>${R.map(x => `<div class="wb-rcv"><span>${x.items || x.videos} items · ${esc(new Date(x.at).toLocaleDateString())}${x.warnings && x.warnings.length ? ` · <span title="${esc(x.warnings.join("\n"))}" style="color:#b45309">⚠ ${x.warnings.length}</span>` : ""}</span>
+      ${x.imported ? `<span style="color:#16a34a;font-weight:600">✓ ${x.kind === "stack" ? (x.imported.skipped ? x.imported.skipped + " filled" : "") + (x.imported.made ? " " + x.imported.made + " new" : "") : x.imported.made + " made"}${x.imported.failed ? " · " + x.imported.failed + " failed" : ""}</span>` : _bf.admin ? `<button class="share" style="margin:0" onclick="briefImport(${x.i},this)">${x.importing ? "Resume" : g.origin === "deploy" ? "Fill assets" : "Create assets"}</button>` : '<span class="od-mute">waiting</span>'}</div>`).join("")}` : ""}
+    ${legacy.length ? `<details style="margin-top:10px"><summary class="od-mute">Earlier returns (${legacy.length})</summary>${briefReturnHtml({ ..._bf, returns: legacy })}</details>` : ""}`; }
+async function wbSend(b) { const st = document.getElementById("bfRSt"), g = wbG(_wbSel); let t = (document.getElementById("rbRet") || {}).value || ""; if (!g) return; if (!t.trim()) { st.textContent = "Paste the JSON or choose the file first"; return; }
+  try { let j = JSON.parse(t.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, ""));
+    if (g.kind === "videos") { if (Array.isArray(j)) j = { videos: j }; j.stack = g.id; }
+    else { if (Array.isArray(j)) j = { items: j }; ["posts", "emails", "ctas", "assets"].forEach(k => { if (!j.items && Array.isArray(j[k])) j.items = j[k]; });
+      (j.items || []).forEach(x => { if (x && !x.fields) { const { key, format, day, ...rest } = x; x.fields = rest; } }); j.stack = g.id; delete j.ribbon; }
     t = JSON.stringify(j); } catch (e) { st.textContent = "✗ That isn't valid JSON: " + e.message; return; }
   b.disabled = true; st.textContent = "Sending…"; const res = await call({ op: "briefReturn", token: store.get("mb_token"), assetId: BRIEF_ID, text: t }).catch(e => ({ error: e.message }));
   if (!res || res.error) { b.disabled = false; st.textContent = "✗ " + ((res && res.error) || "Not sent"); return; }
-  st.textContent = "✓ Received " + res.received.map(x => x.posts + " items" + (x.warnings ? " (" + x.warnings + " off-contract, saved anyway)" : "")).join(", ");
-  if (!_bf.admin) { setTimeout(() => briefView(store.get("mb_token")), 1200); return; }
-  const d = await call({ op: "brief", token: store.get("mb_token"), assetId: BRIEF_ID }).catch(() => null); const last = d && d.returns && d.returns.filter(x => x.ribbon === id).pop();
-  if (last && !last.imported) { st.textContent += " · creating assets…"; await briefImport(last.i, b); } else briefView(store.get("mb_token")); }
+  st.textContent = "✓ Received " + res.received.map(x => x.posts + " items" + (x.warnings ? " (" + x.warnings + " flagged, saved anyway)" : "")).join(", ");
+  _wbOpen.add("wbPaste"); if (!_bf.admin) { setTimeout(() => briefView(store.get("mb_token")), 1200); return; }
+  const d = await call({ op: "brief", token: store.get("mb_token"), assetId: BRIEF_ID }).catch(() => null); const last = d && d.returns && d.returns.filter(x => x.stack === g.id).pop();
+  _wbAssets = null; if (last && !last.imported) { st.textContent += " · writing into the assets…"; await briefImport(last.i, b); } else briefView(store.get("mb_token")); }
+// 🧱 built assets: this deploy's assets (same initiative) grouped by type, the rest of the title folded below; each opens in Hub Dash 2
+async function wbAssetsLoad() { const r = await call({ op: "reportAdmin", token: store.get("mb_token"), sub: "assets", assetId: _bf.reportId }).catch(e => ({ error: e.message }));
+  _wbAssets = r && !r.error ? r : { error: (r && r.error) || "Couldn't load" }; wbAssetsDraw(); }
+function wbAssetsDraw() { const B = document.getElementById("wbBuiltIn"); if (!B || !_wbAssets) return; if (_wbAssets.error) { B.innerHTML = `<div class="msg">${esc(_wbAssets.error)}</div>`; return; }
+  const ini = ((_bf.deploy || {}).initiative || "").trim(), L = _wbAssets.assets || [], mine = L.filter(a => ini && a.initiative.trim() === ini), rest = L.filter(a => !mine.includes(a));
+  const col = s => /^published$/i.test(s) ? "#16a34a" : /^publish$/i.test(s) ? "#2563eb" : /development/i.test(s) ? "#ca8a04" : "var(--ink-soft)";
+  const row = a => `<a class="wb-a" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#asset=${a.id}"><span class="ra-n">${esc(a.name || "(untitled)")}</span><span style="color:${col(a.status)};font-size:12px;font-weight:600">${esc(a.status || "")}</span></a>`;
+  const grp = A => { const g = {}; A.forEach(a => (g[a.type || "(no type)"] = g[a.type || "(no type)"] || []).push(a)); return Object.keys(g).sort().map(k => `<details class="ra-g"><summary>${esc(k)} <span class="od-mute">${g[k].length}</span></summary>${g[k].sort((x, y) => String(x.name).localeCompare(String(y.name))).map(row).join("")}</details>`).join(""); };
+  B.innerHTML = `<a class="share" style="margin:0 0 8px;text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#title=${_wbAssets.titleId}">Open the title in Hub Dash 2 ↗</a>
+    <div class="od-mute" style="margin:0 0 4px">This deploy · ${mine.length}</div>${grp(mine) || '<div class="od-mute">None yet.</div>'}
+    ${rest.length ? `<details style="margin-top:8px"><summary class="od-mute">Rest of “${esc(_wbAssets.titleName || "the title")}” · ${rest.length}</summary>${grp(rest)}</details>` : ""}`; }
+function rbFile(inp) { const f = inp.files && inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { document.getElementById("rbRet").value = String(r.result || ""); }; r.readAsText(f); }
 // 📥 send the posts back here (operator 2026-11-25): paste or upload run.json; the admin sees each return and imports it into the run
 function briefReturnHtml(d) {
   const R = d.returns || [];

@@ -1698,10 +1698,69 @@ async function briefUpstream(env, b) {
     "Everything the writer needs, from upstream: the title's pillar, the offer, the research behind it and the operator's own interview. Pick an asset type in the ribbon for its task and return format.", ""];
   if (pillar) L.push("## The title pillar", "", pillar, "");
   const md = String(b.md || ""), cut = (a, z) => { const i = md.indexOf(a); if (i < 0) return ""; const j = z ? md.indexOf(z, i + a.length) : -1; return md.slice(i, j < 0 ? undefined : j).trim(); };
-  [cut("## 2. The offer", "## 3."), cut("## 3. The evidence", "## 4."), cut("## 4. The operator's voice", "## 5."), cut("## 5. Rules", "## 6.")].filter(Boolean).forEach(x => L.push(x.replace(/^## \d+\. /, "## "), ""));
+  const parts = { pillar, offer: cut("## 2. The offer", "## 3."), evidence: cut("## 3. The evidence", "## 4."), voice: cut("## 4. The operator's voice", "## 5."), rules: cut("## 5. Rules", "## 6.") };
+  ["offer", "evidence", "voice", "rules"].forEach(k => { parts[k] = parts[k].replace(/^## \d+\. /, "## "); });
+  [parts.offer, parts.evidence, parts.voice, parts.rules].filter(Boolean).forEach(x => L.push(x, ""));
   const json = { brief: "Copywriting brief: " + (J.offer && J.offer.name || b.offer || ""), hub: J.hub, title: J.title || b.title, initiative: J.initiative, ...(pillar ? { titlePillar: pillar } : {}), offer: J.offer, evidence: J.evidence, voice: J.voice, rules: J.rules };
-  return { md: L.join("\n"), json };
+  return { md: L.join("\n"), json, parts };
 }
+// 🧱 the brief's STACK (operator 2026-11-26: "there is an original deploy stack. that is what should be put in there with add new as a way of adding
+// to that stack. that is a process that occurs when deploying the writer brief from the report"; "writer brief belongs to a stack that shares one
+// keyworded deployment from a report (there could be many from one report)"). The dropdown = the deploy job's groups (its assets already exist,
+// the paste-back fills each one's External Write by key) + types added with "+ Add new" (job.addTypes; their items become NEW assets in the same
+// initiative, under the Offer, then External Write). Contracts come from the Current Methods row matched by name or alias.
+const STACK_GROUPS = [
+  { id: "offer", icon: "📣", label: "Offer", test: k => k === "offer" },
+  { id: "page", icon: "📄", label: "Sales page", test: k => k === "page" },
+  { id: "cta", icon: "🎯", label: "CTAs", test: k => /^cta/.test(k) },
+  { id: "posts", icon: "🧷", label: "Selling-point posts", test: k => /^post\d/.test(k) },
+  { id: "welcome", icon: "✉️", label: "Welcome emails", test: k => /^welcome\d/.test(k) },
+  { id: "sales", icon: "📨", label: "Sales emails", test: k => /^sales\d/.test(k) } ];
+const cmRowFor = (rows, type) => { const n = ivNorm(type); return rows.find(r => r.contractText.trim() && (ivNorm(r.name) === n || r.aliases.includes(n))) || null; };
+const stackJob = async (env, b) => b && b.jobId ? await env.TRADES.get("offerdeploy:job:" + b.jobId, "json").catch(() => null) : null;
+async function briefStack(env, b, job) {
+  job = job || await stackJob(env, b); if (!job) return [];
+  const rows = writingRows(await writingMethodsTable(env).catch(() => ({ columns: [], rows: [] })));
+  const cnt = gid => { const R = (b.returns || []).filter(x => x.stack === gid); return { returned: R.reduce((n, x) => n + (x.data.items || x.data.videos || []).length, 0), imported: R.reduce((n, x) => n + ((x.imported && x.imported.made + x.imported.skipped) || 0), 0) }; };
+  const ctr = row => row ? parseWritingContract(row.contractText).map(f => ({ name: f.name, rule: f.rule })) : [];
+  const out = [];
+  for (const g of STACK_GROUPS) { const S = job.steps.filter(s => s.op === "create" && g.test(s.key)); if (!S.length) continue;
+    const type = S[0].type, row = cmRowFor(rows, type), contract = ctr(row);
+    const items = S.map(s => ({ key: s.key, assetId: job.ids[s.key] || "", title: s.title, ...(s.format ? { format: s.format } : {}), job: String(s.own || "").slice(0, 1500) }));
+    out.push({ id: g.id, icon: g.icon, label: g.label, type, kind: "fields", origin: "deploy", row: row ? row.name : "", contract, items,
+      count: `${items.length} — already in the stack; write every one (keep each key)`, task: `Write the copy for each ${g.label.toLowerCase().replace(/s$/, "")} below. Each one already exists in the stack with its own job.`,
+      example: { stack: g.id, items: items.map(x => ({ key: x.key, fields: Object.fromEntries(contract.map(f => [f.name, "…"])) })) }, ...cnt(g.id) }); }
+  for (const a of job.addTypes || []) {
+    const made = Object.keys(job.ids).filter(k => k.startsWith(a.id + ":")).map(k => ({ key: k.slice(a.id.length + 1), assetId: job.ids[k] }));
+    if (a.kind === "videos") { const v = videoSection(b); out.push({ id: a.id, icon: "🎬", label: a.label, type: a.type, kind: "videos", origin: "added", count: a.count, task: a.task || BRIEF_RIBBON.find(r => r.id === "video").task,
+      rules: v.json.rules, beatMap: v.json.beatMap, example: { stack: a.id, ...v.json.example }, items: made, ...cnt(a.id) }); continue; }
+    const row = cmRowFor(rows, a.type), contract = ctr(row);
+    out.push({ id: a.id, icon: "➕", label: a.label, type: a.type, kind: "fields", origin: "added", row: row ? row.name : "", contract, items: made, count: a.count,
+      task: a.task || `${a.label} for this offer.`, example: { stack: a.id, items: [{ key: "<short-unique-key>", fields: Object.fromEntries(contract.map(f => [f.name, "…"])) }] }, ...cnt(a.id) }); }
+  return out;
+}
+// "+ Add new": the Asset Flow types that have a writing contract (and aren't in the stack yet); add / remove on the deploy job
+async function briefStackAddOp(env, b, body) {
+  const job = await stackJob(env, b); if (!job) throw new Error("This brief has no deploy stack (rebuild it from the report's deploy)");
+  const K = "offerdeploy:job:" + job.id, sub = String(body.sub || "options");
+  const rows = writingRows(await writingMethodsTable(env).catch(() => ({ columns: [], rows: [] })));
+  const af = (await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null)) || { rows: [] };
+  const have = new Set([...job.steps.filter(s => s.op === "create").map(s => ivNorm(s.type)), ...(job.addTypes || []).map(a => ivNorm(a.type))]);
+  const opts = af.rows.filter(r => r.cells && r.cells.kind === "node").map(r => String(r.cells.label || "")).filter(l => l && !have.has(ivNorm(l)) && (ivNorm(l) === ivNorm("Single Post Video Short") || cmRowFor(rows, l)))
+    .filter((l, i, A) => A.indexOf(l) === i).sort();
+  if (sub === "options") return { ok: true, options: opts };
+  if (sub === "add") { const type = String(body.type || "").trim(); if (!opts.includes(type)) throw new Error(`"${type}" can't be added (it needs a writing contract, or it's already in the stack)`);
+    const vid = ivNorm(type) === ivNorm("Single Post Video Short"), id = "add-" + ivNorm(type).replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+    job.addTypes = [...(job.addTypes || []), { id, type, kind: vid ? "videos" : "fields", label: String(body.label || (vid ? "Short videos" : type)).slice(0, 80),
+      count: String(body.count || (vid ? "as many as asked (e.g. 50)" : "as many as fit the offer")).slice(0, 200), task: String(body.task || "").slice(0, 1500), at: new Date().toISOString() }];
+    await env.TRADES.put(K, JSON.stringify(job)); return { ok: true, id }; }
+  if (sub === "remove") { const id = String(body.id || ""); if (Object.keys(job.ids).some(k => k.startsWith(id + ":"))) throw new Error("That type already has assets — it stays in the stack");
+    job.addTypes = (job.addTypes || []).filter(a => a.id !== id); await env.TRADES.put(K, JSON.stringify(job)); return { ok: true }; }
+  throw new Error("Unknown sub " + sub);
+}
+// 🔑 keywords: the terms chosen at this level (the report's keyword set for this niche) — terms only
+async function briefKeywords(env, b, job) { if (!b.reportId) return null; const R = await reportGet(env, b.reportId, job && job.ctx && job.ctx.at).catch(() => null) || await reportGet(env, b.reportId).catch(() => null);
+  const K = (R && R.keywords) || {}; return { list: Array.isArray(K.list) ? K.list.slice(0, 40) : [], niche: R && typeof R.product === "string" ? R.product : String((R && R.product && R.product.name) || ""), demand: R && R.analysis ? String(R.analysis.demand || "").slice(0, 3000) : "" }; }
 async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
   return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
 async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
@@ -1935,7 +1994,7 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
           if (s.cohort) await invoke({ action: "assetCohorts", op: "add", assetIds: [r.assetId], cohorts: [s.cohort] }).catch(() => {}); }
         const b = await writerBriefBuild(env, job), bid = job.ids.brief;
         const prevB = await writerBriefGet(env, bid);
-        await env.TRADES.put("wbrief:" + bid, JSON.stringify({ md: b.md, json: b.json, at: new Date().toISOString(), title: s.title, offer: job.plan.name, jobId: job.id, reportId: c.assetId, titleId: c.titleId, campaignId: c.campaignId, productId: c.productId || "", returns: (prevB && prevB.returns) || [] }));
+        await env.TRADES.put("wbrief:" + bid, JSON.stringify({ md: b.md, json: b.json, at: new Date().toISOString(), title: s.title, offer: job.plan.name, jobId: job.id, reportId: c.assetId, titleId: c.titleId, campaignId: c.campaignId, productId: c.productId || "", returns: (prevB && prevB.returns) || [], direction: (prevB && prevB.direction) || "" }));
         const pb = await fetch("https://api.notion.com/v1/pages/" + ivDash(bid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Body: { rich_text: ivRt(b.md) } } }) });
         await invoke({ action: "updateAssetStatus", assetId: bid, status: "Publish", statusOnly: true }).catch(() => {});
         note = `${b.runs} runs · ${b.posts} post ideas · ${b.answers} interview answers${pb.ok ? "" : " · Body not saved on the asset (the brief page has it)"}${b.err ? " · plan: " + b.err : ""}`;
@@ -2082,13 +2141,25 @@ async function handleMember(env, body) {
     let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
     const design = await briefDesign(env, b.campaignId).catch(() => null);
     const vs = videoSection(b), md = /## 8\. Short videos/.test(b.md || "") ? b.md : (b.md || "") + "\n\n" + vs.md;
-    const [up, ribbon] = await Promise.all([briefUpstream(env, b).catch(() => null), briefRibbon(env, b).catch(() => [])]);
-    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md, json: b.json ? { ...b.json, returnFormatVideos: vs.json, design } : null }, upstream: up, ribbon, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, kind: x.kind || "posts", ribbon: x.ribbon || (x.kind === "videos" ? "video" : ""), posts: (x.data.posts || []).length, videos: (x.data.videos || []).length, items: (x.data.items || []).length, warnings: x.warnings || null, imported: x.imported || null, importing: x.importing || null })), ...(admin ? { shared } : {}) }; }
+    const job = await stackJob(env, b);
+    const [up, ribbon, stack, keywords] = await Promise.all([briefUpstream(env, b).catch(() => null), briefRibbon(env, b).catch(() => []), briefStack(env, b, job).catch(() => []), briefKeywords(env, b, job).catch(() => null)]);
+    const deploy = job ? { id: job.id, initiative: job.initiative, offer: job.plan && job.plan.name, direction: String((job.ctx && job.ctx.direction) || "").slice(0, 6000), due: job.due } : null;
+    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md, json: b.json ? { ...b.json, returnFormatVideos: vs.json, design } : null }, upstream: up, ribbon, stack, keywords, deploy, direction: b.direction || "", reportId: admin ? b.reportId || "" : "", titleId: admin ? b.titleId || "" : "", returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, kind: x.kind || "posts", stack: x.stack || "", ribbon: x.ribbon || (x.kind === "videos" ? "video" : ""), posts: (x.data.posts || []).length, videos: (x.data.videos || []).length, items: (x.data.items || []).length, warnings: x.warnings || null, imported: x.imported || null, importing: x.importing || null })), ...(admin ? { shared } : {}) }; }
   // 📥 a writer sends a run back on the brief page (operator 2026-11-25): validated, kept on the brief (KV) until the admin imports it
   if (op === "briefReturn") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
     const b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
     let data; try { data = JSON.parse(String(body.text || "").replace(/^```(?:json)?\s*|\s*```\s*$/g, "")); } catch (e) { return { error: "That isn't valid JSON: " + e.message }; }
+    // 🧱 a stack paste-back {stack: "<group id>", items: [{key, fields}]} — deploy groups keep the stack's own keys (ctaHero, welcome0…)
+    const ssrc = (Array.isArray(data) ? data : [data]).filter(x => x && x.stack && Array.isArray(x.items));
+    if (ssrc.length) { const G = await briefStack(env, b), got = []; b.returns = b.returns || [];
+      for (const r of ssrc) { const it = G.find(x => x.id === r.stack && x.kind === "fields"); if (!it) return { error: `"${r.stack}" isn't a type in this stack (${G.filter(x => x.kind === "fields").map(x => x.id).join(", ")})` };
+        const items = r.items.filter(x => x && x.fields && typeof x.fields === "object").slice(0, 60); if (!items.length) return { error: "No items with \"fields\" in the " + it.label + " return" };
+        const seen = new Set(); items.forEach((x, i) => { x.key = String(x.key || it.id + "-" + (i + 1)).trim().replace(/[^A-Za-z0-9-]+/g, "-").slice(0, 80); if (seen.has(x.key.toLowerCase())) x.key += "-" + (i + 1); seen.add(x.key.toLowerCase()); });
+        const warnings = items.map((x, i) => { const v = it.contract.length ? validateWritingContract(it.contract, Object.fromEntries(Object.entries(x.fields).map(([k, y]) => [k, String(y == null ? "" : y)]))) : []; return v.length ? (x.key || i + 1) + ": " + v.slice(0, 3).join("; ") : ""; }).filter(Boolean);
+        if (it.origin === "deploy") { const K = new Set(it.items.map(z => z.key.toLowerCase())), miss = items.filter(x => !K.has(x.key.toLowerCase())).map(x => x.key); if (miss.length) warnings.unshift("not in the stack (skipped on import): " + miss.join(", ")); }
+        b.returns.push({ at: new Date().toISOString(), by: email, stack: it.id, kind: "stack", run: it.label, data: { stack: it.id, items }, warnings: warnings.slice(0, 20) }); got.push({ run: it.label, posts: items.length, warnings: warnings.length }); }
+      b.returns = b.returns.slice(-40); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return { ok: true, received: got }; }
     // 📋 a ribbon paste-back: {ribbon: "<id>", run?, items: [{key, fields: {…contract fields}}]} — checked against the type's contract (advisory)
     const rsrc = (Array.isArray(data) ? data : [data]).filter(x => x && x.ribbon && Array.isArray(x.items));
     if (rsrc.length) { const R = await briefRibbon(env, b), got = []; b.returns = b.returns || [];
@@ -2104,7 +2175,7 @@ async function handleMember(env, body) {
     if (vruns.length) { const got = []; b.returns = b.returns || [];
       for (const r of vruns) { const vids = r.videos.map(videoNorm).filter(Boolean), seen = new Set(); vids.forEach((v, i) => { if (seen.has(v.key)) v.key += "-" + (i + 1); seen.add(v.key); });
         if (!vids.length) return { error: "No usable scripts: each video needs captions (\"beats\") — see section 8 of the brief" };
-        const run = String(r.run || (b.offer || "Offer") + " - Short Videos").slice(0, 200); b.returns.push({ at: new Date().toISOString(), by: email, run, kind: "videos", data: { ...r, videos: vids.slice(0, 120) } }); got.push({ run, posts: vids.length, videos: vids.length }); }
+        const run = String(r.run || (b.offer || "Offer") + " - Short Videos").slice(0, 200); b.returns.push({ at: new Date().toISOString(), by: email, run, kind: "videos", ...(r.stack ? { stack: String(r.stack).slice(0, 60) } : {}), data: { ...r, videos: vids.slice(0, 120) } }); got.push({ run, posts: vids.length, videos: vids.length }); }
       b.returns = b.returns.slice(-30); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return { ok: true, received: got }; }
     const runs = (Array.isArray(data) ? data : [data]).filter(x => x && Array.isArray(x.posts)); if (!runs.length) return { error: "No run found — each run needs a \"posts\" list (section 6), or \"videos\" (section 8)" };
     const bad = []; runs.forEach(r => r.posts.forEach((p, i) => { if (!p || !p.prewrite || typeof p.prewrite !== "object") bad.push((r.run || "run") + " post " + (i + 1) + ": no prewrite"); }));
@@ -2112,6 +2183,10 @@ async function handleMember(env, body) {
     b.returns = b.returns || []; runs.forEach(r => b.returns.push({ at: new Date().toISOString(), by: email, run: String(r.run || "Writer run").slice(0, 200), data: { ...r, posts: r.posts.slice(0, 60) } }));
     b.returns = b.returns.slice(-30); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b));
     return { ok: true, received: runs.map(r => ({ run: r.run, posts: r.posts.length })) }; }
+  if (op === "briefDir" || op === "briefStackAdd") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can do that." };
+    const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return { error: "No such brief" };
+    if (op === "briefDir") { b.direction = String(body.text || "").slice(0, 8000); await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return { ok: true }; }
+    try { return await briefStackAddOp(env, b, body); } catch (e) { return { error: e.message }; } }
   if (op === "briefShare") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can share a brief." };
     const aid = hubAssetId(body.assetId || ""), em = String(body.email || "").trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { error: "A valid email is required" };
     const prev = await env.TRADES.get("member:email:" + em, "json").catch(() => null);
@@ -21750,6 +21825,23 @@ export default {
         const self = this, hs = (env.HMAC_SECRET || "").trim(), invoke = async b => { const token = await signToken(hs, 900000); const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx); return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const aid = hubAssetId(body.assetId || ""), b = await writerBriefGet(env, aid); if (!b) return json({ error: "No such brief" });
         const x = (b.returns || [])[Number(body.index)]; if (!x) return json({ error: "No such return" }); if (!b.titleId || !b.campaignId) return json({ error: "This brief doesn't know its title — rebuild it from the deploy" });
+        if (x.kind === "stack") {   // 🧱 deploy groups fill their existing assets; added types make new assets (same initiative, under the Offer); 8 per call
+          const job = await stackJob(env, b); if (!job) return json({ error: "This brief has no deploy stack" });
+          const G = (await briefStack(env, b, job)).find(g => g.id === x.stack); if (!G) return json({ error: "Unknown stack type " + x.stack });
+          const I = x.data.items || [], from = Math.max(0, Number(body.from) || 0), part = I.slice(from, from + 8), acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
+          const src = "Writer brief chat · " + new Date().toISOString().slice(0, 10);
+          for (const [k, p] of part.entries()) { const n = from + k + 1, f = { ...(p.fields || {}), ...(p.format ? { Format: p.format } : {}), ...(p.day != null ? { Day: String(p.day) } : {}) };
+            try { let id = G.origin === "deploy" ? (G.items.find(z => z.key.toLowerCase() === String(p.key).toLowerCase()) || {}).assetId : job.ids[G.id + ":" + p.key];
+              if (G.origin === "deploy" && !id) { acc.failed.push(p.key + ": not in the stack"); continue; }
+              if (!id) { const name = String(f["Platform Title"] || f.Title || f.Headline || G.label + " " + n).slice(0, 200);
+                const r = await invoke({ action: "initiativeBuildAsset", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, assetType: G.type, assetTitle: `${(job.plan && job.plan.name) || b.offer} - ${name}`.slice(0, 300),
+                  ...(job.ids.offer ? { parentAssetId: job.ids.offer } : {}), initiative: job.initiative, directions: offerDirections(job, G.task) });
+                if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created"); id = hubAssetId(r.assetId); job.ids[G.id + ":" + p.key] = id; acc.made++;
+                await env.TRADES.put("offerdeploy:job:" + job.id, JSON.stringify(job)); } else acc.skipped++;
+              await extWriteSet(env, id, JSON.stringify(f, null, 2), src); } catch (e) { acc.failed.push(p.key + ": " + e.message); } }
+          const next = from + part.length < I.length ? from + part.length : null;
+          if (next == null) { x.imported = { at: new Date().toISOString(), made: acc.made, skipped: acc.skipped, failed: acc.failed.length }; delete x.importing; } else x.importing = acc;
+          await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return json({ ok: true, videos: true, next, total: I.length, made: acc.made, skipped: acc.skipped, failed: acc.failed }); }
         if (x.kind === "ribbon") {   // 📋 one asset of the ribbon type per item, 8 per call (the page loops on "next")
           const it = BRIEF_RIBBON.find(r => r.id === x.ribbon); if (!it) return json({ error: "Unknown ribbon type " + x.ribbon });
           const I = x.data.items || [], from = Math.max(0, Number(body.from) || 0), part = I.slice(from, from + 8), acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
@@ -21764,13 +21856,15 @@ export default {
           await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return json({ ok: true, videos: true, next, total: I.length, made: acc.made, skipped: acc.skipped, failed: acc.failed }); }
         if (x.kind === "videos") {   // 🎬 one Single Post Video Short per script, 8 per call; the page calls again with "next" until done
           const V = x.data.videos || [], from = Math.max(0, Number(body.from) || 0), part = V.slice(from, from + 8), ids = new Set((await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || []);
-          const acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] };
+          const acc = from ? (x.importing || { made: 0, skipped: 0, failed: [] }) : { made: 0, skipped: 0, failed: [] }, sjob = x.stack ? await stackJob(env, b) : null;
           for (const v of part) {
             const pw = [`Headline: ${v.headline}`, `Theme: ${v.theme}`, "", ...v.beats.map((c, k) => `${k + 1}. [${c.beat || "beat"} · ${c.sec}s] ${c.text}`), v.cta ? "CTA: " + v.cta : "", v.voiceover ? "\nVoiceover:\n" + v.voiceover : ""].filter(z => z !== null).join("\n");
             const r = await invoke({ action: "importAssetItem", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, run: x.run, key: "v-" + v.key, assetTitle: v.title, assetType: "social reel informative", prewrite: pw }).catch(e => ({ error: e.message }));
             if (!r || r.error || !r.assetId) { acc.failed.push(v.key + ": " + ((r && r.error) || "no response")); continue; }
             const id = hubAssetId(r.assetId), old = await env.TRADES.get("vshort:" + id, "json").catch(() => null);
-            await env.TRADES.put("vshort:" + id, JSON.stringify({ ...(old || {}), ...v, assetId: id, briefId: aid, run: x.run, themeId: (old && old.themeId) || "", render: (old && old.render) || null })); ids.add(id); r.existing ? acc.skipped++ : acc.made++; }
+            await env.TRADES.put("vshort:" + id, JSON.stringify({ ...(old || {}), ...v, assetId: id, briefId: aid, run: x.run, themeId: (old && old.themeId) || "", render: (old && old.render) || null })); ids.add(id); r.existing ? acc.skipped++ : acc.made++;
+            if (sjob) { sjob.ids[x.stack + ":" + v.key] = id; await hfAssetPatch(id, { Initiative: { rich_text: ivRt(sjob.initiative) } }).catch(() => {}); } }
+          if (sjob) await env.TRADES.put("offerdeploy:job:" + sjob.id, JSON.stringify(sjob));
           await env.TRADES.put("vshorts:" + aid, JSON.stringify([...ids])); const next = from + part.length < V.length ? from + part.length : null;
           if (next == null) { x.imported = { at: new Date().toISOString(), made: acc.made, skipped: acc.skipped, failed: acc.failed.length }; delete x.importing; } else x.importing = acc;
           await env.TRADES.put("wbrief:" + aid, JSON.stringify(b)); return json({ ok: true, videos: true, next, total: V.length, made: acc.made, skipped: acc.skipped, failed: acc.failed }); }
