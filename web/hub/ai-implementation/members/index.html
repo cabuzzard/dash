@@ -355,7 +355,7 @@ const RA = { list: null, busy: false, err: "" };
 const raApi = (sub, p) => call(Object.assign({ op: "reportAdmin", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {}));
 function raBox() { return `<details class="card ra" id="raBox" ontoggle="if(this.open&&!RA.list&&!RA.busy)raLoad()"><summary><b>🧩 Assets</b> <span class="od-mute" id="raSum">everything on this report's title</span></summary><div id="raBody" style="margin-top:10px"></div></details>`; }
 async function raLoad() { RA.busy = true; raDraw(); const r = await raApi("assets").catch(e => ({ error: e.message })); RA.busy = false;
-  if (!r || r.error) RA.err = (r && r.error) || "Couldn't load"; else { RA.list = r.assets || []; RA.title = r.titleName; } raDraw(); }
+  if (!r || r.error) RA.err = (r && r.error) || "Couldn't load"; else { RA.list = r.assets || []; RA.title = r.titleName; RA.titleId = r.titleId; } raDraw(); }
 function raDraw() {
   const b = document.getElementById("raBody"), sm = document.getElementById("raSum"); if (!b) return;
   if (RA.busy) { b.innerHTML = '<div class="od-mute">Loading…</div>'; return; } if (RA.err) { b.innerHTML = `<div class="msg">${esc(RA.err)}</div>`; return; }
@@ -363,7 +363,9 @@ function raDraw() {
   const g = {}; L.forEach(a => { const k = a.run ? "Run · " + a.run : (a.type || "(no type)"); (g[k] = g[k] || []).push(a); });
   const keys = Object.keys(g).sort((x, y) => (y.startsWith("Run") - x.startsWith("Run")) || x.localeCompare(y));
   const col = s => /^published$/i.test(s) ? "#16a34a" : /^publish$/i.test(s) ? "#2563eb" : /development/i.test(s) ? "#ca8a04" : "var(--ink-soft)";
-  b.innerHTML = keys.map(k => `<details class="ra-g" ${keys.length <= 3 ? "open" : ""}><summary>${esc(k)} <span class="od-mute">${g[k].length}</span></summary>
+  // the whole title in Hub Dash 2's tree (operator 2026-11-25: "put a link to the whole title in the hub dash 2 tree from the assets display")
+  const top = RA.titleId ? `<div style="margin:0 0 10px"><a class="share" style="margin:0;text-decoration:none;display:inline-block" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#title=${RA.titleId}">Open this title in Hub Dash 2 ↗</a></div>` : "";
+  b.innerHTML = top + keys.map(k => `<details class="ra-g" ${keys.length <= 3 ? "open" : ""}><summary>${esc(k)} <span class="od-mute">${g[k].length}</span></summary>
     ${g[k].sort((x, y) => String(x.type).localeCompare(String(y.type)) || String(x.name).localeCompare(String(y.name))).map(a => `<button type="button" class="ra-r" onclick="raOpen('${a.id}')">
       <span class="ra-n">${esc(a.name || "(untitled)")}</span><span class="od-mute">${esc(a.type)}</span><span style="color:${col(a.status)};font-weight:600">${esc(a.status || "")}</span><span class="od-mute">${a.due ? esc(new Date(a.due + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })) : ""}</span></button>`).join("")}</details>`).join("") || '<div class="od-mute">No assets on this title.</div>';
 }

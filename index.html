@@ -38048,6 +38048,19 @@ async function loadMorningTodos() {
 // Deep link: dash/#keywords (or any tab name) opens that tab once logged in —
 // clicks the real tab so switchTab gets its event. Used by the microsites'
 // "🔎 Find keywords" link.
+// #title=<id> (operator 2026-11-25: the report's 🧩 Assets links here): Hub Dash 2 opens with the tree expanded down to that title,
+// scrolled into view and flashed
+(function openHashTitle() {
+  const m = /#title=([0-9a-f-]{32,36})/i.exec(location.hash || ''); if (!m) return; const id = m[1].replace(/-/g, ''); let tries = 0;
+  const t = setInterval(() => { const tab = document.querySelector(`.tab[onclick="switchTab('hubdash2')"]`), pin = document.getElementById('pinScreen'), locked = pin && getComputedStyle(pin).display !== 'none';
+    if (++tries > 600) return clearInterval(t); if (!tab || !SESSION_TOKEN || locked) return;
+    if (!document.getElementById('hd2Tree')) { if (!tab.classList.contains('active')) tab.click(); return; }
+    const i = (_hd2Ents || []).findIndex(e => e && e.k === 'title' && hdNid(e.id || '') === id); if (i < 0) { if (tries > 120) clearInterval(t); return; }
+    clearInterval(t); const a = document.querySelector(`#hd2Tree a.hd2lnk[data-e="${i}"]`); if (!a) return;
+    let d = a.closest('details'); const own = d; while (d) { d.open = true; d = d.parentElement && d.parentElement.closest('details'); }
+    const row = (own && own.querySelector(':scope > summary')) || a; setTimeout(() => { row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.style.transition = 'background .3s'; row.style.background = 'rgba(255,122,0,.35)'; setTimeout(() => { row.style.background = ''; }, 2500); }, 150); }, 500);
+})();
 // #asset=<id> (operator 2026-11-25: report assets on the members page link here): Hub Dash 2 opens, then that asset's record flyout
 (function openHashAsset() {
   const m = /#asset=([0-9a-f-]{32,36})/i.exec(location.hash || ''); if (!m) return; const id = m[1].replace(/-/g, ''); let tries = 0;
