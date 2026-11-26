@@ -1321,7 +1321,11 @@ async function memberApps(env, rec) {
   }
   // 📊 reports shared with this member (superadmin: every report that has run)
   const all = (await env.TRADES.get("report:all", "json").catch(() => null)) || [], pubR = (await env.TRADES.get("report:members", "json").catch(() => null)) || [], mine = (rec.links || []).includes("*") ? all : all.filter(x => (rec.reports || []).includes(x.assetId) || pubR.includes(x.assetId));
-  for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId });
+  // report state (operator 2026-11-25): development (orange) → interview (red: its offer-stack interview is open) → publish (green: the interview
+  // was finished + saved; the Report asset is set to Publish). KV report:state:<assetId> = {state, …}, written by the offer deploy.
+  const stK = await env.TRADES.list({ prefix: "report:state:" }).catch(() => ({ keys: [] })), states = {};
+  for (const k of (stK.keys || []).slice(0, 300)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.state) states[k.name.slice(13)] = v.state; }
+  for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId, state: states[x.assetId] || "development" });
   return out;
 }
 // ── 📊 REPORT (operator 2026-11-24: "a new asset type which is 'report' which is a 'premium' or password protected admin report of all of the
@@ -1622,10 +1626,13 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
         const p2 = await fetch("https://api.notion.com/v1/pages/" + ivDash(job.ids.interview), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Writer Directions": { rich_text: richChunks(offerDirections(job, "🎤 Answer it here: " + link + "\n" + (iv.qs || []).map((q, k) => (k + 1) + ". " + q).join("\n"))) } } }) });
         if (!p2.ok) note = "link not saved on the Interview asset"; else note = (iv.qs || []).length + " questions";
         await env.TRADES.put("interviewasset:" + job.ids.interview, JSON.stringify({ interviewId: job.ivId, offerId: job.ids.offer, jobId: job.id })).catch(() => {});
+        await env.TRADES.put("report:state:" + c.assetId, JSON.stringify({ state: "interview", jobId: job.id, interviewId: job.ivId, at: new Date().toISOString() })).catch(() => {});
       } else if (s.op === "await") {   // waits — not an error — until the interview is Finished
         const pg = await ivPage(job.ivId); const iv = ivParse(pg); job.ivCheckedAt = Date.now(); job.ivAnswered = iv.answers.filter(a => String(a || "").trim()).length; job.ivOf = iv.qs.length;
         if (iv.status !== "Finished") { job.status = "waiting"; job.log.push({ at: new Date().toISOString(), i: job.i, op: s.op, key: s.key, ok: true, note: `waiting: ${job.ivAnswered}/${job.ivOf} answered` }); job.log = job.log.slice(-200); break; }
         await invoke({ action: "updateAssetStatus", assetId: job.ids.interview, status: "Publish", statusOnly: true }).catch(() => {});
+        await invoke({ action: "updateAssetStatus", assetId: c.assetId, status: "Publish", statusOnly: true }).catch(() => {});   // the Report → Publish
+        await env.TRADES.put("report:state:" + c.assetId, JSON.stringify({ state: "publish", jobId: job.id, interviewId: job.ivId, at: new Date().toISOString() })).catch(() => {});
         note = `finished: ${job.ivAnswered}/${job.ivOf} answered`;
       } else if (s.op === "ivused") {
         const u = await invoke({ action: "updateAssetStatus", assetId: job.ids.interview, status: "Published", statusOnly: true }).catch(e => ({ error: e.message })); note = u && u.error ? "status not set: " + u.error : "used";

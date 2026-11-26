@@ -81,6 +81,9 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-coh .od-ca { grid-column: 1 / -1; }
 .od-coh input { border-radius: 10px; min-height: 36px; }
 @media (max-width: 560px) { .od-coh { grid-template-columns: 1fr; } }
+.rc-development { border-left: 5px solid #f59e0b; } .rc-interview { border-left: 5px solid #dc2626; background: rgba(220,38,38,.06); } .rc-publish { border-left: 5px solid #16a34a; background: rgba(22,163,74,.06); }
+.rc-development .rc-st { color: #d97706; font-weight: 600; } .rc-interview .rc-st { color: #dc2626; font-weight: 600; } .rc-publish .rc-st { color: #16a34a; font-weight: 600; }
+.mg-iv { color: #dc2626; font-size: 13px; font-weight: 600; margin-left: 6px; } .mg-pb { color: #16a34a; font-size: 13px; font-weight: 600; margin-left: 6px; }
 .mg-new { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 20px; }
 .mg-in { flex: 1; min-width: 0; font: 500 15px "Hanken Grotesk", sans-serif; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 38px; }
 .mg-msg { font-size: 13px; color: var(--ink-soft); }
@@ -158,7 +161,8 @@ function appsView(d, tab) {
   const tabs = [["reports", "📊 Reports", reports], ["interviews", "🎤 Interviews", (IVM.items || []), d.superadmin], ["apps", "Apps", apps]].filter(t => t[2].length || t[3]);
   tab = tab || store.get("mb_tab"); if (!tabs.some(t => t[0] === tab)) tab = tabs.length ? tabs[0][0] : "";
   const when = at => { const x = new Date(at); return isNaN(x) ? "" : x.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
-  const reportCard = a => `<a class="card app" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m">${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
+  const RS = { development: "Development", interview: "🎤 Interview in progress", publish: "✓ Publish" };
+  const reportCard = a => `<a class="card app rc-${esc(a.state || "development")}" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m"><span class="rc-st">${RS[a.state] || RS.development}</span> · ${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
   const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
@@ -239,18 +243,20 @@ function mgList(d, reports, card) {
     return `<div class="mg-it" draggable="true" ondragstart="mgDrag(event,'${id}')" ondragover="mgOver(event)" ondragleave="mgLeave(event)" ondrop="mgDrop(event,'',' ${id}')">${card(a)}<div class="mg-bar"><span class="mg-h" title="Drag to a group">⋮⋮ drag</span>${G.groups.length ? opts(id) : ""}</div></div>`; };
   // Groups collapse (operator 2026-11-24: "and collapse the groups"): every group starts closed; the ▸ header opens it. Which ones are
   // open is remembered in this browser only. A closed group's header still takes a dropped report.
-  const open = mgOpen(), tog = (gid, label, n) => `<button class="mg-t" aria-expanded="${open.has(gid)}" onclick="mgToggle('${gid}')"><span class="mg-c">${open.has(gid) ? "▾" : "▸"}</span>${esc(label)} <span class="mg-n">${n}</span></button>`;
+  const cnt = L => { if (!L) return ""; const i = L.filter(a => a.state === "interview").length, p = L.filter(a => a.state === "publish").length;
+    return (i ? ` <span class="mg-iv" title="${i} mid-interview">🎤 ${i}</span>` : "") + (p ? ` <span class="mg-pb" title="${p} at Publish (interview done)">✓ ${p}</span>` : ""); };
+  const open = mgOpen(), tog = (gid, label, n, L) => `<button class="mg-t" aria-expanded="${open.has(gid)}" onclick="mgToggle('${gid}')"><span class="mg-c">${open.has(gid) ? "▾" : "▸"}</span>${esc(label)} <span class="mg-n">${n}</span>${cnt(L)}</button>`;
   const drop = gid => admin ? ` ondragover="mgOver(event)" ondragleave="mgLeave(event)" ondrop="mgDrop(event,'${gid}','')"` : "";
-  const head = (g, n) => { if (!admin) return `<div class="mg-gh">${tog(g.id, g.name, n)}</div>`;
+  const head = (g, n, L) => { if (!admin) return `<div class="mg-gh">${tog(g.id, g.name, n, L)}</div>`;
     const edit = _mgEdit === g.id ? `<input class="mg-in" id="mgRn" value="${esc(g.name)}" maxlength="80" onkeydown="if(event.key==='Enter')mgRename('${g.id}');if(event.key==='Escape'){_mgEdit='';appsView(_mbD)}"><button class="share" onclick="mgRename('${g.id}')">Save</button>`
-      : `${tog(g.id, g.name, n)}<button class="mg-x" title="Rename" aria-label="Rename group" onclick="_mgEdit='${g.id}';appsView(_mbD);setTimeout(()=>{const i=document.getElementById('mgRn');if(i)i.focus()},0)">✎</button><button class="mg-x" title="Delete group" aria-label="Delete group" onclick="mgDelete('${g.id}')">${_mgDel === g.id ? "Delete?" : "✕"}</button>`;
+      : `${tog(g.id, g.name, n, L)}<button class="mg-x" title="Rename" aria-label="Rename group" onclick="_mgEdit='${g.id}';appsView(_mbD);setTimeout(()=>{const i=document.getElementById('mgRn');if(i)i.focus()},0)">✎</button><button class="mg-x" title="Delete group" aria-label="Delete group" onclick="mgDelete('${g.id}')">${_mgDel === g.id ? "Delete?" : "✕"}</button>`;
     return `<div class="mg-gh"${drop(g.id)}>${edit}</div>`; };
   const zone = (gid, inner, empty) => !open.has(gid) ? "" : admin ? `<div class="mg-z"${drop(gid)}>${inner || `<div class="mg-e">${empty}</div>`}</div>` : inner;
   const shown = sec.filter(s => admin || s.items.length), restHead = G.groups.length || admin, ids = shown.map(s => s.g.id).concat(rest.length || admin ? ["_"] : []);
   let h = admin ? `<div class="mg-new"><input class="mg-in" id="mgName" placeholder="New group name, e.g. Construction Software" maxlength="80" onkeydown="if(event.key==='Enter')mgNew()"><button class="share" style="margin:0" onclick="mgNew()">＋ New group</button>${_mgMsg ? `<span class="mg-msg">${esc(_mgMsg)}</span>` : ""}</div>` : "";
   if (shown.length) h += `<div class="mg-all"><button class="mg-x" onclick="mgAll(${JSON.stringify(ids).replace(/"/g, "&quot;")},true)">Expand all</button><button class="mg-x" onclick="mgAll([],false)">Collapse all</button></div>`;
-  shown.forEach(s => { h += `<section class="mg-g">${head(s.g, s.items.length)}${zone(s.g.id, s.items.map(item).join(""), "Drag reports here")}</section>`; });
-  if (rest.length || admin) h += `<section class="mg-g">${restHead ? `<div class="mg-gh"${drop("_")}>${tog("_", admin ? "Ungrouped" : "Other reports", rest.length)}</div>` : ""}${restHead ? zone("_", rest.map(item).join(""), "Nothing here") : rest.map(item).join("")}</section>`;
+  shown.forEach(s => { h += `<section class="mg-g">${head(s.g, s.items.length, s.items)}${zone(s.g.id, s.items.map(item).join(""), "Drag reports here")}</section>`; });
+  if (rest.length || admin) h += `<section class="mg-g">${restHead ? `<div class="mg-gh"${drop("_")}>${tog("_", admin ? "Ungrouped" : "Other reports", rest.length, rest)}</div>` : ""}${restHead ? zone("_", rest.map(item).join(""), "Nothing here") : rest.map(item).join("")}</section>`;
   return h;
 }
 async function mgSave() {
