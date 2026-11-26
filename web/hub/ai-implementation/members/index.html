@@ -168,12 +168,16 @@ function renderButton() {
 let _mbD = null;
 function appsView(d, tab) {
   _mbD = d; const pic = store.get("mb_pic");
-  const reports = d.apps.filter(a => a.kind === "report").sort((a, b) => String(b.at || "").localeCompare(String(a.at || ""))), apps = d.apps.filter(a => a.kind !== "report");
+  const reports = d.apps.filter(a => a.kind === "report").sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  // writer briefs sit on their report card (operator 2026-11-26: "instead of listing in apps, if writer brief exists link to it in the report card"); a brief whose report isn't listed stays in Apps
+  const rIds = new Set(reports.map(a => a.id)), briefsOf = id => d.apps.filter(a => a.kind === "brief" && a.reportId === id).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  const apps = d.apps.filter(a => a.kind !== "report" && !(a.kind === "brief" && rIds.has(a.reportId)));
   const tabs = [["reports", "📊 Reports", reports], ["interviews", "🎤 Interviews", (IVM.items || []), d.superadmin], ["apps", "Apps", apps]].filter(t => t[2].length || t[3]);
   tab = tab || store.get("mb_tab"); if (!tabs.some(t => t[0] === tab)) tab = tabs.length ? tabs[0][0] : "";
   const when = at => { const x = new Date(at); return isNaN(x) ? "" : x.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
   const RS = { development: "Development", interview: "🎤 Interview in progress", publish: "✓ Publish" };
-  const reportCard = a => `<a class="card app rc-${esc(a.state || "development")}" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m"><span class="rc-st">${RS[a.state] || RS.development}</span> · ${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
+  const reportCard = a => { const B = briefsOf(a.id); return `<div class="card app rc-${esc(a.state || "development")}"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit"><div class="t">${esc(a.name)}</div><div class="m"><span class="rc-st">${RS[a.state] || RS.development}</span> · ${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div></a>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center"><a class="go" href="${esc(a.path)}" style="text-decoration:none">Open report →</a>${B.map(b => `<a class="go" href="${esc(b.path)}" style="text-decoration:none" title="${esc(b.name)}">📦 Writer brief${B.length > 1 ? ": " + esc(b.hub || b.name) : ""} →</a>`).join("")}</div></div>`; };
   const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : a.kind === "brief" ? "📦 Writer brief" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";

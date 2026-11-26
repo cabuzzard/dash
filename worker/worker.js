@@ -1327,7 +1327,7 @@ async function memberApps(env, rec) {
   for (const k of (stK.keys || []).slice(0, 300)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.state) states[k.name.slice(13)] = v.state; }
   // 📦 writer briefs: the admin sees every brief, a reader the ones shared with them
   const bIds = (rec.links || []).includes("*") ? ((await env.TRADES.list({ prefix: "wbrief:" }).catch(() => ({ keys: [] }))).keys || []).map(k => k.name.slice(7)) : (rec.briefs || []);
-  for (const id of bIds.slice(0, 100)) { const b = await writerBriefGet(env, id); if (b) out.push({ id, kind: "brief", name: b.title || "Writer Brief", client: "", hub: b.offer || "", product: "", at: b.at, path: "/members/?brief=" + id }); }
+  for (const id of bIds.slice(0, 100)) { const b = await writerBriefGet(env, id); if (b) out.push({ id, kind: "brief", name: b.title || "Writer Brief", client: "", hub: b.offer || "", product: "", at: b.at, path: "/members/?brief=" + id, reportId: b.reportId || "" }); }
   for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId, state: states[x.assetId] || "development" });
   return out;
 }
