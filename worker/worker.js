@@ -1788,6 +1788,14 @@ function impApplyMap(item, map) { const f = {};
       : m.transform === "constant" ? String(m.value || "") : m.transform === "missing" ? "" : v;
     if (out.trim()) f[m.field] = out.trim(); }
   return f; }
+// the copy as field values (operator 2026-11-26: "an external import should save the written material to fields"): lists → one line
+// (#tags space-separated, else one per line); a JSON-list string the chat sent is read as a list
+function impFieldVals(f) { const out = {};
+  for (const [k, v0] of Object.entries(f || {})) { let v = v0; if (typeof v === "string" && /^\s*\[[\s\S]*\]\s*$/.test(v)) { try { v = JSON.parse(v); } catch (e) {} }
+    out[k] = Array.isArray(v) ? (v.every(x => /^#/.test(String(x).trim())) ? v.map(x => String(x).trim()).join(" ") : v.map(String).join("\n")) : String(v == null ? "" : v); }
+  return out; }
+async function impSaveFields(invoke, id, f) { const r = await invoke({ action: "saveAssetFields", assetId: id, fields: impFieldVals(f) }).catch(e => ({ error: e.message }));
+  if (!r || r.error) throw new Error("fields not saved: " + ((r && r.error) || "no response")); return r; }
 async function impTypes(env) {   // AF types that have a writing contract (name → contract)
   const rows = writingRows(await writingMethodsTable(env).catch(() => ({ columns: [], rows: [] })));
   const af = (await env.TRADES.get("infoflow:table:assetflowgraph", "json").catch(() => null)) || { rows: [] };
@@ -1873,13 +1881,13 @@ async function briefImportApply(env, invoke, b, body) {
     try {
       if (P.decision === "stack") { const z = P.fill.find(z => z.key.toLowerCase() === String(x.key || "").toLowerCase()); if (!z || !z.assetId) { P.failed.push((x.key || i + 1) + ": not in the stack"); continue; }
         const f = x.fields && typeof x.fields === "object" ? { ...x.fields, ...(x.format ? { Format: x.format } : {}), ...(x.day != null ? { Day: String(x.day) } : {}) } : {};
-        await extWriteSet(env, z.assetId, JSON.stringify(f, null, 2), src); P.made[i] = z.assetId; continue; }
+        await extWriteSet(env, z.assetId, JSON.stringify(f, null, 2), src); await impSaveFields(invoke, z.assetId, f); P.made[i] = z.assetId; continue; }
       const f = impApplyMap(x, P.map); if (P.kind) f.Format = f.Format || P.kind;
       const nm = String(impGet(x, P.titleFrom) || f["Platform Title"] || f.Title || f.Headline || `${P.type} ${i + 1}`).replace(/\s+/g, " ").slice(0, 200);
       const r = await invoke({ action: "initiativeBuildAsset", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, assetType: P.type, assetTitle: nm.slice(0, 300),
         ...(job.ids.offer ? { parentAssetId: job.ids.offer } : {}), initiative: job.initiative, directions: offerDirections(job, (P.direction ? P.direction + "\n" : "") + `Imported from the writer brief (${P.type}${P.kind ? " · " + P.kind : ""}); the copy is in External Write — check facts, fill missing fields and rewrite only at publishing.`) });
       if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created"); const id = hubAssetId(r.assetId);
-      await extWriteSet(env, id, JSON.stringify(f, null, 2), src);
+      await extWriteSet(env, id, JSON.stringify(f, null, 2), src); await impSaveFields(invoke, id, f);
       await hfAssetPatch(id, { "Asset Status": { select: { name: "Development" } }, "External Keep": { select: { name: "Verbatim" } }, Run: { rich_text: ivRt(P.name || offer) } }).catch(e => P.failed.push((i + 1) + ": status/keep not set — " + e.message));
       if (ivNorm(P.type) === ivNorm("Single Post Video Short")) {   // keep the script ready for the render at publishing
         const beats = String(f["Video Spec"] || "").split("\n").map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean), v = videoNorm({ title: nm, headline: f.Hook || nm, beats, cta: "" }, i);
@@ -22115,6 +22123,12 @@ export default {
         const sub = String(body.sub || "list");
         if (sub === "plan") return json(await briefImportPlan(env, b, body, em));
         if (sub === "apply") return json(await briefImportApply(env, invoke, b, body));
+        if (sub === "fillFields") {   // backfill (operator 2026-11-26): an import's External Write → the asset's own contract fields
+          const P = await env.TRADES.get("wbimport:" + String(body.planId || ""), "json").catch(() => null); if (!P) return json({ error: "No such plan" });
+          const ids = Object.values(P.made || {}), from = Math.max(0, Number(body.from) || 0), out = [];
+          for (const id of ids.slice(from, from + 10)) { try { const e = await extWriteGet(env, id); const f = e && e.json ? JSON.parse(String(e.text).trim().replace(/^```(?:json)?\s*|\s*```$/g, "")) : null;
+              if (!f) { out.push(id + ": no JSON External Write"); continue; } const r = await impSaveFields(invoke, id, f); out.push("✓ " + r.saved.length + " saved" + (r.skipped.length ? " · skipped " + r.skipped.join(",") : "")); } catch (e) { out.push(id + ": " + e.message); } }
+          return json({ ok: true, done: Math.min(ids.length, from + 10), total: ids.length, next: from + 10 < ids.length ? from + 10 : null, out }); }
         if (sub === "retitle") {   // one-off fix (operator 2026-11-26): "<offer> - " / "<name> - " was put on every title; it names the Run instead
           const P = await env.TRADES.get("wbimport:" + String(body.planId || ""), "json").catch(() => null); if (!P) return json({ error: "No such plan" });
           const job = await stackJob(env, b), offer = (job && job.plan && job.plan.name) || b.offer || "", run = P.name || offer, ids = Object.values(P.made || {}), from = Math.max(0, Number(body.from) || 0), out = [];
