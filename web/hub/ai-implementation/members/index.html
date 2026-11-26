@@ -437,7 +437,7 @@ async function raOpen(id) {
   let m = document.getElementById("raM"); if (!m) { m = document.createElement("div"); m.id = "raM"; m.className = "od-bg"; m.onclick = e => { if (e.target === m) raClose(); }; document.body.appendChild(m); }
   document.body.style.overflow = "hidden"; const a = (RA.list || []).find(x => x.id === id) || {};
   const head = `<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><b style="font-size:17px;flex:1">${esc(a.name || "Asset")}</b><button class="rp-nx" aria-label="Close" onclick="raClose()">✕</button></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px"><a class="share" style="margin:0;text-decoration:none" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#asset=${id}">Open in Hub Dash 2 ↗</a><span id="raNotion"></span></div>`;
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">${/writer brief/i.test(a.type || "") ? `<a class="share" style="margin:0;text-decoration:none;border-color:var(--accent);color:var(--accent)" href="/members/?brief=${id}">📦 Open the brief page</a>` : ""}<a class="share" style="margin:0;text-decoration:none" target="_blank" rel="noopener" href="https://cabuzzard.github.io/dash/#asset=${id}">Open in Hub Dash 2 ↗</a><span id="raNotion"></span></div>`;
   m.innerHTML = `<div class="od-box" role="dialog" aria-label="Asset">${head}<div class="od-mute">Loading…</div></div>`;
   const r = await raApi("asset", { id }).catch(e => ({ error: e.message })); if (!document.getElementById("raM")) return;
   if (!r || r.error) { m.querySelector(".od-box").innerHTML = head + `<div class="msg">${esc((r && r.error) || "Couldn't load")}</div>`; return; }
