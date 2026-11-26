@@ -1560,20 +1560,57 @@ async function writerBriefBuild(env, job) {
 async function briefDesign(env, campaignId) {
   const cid = hubAssetId(campaignId || ""); await hubSitesMerge(env).catch(() => {});
   const H = HUB_SITES.find(h => hubAssetId(h.campaignId || "") === cid) || {};
+  const clean = o => Object.fromEntries(Object.entries(o || {}).filter(([, x]) => x != null && x !== "" && !(typeof x === "object" && !Array.isArray(x) && !Object.keys(x).length) && !(Array.isArray(x) && !x.length)));
+  // 1 · the LIVE hub page (operator: the hand-authored page is the master) — its :root CSS variables, heading / body / button rules, measured
+  const pageUrl = H.domain ? "https://" + String(H.domain).replace(/^https?:\/\//, "").replace(/\/.*$/, "") + "/" : (H.slug ? "https://dash-hubs.pages.dev/" + H.slug + "/" : "");
+  let html = ""; if (pageUrl) html = await fetch(pageUrl, { cf: { cacheTtl: 600 } }).then(r => r.ok ? r.text() : "").catch(() => "");
+  const vars = {}; const rootM = /:root\s*\{([^}]*)\}/.exec(html); if (rootM) for (const m of rootM[1].matchAll(/--([a-z0-9-]+)\s*:\s*([^;]+);/gi)) vars[m[1]] = m[2].trim();
+  const rule = sel => { const m = new RegExp("(?:^|[}\\s,])" + sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*(?:,[^{]*)?\\{([^}]*)\\}", "i").exec(html); if (!m) return null;
+    const o = {}; for (const d of m[1].matchAll(/([a-z-]+)\s*:\s*([^;]+);?/gi)) o[d[1].toLowerCase()] = d[2].trim(); return o; };
+  const res = x => String(x || "").replace(/var\(--([a-z0-9-]+)\)/gi, (m, n) => vars[n] != null ? vars[n] : m);   // var(--green) → #0f7a3a
+  const pick = (o, ks) => o ? clean(Object.fromEntries(ks.map(k => [k.replace(/-/g, "_"), res(o[k] || "")]))) : null;
+  // a heading's size lives on whichever rule sets it (.hero h1, section h2 …): the first rule naming the tag with a font-size
+  const sizeOf = tag => { for (const m of html.matchAll(/([^{}]+)\{([^}]*)\}/g)) { if (new RegExp("(^|[\\s,>])" + tag + "(?![\\w-])", "i").test(m[1]) && /font-size\s*:/.test(m[2])) { const fs = /font-size\s*:\s*([^;]+)/.exec(m[2]); return clean({ selector: m[1].trim().replace(/\s+/g, " ").slice(0, 80), font_size: res(fs[1].trim()) }); } } return null; };
+  const TYPE_KEYS = ["font-family", "font-size", "font-weight", "line-height", "letter-spacing", "text-transform", "color"];
+  const fonts0 = String(vars.font || vars["font-body"] || "").split(",")[0].replace(/["']/g, "").trim();
+  const isColor = x => /^(#[0-9a-f]{3,8}|rgba?\(|hsla?\()/i.test(String(x).trim());
+  // 2 · the build mirror (hubs.design.json): tokens, fonts, brand meta, the design brief, token roles
   const dj = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json()).catch(() => ({}));
-  const hub = ((dj.hubs || {})[H.slug] || {}), t = hub.tokens || {}, f = hub.fonts || {}, notes = hub.tokenNotes || {};
+  const hub = ((dj.hubs || {})[H.slug] || {}), t = hub.tokens || {}, f = hub.fonts || {}, notes = hub.tokenNotes || {}, reg = dj.fontRegistry || {};
+  // 3 · the committed design spec (KV design:spec:<cid>) — every field with its value and why
   const spec = ((await env.TRADES.get("design:spec:" + cid, "json").catch(() => null)) || {}).spec || {}, v = k => spec[k] && spec[k].v ? String(spec[k].v) : "";
-  const clean = o => Object.fromEntries(Object.entries(o).filter(([, x]) => x != null && x !== "" && !(typeof x === "object" && !Object.keys(x).length)));
+  const specGroups = {}; for (const [k, x] of Object.entries(spec)) { if (!x || x.v == null || x.v === "") continue; const [g, ...rest] = k.split("."); (specGroups[g] = specGroups[g] || {})[rest.join(".") || g] = clean({ value: String(x.v), why: x.why ? String(x.why) : "" }); }
+  // 4 · the campaign Research record's design fields (the Stage-1 design direction)
+  let research = {}; try { const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: ivDash(cid) } } });
+    const F = ["Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Palette", "Fonts", "Image Direction"];
+    const best = rows.map(r => ({ r, n: F.filter(k => hubRichText(r.properties?.[k]?.rich_text).trim()).length })).sort((a, b) => b.n - a.n)[0];
+    if (best && best.n) research = clean(Object.fromEntries(F.map(k => [k.toLowerCase().replace(/\s+/g, "_"), hubRichText(best.r.properties[k]?.rich_text).trim().slice(0, 3000)]))); } catch (e) {}
   const fam = n => n ? `${n}, system-ui, sans-serif` : "";
-  return clean({ hub: H.name || "", domain: H.domain || "",
-    colors: clean({ primary: t.sea || t.accent || "", primary_bright: t.accent || "", ink: t["ink-head"] || t.ink || "", text: t.ink || "", muted: t["ink-soft"] || "", bg: t.bg || "", surface: t.surface || t.paper || "", line: t.line || "", deep: t.deep || "", on_deep: t["deep-ink"] || "" }),
-    font: fam(f.body || f.display), fonts: clean({ display: f.display || "", body: f.body || "", mono: f.mono || "" }),
-    radius: t.radius || hub.radius || "", logo_text: hub.logoText || "",
-    style_notes: [v("img.mood"), v("img.palette_use"), v("img.medium")].filter(Boolean).join(" · "),
+  const colorVars = clean(Object.fromEntries(Object.entries(vars).filter(([, x]) => isColor(x)).map(([k, x]) => [k.replace(/-/g, "_"), x])));
+  const fontUse = Object.fromEntries([...new Set([fonts0, f.display, f.body, f.mono].filter(Boolean))].map(n => [n, reg[n] ? clean({ google_fonts: reg[n].query ? "https://fonts.googleapis.com/css2?family=" + reg[n].query + "&display=swap" : "", fallback: reg[n].fallback || "" }) : {}]));
+  return clean({
+    hub: H.name || "", domain: H.domain || "", page: pageUrl,
+    sources: clean({ live_page: rootM ? "measured from the live hub page's CSS (the master)" : "", tokens: Object.keys(t).length ? "hubs.design.json (build mirror)" : "", design_spec: Object.keys(spec).length ? "the hub's committed design spec" : "", research: Object.keys(research).length ? "the campaign Research record's design fields" : "" }),
+    colors: clean({ primary: vars.green || vars.primary || vars.accent || t.sea || t.accent || "", primary_bright: vars["green-bright"] || vars["primary-bright"] || t.accent || "", primary_dark: vars["green-dark"] || vars["primary-dark"] || t.deep || "",
+      primary_darker: vars["green-darker"] || "", primary_soft: vars["green-soft"] || vars["primary-soft"] || "", primary_mid: vars["green-mid"] || "", ink: vars.ink || t["ink-head"] || t.ink || "", muted: vars.muted || t["ink-soft"] || "",
+      line: vars.line || t.line || "", bg: vars.bg || t.bg || "", surface: vars.white || vars.surface || t.surface || "", on_dark: t["deep-ink"] || "" }),
+    font: vars.font || fam(f.body || f.display), fonts: clean({ body: fonts0 || f.body || "", display: vars["font-display"] ? String(vars["font-display"]).split(",")[0].replace(/["']/g, "").trim() : (fonts0 || f.display || ""), mono: f.mono || "" }), font_files: clean(fontUse),
+    radius: vars["radius-md"] || vars.radius || t.radius || hub.radius || "", radii: clean(Object.fromEntries(Object.entries(vars).filter(([k]) => /^radius/.test(k)).map(([k, x]) => [k.replace(/^radius-?/, "") || "base", x]))),
+    spacing: clean(Object.fromEntries(Object.entries(vars).filter(([k]) => /^space/.test(k)).map(([k, x]) => [k.replace(/^space-?/, ""), x]))),
+    shadows: clean(Object.fromEntries(Object.entries(vars).filter(([k]) => /^shadow/.test(k)).map(([k, x]) => [k.replace(/^shadow-?/, "") || "base", x]))),
+    type: clean({ base_size: vars["text-base"] || "", line_height: vars.leading || "", body: pick(rule("body"), TYPE_KEYS), h1: clean({ ...(pick(rule("h1"), TYPE_KEYS) || {}), size: sizeOf("h1") }), h2: clean({ ...(pick(rule("h2"), TYPE_KEYS) || {}), size: sizeOf("h2") }), h3: clean({ ...(pick(rule("h3"), TYPE_KEYS) || {}), size: sizeOf("h3") }) }),
+    buttons: clean({ primary: pick(rule(".btn-primary") || rule(".btn"), ["background", "color", "border-radius", "padding", "font-weight", "font-size", "box-shadow", "border"]), secondary: pick(rule(".btn-secondary") || rule(".btn-ghost") || rule(".btn-outline"), ["background", "color", "border-radius", "padding", "font-weight", "border"]) }),
+    style_notes: [v("img.mood"), v("img.palette_use"), v("img.medium"), research.visual_register || ""].filter(Boolean).join(" · "),
+    brand: clean({ logo_text: hub.logoText || "", site_title: hub.meta?.title || "", description: hub.meta?.description || "", og_title: hub.meta?.ogTitle || "", subject: hub.design?.subject || "", audience: hub.design?.audience || "", job: hub.design?.job || "",
+      photography: hub.design?.photography || "", avoided: hub.design?.avoided || "", contact_email: hub.email || "" }),
+    design_brief: clean(Object.fromEntries(Object.entries(hub.design || {}).filter(([k, x]) => typeof x === "string" && !["subject", "audience", "job", "photography", "avoided"].includes(k)).map(([k, x]) => [k, x]))),
+    research_design: research,
     color_roles: clean(Object.fromEntries(Object.entries(notes).map(([k, x]) => [k.replace(/-/g, "_"), x]))),
-    imagery: clean(Object.fromEntries(["medium", "line", "fill", "shading", "texture", "background", "accents", "people", "representation", "settings", "props", "camera", "framing", "composition", "negative_space", "light", "palette_use", "mood"].map(k => [k, v("img." + k)]))),
-    reference: clean({ approved_image: v("ref.approved_image"), signature: v("ref.signature"), invariants: v("ref.invariants"), master_prompt: v("ref.master_prompt"), negative_prompt: v("ref.negative_prompt") }),
-    avoid: clean({ visual: v("avoid.visual"), subjects: v("avoid.subjects"), colors: v("avoid.colors"), type: v("avoid.type"), stock_ai: v("avoid.stock_ai") }) });
+    css_color_variables: colorVars, css_variables: vars, mirror_tokens: t,
+    imagery: clean(Object.fromEntries(Object.entries(specGroups.img || {}).map(([k, x]) => [k, x.value]))),
+    reference: clean(Object.fromEntries(Object.entries(specGroups.ref || {}).map(([k, x]) => [k, x.value]))),
+    avoid: clean(Object.fromEntries(Object.entries(specGroups.avoid || {}).map(([k, x]) => [k, x.value]))),
+    design_spec: specGroups });
 }
 async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
