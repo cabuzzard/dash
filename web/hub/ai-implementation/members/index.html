@@ -68,6 +68,9 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-go { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; margin: 6px 0 0 !important; }
 .od-steps { font-size: 13.5px; max-height: 300px; overflow: auto; padding-left: 22px; color: var(--ink-soft); } .od-steps li.ok { color: var(--ink); }
 .od-cb { margin: 10px 0 0 !important; }
+.bf h2 { font: 700 22px/1.25 "Bricolage Grotesque", sans-serif; margin: 0 0 8px; } .bf h3 { font: 700 18px/1.3 "Bricolage Grotesque", sans-serif; margin: 22px 0 8px; color: var(--ink-head); } .bf h4 { font-size: 16px; margin: 16px 0 6px; }
+.bf p { margin: 0 0 10px; } .bf ul, .bf ol { margin: 0 0 12px; padding-left: 22px; } .bf li { margin: 3px 0; } .bf a { color: var(--accent); overflow-wrap: anywhere; }
+.bf-code { white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto; }
 .ivm-panel { --text: var(--ink); --text2: var(--ink-soft); --text3: var(--ink-soft); --border: var(--line); --border2: var(--line); --surface2: var(--surface); --accent: var(--accent); font-size: 15px; }
 .rf summary { cursor: pointer; } .rf { margin: 0 0 16px; }
 .ra summary { cursor: pointer; } .ra { margin: 0 0 16px; } .ra-g { margin: 0 0 8px; } .ra-g > summary { font-weight: 600; font-size: 14.5px; padding: 4px 0; }
@@ -164,7 +167,7 @@ function appsView(d, tab) {
   const when = at => { const x = new Date(at); return isNaN(x) ? "" : x.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); };
   const RS = { development: "Development", interview: "🎤 Interview in progress", publish: "✓ Publish" };
   const reportCard = a => `<a class="card app rc-${esc(a.state || "development")}" href="${esc(a.path)}"><div class="t">${esc(a.name)}</div><div class="m"><span class="rc-st">${RS[a.state] || RS.development}</span> · ${esc(["Research as of " + when(a.at), a.hub].filter(Boolean).join(" · "))}</div><div class="go">Open report →</div></a>`;
-  const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
+  const appCard = a => `<div class="card app"><a href="${esc(a.path)}" style="display:block;text-decoration:none;color:inherit;"><div class="t">${esc(a.name)}</div><div class="m">${esc([d.superadmin && a.client ? "Client: " + a.client : "", a.kind === "studio" ? "Script Studio" : a.kind === "brief" ? "📦 Writer brief" : "", a.hub].filter(Boolean).join(" · "))}</div></a>
         <div style="display:flex;gap:16px;align-items:center;margin-top:12px;"><a class="go" href="${esc(a.path)}" style="text-decoration:none;margin:0;">Open →</a>${d.superadmin ? `<button class="share" onclick="shareMembers(this)">Share with client</button>` : ""}</div></div>`;
   const bar = tabs.length > 1 ? `<div class="tabs" role="tablist">${tabs.map(t => `<button role="tab" aria-selected="${t[0] === tab}" class="tab${t[0] === tab ? " on" : ""}" onclick="store.set('mb_tab','${t[0]}');appsView(_mbD,'${t[0]}')">${t[1]} <span>${t[2].length}</span></button>`).join("")}</div>` : "";
   if (tab === "interviews" && !IVM.items && !IVM.busy && !IVM.open) setTimeout(() => ivmLoad(), 0);
@@ -296,6 +299,7 @@ async function onCredential(resp) {
     if (!d.ok && d.code === "not_member") return signInView(`<b>${esc(d.email)}</b> isn't on the members list yet. If you were invited with a different Google account, sign in with that one.`);
     store.set("mb_token", d.token);
     try { store.set("mb_pic", JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).picture || null); } catch (e) {}
+    if (BRIEF_ID) return briefView(d.token);
     if (REPORT_ID) return reportView(d.token);
     appsView(d);
   } catch (e) { signInView("Sign-in didn't go through. Try again."); }
@@ -308,6 +312,44 @@ async function shareMembers(btn) {
   try { await navigator.clipboard.writeText(text + " " + url); btn.textContent = "✓ Copied"; } catch (e) { btn.textContent = url; }
   setTimeout(() => { btn.textContent = "Share with client"; }, 2500);
 }
+// 📦 a Writer Brief (2026-11-25): /members/?brief=<assetId> → member op "brief" (admin, or a reader it was shared with by email). Rendered from
+// its Markdown, with Copy and Download; the admin also shares it with a writer's email (they sign in with Google, see only what's shared).
+const BRIEF_ID = new URLSearchParams(location.search).get("brief") || "";
+function mdHtml(md) {
+  const inl = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|\s)_([^_]+?)_(?=\s|$|[.,;:)])/g, "$1<i>$2</i>").replace(/(https?:\/\/[^\s)<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  const out = []; let list = "", code = null;
+  const flush = () => { if (list) { out.push(`</${list}>`); list = ""; } };
+  for (const line of String(md || "").split("\n")) {
+    if (code !== null) { if (/^```/.test(line)) { out.push(`<pre class="bf-code">${esc(code.join("\n"))}</pre>`); code = null; } else code.push(line); continue; }
+    if (/^```/.test(line)) { flush(); code = []; continue; }
+    let m;
+    if ((m = /^(#{1,3})\s+(.*)$/.exec(line))) { flush(); out.push(`<h${m[1].length + 1}>${inl(m[2])}</h${m[1].length + 1}>`); }
+    else if ((m = /^\s*-\s+(.*)$/.exec(line))) { if (list !== "ul") { flush(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inl(m[1])}</li>`); }
+    else if ((m = /^\s*\d+\.\s+(.*)$/.exec(line))) { if (list !== "ol") { flush(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inl(m[1])}</li>`); }
+    else if (!line.trim()) flush();
+    else { flush(); out.push(`<p>${inl(line)}</p>`); }
+  }
+  flush(); if (code) out.push(`<pre class="bf-code">${esc(code.join("\n"))}</pre>`); return out.join("");
+}
+let _bf = null;
+async function briefView(tok) {
+  out.innerHTML = '<p class="lede">Loading the brief…</p>'; document.querySelector(".wrap").style.maxWidth = "820px";
+  try { const d = await call({ op: "brief", token: tok, assetId: BRIEF_ID });
+    if (d.code === "signed_out") { store.set("mb_token", null); return signInView("Please sign in again."); }
+    if (!d.ok) { out.innerHTML = '<div class="msg">' + esc(d.error || "This brief isn't available.") + '</div><a class="home" href="/members/">← Members</a>'; return; }
+    _bf = d; const B = d.brief;
+    const share = d.admin ? `<details class="card" style="margin:0 0 16px"><summary><b>Share with a writer</b> <span class="od-mute">${(d.shared || []).length ? "shared with " + esc(d.shared.join(", ")) : "not shared yet"}</span></summary>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input class="mg-in" id="bfEm" type="email" placeholder="writer@example.com" style="flex:1;min-width:200px"><button class="share" style="margin:0" onclick="briefShare()">Share</button></div>
+      <div class="od-mute" id="bfSt" style="margin-top:6px">They sign in with that Google account and see only this brief.</div></details>` : "";
+    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span style="margin-left:auto;display:flex;gap:8px"><button class="share" style="margin:0" onclick="briefCopy(this)">Copy</button><button class="share" style="margin:0" onclick="briefDownload()">Download .md</button></span></div>`
+      + share + `<div class="card bf">${mdHtml(B.md)}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>`;
+  } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
+}
+async function briefCopy(b) { try { await navigator.clipboard.writeText(_bf.brief.md); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy"; }, 2000); }
+function briefDownload() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([_bf.brief.md], { type: "text/markdown" })); a.download = (_bf.brief.title || "writer-brief").replace(/[^\w-]+/g, "-").toLowerCase() + ".md"; a.click(); }
+async function briefShare() { const em = (document.getElementById("bfEm") || {}).value || "", st = document.getElementById("bfSt"); st.textContent = "Sharing…";
+  const r = await call({ op: "briefShare", token: store.get("mb_token"), assetId: BRIEF_ID, email: em }).catch(e => ({ error: e.message }));
+  st.textContent = r && r.ok ? `✓ Shared with ${r.email}${r.newMember ? " (added to the members list)" : ""}. Send them: ${location.origin}/members/?brief=${BRIEF_ID}` : "✗ " + ((r && r.error) || "Not shared"); }
 // 📊 a shared research report (2026-11-24): /members/?report=<id> → worker member op "report" → rendered here, members only
 const REPORT_ID = new URLSearchParams(location.search).get("report") || "";
 async function reportView(tok, at) {
@@ -509,7 +551,7 @@ const odKey = () => "mb_dir:" + REPORT_ID, odJobKey = () => "mb_odjob:" + REPORT
 const odDir = () => store.get(odKey()) || "";
 function odApi(sub, p) { return call(Object.assign({ op: "offerDeploy", token: store.get("mb_token"), sub, assetId: REPORT_ID }, p || {})); }
 function odInit(d) {
-  if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { interview: true, page: true, cta: true, posts: true, welcome: true, sales: true } };
+  if (!d.admin) return; OD = OD && OD.rid === REPORT_ID ? OD : { rid: REPORT_ID, open: false, plan: null, ctx: null, busy: "", msg: "", job: null, idx: -1, kind: "", due: "", inc: { interview: true, brief: true, page: true, cta: true, posts: true, welcome: true, sales: true } };
   OD.report = d.report; OD.coh = OD.coh || {}; odRestorePlan();
   out.querySelectorAll(".rp-oact[data-i]").forEach(el => { const i = +el.dataset.i; el.innerHTML = `<button class="share od-cb" onclick="odOpen(${i})">🚀 Deploy this offer</button>`; });
   odFab(); odBindSel(); const jid = store.get(odJobKey()); if (jid) odApi("get", { jobId: jid }).then(j => { if (j && !j.error) { OD.job = j; odFab(); } }).catch(() => {});
@@ -560,8 +602,10 @@ function odDraw() {
   const card = OD.idx >= 0 ? cards[OD.idx] : null;
   const jobHtml = !J ? "" : `<div class="od-sec"><div class="od-h">Deploy: ${esc(J.name || "")} <span class="od-mute">· ${esc(J.initiative || "")} · due ${esc(J.due || "")}</span></div>
     <div class="od-mute">${J.status === "done" ? "✓ Done, every asset created and written" : J.status === "held" ? "⚠ Held: " + esc(J.error || "") : J.status === "waiting" ? "🎤 Waiting for your interview. The stack continues by itself once you mark it Finished." : "Working… step " + J.i + " of " + J.of + " (keeps going on the server if you close this)"}</div>
+    ${J.brief ? `<div class="od-iv">📦 Writer brief: <a href="${esc(J.brief.url)}" target="_blank" rel="noopener">Open the brief →</a> (share it with a writer from there)</div>` : ""}
+    ${J.status === "done" && J.interview && !J.brief ? `<button class="share" ${dis} onclick="odAddBrief()" style="margin:0 0 8px">📦 Make the writer brief</button>` : ""}
     ${J.interview && J.status !== "done" ? `<div class="od-iv">🎤 Interview: ${J.interview.answered}/${J.interview.of} answered · <a href="${esc(J.interview.url)}" target="_blank" rel="noopener">Answer the interview →</a></div>` : ""}
-    <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${{ write: "write", run: "run", ivreq: "request interview", await: "wait for your answers", ivused: "mark interview used" }[s.op] || "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
+    <ol class="od-steps">${(J.steps || []).map(s => `<li class="${s.done ? "ok" : ""}">${s.done ? "✓" : "·"} ${{ write: "write", run: "run", ivreq: "request interview", await: "wait for your answers", ivused: "mark interview used", brief: "write the brief" }[s.op] || "create"} — ${esc(s.title || s.key)}</li>`).join("")}</ol>
     ${J.status === "done" && !J.interview ? `<div class="od-sec"><div class="od-h">🎤 Add an interview and rewrite this stack</div><div class="od-mute">Creates an Interview asset, waits for your answers, then rewrites the Offer and every asset in this stack from them. Nothing else is created.</div>
       <label class="od-l">Interview due</label><input type="date" class="mg-in od-in" id="odIvDue2" value="${esc(OD.ivDue || "")}" onchange="OD.ivDue=this.value">
       <label class="od-l">Steer the questions (optional)</label><textarea class="od-ta" id="odIvDir2" rows="3" placeholder="e.g. my own content workflow, where human review saved a piece">${esc(OD.ivDir || "")}</textarea>
@@ -578,7 +622,7 @@ function odDraw() {
       ${(P.sales || []).map((x, i) => `<b>Sales ${i + 1} · day ${x.day}: ${esc(x.job)}</b><p>${esc(x.directions)}</p>`).join("")}</div></details>
     ${odPlacementHtml()}
     <label class="od-l">Due date (every asset)</label><input type="date" class="mg-in od-in" id="odDue" value="${esc(OD.due)}" onchange="OD.due=this.value;odSavePlan()">
-    <div class="od-l">Include</div><div class="od-inc">${[["interview", "🎤 Interview first (the stack waits for your answers)"], ["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked;odSavePlan();odDraw()"> ${esc(l)}</label>`).join("")}</div>
+    <div class="od-l">Include</div><div class="od-inc">${[["interview", "🎤 Interview first (the stack waits for your answers)"], ["brief", "📦 Writer brief (after the interview)"], ["page", "Sales page"], ["cta", "4 CTAs"], ["posts", (P.posts || []).length + " selling-point posts"], ["welcome", "Welcome & nurture (5)"], ["sales", "Sales series (5)"]].map(([k, l]) => `<label><input type="checkbox" ${OD.inc[k] ? "checked" : ""} onchange="OD.inc['${k}']=this.checked;odSavePlan();odDraw()"> ${esc(l)}</label>`).join("")}</div>
     ${OD.inc.interview ? `<label class="od-l">Interview due</label><input type="date" class="mg-in od-in" value="${esc(OD.ivDue || odIvDueDefault())}" onchange="OD.ivDue=this.value;odSavePlan()">
     <label class="od-l">Steer the interview questions (optional)</label><textarea class="od-ta" rows="3" oninput="OD.ivDir=this.value;odSavePlan()" placeholder="e.g. my own content workflow, real examples where human review saved a piece">${esc(OD.ivDir || "")}</textarea>` : ""}
     <div class="od-mute" style="margin:8px 0">${OD.inc.interview ? "Order: Offer + Interview are created → you answer the interview → the Offer is written from your answers → then everything else." : "The Offer is created and written first; the rest only after it's written."}</div>
@@ -642,6 +686,8 @@ async function odRunLoop() {
       if (!OD.open) break; } } finally { OD.looping = false; }
 }
 function odIvDueDefault() { const d = new Date((OD.due || new Date().toISOString().slice(0, 10)) + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - 2); const t = new Date().toISOString().slice(0, 10), v = d.toISOString().slice(0, 10); return v < t ? t : v; }
+async function odAddBrief() { OD.busy = "Adding the brief…"; odDraw(); const r = await odApi("addBrief", { jobId: OD.job.id }).catch(e => ({ error: e.message })); OD.busy = "";
+  if (!r || r.error) { OD.msg = "✗ " + ((r && r.error) || "No response"); return odDraw(); } OD.job = r; odDraw(); odFab(); odRunLoop(); }
 async function odAddInterview() {
   const due = (document.getElementById("odIvDue2") || {}).value || OD.ivDue || "", dir = (document.getElementById("odIvDir2") || {}).value || "";
   if (!due) { OD.msg = "✗ Pick the interview's due date"; return odDraw(); }
@@ -718,6 +764,7 @@ function gInit() {
   if (err) return signInView("Sign-in didn't go through. Try again.");
   const tok = store.get("mb_token"); if (!tok) { if (IN_APP) inAppView(); return; }
   out.innerHTML = `<p class="lede">Loading your apps…</p>`;
+  if (BRIEF_ID) return briefView(tok);
   if (REPORT_ID) return reportView(tok);
   try { const d = await call({ op: "me", token: tok }); if (d.ok) return appsView(d); store.set("mb_token", null); signInView(d.code === "not_member" ? "Your account isn't on the members list any more." : ""); }
   catch (e) { signInView("Couldn't reach the server. Try again in a minute."); }

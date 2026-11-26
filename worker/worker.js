@@ -1325,6 +1325,9 @@ async function memberApps(env, rec) {
   // was finished + saved; the Report asset is set to Publish). KV report:state:<assetId> = {state, …}, written by the offer deploy.
   const stK = await env.TRADES.list({ prefix: "report:state:" }).catch(() => ({ keys: [] })), states = {};
   for (const k of (stK.keys || []).slice(0, 300)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.state) states[k.name.slice(13)] = v.state; }
+  // 📦 writer briefs: the admin sees every brief, a reader the ones shared with them
+  const bIds = (rec.links || []).includes("*") ? ((await env.TRADES.list({ prefix: "wbrief:" }).catch(() => ({ keys: [] }))).keys || []).map(k => k.name.slice(7)) : (rec.briefs || []);
+  for (const id of bIds.slice(0, 100)) { const b = await writerBriefGet(env, id); if (b) out.push({ id, kind: "brief", name: b.title || "Writer Brief", client: "", hub: b.offer || "", product: "", at: b.at, path: "/members/?brief=" + id }); }
   for (const x of mine) out.push({ id: x.assetId, kind: "report", name: x.title || x.name || "Report", client: "", hub: x.hub || "", product: "", at: x.at, path: "/members/?report=" + x.assetId, state: states[x.assetId] || "development" });
   return out;
 }
@@ -1480,6 +1483,67 @@ async function reportGet(env, assetId, at) {
 //                 same due date. Upstream first: the Offer is created and written (→ Publish) before any child exists; a failed write
 //                 holds the job (later steps never run on a broken upstream). Selling-point posts stand alone (Run reference, no parent),
 //                 the Run asset is the Offer's child and carries the due date.
+// ── 📦 Writer Brief (operator 2026-11-25: "it's another asset, generated off of the interview + report deploy (offer + interview) with access to
+// upstream info, supplied to an external reader"; "add that to the interview result deploy (saved finished interview)") ─────────────────────
+// After the interview is finished and the Offer is rewritten from it, the deploy makes one Writer Brief asset (child of the Offer, same title /
+// initiative / due, its own cohort) holding a Markdown brief for an OUTSIDE writer to produce social media runs: the assignment (runs suggested
+// from the evidence), the offer, the evidence, the operator's own words (finished interview, minus answers held Out of flow), the rules, and
+// the exact run.json the 📥 Asset import reads back. Stored on the asset (Body) + KV wbrief:<assetId>; shared to a reader by email (members page).
+const BRIEF_POST_FIELDS = [["Platform Title", "the post's name: the idea in plain words, ≤ 60 characters"], ["Headline Primary", "first line on the image, a hook, ≤ 32 characters"],
+  ["Headline Accent", "second line, finishes the first, ≤ 32 characters"], ["Body", "one short line under the headline, ≤ 120 characters"],
+  ["Post Caption", "the caption: hook line, a short paragraph, one clear next step, ≤ 2200 characters"], ["Hashtags", "3 to 8 hashtags, space-separated"]];
+async function writerBriefBuild(env, job) {
+  const c = job.ctx, p = job.plan, offerId = job.ids.offer;
+  const T = x => hubRichText(x?.rich_text || x?.title || []);
+  const op = ((await ivPage(offerId)) || {}).properties || {};
+  const offer = Object.fromEntries(["Platform Title", "Card Title", "Body", "Offer Page", "CTA Label", "Selling Points"].map(k => [k, T(op[k]).trim()]).filter(x => x[1]));
+  const R = await reportGet(env, c.assetId, null) || {}, A = R.analysis || {}, arr = v => Array.isArray(v) ? v : [];
+  let qa = [];
+  if (job.ivId) { const iv = ivParse(await ivPage(job.ivId)), held = new Set((iv.held || []).filter(h => h.whole).map(h => h.q));
+    qa = iv.qs.map((q, i) => ({ q, a: String(iv.answers[i] || "").trim(), out: held.has(i) })).filter(x => x.a && !x.out); }
+  const sources = arr(R.sources).slice(0, 30).map(s => ({ n: s.n, claim: s.claim, url: s.url, publisher: s.publisher, date: s.date }));
+  // one model call: the assignment — runs worth making from this evidence, each with post ideas tied to a selling point / pain
+  let plan = { runs: [], voice: [] };
+  try { plan = await hcClaude(env, `You plan social media RUNS for an outside writer, from an offer, its research and the operator's own interview answers. ` +
+      `2-4 runs (a run = a themed set of posts on one platform), 5-10 post ideas each, every idea tied to a pain, complaint, selling point or interview answer below. ` +
+      `voice = 4-8 notes on how the operator talks, taken only from their answers (phrases they use, how they explain, what they refuse to say). Never invent facts.\n\nPACKET:\n` +
+      JSON.stringify({ offer: { name: p.name, promise: p.promise, kind: c.kind, cta: c.cta, fields: offer }, sellingPoints: p.sellingPoints, pains: A.pains, complaints: A.complaints, audience: A.audience, moving: A.moving, interview: qa }).slice(0, 60000),
+    "brief_plan", { type: "object", required: ["runs", "voice"], properties: { voice: { type: "array", items: { type: "string" } },
+      runs: { type: "array", items: { type: "object", required: ["name", "platform", "format", "angle", "posts"], properties: { name: { type: "string" }, platform: { type: "string" }, format: { type: "string" }, angle: { type: "string" },
+        posts: { type: "array", items: { type: "object", required: ["idea", "from"], properties: { idea: { type: "string" }, from: { type: "string", description: "which pain / complaint / selling point / interview answer it comes from" } } } } } } } } }, 6000) || plan; }
+  catch (e) { plan.err = e.message; }
+  if (!Array.isArray(plan.runs)) { try { plan.runs = JSON.parse(plan.runs); } catch (e) { plan.runs = []; } }
+  if (!Array.isArray(plan.voice)) plan.voice = [];
+  const L = [], li = (x, s) => x ? L.push("- " + String(x).replace(/\n+/g, " ") + (s || "")) : null, due = job.due || "";
+  L.push(`# Writer Brief: ${p.name}`, "", `**Hub:** ${R.hub || ""} · **Title:** ${c.titleName} · **Initiative:** ${job.initiative}${due ? ` · **Return by:** ${due}` : ""}`, "",
+    "You're writing social media posts for this offer. Everything you need is below: the offer, the evidence behind it, and the operator's own words. Write in their voice, use only the facts given, and send the posts back in the format in section 6.", "");
+  L.push("## 1. The assignment", "");
+  (plan.runs || []).forEach((r, i) => { L.push(`### Run ${i + 1}: ${r.name}`, `**Platform:** ${r.platform} · **Format:** ${r.format} · **Posts:** ${(r.posts || []).length}`, "", r.angle || "", "");
+    (r.posts || []).forEach((x, k) => L.push(`${k + 1}. ${x.idea}${x.from ? ` _(from: ${x.from})_` : ""}`)); L.push(""); });
+  if (!(plan.runs || []).length) L.push("Write 2-3 runs of 5-10 posts each from the selling points and pains below.", "");
+  L.push("## 2. The offer", "", `**${p.name}**: ${p.promise || ""}`, "", `**Call to action:** ${c.cta.action}${c.cta.link && !/\[/.test(c.cta.link) ? ` (${c.cta.link})` : ""}`, "");
+  if (offer["Offer Page"]) L.push("**The sales page (for context, don't copy it):**", "", offer["Offer Page"].slice(0, 6000), "");
+  L.push("**Selling points:**"); arr(p.sellingPoints).forEach(s => li(`(${s.kind}) ${s.point}`, s.source ? ` [${s.source}]` : "")); L.push("");
+  L.push("## 3. The evidence", ""); if (A.summary) L.push(A.summary, "");
+  if (arr(A.pains).length) { L.push("**Pain points:**"); arr(A.pains).forEach(x => li(x.point)); L.push(""); }
+  if (arr(A.complaints).length) { L.push("**Complaints about current options:**"); arr(A.complaints).forEach(x => li(x.point, (x.signals || []).length ? ` (searches: ${x.signals.join(", ")})` : "")); L.push(""); }
+  if (arr(A.audience).length) { L.push("**What the audience is asking:**"); arr(A.audience).forEach(q => li(q)); L.push(""); }
+  if (A.demand) L.push("**Search demand:** " + A.demand, "");
+  if (sources.length) { L.push("**Sources (cite only these):**"); sources.forEach(s => li(`[${s.n}] ${s.claim || ""}`, ` (${[s.publisher, s.date].filter(Boolean).join(", ")}) ${s.url || ""}`)); L.push(""); }
+  L.push("## 4. The operator's voice", "");
+  if (plan.voice.length) { L.push("**How they talk:**"); plan.voice.forEach(v => li(v)); L.push(""); }
+  if (qa.length) { L.push("**Their interview, in their own words** (the best source for stories and phrasing):", ""); qa.forEach((x, i) => L.push(`**Q${i + 1}. ${x.q}**`, "", x.a, "")); }
+  else L.push("_(no finished interview answers)_", "");
+  L.push("## 5. Rules", "");
+  ["Use only the facts in this brief. Never invent clients, results, numbers, prices or quotes.", "A statistic or claim from the evidence keeps its source; if you can't place it, leave it out.",
+   "Write in the operator's voice (section 4): their phrases and examples beat generic marketing language.", "Every post points to the call to action in section 2, lightly; no hard selling in every post.",
+   "Stay inside the field limits in section 6."].forEach(r => li(r)); L.push("");
+  L.push("## 6. Return format", "", "Send back **one JSON file per run**, exactly in this shape (it's imported straight into the tool):", "", "```json");
+  L.push(JSON.stringify({ run: "<run name from section 1>", title: c.titleName, assetType: "single post", posts: [{ key: "<short-unique-key>", line: "<the post idea in one line>", thumbnail: "<optional image file name>",
+    prewrite: Object.fromEntries(BRIEF_POST_FIELDS.map(([k]) => [k, "…"])) }] }, null, 2), "```", "", "**Fields:**"); BRIEF_POST_FIELDS.forEach(([k, d]) => li(`**${k}**: ${d}`)); L.push("");
+  return { md: L.join("\n"), runs: (plan.runs || []).length, posts: (plan.runs || []).reduce((n, r) => n + (r.posts || []).length, 0), answers: qa.length, err: plan.err || "" };
+}
+async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
 async function offerReportCtx(env, aid) {
   const pg = await ivPage(aid); if (!pg || !pg.properties) throw new Error("Report asset not found");
@@ -1539,14 +1603,15 @@ async function offerDeployStart(env, body) {
   const initiative = (String(body.initiative || "").trim() || `${ctx.titleName} - ${name}`).slice(0, 200), N = name, S = [];
   const bad = initiativeNameBad(initiative); if (bad) throw new Error(bad);
   const coh = body.cohorts || {}, cohOf = g => String(coh[g] || "").replace(/,/g, " ").trim().slice(0, 100);   // one cohort per asset group (offer · page · cta · posts · welcome · sales)
-  const grp = k => /^interview/.test(k) ? "interview" : /^cta/.test(k) ? "cta" : /^post|^run$/.test(k) ? "posts" : /^welcome/.test(k) ? "welcome" : /^sales/.test(k) ? "sales" : k;
+  const grp = k => /^brief/.test(k) ? "brief" : /^interview/.test(k) ? "interview" : /^cta/.test(k) ? "cta" : /^post|^run$/.test(k) ? "posts" : /^welcome/.test(k) ? "welcome" : /^sales/.test(k) ? "sales" : k;
   const mk = (key, type, title, own, extra = {}) => { S.push({ op: "create", key, type, title: title.slice(0, 300), own: String(own || ""), cohort: cohOf(grp(key)), ...extra }); S.push({ op: "write", key }); };
   mk("offer", "Offer", `${N} - Offer`, plan.offer + "\n\nSELLING POINTS:\n" + (plan.sellingPoints || []).map(s => `- (${s.kind}) ${s.point}${s.source ? " [" + s.source + "]" : ""}`).join("\n"), { parent: "" });
   // 🎤 interview first (operator 2026-11-25: "interview should just be an asset … along with offer"; flow: report → offer + interview → write
   // child assets): the Offer is created but NOT written; an Interview asset (same title / initiative, its own due date + cohort) carries the
   // Offer's interview; the job waits until it's Finished, then writes the Offer from the answers, then everything else
   if (inc.interview !== false) { const w = S.pop(); const ivDue = /^\d{4}-\d{2}-\d{2}$/.test(String(body.interviewDue || "")) ? body.interviewDue : due;
-    S.push(...offerInterviewSteps(N, ivDue, cohOf("interview"), String(body.interviewDirection || "")), w, { op: "ivused", key: "interview" }); }
+    S.push(...offerInterviewSteps(N, ivDue, cohOf("interview"), String(body.interviewDirection || "")), w, { op: "ivused", key: "interview" });
+    if (inc.brief !== false) S.push({ op: "brief", key: "brief", title: `${N} - Writer Brief`, cohort: cohOf("brief") }); }
   if (inc.page !== false) mk("page", "Landing Page", `${N} - Sales Page`, plan.page, { parent: "offer" });
   if (inc.cta !== false) OFFER_CTA_KINDS.forEach(k => mk("cta" + k.replace(/\s/g, ""), "CTA", `${N} - CTA ${k}`, (plan.cta || {})[k], { parent: "offer", format: k }));
   if (inc.posts !== false && (plan.posts || []).length) { S.push({ op: "run", key: "run", run: `${N} - Selling Points`, cohort: cohOf("posts") });
@@ -1572,12 +1637,19 @@ async function offerAddInterview(env, body) {
   const due = /^\d{4}-\d{2}-\d{2}$/.test(String(body.interviewDue || "")) ? body.interviewDue : job.due;
   const writes = job.steps.filter(s => s.op === "write" && s.key !== "offer").map(s => ({ op: "write", key: s.key }));
   job.steps.push(...offerInterviewSteps(job.plan.name, due, String(body.cohort || (job.cohorts || {}).interview || "").trim().slice(0, 100), String(body.direction || "")),
-    { op: "write", key: "offer" }, { op: "ivused", key: "interview" }, ...writes);
+    { op: "write", key: "offer" }, { op: "ivused", key: "interview" }, ...(job.ids.brief ? [] : [{ op: "brief", key: "brief", title: `${job.plan.name} - Writer Brief`, cohort: String((job.cohorts || {}).brief || "").trim().slice(0, 100) }]), ...writes);
   job.status = "queued"; job.error = ""; delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job));
   return offerJobView(job);
 }
+async function offerAddBrief(env, body) {
+  const K = "offerdeploy:job:" + String(body.jobId || ""), job = await env.TRADES.get(K, "json").catch(() => null); if (!job) throw new Error("No such deploy");
+  if (job.status !== "done") throw new Error("This deploy isn't finished yet"); if (!job.ivId) throw new Error("This stack has no interview — add one first");
+  job.steps.push({ op: "brief", key: "brief", title: `${job.plan.name} - Writer Brief`, cohort: String(body.cohort || (job.cohorts || {}).brief || "").trim().slice(0, 100), rebuild: !!job.ids.brief });
+  job.status = "queued"; job.error = ""; delete job.running; delete job.lock; await env.TRADES.put(K, JSON.stringify(job)); return offerJobView(job);
+}
 function offerJobView(job) {
   return { id: job.id, status: job.status, i: job.i, of: job.steps.length, initiative: job.initiative, due: job.due, name: job.plan.name, error: job.error || "",
+    brief: job.ids.brief ? { id: job.ids.brief, url: "https://aisystemimplementation.com/members/?brief=" + job.ids.brief } : null,
     interview: job.ivId ? { id: job.ivId, assetId: job.ids.interview || "", url: "https://cabuzzard.github.io/dash/interviews/?id=" + job.ivId, answered: job.ivAnswered || 0, of: job.ivOf || 0 } : null,
     steps: job.steps.map((s, k) => ({ op: s.op, key: s.key, title: s.title || s.run || (job.steps.find(x => x.op === "create" && x.key === s.key) || {}).title || "", done: k < job.i, id: job.ids[s.key] || "" })), log: job.log.slice(-12) };
 }
@@ -1634,6 +1706,17 @@ async function offerDeployRun(env, invoke, jobId, budgetMs, oneStep) {
         await invoke({ action: "updateAssetStatus", assetId: c.assetId, status: "Publish", statusOnly: true }).catch(() => {});   // the Report → Publish
         await env.TRADES.put("report:state:" + c.assetId, JSON.stringify({ state: "publish", jobId: job.id, interviewId: job.ivId, at: new Date().toISOString() })).catch(() => {});
         note = `finished: ${job.ivAnswered}/${job.ivOf} answered`;
+      } else if (s.op === "brief") {   // 📦 the Writer Brief: create (once) under the Offer, then build it from everything upstream
+        if (!job.ids.brief) { const r = await invoke({ action: "initiativeBuildAsset", titleId: c.titleId, campaignId: c.campaignId, productId: c.productId || undefined, assetType: "Writer Brief", assetTitle: s.title,
+            parentAssetId: job.ids.offer, initiative: job.initiative, directions: offerDirections(job, "The brief an outside writer uses to produce social media runs for this offer.") });
+          if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "brief not created"); job.ids.brief = r.assetId;
+          await invoke({ action: "setAssetDeadline", assetId: r.assetId, date: job.due }).catch(() => {});
+          if (s.cohort) await invoke({ action: "assetCohorts", op: "add", assetIds: [r.assetId], cohorts: [s.cohort] }).catch(() => {}); }
+        const b = await writerBriefBuild(env, job), bid = job.ids.brief;
+        await env.TRADES.put("wbrief:" + bid, JSON.stringify({ md: b.md, at: new Date().toISOString(), title: s.title, offer: job.plan.name, jobId: job.id, reportId: c.assetId, titleId: c.titleId, hub: "" }));
+        const pb = await fetch("https://api.notion.com/v1/pages/" + ivDash(bid), { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { Body: { rich_text: ivRt(b.md) } } }) });
+        await invoke({ action: "updateAssetStatus", assetId: bid, status: "Publish", statusOnly: true }).catch(() => {});
+        note = `${b.runs} runs · ${b.posts} post ideas · ${b.answers} interview answers${pb.ok ? "" : " · Body not saved on the asset (the brief page has it)"}${b.err ? " · plan: " + b.err : ""}`;
       } else if (s.op === "ivused") {
         const u = await invoke({ action: "updateAssetStatus", assetId: job.ids.interview, status: "Published", statusOnly: true }).catch(e => ({ error: e.message })); note = u && u.error ? "status not set: " + u.error : "used";
       } else if (s.op === "write") {
@@ -1723,6 +1806,7 @@ async function offerDeployOp(env, invoke, body) {
     return { ok: true, ctx, titles: T, cohorts: (coh && coh.cohorts) || [], initiatives: ini }; }
   if (op === "start") return await offerDeployStart(env, body);
   if (op === "addInterview") return await offerAddInterview(env, body);
+  if (op === "addBrief") return await offerAddBrief(env, body);
   if (op === "ivmap") { const L = await env.TRADES.list({ prefix: "interviewasset:" }).catch(() => ({ keys: [] }));   // Interview assets → their interview (Hub Dash 2 🎤 column)
     const map = []; for (const k of (L.keys || []).slice(0, 200)) { const v = await env.TRADES.get(k.name, "json").catch(() => null); if (v && v.interviewId) map.push({ assetId: k.name.slice(15), interviewId: v.interviewId }); }
     return { ok: true, map }; }
@@ -1760,7 +1844,7 @@ async function handleMember(env, body) {
   const op = String(body.op || "me");
   let email = null, g = null;
   if (op === "google") { g = await googleIdTokenEmail(body.credential); email = g.email; }
-  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
+  else if (op === "me" || op === "report" || op === "notes" || op === "groupsSave" || op === "brief" || op === "briefShare") { email = await memberFromToken(env, body.token); if (!email) return { error: "Please sign in again.", code: "signed_out" }; }
   else return { error: "Unknown member request" };
   const rec = await env.TRADES.get("member:email:" + email, "json").catch(() => null);
   if (!rec) return { ok: false, code: "not_member", email };
@@ -1770,6 +1854,17 @@ async function handleMember(env, body) {
     if (op === "notes") return await reportNotesOp(env, aid, { id: email, name: rec.name || rec.gName || email.split("@")[0], admin: (rec.links || []).includes("*") }, body);
     const rp = await reportGet(env, aid, body.at); if (!rp) return { error: "This report hasn't been run yet." };
     const { usage, notes, ...pub } = rp; return { ok: true, admin: (rec.links || []).includes("*"), report: pub, versions: (await env.TRADES.get("report:idx:" + aid, "json").catch(() => null)) || [] }; }
+  if (op === "brief") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
+    if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
+    const b = await writerBriefGet(env, aid); if (!b) return { error: "This brief hasn't been written yet." };
+    let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
+    return { ok: true, admin, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md }, ...(admin ? { shared } : {}) }; }
+  if (op === "briefShare") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can share a brief." };
+    const aid = hubAssetId(body.assetId || ""), em = String(body.email || "").trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { error: "A valid email is required" };
+    const prev = await env.TRADES.get("member:email:" + em, "json").catch(() => null);
+    if (body.remove) { if (prev) await env.TRADES.put("member:email:" + em, JSON.stringify({ ...prev, briefs: (prev.briefs || []).filter(x => x !== aid), updatedAt: Date.now() })); return { ok: true, removed: em }; }
+    const r2 = prev || { name: String(body.name || "").slice(0, 120), links: [], at: Date.now() }; r2.briefs = [...new Set([...(r2.briefs || []), aid])]; r2.updatedAt = Date.now();
+    await env.TRADES.put("member:email:" + em, JSON.stringify(r2)); return { ok: true, email: em, newMember: !prev }; }
   if (op === "groupsSave") { if (!(rec.links || []).includes("*")) return { error: "Only the admin can arrange report groups." }; return await reportGroupsSave(env, body.data); }
   if (g && (g.name !== rec.gName || g.picture !== rec.picture)) await env.TRADES.put("member:email:" + email, JSON.stringify({ ...rec, gName: g.name, picture: g.picture, lastIn: Date.now() })).catch(() => {});
   const exp = Date.now() + MEMBER_DAYS * 864e5;
@@ -2198,6 +2293,7 @@ async function ivHeldSchema(env) {
 // operator 2026-10-24: "auto toggle leave out as on for skipped" — a fix whose words aren't in any answer holds its whole question out of
 // the write-up by default; ⊘ "put it back" (heldOut === false) is the operator's call and is never overridden.
 async function ivAutoHold(env, id, report) {
+  return false;   // OFF (operator 2026-11-25: "dont skip. just say left as is — as in it's still part of the answer"): a fix that can't be placed never holds an answer out; only the operator's own ⊘ Out of flow does
   const open = ((report && report.items) || []).filter(x => x.fix && !x.applied && x.verdict !== 'opinion' && x.heldOut === undefined && Number.isInteger(x.q));
   if (!open.length) return false;
   const iv = ivParse(await ivPage(id)), found = q => q && iv.answers.some(a => String(a || '').includes(q) || ivQuoteSpan(a, q));
