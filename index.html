@@ -38055,6 +38055,7 @@ async function loadMorningTodos() {
   const t = setInterval(() => { const tab = document.querySelector(`.tab[onclick="switchTab('hubdash2')"]`), pin = document.getElementById('pinScreen'), locked = pin && getComputedStyle(pin).display !== 'none';
     if (++tries > 600) return clearInterval(t); if (!tab || !SESSION_TOKEN || locked) return;
     if (!document.getElementById('hd2Tree')) { if (!tab.classList.contains('active')) tab.click(); return; }
+    if (_hd2IV === null && tries < 60) return;   // the 🎤 column redraws the tree once interviews load — open it after that, or it collapses again
     const i = (_hd2Ents || []).findIndex(e => e && e.k === 'title' && hdNid(e.id || '') === id); if (i < 0) { if (tries > 120) clearInterval(t); return; }
     clearInterval(t); const a = document.querySelector(`#hd2Tree a.hd2lnk[data-e="${i}"]`); if (!a) return;
     let d = a.closest('details'); const own = d; while (d) { d.open = true; d = d.parentElement && d.parentElement.closest('details'); }
