@@ -1664,7 +1664,7 @@ async function reportAdminOp(env, invoke, body) {
   if (sub === "asset") { const id = hubAssetId(body.id || ""); if (!/^[0-9a-f]{32}$/i.test(id)) throw new Error("id required");
     const g = await invoke({ action: "entityGet", pageId: id }); if (!g || g.error) throw new Error((g && g.error) || "not found");
     const ctxA = await offerReportCtx(env, aid), own = (g.props || []).find(p => p.name === "Content Strategy"); if (own && !(own.value || []).map(hubAssetId).includes(ctxA.titleId)) throw new Error("That asset isn't under this report's title");
-    return { ok: true, id, title: g.title, url: g.url, props: (g.props || []).filter(p => p.value != null && p.value !== "" && !(Array.isArray(p.value) && !p.value.length) && !/^(Content Strategy|Campaign|Product|Interviews|Method)$/.test(p.name)).map(p => ({ name: p.name, type: p.type, value: Array.isArray(p.value) ? p.value.join(", ") : String(p.value).slice(0, 6000) })) }; }
+    return { ok: true, id, title: g.title, url: g.url, props: (g.props || []).filter(p => p.value != null && p.value !== "" && !(Array.isArray(p.value) && !p.value.length) && !/^(Content Strategy|Campaign|Product|Interviews|Method)$/.test(p.name)).map(p => ({ name: p.name, type: p.type, value: Array.isArray(p.value) ? p.value.join(", ") : p.value && typeof p.value === "object" ? String(p.value.start || p.value.name || p.value.url || JSON.stringify(p.value)).slice(0, 6000) : String(p.value).slice(0, 6000) })) }; }
   const ctx = await offerReportCtx(env, aid);
   if (sub === "assets") {
     const L = (await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(ctx.titleId) } } })).filter(x => !x.archived && !x.in_trash);
