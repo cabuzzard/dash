@@ -70,6 +70,7 @@ body.rp-side.rp-nhide .rp-nbtn { display: block; }
 .od-cb { margin: 10px 0 0 !important; }
 .bf h2 { font: 700 22px/1.25 "Bricolage Grotesque", sans-serif; margin: 0 0 8px; } .bf h3 { font: 700 18px/1.3 "Bricolage Grotesque", sans-serif; margin: 22px 0 8px; color: var(--ink-head); } .bf h4 { font-size: 16px; margin: 16px 0 6px; }
 .bf p { margin: 0 0 10px; } .bf ul, .bf ol { margin: 0 0 12px; padding-left: 22px; } .bf li { margin: 3px 0; } .bf a { color: var(--accent); overflow-wrap: anywhere; }
+.bf-sws { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0 0 12px; } .bf-sw { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; } .bf-sw i { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line); display: inline-block; } .bf-sw code { font-size: 12px; color: var(--ink-soft); }
 .bf-code { white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto; }
 .ivm-panel { --text: var(--ink); --text2: var(--ink-soft); --text3: var(--ink-soft); --border: var(--line); --border2: var(--line); --surface2: var(--surface); --accent: var(--accent); font-size: 15px; }
 .rf summary { cursor: pointer; } .rf { margin: 0 0 16px; }
@@ -341,8 +342,8 @@ async function briefView(tok) {
     const share = d.admin ? `<details class="card" style="margin:0 0 16px"><summary><b>Share with a writer</b> <span class="od-mute">${(d.shared || []).length ? "shared with " + esc(d.shared.join(", ")) : "not shared yet"}</span></summary>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><input class="mg-in" id="bfEm" type="email" placeholder="writer@example.com" style="flex:1;min-width:200px"><button class="share" style="margin:0" onclick="briefShare()">Share</button></div>
       <div class="od-mute" id="bfSt" style="margin-top:6px">They sign in with that Google account and see only this brief.</div></details>` : "";
-    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${B.json ? '<button class="share" style="margin:0;border-color:var(--accent);color:var(--accent)" onclick="briefCopyJson(this)" title="The whole brief as one JSON packet, to paste into ChatGPT / Claude">Copy JSON</button><button class="share" style="margin:0" onclick="briefDownload(true)">.json</button>' : ""}<button class="share" style="margin:0" onclick="briefCopy(this)">Copy text</button><button class="share" style="margin:0" onclick="briefDownload()">.md</button></span></div>`
-      + share + `<div class="card bf">${mdHtml(B.md)}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>` + briefReturnHtml(d);
+    out.innerHTML = `<div class="who"><a class="home" href="/members/">← Members</a><span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${B.json ? '<button class="share" style="margin:0;border-color:var(--accent);color:var(--accent)" onclick="briefCopyJson(this)" title="The whole brief as one JSON packet, to paste into ChatGPT / Claude">Copy JSON</button><button class="share" style="margin:0" onclick="briefDownload(true)">.json</button>' : ""}${d.design ? '<button class="share" style="margin:0" onclick="briefCopyDesign(this)" title="The hub design spec this niche belongs to: colors, fonts, imagery, what to avoid">Copy design JSON</button>' : ""}<button class="share" style="margin:0" onclick="briefCopy(this)">Copy text</button><button class="share" style="margin:0" onclick="briefDownload()">.md</button></span></div>`
+      + share + `<div class="card bf">${mdHtml(B.md)}${d.design ? briefDesignHtml(d.design) : ""}</div><p class="od-mute">Written ${esc(new Date(B.at).toLocaleString())}</p>` + briefReturnHtml(d);
   } catch (e) { out.innerHTML = '<div class="msg">Couldn\'t reach the server. Try again in a minute.</div>'; }
 }
 // 📥 send the posts back here (operator 2026-11-25): paste or upload run.json; the admin sees each return and imports it into the run
@@ -365,6 +366,15 @@ async function briefImport(i, b) { b.disabled = true; b.textContent = "Importing
   const r = await call({ op: "briefImport", token: store.get("mb_token"), assetId: BRIEF_ID, index: i }).catch(e => ({ error: e.message }));
   if (!r || r.error) { b.disabled = false; b.textContent = "Import"; const st = document.getElementById("bfRSt"); if (st) st.textContent = "✗ " + ((r && r.error) || "Not imported"); return; }
   briefView(store.get("mb_token")); }
+// 🎨 the hub's design spec, shown as section 7 and copyable on its own (filled fresh from the hub each time the brief opens)
+function briefDesignHtml(D) {
+  const sw = (D.colors ? Object.entries(D.colors) : []).map(([k, c]) => `<span class="bf-sw"><i style="background:${esc(c)}"></i>${esc(k)} <code>${esc(c)}</code></span>`).join("");
+  return `<h3>7. Brand &amp; design (${esc(D.hub || "hub")} spec)</h3><p>Use these when the posts carry visuals. They come from the hub this niche belongs to.</p>
+    ${sw ? `<div class="bf-sws">${sw}</div>` : ""}${D.font ? `<p><b>Font:</b> ${esc(D.font)}${D.fonts && D.fonts.display && D.fonts.display !== D.fonts.body ? " · display: " + esc(D.fonts.display) : ""}</p>` : ""}
+    ${D.style_notes ? `<p><b>Style:</b> ${esc(D.style_notes)}</p>` : ""}${D.avoid ? `<p><b>Avoid:</b> ${esc(Object.values(D.avoid).join(" · "))}</p>` : ""}
+    <pre class="bf-code">${esc(JSON.stringify(D, null, 2))}</pre>`;
+}
+async function briefCopyDesign(b) { try { await navigator.clipboard.writeText(JSON.stringify(_bf.design, null, 2)); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy design JSON"; }, 2000); }
 async function briefCopyJson(b) { try { await navigator.clipboard.writeText(JSON.stringify(_bf.brief.json, null, 2)); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy JSON"; }, 2000); }
 async function briefCopy(b) { try { await navigator.clipboard.writeText(_bf.brief.md); b.textContent = "✓ Copied"; } catch (e) { b.textContent = "Copy failed"; } setTimeout(() => { b.textContent = "Copy text"; }, 2000); }
 function briefDownload(asJson) { const a = document.createElement("a"), base = (_bf.brief.title || "writer-brief").replace(/[^\w-]+/g, "-").toLowerCase();

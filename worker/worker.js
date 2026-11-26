@@ -1553,6 +1553,28 @@ async function writerBriefBuild(env, job) {
       fields: Object.fromEntries(BRIEF_POST_FIELDS) } };
   return { md: L.join("\n"), json, runs: (plan.runs || []).length, posts: (plan.runs || []).reduce((n, r) => n + (r.posts || []).length, 0), answers: qa.length, err: plan.err || "" };
 }
+// 🎨 the brief's design spec (operator 2026-11-25: "add this to the writing brief, which is hub spec, generated off the existing spec that this
+// niche belongs to, available as a populated JSON clipboard button"): the hub's tokens + fonts (web/hub/hubs.design.json — the build mirror of
+// the Research design) + its committed design spec (KV design:spec:<cid>: imagery, reference, avoid). Read fresh every time the brief opens,
+// so it always matches the hub; a value the hub doesn't set is left out, never guessed.
+async function briefDesign(env, campaignId) {
+  const cid = hubAssetId(campaignId || ""); await hubSitesMerge(env).catch(() => {});
+  const H = HUB_SITES.find(h => hubAssetId(h.campaignId || "") === cid) || {};
+  const dj = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json()).catch(() => ({}));
+  const hub = ((dj.hubs || {})[H.slug] || {}), t = hub.tokens || {}, f = hub.fonts || {}, notes = hub.tokenNotes || {};
+  const spec = ((await env.TRADES.get("design:spec:" + cid, "json").catch(() => null)) || {}).spec || {}, v = k => spec[k] && spec[k].v ? String(spec[k].v) : "";
+  const clean = o => Object.fromEntries(Object.entries(o).filter(([, x]) => x != null && x !== "" && !(typeof x === "object" && !Object.keys(x).length)));
+  const fam = n => n ? `${n}, system-ui, sans-serif` : "";
+  return clean({ hub: H.name || "", domain: H.domain || "",
+    colors: clean({ primary: t.sea || t.accent || "", primary_bright: t.accent || "", ink: t["ink-head"] || t.ink || "", text: t.ink || "", muted: t["ink-soft"] || "", bg: t.bg || "", surface: t.surface || t.paper || "", line: t.line || "", deep: t.deep || "", on_deep: t["deep-ink"] || "" }),
+    font: fam(f.body || f.display), fonts: clean({ display: f.display || "", body: f.body || "", mono: f.mono || "" }),
+    radius: t.radius || hub.radius || "", logo_text: hub.logoText || "",
+    style_notes: [v("img.mood"), v("img.palette_use"), v("img.medium")].filter(Boolean).join(" · "),
+    color_roles: clean(Object.fromEntries(Object.entries(notes).map(([k, x]) => [k.replace(/-/g, "_"), x]))),
+    imagery: clean(Object.fromEntries(["medium", "line", "fill", "shading", "texture", "background", "accents", "people", "representation", "settings", "props", "camera", "framing", "composition", "negative_space", "light", "palette_use", "mood"].map(k => [k, v("img." + k)]))),
+    reference: clean({ approved_image: v("ref.approved_image"), signature: v("ref.signature"), invariants: v("ref.invariants"), master_prompt: v("ref.master_prompt"), negative_prompt: v("ref.negative_prompt") }),
+    avoid: clean({ visual: v("avoid.visual"), subjects: v("avoid.subjects"), colors: v("avoid.colors"), type: v("avoid.type"), stock_ai: v("avoid.stock_ai") }) });
+}
 async function writerBriefGet(env, aid) { return await env.TRADES.get("wbrief:" + aid, "json").catch(() => null); }
 const OFFER_CTA_KINDS = ["Hero", "Inline Slim", "Flyout", "Email"];
 async function offerReportCtx(env, aid) {
@@ -1869,7 +1891,8 @@ async function handleMember(env, body) {
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
     const b = await writerBriefGet(env, aid); if (!b) return { error: "This brief hasn't been written yet." };
     let shared = []; if (admin) for (const k of (await env.TRADES.list({ prefix: "member:email:" })).keys) { const r = await env.TRADES.get(k.name, "json").catch(() => null); if (r && (r.briefs || []).includes(aid)) shared.push(k.name.slice(13)); }
-    return { ok: true, admin, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md, json: b.json || null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, posts: (x.data.posts || []).length, imported: x.imported || null })).filter(x => admin || true), ...(admin ? { shared } : {}) }; }
+    const design = await briefDesign(env, b.campaignId).catch(() => null);
+    return { ok: true, admin, design, brief: { title: b.title, offer: b.offer, at: b.at, md: b.md, json: b.json ? { ...b.json, design } : null }, returns: (b.returns || []).map((x, i) => ({ i, at: x.at, by: admin ? x.by : undefined, run: x.run, posts: (x.data.posts || []).length, imported: x.imported || null })).filter(x => admin || true), ...(admin ? { shared } : {}) }; }
   // 📥 a writer sends a run back on the brief page (operator 2026-11-25): validated, kept on the brief (KV) until the admin imports it
   if (op === "briefReturn") { const aid = hubAssetId(body.assetId || ""), admin = (rec.links || []).includes("*");
     if (!admin && !(rec.briefs || []).includes(aid)) return { error: "This brief isn't shared with you.", code: "no_access" };
