@@ -1876,11 +1876,11 @@ async function briefImportApply(env, invoke, b, body) {
         await extWriteSet(env, z.assetId, JSON.stringify(f, null, 2), src); P.made[i] = z.assetId; continue; }
       const f = impApplyMap(x, P.map); if (P.kind) f.Format = f.Format || P.kind;
       const nm = String(impGet(x, P.titleFrom) || f["Platform Title"] || f.Title || f.Headline || `${P.type} ${i + 1}`).replace(/\s+/g, " ").slice(0, 200);
-      const r = await invoke({ action: "initiativeBuildAsset", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, assetType: P.type, assetTitle: `${P.name || offer} - ${nm}`.slice(0, 300),
+      const r = await invoke({ action: "initiativeBuildAsset", titleId: b.titleId, campaignId: b.campaignId, productId: b.productId || undefined, assetType: P.type, assetTitle: nm.slice(0, 300),
         ...(job.ids.offer ? { parentAssetId: job.ids.offer } : {}), initiative: job.initiative, directions: offerDirections(job, (P.direction ? P.direction + "\n" : "") + `Imported from the writer brief (${P.type}${P.kind ? " · " + P.kind : ""}); the copy is in External Write — check facts, fill missing fields and rewrite only at publishing.`) });
       if (!r || r.error || !r.assetId) throw new Error((r && r.error) || "not created"); const id = hubAssetId(r.assetId);
       await extWriteSet(env, id, JSON.stringify(f, null, 2), src);
-      await hfAssetPatch(id, { "Asset Status": { select: { name: "Development" } }, "External Keep": { select: { name: "Verbatim" } }, ...(P.name ? { Run: { rich_text: ivRt(P.name) } } : {}) }).catch(e => P.failed.push((i + 1) + ": status/keep not set — " + e.message));
+      await hfAssetPatch(id, { "Asset Status": { select: { name: "Development" } }, "External Keep": { select: { name: "Verbatim" } }, Run: { rich_text: ivRt(P.name || offer) } }).catch(e => P.failed.push((i + 1) + ": status/keep not set — " + e.message));
       if (ivNorm(P.type) === ivNorm("Single Post Video Short")) {   // keep the script ready for the render at publishing
         const beats = String(f["Video Spec"] || "").split("\n").map(s => s.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean), v = videoNorm({ title: nm, headline: f.Hook || nm, beats, cta: "" }, i);
         if (v) { await env.TRADES.put("vshort:" + id, JSON.stringify({ ...v, assetId: id, briefId: body.briefId, run: P.name || "", themeId: "", render: null })); vids.add(id); } }
@@ -22095,6 +22095,14 @@ export default {
         const sub = String(body.sub || "list");
         if (sub === "plan") return json(await briefImportPlan(env, b, body, em));
         if (sub === "apply") return json(await briefImportApply(env, invoke, b, body));
+        if (sub === "retitle") {   // one-off fix (operator 2026-11-26): "<offer> - " / "<name> - " was put on every title; it names the Run instead
+          const P = await env.TRADES.get("wbimport:" + String(body.planId || ""), "json").catch(() => null); if (!P) return json({ error: "No such plan" });
+          const job = await stackJob(env, b), offer = (job && job.plan && job.plan.name) || b.offer || "", run = P.name || offer, ids = Object.values(P.made || {}), from = Math.max(0, Number(body.from) || 0), out = [];
+          for (const id of ids.slice(from, from + 20)) { const pg = await ivPage(id).catch(() => null); if (!pg || !pg.properties) { out.push(id + ": not found"); continue; }
+            const t = hubRichText(pg.properties["Asset Title"]?.title || []), pre = [P.name, offer].filter(Boolean).map(x => x + " - ").find(x => t.startsWith(x));
+            const props = { Run: { rich_text: ivRt(run) } }; if (pre) props["Asset Title"] = { title: ivRt(t.slice(pre.length).trim()) };
+            await hfAssetPatch(id, props).then(() => out.push((pre ? "✓ " : "= ") + t.slice(pre ? pre.length : 0, pre ? pre.length + 50 : 50))).catch(e => out.push(id + ": " + e.message)); }
+          return json({ ok: true, done: Math.min(ids.length, from + 20), total: ids.length, next: from + 20 < ids.length ? from + 20 : null, out }); }
         if (sub === "list") return json({ ok: true, imports: await briefImportList(env, aid), types: (await impTypes(env)).map(t => t.type).sort() });
         return json({ error: "Unknown sub " + sub }); } catch (e) { return json({ error: e.message }, 400); } }
     if (body.action === "member" && body.op === "shortVideo") { try {   // 🎬 short videos from a brief (admin): backgrounds, template, renders
