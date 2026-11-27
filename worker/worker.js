@@ -2005,6 +2005,15 @@ async function vsAttach(env, assetId, videoUrl, bgUrl) {
     if (add.length) await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { Library: { files: [...add, ...old.map(f => ({ type: "external", name: f.name, external: { url: f.external.url } }))].slice(0, 100) } } }) }); }
   return { ok: true, assetId: id };
 }
+// every render goes to its asset's Library (operator 2026-11-27: "put all renders in the library") — test renders too, without touching
+// the asset's Video URL / Post Image. Newest first, de-duplicated by URL, uploaded (non-external) files never dropped.
+async function vsLibraryAdd(assetId, items) {
+  const id = hubAssetId(assetId), hdr = { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION }, page = await ivPage(id); if (!page || !page.properties) throw new Error("Asset not found");
+  const old = ((page.properties.Library || {}).files) || []; if (old.some(f => f.type !== "external")) throw new Error("The Library holds an uploaded file; not rewriting it");
+  const add = (items || []).filter(x => x && /^https?:\/\//.test(x.url) && !old.some(f => f.external && f.external.url === x.url)).map(x => ({ type: "external", name: String(x.name).slice(0, 100), external: { url: x.url } }));
+  if (!add.length) return 0;
+  const r = await fetch("https://api.notion.com/v1/pages/" + ivDash(id), { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { Library: { files: [...add, ...old.map(f => ({ type: "external", name: f.name, external: { url: f.external.url } }))].slice(0, 100) } } }) });
+  if (!r.ok) throw new Error("Library not saved: " + ((await r.json().catch(() => ({}))).message || r.status)); return add.length; }
 async function vshortList(env, aid) { const ids = (await env.TRADES.get("vshorts:" + aid, "json").catch(() => null)) || [];
   return (await Promise.all(ids.map(id => env.TRADES.get("vshort:" + id, "json").catch(() => null)))).filter(Boolean); }
 async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_KEY || "").trim(); if (!k) throw new Error("CREATOMATE_API_KEY is not set on the worker yet");
@@ -2030,6 +2039,8 @@ async function shortVideoOp(env, body) {
   if (sub === "style") return { ok: true, style: await videoStyleGet(env, b.campaignId), test: await env.TRADES.get("vtest:" + aid, "json").catch(() => null) };
   if (sub === "styleBuild") return { ok: true, style: await videoStyleBuild(env, b) };
   if (sub === "styleSave") return { ok: true, style: await videoStyleSave(env, b.campaignId, body.style || {}) };
+  if (sub === "libraryAdd") { const target = hubAssetId(body.target || ""); if (!/^[0-9a-f]{32}$/.test(target)) return { error: "target asset required" };
+    return { ok: true, added: await vsLibraryAdd(target, (body.items || []).map(x => ({ name: String(x.name || "Render"), url: String(x.url || "") }))) }; }
   if (sub === "attachTest") { const T = (await env.TRADES.get("vtest:" + aid, "json").catch(() => null)) || {}; if (!T.render || T.render.status !== "done") return { error: "The test render isn't finished" };
     const target = hubAssetId(body.target || ""); if (!/^[0-9a-f]{32}$/.test(target)) return { error: "target asset required" };
     await vsAttach(env, target, T.render.url, T.bgUrl); const old = await env.TRADES.get("vshort:" + target, "json").catch(() => null);
@@ -2040,7 +2051,11 @@ async function shortVideoOp(env, body) {
       if (s2 === "failed") { T.render = { ...T.render, status: "failed", error: String(r.error_message || "failed").slice(0, 300) }; await env.TRADES.put(TK, JSON.stringify(T)); return { ok: true, test: T }; }
       if (s2 !== "succeeded" || !r.url) { T.render.status = s2 || "rendering"; return { ok: true, test: T }; }
       let url = r.url; if (env.MEDIA) { const vr = await fetch(r.url); if (vr.ok) { const key = `videos/test/${aid}-${Date.now().toString(36)}.mp4`; await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4" } }); url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } }
-      T.render = { ...T.render, status: "done", url }; await env.TRADES.put(TK, JSON.stringify(T)); return { ok: true, test: T }; }
+      T.render = { ...T.render, status: "done", url };
+      // the test's script belongs to one of the brief's videos (matched by headline) → the render + its background go to that asset's Library
+      const day = new Date().toISOString().slice(0, 10), tgt = T.target || ((await vshortList(env, aid)).find(x => String(x.headline || "").trim() === String(T.headline || "").trim()) || {}).assetId;
+      if (tgt) { T.target = tgt; T.library = await vsLibraryAdd(tgt, [{ name: "Test render · " + day, url }, { name: "Test background · " + day, url: T.bgUrl }]).catch(e => "✗ " + e.message); }
+      await env.TRADES.put(TK, JSON.stringify(T)); return { ok: true, test: T }; }
     if (!st) return { error: "Build the video style first" }; if (!settings.templateId) return { error: "Set the Creatomate template ID first" };
     const text = String(body.text || "").trim(), headline = String(body.headline || "").trim().slice(0, 120); if (!text || !headline) return { error: "A headline and a script are needed" };
     // per-script plan (subject-matched background, no faces + one key word per line); reused while the script and background are kept
