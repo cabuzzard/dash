@@ -1907,9 +1907,15 @@ async function briefImportList(env, briefId) { const L = (await env.TRADES.get("
 // hub's design (the live page: fonts, colours, imagery) + the report's audience + the video rules and returns field → value + why. Fonts
 // and colours are held to the hub's own (anything else falls back to the hub's). KV vstyle:<campaignId>; editable; used by Copy structure
 // (line rules), the background planner (imagery) and every render (typography, colours, reading pace).
-const VSTYLE_FALLBACK = { format: "one_line", typography: { headlineFont: "Inter", headlineWeight: 800, headlineSizeVmin: 7.4, captionFont: "Inter", captionWeight: 700, captionSizeVmin: 6.2, textTransform: "none" },
+// v2 (operator 2026-11-27: "the people don't seem to relate at all to the subject matter and the font is dry" → process-wide): the hub's
+// font used with more contrast (heavy tight headline, lighter captions, ONE key word per line in the highlight colour + heavier) and a
+// background PER SCRIPT showing what that script is about — objects, places, hands; never faces or posed people. Layout, script length and
+// line pacing unchanged (operator: those "worked very well").
+const VSTYLE_FALLBACK = { format: "one_line", typography: { headlineFont: "Inter", headlineWeight: 900, headlineSizeVmin: 7.4, headlineTracking: -2.5, captionFont: "Inter", captionWeight: 600, captionSizeVmin: 6.2, captionTracking: -1, keyWordWeight: 800, textTransform: "none" },
   colors: { text: "#ffffff", highlight: "#16a34a", shade: "#0f1f2e", shadeOpacity: 0.38, ctaBg: "#0f7a3a", ctaText: "#ffffff" }, pacing: { wordsPerSecond: 2.8, minSeconds: 1.6, maxSeconds: 6 },
-  lines: { maxWordsPerLine: 12, minLines: 5, maxLines: 8, headlineMaxWords: 8 }, backgrounds: { direction: "", settings: [], objects: [], light: "", palette: "", avoid: [], samplePrompt: "" } };
+  lines: { maxWordsPerLine: 12, minLines: 5, maxLines: 8, headlineMaxWords: 8, keyWords: "one per line" },
+  backgrounds: { mode: "per_script", direction: "", settings: [], objects: [], light: "", palette: "", avoid: ["faces", "people looking at the camera", "posed or staged people", "generic office teams"], samplePrompt: "" } };
+const VS_NO_FACES = "No people's faces, no posed or staged people; at most hands or a figure from behind, out of focus.";
 async function videoStyleGet(env, cid) { return cid ? await env.TRADES.get("vstyle:" + cid, "json").catch(() => null) : null; }
 const vsHex = (v, ok, d) => { const h = String(v || "").trim().toLowerCase(); return /^#[0-9a-f]{6}$/.test(h) && (!ok || ok.includes(h)) ? h : d; };
 const vsNum = (v, lo, hi, d) => { const n = Number(v); return isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
@@ -1925,12 +1931,13 @@ async function videoStyleBuild(env, b) {
     colors: { type: "object", required: ["text", "highlight", "shade", "shadeOpacity", "ctaBg", "ctaText"], properties: Object.fromEntries(["text", "highlight", "shade", "ctaBg", "ctaText"].map(k => [k, { type: "string", enum: pal }]).concat([["shadeOpacity", { type: "number", description: "0.2-0.6, the dark layer over the photo so captions read" }]])) },
     pacing: { type: "object", required: ["wordsPerSecond", "minSeconds", "maxSeconds"], properties: { wordsPerSecond: { type: "number", description: "reading pace for THIS audience, 2-3.5" }, minSeconds: { type: "number" }, maxSeconds: { type: "number" } } },
     lines: { type: "object", required: ["maxWordsPerLine", "minLines", "maxLines", "headlineMaxWords"], properties: { maxWordsPerLine: { type: "integer" }, minLines: { type: "integer" }, maxLines: { type: "integer", description: "≤ 8" }, headlineMaxWords: { type: "integer" } } },
-    backgrounds: { type: "object", required: ["direction", "settings", "objects", "light", "palette", "avoid", "samplePrompt"], properties: { direction: { type: "string", description: "how the backgrounds match the hub's own photography, in 2-3 sentences" },
+    backgrounds: { type: "object", required: ["direction", "settings", "objects", "light", "palette", "avoid", "samplePrompt"], properties: { direction: { type: "string", description: "how each video's background shows THAT script's subject (the object, place or situation the script is about — never a generic team) in the hub's photographic look, in 2-3 sentences. No faces, no posed people." },
       settings: { type: "array", items: { type: "string" } }, objects: { type: "array", items: { type: "string" } }, light: { type: "string" }, palette: { type: "string", description: "how the hub's colours appear in the photos (accents, never a wash)" },
       avoid: { type: "array", items: { type: "string" } }, samplePrompt: { type: "string", description: "one 60-100 word Grok prompt for a typical background in this style, ending: No text, no letters, no logos, no watermarks." } } },
     why: { type: "object", required: ["typography", "colors", "pacing", "lines", "backgrounds"], properties: Object.fromEntries(["typography", "colors", "pacing", "lines", "backgrounds"].map(k => [k, { type: "string", description: "one sentence citing the hub design or the audience research" }])) } } };
   const out = await hcClaude(env, `You set the VIDEO STYLE for one hub's short vertical (9:16, 1080x1920) caption videos: text over a photo background, one line on screen at a time, a headline at the top (18% down), captions a little below centre, the bottom quarter clear, watched mostly muted on LinkedIn. ` +
-    `Typography and colours MUST be the hub's own (choose only from the lists given); backgrounds MUST look like the hub's own photography. Fit the pace and tone to the AUDIENCE. Plain, credible, no hype.\n\nRULES:\n${VIDEO_RULES.map(x => "- " + x).join("\n")}\n\nHUB DESIGN (the live page is the master):\n${JSON.stringify(hub).slice(0, 9000)}\n\nAUDIENCE RESEARCH:\n${JSON.stringify(aud).slice(0, 6000)}`, "video_style", S, 4000);
+    `Typography and colours MUST be the hub's own (choose only from the lists given), but use the font with CONTRAST so it isn't dry: a heavy (800-900) headline, lighter (500-600) captions, and one key word per caption line shown in the highlight colour. ` +
+    `Backgrounds are made PER SCRIPT and show what that script is about (objects, places, situations) in the hub's photographic look; never faces, posed people or generic office teams — the audience doesn't relate to strangers. Fit the pace and tone to the AUDIENCE. Plain, credible, no hype.\n\nRULES:\n${VIDEO_RULES.map(x => "- " + x).join("\n")}\n\nHUB DESIGN (the live page is the master):\n${JSON.stringify(hub).slice(0, 9000)}\n\nAUDIENCE RESEARCH:\n${JSON.stringify(aud).slice(0, 6000)}`, "video_style", S, 4000);
   if (!out || !out.typography) throw new Error("The style didn't come back");
   const F = VSTYLE_FALLBACK, T = out.typography || {}, C = out.colors || {}, P = out.pacing || {}, L = out.lines || {}, f0 = fonts[0] || F.typography.headlineFont, fOk = x => fonts.includes(x) ? x : f0;
   const st = { at: new Date().toISOString(), campaignId: b.campaignId, hub: D.hub || "", format: "one_line",
@@ -1942,15 +1949,46 @@ async function videoStyleBuild(env, b) {
   await env.TRADES.put("vstyle:" + b.campaignId, JSON.stringify(st)); return st;
 }
 async function videoStyleSave(env, cid, patch) { const cur = (await videoStyleGet(env, cid)) || { ...VSTYLE_FALLBACK, campaignId: cid };
-  const m = (a, p) => Object.fromEntries(Object.keys(a).map(k => [k, p && p[k] != null ? (typeof a[k] === "number" ? Number(p[k]) : Array.isArray(a[k]) ? (Array.isArray(p[k]) ? p[k] : String(p[k]).split(/\n|;/).map(s => s.trim()).filter(Boolean)) : String(p[k])) : a[k]]));
-  const st = { ...cur, ...Object.fromEntries(["typography", "colors", "pacing", "lines", "backgrounds"].map(k => [k, m(cur[k] || VSTYLE_FALLBACK[k], (patch || {})[k])])), edited: new Date().toISOString() };
+  // a group missing keys (styles saved before a field existed) takes them from the fallback, so new fields can be set by a save
+  const m = (g, p) => { const a = { ...VSTYLE_FALLBACK[g], ...(cur[g] || {}) }; return Object.fromEntries(Object.keys(a).map(k => [k, p && p[k] != null ? (typeof a[k] === "number" ? Number(p[k]) : Array.isArray(a[k]) ? (Array.isArray(p[k]) ? p[k] : String(p[k]).split(/\n|;/).map(s => s.trim()).filter(Boolean)) : String(p[k])) : a[k]])); };
+  const st = { ...cur, ...Object.fromEntries(["typography", "colors", "pacing", "lines", "backgrounds"].map(k => [k, m(k, (patch || {})[k])])), edited: new Date().toISOString() };
   await env.TRADES.put("vstyle:" + cid, JSON.stringify(st)); return st; }
 // the style → per-caption seconds (reading pace) and the template's look
 function vsBeatSec(text, st) { const P = (st && st.pacing) || VSTYLE_FALLBACK.pacing, w = String(text || "").split(/\s+/).filter(Boolean).length; return Math.round(Math.max(P.minSeconds, Math.min(P.maxSeconds, w / P.wordsPerSecond + 0.4)) * 10) / 10; }
 function vsMods(st) { if (!st) return {}; const T = st.typography, C = st.colors, m = {}, a = Math.round(C.shadeOpacity * 255).toString(16).padStart(2, "0");
   m["Headline.font_family"] = T.headlineFont; m["Headline.font_weight"] = String(T.headlineWeight); m["Headline.font_size"] = T.headlineSizeVmin + " vmin"; m["Headline.fill_color"] = C.text; m["Headline.text_transform"] = T.textTransform;
   for (let k = 1; k <= 8; k++) { m[`Caption-${k}.font_family`] = T.captionFont; m[`Caption-${k}.font_weight`] = String(T.captionWeight); m[`Caption-${k}.font_size`] = T.captionSizeVmin + " vmin"; m[`Caption-${k}.fill_color`] = C.text; m[`Caption-${k}.text_transform`] = T.textTransform; }
+  // tracking: style value is in % of an em ×10 (CSS -0.025em = -2.5) → Creatomate "% of font size ÷ 10" ("-25%")
+  if (T.headlineTracking != null) m["Headline.letter_spacing"] = Math.round(Number(T.headlineTracking) * 10) + "%";
+  if (T.captionTracking != null) for (let k = 1; k <= 8; k++) m[`Caption-${k}.letter_spacing`] = Math.round(Number(T.captionTracking) * 10) + "%";
   m["Shade.fill_color"] = C.shade + a; m["CTA.background_color"] = C.ctaBg; m["CTA.fill_color"] = C.ctaText; m["CTA.font_family"] = T.captionFont; return m; }
+// one key word per caption line → highlight colour + heavier weight (Creatomate inline spans). The word must be in the line; otherwise plain.
+function vsKeyWord(text, word, st) { const w = String(word || "").trim(); if (!w || !st) return text; const i = String(text).toLowerCase().indexOf(w.toLowerCase()); if (i < 0) return text;
+  const C = st.colors || {}, T = st.typography || {}, kw = T.keyWordWeight || 800;
+  return text.slice(0, i) + `[color ${C.highlight || "#16a34a"}][weight ${kw}]` + text.slice(i, i + w.length) + "[/weight][/color]" + text.slice(i + w.length); }
+// per-script plan (operator 2026-11-27): one small Claude call → the background prompt for THIS script's subject (no faces) + the key word
+// of each caption line. Stored on the video (vshort .plan) so re-renders reuse it.
+async function vsPlanVideo(env, st, v) {
+  const B = (st && st.backgrounds) || VSTYLE_FALLBACK.backgrounds, lines = (v.beats || []).map(x => x.text);
+  const out = await hcClaude(env, `A short vertical (9:16) caption video: white text over a photo, one line at a time. Plan two things for THIS script.\n\n` +
+    `1) bgPrompt: one 60-100 word prompt for xAI Grok Imagine — a REAL PHOTOGRAPH of the concrete thing this script is about (the object, place or situation it names or implies, as a visual metaphor if needed), so a viewer sees the subject, not a stranger. ` +
+    `${VS_NO_FACES} Calm, uncluttered (2-3 objects), soft depth of field, the upper third and the centre band plain and a little dark so captions read, no bright hotspots. The hub's look: light ${JSON.stringify(B.light || "")}; palette ${JSON.stringify(B.palette || "")}; avoid ${JSON.stringify([...(B.avoid || []), "faces", "posed people"])}. ` +
+    `No readable screens. Vertical 9:16. End with: "No text, no letters, no logos, no watermarks."\n` +
+    `2) keyWords: for EACH caption line (same order, same count), the ONE word (copied exactly from that line) that carries its meaning — a noun, number or strong verb, never "the/and/your/you". Empty string if no word earns it.\n\n` +
+    `HEADLINE: ${v.headline}\nCAPTION LINES:\n${lines.map((t, i) => (i + 1) + ". " + t).join("\n")}`, "video_plan",
+    { type: "object", required: ["bgPrompt", "keyWords"], properties: { bgPrompt: { type: "string" }, keyWords: { type: "array", items: { type: "string" } } } }, 1500);
+  if (!out || !out.bgPrompt) throw new Error("The video plan didn't come back");
+  let kw = out.keyWords; if (!Array.isArray(kw)) { try { kw = JSON.parse(kw); } catch (e) { kw = []; } }
+  return { bgPrompt: String(out.bgPrompt).slice(0, 3000), keyWords: lines.map((t, i) => { const w = String(kw[i] || "").trim(); return w && t.toLowerCase().includes(w.toLowerCase()) ? w : ""; }), at: new Date().toISOString() };
+}
+// one Grok background → R2 (shared by the test render and every real render)
+async function vsBgMake(env, cid, aid, prompt, tag) { if (!(env.XAI_API_KEY || "").trim()) throw new Error("XAI_API_KEY not configured");
+  const go = aspect => grokImageFetch(env, { campaignId: cid }, { method: "POST", headers: { Authorization: "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" }, body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt, n: 1, aspect_ratio: aspect, resolution: "2k" }) });
+  let xr = await go("9:16"), xd = await xr.json().catch(() => ({})); if (!xr.ok) { xr = await go("3:4"); xd = await xr.json().catch(() => ({})); }
+  const src = xr.ok && xd.data && xd.data[0] && xd.data[0].url; if (!src) throw new Error((xd.error && (xd.error.message || xd.error)) || "xAI image error " + xr.status);
+  if (!env.MEDIA) return src; const pr = await fetch(src); if (!pr.ok) return src;
+  const ct = pr.headers.get("content-type") || "image/jpeg", key = `images/video-bg/${aid}/${tag}-${Date.now().toString(36)}.${/png/.test(ct) ? "png" : /webp/.test(ct) ? "webp" : "jpg"}`;
+  await env.MEDIA.put(key, await pr.arrayBuffer(), { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } }); return String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; }
 // a finished render → its asset (operator 2026-11-26: "it should be in the post section of the flyout for the asset … and tie files and the
 // library"): Video URL (the flyout's 🎬 Video player) + Post Image (the background), whatever they held before goes to the Library, and the
 // new files are listed in the Library too ("Video URL · <date>" / "Post Image · <date>"), so every render stays on the asset
@@ -1975,7 +2013,8 @@ async function ctmApi(env, method, path, body) { const k = (env.CREATOMATE_API_K
 // the template's element names (VIDEO_SLOTS) ← one script. Unused caption slots are removed; times run back to back.
 function ctmMods(v, bgUrl, st) { const m = { Background: bgUrl, Headline: v.headline }, S = vsMods(st); let t = 0;
   Object.keys(S).filter(k => /^(Headline|Shade)./.test(k)).forEach(k => { m[k] = S[k]; });
-  for (let k = 1; k <= 8; k++) { const b = v.beats[k - 1]; if (b) { const sec = st ? vsBeatSec(b.text, st) : b.sec; m["Caption-" + k] = b.text; m["Caption-" + k + ".time"] = t; m["Caption-" + k + ".duration"] = sec; t += sec;
+  const KW = (v.plan && v.plan.keyWords) || [];
+  for (let k = 1; k <= 8; k++) { const b = v.beats[k - 1]; if (b) { const sec = st ? vsBeatSec(b.text, st) : b.sec; m["Caption-" + k] = vsKeyWord(b.text, KW[k - 1], st); m["Caption-" + k + ".time"] = t; m["Caption-" + k + ".duration"] = sec; t += sec;
       Object.keys(S).filter(x => x.startsWith("Caption-" + k + ".")).forEach(x => { m[x] = S[x]; }); } else m["Caption-" + k] = {}; }
   if (v.cta) { m.CTA = v.cta; m["CTA.time"] = t; m["CTA.duration"] = 3; t += 3; Object.keys(S).filter(k => k.startsWith("CTA.")).forEach(k => { m[k] = S[k]; }); } else m.CTA = {};
   m["Headline.time"] = 0; m["Headline.duration"] = t; m.duration = t; return m; }
@@ -2004,20 +2043,18 @@ async function shortVideoOp(env, body) {
       T.render = { ...T.render, status: "done", url }; await env.TRADES.put(TK, JSON.stringify(T)); return { ok: true, test: T }; }
     if (!st) return { error: "Build the video style first" }; if (!settings.templateId) return { error: "Set the Creatomate template ID first" };
     const text = String(body.text || "").trim(), headline = String(body.headline || "").trim().slice(0, 120); if (!text || !headline) return { error: "A headline and a script are needed" };
-    let bgUrl = String(body.bgUrl || "").trim() || (!body.newBg && T.bgUrl) || "";
-    if (!bgUrl) { if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" }; const prompt = String(st.backgrounds.samplePrompt || "").trim(); if (!prompt) return { error: "The style has no sample background prompt" };
-      const go = aspect => grokImageFetch(env, { campaignId: b.campaignId }, { method: "POST", headers: { Authorization: "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" }, body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt, n: 1, aspect_ratio: aspect, resolution: "2k" }) });
-      let xr = await go("9:16"), xd = await xr.json().catch(() => ({})); if (!xr.ok) { xr = await go("3:4"); xd = await xr.json().catch(() => ({})); }
-      const src = xr.ok && xd.data && xd.data[0] && xd.data[0].url; if (!src) return { error: (xd.error && (xd.error.message || xd.error)) || "xAI image error " + xr.status };
-      bgUrl = src; if (env.MEDIA) { const pr = await fetch(src); if (pr.ok) { const ct = pr.headers.get("content-type") || "image/jpeg", key = `images/video-bg/${aid}/test-${Date.now().toString(36)}.${/png/.test(ct) ? "png" : "jpg"}`;
-        await env.MEDIA.put(key, await pr.arrayBuffer(), { httpMetadata: { contentType: ct } }); bgUrl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } } }
+    // per-script plan (subject-matched background, no faces + one key word per line); reused while the script and background are kept
     const beats = impBeats(text, st.lines.minLines, Math.min(8, st.lines.maxLines)).map(t => ({ beat: "", text: t, sec: vsBeatSec(t, st) }));
-    const v = { headline, beats, cta: String(body.cta || "").trim().slice(0, 80) };
+    const same = !body.newBg && T.plan && T.text === text && T.headline === headline;
+    const plan = same ? T.plan : await vsPlanVideo(env, st, { headline, beats });
+    let bgUrl = String(body.bgUrl || "").trim() || (same && T.bgUrl) || "";
+    if (!bgUrl) { try { bgUrl = await vsBgMake(env, b.campaignId, aid, plan.bgPrompt, "test"); } catch (e) { return { error: e.message }; } }
+    const v = { headline, beats, plan, cta: String(body.cta || "").trim().slice(0, 80) };
     const d = await ctmApi(env, "POST", "/v2/renders", { template_id: settings.templateId, modifications: ctmMods(v, bgUrl, st), metadata: "test:" + aid, ...(body.dry ? { dry_run: true } : {}) }); const r = Array.isArray(d) ? d[0] : d;
-    if (body.dry) return { ok: true, dry: true, result: { valid: r.valid, errors: r.errors, warnings: r.warnings }, bgUrl };
-    const nt = { bgUrl, headline, text, cta: v.cta, beats, render: { id: r.id, status: r.status || "planned", at: new Date().toISOString(), warnings: r.warnings || [] } }; await env.TRADES.put(TK, JSON.stringify(nt)); return { ok: true, test: nt }; }
+    if (body.dry) { await env.TRADES.put(TK, JSON.stringify({ ...T, bgUrl, plan, headline, text, cta: v.cta, beats })); return { ok: true, dry: true, result: { valid: r.valid, errors: r.errors, warnings: r.warnings }, bgUrl }; }
+    const nt = { bgUrl, plan, headline, text, cta: v.cta, beats, render: { id: r.id, status: r.status || "planned", at: new Date().toISOString(), warnings: r.warnings || [] } }; await env.TRADES.put(TK, JSON.stringify(nt)); return { ok: true, test: nt }; }
   const vids = await vshortList(env, aid);
-  if (sub === "bgPlan") {   // one Claude call: the scripts → N themes, each a wordless 9:16 Grok prompt in the hub's look
+  if (sub === "bgPlan") {   // LEGACY (pre 2026-11-27): shared themes; renders now plan a background per script (vsPlanVideo). One Claude call: the scripts → N themes, each a wordless 9:16 Grok prompt in the hub's look
     if (!vids.length) return { error: "Import the scripts first" }; const n = Math.max(1, Math.min(Number(body.n) || 10, 12, vids.length));
     const D = await briefDesign(env, b.campaignId).catch(() => ({})) || {};
     const vst = await videoStyleGet(env, b.campaignId);
@@ -2045,9 +2082,13 @@ async function shortVideoOp(env, body) {
   if (sub === "assign") { if (!bg.themes.some(x => x.id === body.themeId)) return { error: "No such theme" }; await put(v.assetId, { ...v, themeId: body.themeId }); return { ok: true }; }
   if (sub === "edit") { const n = videoNorm({ ...v, ...(body.video || {}) }, 0); if (!n) return { error: "A video needs at least one caption" }; await put(v.assetId, { ...v, ...n, key: v.key }); return { ok: true }; }
   if (sub === "render") {   // the script → Creatomate template → render id (body.dry: validate only)
-    if (!settings.templateId) return { error: "Set the Creatomate template ID first" }; const t = bg.themes.find(x => x.id === v.themeId);
-    if (!t || !t.url) return { error: "This video's background isn't made yet" };
-    const req = { template_id: settings.templateId, modifications: ctmMods(v, t.url, await videoStyleGet(env, b.campaignId)), metadata: v.assetId, ...(body.dry ? { dry_run: true } : {}) };
+    if (!settings.templateId) return { error: "Set the Creatomate template ID first" }; const st = await videoStyleGet(env, b.campaignId);
+    // v2 (operator 2026-11-27, process-wide): every video gets its OWN plan — a background of what the script is about (no faces) + a key
+    // word per line. Made once and kept on the video; body.newBg / body.replan remake them. Shared themes are no longer used.
+    if (!v.plan || body.replan || body.newBg) { try { v.plan = await vsPlanVideo(env, st, v); v.bgUrl = ""; } catch (e) { return { error: e.message }; } }
+    if (!v.bgUrl) { try { v.bgUrl = await vsBgMake(env, b.campaignId, v.assetId, v.plan.bgPrompt, "bg"); } catch (e) { await put(v.assetId, v); return { error: e.message }; } }
+    await put(v.assetId, v);
+    const req = { template_id: settings.templateId, modifications: ctmMods(v, v.bgUrl, st), metadata: v.assetId, ...(body.dry ? { dry_run: true } : {}) };
     const d = await ctmApi(env, "POST", "/v2/renders", req); const r = Array.isArray(d) ? d[0] : d;
     if (body.dry) return { ok: true, dry: true, result: { valid: r.valid, errors: r.errors, warnings: r.warnings } };
     await put(v.assetId, { ...v, render: { id: r.id, status: r.status || "planned", at: new Date().toISOString(), warnings: r.warnings || [] } }); return { ok: true, render: r.id, status: r.status, warnings: r.warnings || [] }; }
@@ -2058,7 +2099,7 @@ async function shortVideoOp(env, body) {
     if (st !== "succeeded" || !r.url) return { ok: true, status: st || "rendering" };
     let url = r.url; if (env.MEDIA) { const vr = await fetch(r.url); if (vr.ok) { const key = `videos/${v.assetId}/ctm-${Date.now().toString(36)}.mp4`;
       await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } }); url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key; } }
-    const t2 = bg.themes.find(x => x.id === v.themeId); await vsAttach(env, v.assetId, url, t2 && t2.url).catch(() => hfAssetPatch(v.assetId, { "Video URL": { url } }));
+    const t2 = bg.themes.find(x => x.id === v.themeId); await vsAttach(env, v.assetId, url, v.bgUrl || (t2 && t2.url)).catch(() => hfAssetPatch(v.assetId, { "Video URL": { url } }));
     await put(v.assetId, { ...v, render: { ...v.render, status: "done", url, done: new Date().toISOString() } }); return { ok: true, status: "done", url }; }
   return { error: "Unknown sub " + sub };
 }
