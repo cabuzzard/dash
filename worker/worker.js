@@ -2041,6 +2041,9 @@ async function shortVideoOp(env, body) {
   if (sub === "styleSave") return { ok: true, style: await videoStyleSave(env, b.campaignId, body.style || {}) };
   if (sub === "libraryAdd") { const target = hubAssetId(body.target || ""); if (!/^[0-9a-f]{32}$/.test(target)) return { error: "target asset required" };
     return { ok: true, added: await vsLibraryAdd(target, (body.items || []).map(x => ({ name: String(x.name || "Render"), url: String(x.url || "") }))) }; }
+  // one Grok still from a hand-written prompt (mascot / background tries) → R2 url (operator 2026-11-27)
+  if (sub === "grokImage") { const p = String(body.prompt || "").trim(); if (p.length < 20) return { error: "prompt required" };
+    return { ok: true, url: await vsBgMake(env, b.campaignId, hubAssetId(body.target || "") || aid, p.slice(0, 5000), String(body.tag || "grok").replace(/[^a-z0-9-]/gi, "").slice(0, 20) || "grok") }; }
   if (sub === "attachTest") { const T = (await env.TRADES.get("vtest:" + aid, "json").catch(() => null)) || {}; if (!T.render || T.render.status !== "done") return { error: "The test render isn't finished" };
     const target = hubAssetId(body.target || ""); if (!/^[0-9a-f]{32}$/.test(target)) return { error: "target asset required" };
     await vsAttach(env, target, T.render.url, T.bgUrl); const old = await env.TRADES.get("vshort:" + target, "json").catch(() => null);
